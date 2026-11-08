@@ -284,7 +284,7 @@ fn with_android_vm<T>(
     if ptr == 0 {
         return Err("Android AI 插件桥接尚未初始化。".into());
     }
-    let vm = unsafe { jni::vm::JavaVM::from_raw(ptr as *mut _) };
+    let vm = jni::vm::JavaVM::singleton().map_err(|error| error.to_string())?;
     f(&vm)
 }
 
@@ -338,8 +338,8 @@ fn ai_plugin_request(request_id: &str, prompt: &str) -> Result<String, String> {
                 if object.is_null() {
                     return Ok(None);
                 }
-                let response = jni::objects::JString::from(object);
-                Ok(Some(env.get_string(&response)?.into()))
+                let response = env.as_cast::<jni::objects::JString>(&object)?;
+                Ok(Some(response.to_string()))
             }).map_err(|e| e.to_string())
         })?;
         if let Some(response) = response {
