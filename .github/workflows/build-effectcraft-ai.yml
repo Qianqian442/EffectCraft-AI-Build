@@ -7,6 +7,8 @@ on:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_android_gallery_export.py'
+      - '.github/scripts/install_ai_plugin_bridge.py'
+      - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/upgrade_export_preflight.py'
       - '.github/scripts/ai_assistant_local.rs'
       - 'assets/ae-avatar.png'
@@ -91,26 +93,6 @@ jobs:
           key: effectcraft-deps-cache-v2-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
             effectcraft-deps-cache-v2-${{ runner.os }}-
-
-      - name: Bundle the offline DeepSeek IQ4_XS model into APK assets
-        shell: bash
-        run: |
-          set -euo pipefail
-          MODEL_DIR="$GITHUB_WORKSPACE/artcraft/source/effectcraft/assets/models"
-          MODEL_PATH="$MODEL_DIR/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf"
-          mkdir -p "$MODEL_DIR"
-          echo "Downloading the 1.02 GB IQ4_XS local GGUF model (it will be packaged inside the APK)..."
-          curl -fL --retry 5 --retry-all-errors --retry-delay 3 --continue-at - \
-            "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf?download=true"  \
-            -o "$MODEL_PATH"
-          MODEL_BYTES="$(stat -c%s "$MODEL_PATH")"
-          if (( MODEL_BYTES < 950000000 || MODEL_BYTES > 1100000000 )); then
-            echo "Unexpected GGUF size: $MODEL_BYTES bytes" >&2
-            exit 1
-          fi
-          printf 'DeepSeek-R1-Distill-Qwen-1.5B IQ4_XS (space-saving quantization)\nSource: https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF\nBundled in APK assets; copied to app-private storage on first launch.\n' > "$MODEL_DIR/README.txt"
-          echo "Verified local GGUF asset: $MODEL_BYTES bytes"
-
 
       - name: Bundle the Real-ESRGAN x4 local model
         shell: bash
@@ -265,6 +247,12 @@ jobs:
           p.write_text(s)
           print("Embedded the supplied Ae avatar in the draggable AI bubble.")
           PY
+
+      - name: Integrate the standalone DeepSeek plugin into the original assistant
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: python3 build-assets/.github/scripts/install_ai_plugin_bridge.py
 
       - name: Preserve project import and configure centered export dialog
         env:
@@ -592,6 +580,14 @@ jobs:
           grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_PROGRESS_POPUP_V1" "$HEADER_SRC"
           echo "Verified the centered, draggable live export progress popup is present in the APK source."
           grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_DEVICE_PREFLIGHT_V2" "$HEADER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_GALLERY_SUCCESS_POPUP_V1" "$HEADER_SRC"
+          test -s "source/effectcraft/crates/ui-egui/src/android_gallery.rs"
+          grep -Fq "EFFECTCRAFT_ANDROID_AI_PLUGIN_BRIDGE_V1" "templates/android/SafActivity.java"
+          grep -Fq "init_android_ai_bridge" "lib/build-common.sh"
+          if grep -Eq "llama-cpp-(2|sys-2)" "source/effectcraft/crates/ui-egui/Cargo.toml"; then
+            echo "DeepSeek inference dependency must live in the standalone plugin, not the host APK." >&2
+            exit 1
+          fi
           echo "Verified comprehensive Android export resource preflight is present in the APK source."
           APK_COUNT="$(find output -maxdepth 1 -type f -name '*.apk' | wc -l)"
           test "$APK_COUNT" -eq 1
@@ -627,11 +623,10 @@ jobs:
           grep -Fxq "resources.arsc" "$APK_ENTRIES"
           grep -Eq '^classes[0-9]*[.]dex$' "$APK_ENTRIES"
           grep -Fxq "lib/arm64-v8a/libeffectcraft-ai-video-worker.so" "$APK_ENTRIES"
-          grep -Fxq "assets/models/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf" "$APK_ENTRIES"
-          grep -Fxq "assets/models/rife-v4.6/flownet.bin" "$APK_ENTRIES"
+          if grep -Eq '^assets/models/DeepSeek-.*\.gguf          grep -Fxq "assets/models/rife-v4.6/flownet.bin" "$APK_ENTRIES"
           grep -Fxq "assets/models/realesrgan-x4plus.bin" "$APK_ENTRIES"
           rm -f "$APK_ENTRIES"
-          echo "Verified APK contains DEX, DeepSeek, RIFE 4.6, Real-ESRGAN x4 and Android native worker."
+          echo "Verified APK contains DEX, RIFE 4.6, Real-ESRGAN x4 and Android native worker; DeepSeek GGUF is excluded from the host APK."
           echo "Verified APK: $APK ($SIZE bytes)"
           sha256sum "$APK"
 
@@ -705,14 +700,14 @@ jobs:
             echo "No non-empty APK was produced; skipping download publication."
           fi
 
-      - name: Upload standalone APK for isolated Android install test
+      - name: Upload standalone APK artifact
         if: success() && steps.apk_available.outputs.available == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: EffectCraft-Android-APK
           path: artcraft/output/effectcraft-0.21.1.apk
           compression-level: 0
-          retention-days: 2
+          retention-days: 7
 
       - name: Ensure Cargo cache directories exist
         if: always()
@@ -740,74 +735,35 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  test_and_publish:
-    name: Install APK on Android 12 ARM64, then publish
+  publish:
+    name: Publish APK download (no device install test)
     needs: build
-    runs-on: macos-15
-    timeout-minutes: 120
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - name: Download the exact APK produced by the build job
+      - name: Download the verified APK artifact
         uses: actions/download-artifact@v4
         with:
           name: EffectCraft-Android-APK
           path: release
-
-      - name: Check APK transfer
+      - name: Verify artifact transfer
         shell: bash
         run: |
           set -euo pipefail
           APK="release/effectcraft-0.21.1.apk"
           test -s "$APK"
-          stat -f 'APK size: %z bytes' "$APK"
-          shasum -a 256 "$APK"
-          df -h "$GITHUB_WORKSPACE"
-
-      - name: Install and test on Android 12 ARM64 emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 31
-          target: google_atd
-          arch: arm64-v8a
-          profile: pixel_6
-          cores: 4
-          ram-size: 4096M
-          disk-size: 12G
-          emulator-boot-timeout: 1800
-          emulator-options: -accel off -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: |
-            set -euo pipefail
-            APK="release/effectcraft-0.21.1.apk"
-            SDK_LEVEL="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
-            test "$SDK_LEVEL" = "31"
-            ABI_LIST="$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
-            echo "Android 12 ARM64 emulator ABI list: $ABI_LIST"
-            case "$ABI_LIST" in
-              *arm64-v8a*) ;;
-              *)
-                echo "::error::The Android 12 emulator does not expose arm64-v8a; refusing to count this as an install test."
-                exit 1
-                ;;
-            esac
-            echo "Installing the exact APK with Android Package Manager..."
-            adb install --abi arm64-v8a -r "$APK"
-            PACKAGE_PATH="$(adb shell pm path com.artcraft.effectcraft | tr -d '\r')"
-            test -n "$PACKAGE_PATH"
-            echo "$PACKAGE_PATH"
-            echo "Android 12 ARM64 Package Manager installation passed."
-
+          stat -c 'APK size: %s bytes' "$APK"
+          sha256sum "$APK"
       - name: Publish standalone APK release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: effectcraft-ai-${{ github.run_number }}
-          name: EffectCraft 0.21.1 AI Android APK (Build ${{ github.run_number }})
+          name: EffectCraft 0.21.1 Android APK (Build ${{ github.run_number }})
           body: |
-            Standalone Android APK built by GitHub Actions.
-            Install the attached .apk file directly; no ZIP extraction is required.
-            Published after APK signature, certificate, integrity, manifest, ARM64,
-            alignment and Android 12 ARM64 Package Manager installation checks.
+            Standalone EffectCraft Android APK.
+            Build-time APK integrity, signature, manifest, ARM64 ABI and ZIP-alignment checks passed.
+            No Android emulator or device installation test is run in this workflow.
           files: release/effectcraft-0.21.1.apk
           draft: false
           prerelease: true

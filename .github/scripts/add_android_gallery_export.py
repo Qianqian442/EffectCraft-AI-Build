@@ -248,7 +248,15 @@ fn saf_video_gallery_stage_path(default: &str) -> Result<Option<String>, String>
 }
 '''
     if "fn saf_video_gallery_stage_path(" not in source:
-        source = replace_once(source, recipe_anchor, stage_fn + "\n" + recipe_anchor, "Video gallery staging helper")
+        effectcraft_marker = '    "effectcraft": {'
+        if effectcraft_marker not in source:
+            raise SystemExit("Could not find the EffectCraft SAF recipe")
+        prefix, effectcraft_recipe = source.split(effectcraft_marker, 1)
+        effectcraft_recipe = replace_once(
+            effectcraft_recipe, recipe_anchor, stage_fn + "\n" + recipe_anchor,
+            "Video gallery staging helper",
+        )
+        source = prefix + effectcraft_marker + effectcraft_recipe
 
     old_save = '            FileDialog::Save { default, .. } => saf_save_path(&bridge, &state, &default).into_iter().collect(),'
     new_save = r'''            FileDialog::Save { default, .. } => {
