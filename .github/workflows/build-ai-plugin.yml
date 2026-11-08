@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: effectcraft-ai-plugin-prototype
@@ -130,44 +130,36 @@ jobs:
           compression-level: 0
           retention-days: 7
 
-  install_test:
-    name: Install and launch AI plugin on Android 12 ARM64
+  publish:
+    name: Publish DeepSeek plugin APK (no device install test)
     needs: build
-    runs-on: macos-15
-    timeout-minutes: 90
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - name: Download verified plugin APK
+        uses: actions/download-artifact@v4
         with:
           name: EffectCraft-AI-Plugin-APK
           path: release
-
-      - name: Install and launch through Android Package Manager
-        uses: reactivecircus/android-emulator-runner@v2
+      - name: Verify artifact transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/app-release.apk"
+          test -s "$APK"
+          stat -c 'AI plugin APK size: %s bytes' "$APK"
+          sha256sum "$APK"
+      - name: Publish standalone DeepSeek plugin release
+        uses: softprops/action-gh-release@v2
         with:
-          api-level: 31
-          target: google_atd
-          arch: arm64-v8a
-          profile: pixel_6
-          cores: 4
-          ram-size: 4096M
-          disk-size: 12G
-          emulator-boot-timeout: 1800
-          emulator-options: -accel off -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: |
-            set -euo pipefail
-            APK="release/app-release.apk"
-            test -s "$APK"
-            adb install --abi arm64-v8a -r "$APK"
-            PACKAGE_PATH="$(adb shell pm path com.artcraft.effectcraft.aiassistant | tr -d '\r')"
-            test -n "$PACKAGE_PATH"
-            echo "$PACKAGE_PATH"
-            adb shell am start -n com.artcraft.effectcraft.aiassistant/.MainActivity
-            sleep 8
-            PID="$(adb shell pidof com.artcraft.effectcraft.aiassistant | tr -d '\r')"
-            test -n "$PID"
-            echo "AI companion app started, PID=$PID"
-            if adb logcat -d -t 2000 | grep -E "FATAL EXCEPTION|UnsatisfiedLinkError"; then
-              exit 1
-            fi
+          tag_name: effectcraft-deepseek-plugin-${{ github.run_number }}
+          name: EffectCraft DeepSeek AI Plugin (Build ${{ github.run_number }})
+          body: |
+            Standalone DeepSeek local-inference companion APK for EffectCraft.
+            The GGUF model is downloaded or imported inside the plugin, not bundled in either APK.
+            Build-time APK integrity, signature and ARM64 library checks passed.
+            No Android emulator or device installation test is run in this workflow.
+          files: release/app-release.apk
+          draft: false
+          prerelease: true
