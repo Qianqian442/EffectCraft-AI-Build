@@ -82,7 +82,7 @@ if draft_store_new not in header:
 helpers = r'''
 /// EFFECTCRAFT_ANDROID_EXPORT_DEVICE_PREFLIGHT_V2
 /// Multi-factor Android export preflight. Unknown OS readings do not falsely reject an export.
-fn effectcraft_export_memory_ok(width: u32, height: u32, fps: f64, ai_interpolation: bool, ai_upscale: bool) -> bool {
+fn effectcraft_export_memory_capacity_ok(width: u32, height: u32, fps: f64, ai_interpolation: bool, ai_upscale: bool) -> bool {
     #[cfg(target_os = "android")]
     {
         const MIB: u64 = 1024 * 1024;
@@ -181,7 +181,8 @@ fn effectcraft_export_device_preflight(
         if (ai_interpolation || ai_upscale) && (width > 2048 || height > 2048) {
             return fail("当前本地 RIFE / Real-ESRGAN 模型单边输入上限为 2048 像素，请降低分辨率或关闭 AI 处理");
         }
-        if !effectcraft_export_memory_ok(width, height, fps, ai_interpolation, ai_upscale) {
+        if !effectcraft_export_memory_ok(width, height, fps, ai_interpolation, ai_upscale)
+            || !effectcraft_export_memory_capacity_ok(width, height, fps, ai_interpolation, ai_upscale) {
             return fail("系统总内存或当前可用内存不足以安全处理所选分辨率、帧率和 AI 负载");
         }
 
@@ -211,7 +212,7 @@ fn effectcraft_export_device_preflight(
                     .map(|path| std::path::Path::new(&path).is_file()).unwrap_or(false);
                 if !model { return fail("未找到本地 Real-ESRGAN 模型文件"); }
             }
-            if effectcraft_android_ai_vulkan_available() == Some(false)
+            if effectcraft_android_ai_vulkan_available() != Some(true)
                 && cores < 4 && (pixels > 921_600 || fps >= 120.0 || ai_upscale) {
                 return fail("未检测到可用 Vulkan GPU，且 CPU 核心数不足以承担本次 AI 处理");
             }
