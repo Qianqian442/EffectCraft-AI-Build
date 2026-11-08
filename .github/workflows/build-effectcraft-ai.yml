@@ -455,6 +455,57 @@ jobs:
           set -o pipefail
           bash build.sh -effectcraft -appicon="$PWD/source/effectcraft/assets/ae-avatar.png" --noupdate 2>&1 | tee logs/effectcraft-build.log
 
+      - name: Re-sign APK with explicit Android-compatible v1/v2/v3 schemes
+        if: success()
+        working-directory: artcraft
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
+          KEYSTORE="keys/artcraft-builder.jks"
+          test -s "$KEYSTORE" && test -s "keys/.keystore-password"
+          KEY_PASSWORD="$(<keys/.keystore-password)"
+          APK_SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          SIGNED_APK="${APK%.apk}.signed.apk"
+          VERIFY_REPORT="${SIGNED_APK}.verify.txt"
+          test -x "$APK_SIGNER"
+
+          echo "Re-signing the generated APK with the persistent release key and explicit v1/v2/v3 schemes..."
+          "$APK_SIGNER" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias artcraftbuilder \
+            --ks-pass "pass:$KEY_PASSWORD" \
+            --key-pass "pass:$KEY_PASSWORD" \
+            --min-sdk-version 28 \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --v4-signing-enabled false \
+            --out "$SIGNED_APK" "$APK"
+
+          "$APK_SIGNER" verify --verbose --print-certs "$SIGNED_APK" > "$VERIFY_REPORT"
+          for SCHEME in \
+            "Verified using v1 scheme (JAR signing): true" \
+            "Verified using v2 scheme (APK Signature Scheme v2): true" \
+            "Verified using v3 scheme (APK Signature Scheme v3): true"; do
+            grep -Fqx "$SCHEME" "$VERIFY_REPORT" || {
+              echo "Explicit APK signing did not produce the required scheme: $SCHEME" >&2
+              cat "$VERIFY_REPORT" >&2
+              exit 1
+            }
+          done
+
+          EXPECTED_CERT="$(keytool -list -v -keystore "$KEYSTORE" \
+            -storepass "$KEY_PASSWORD" -alias artcraftbuilder \
+            | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          ACTUAL_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$VERIFY_REPORT")"
+          test -n "$EXPECTED_CERT" && test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+          test "$ACTUAL_CERT" = "3709d0d071dbcb63bbc34c70887910f699e07aaaa53bc9c539558d303916068a"
+
+          mv -f "$SIGNED_APK" "$APK"
+          rm -f "$VERIFY_REPORT"
+          echo "APK now has verified v1/v2/v3 signatures using the original persistent release certificate."
       - name: Verify APK integrity
         if: success()
         working-directory: artcraft
