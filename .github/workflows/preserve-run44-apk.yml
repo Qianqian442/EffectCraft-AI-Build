@@ -1,0 +1,58 @@
+name: Preserve EffectCraft APK Build 44
+
+on:
+  push:
+    paths:
+      - ".github/workflows/preserve-run44-apk.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  preserve:
+    name: Preserve the exact Build 44 APK without rebuilding
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Download the exact APK artifact from Build 44
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-Android-APK
+          path: release
+          repository: ${{ github.repository }}
+          run-id: 42480458147
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify the preserved APK is byte-for-byte unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/effectcraft-0.21.1.apk"
+          test -s "$APK"
+          test "$(stat -c%s "$APK")" = "1093320533"
+          echo "1455b07752a59e61156b6ca5b20cfa633c41018f357a7e88d22e7b6fad86ce98  $APK" | sha256sum -c -
+          file "$APK"
+
+      - name: Preserve APK as a clearly marked prerelease candidate
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: effectcraft-ai-44-preserved
+          name: EffectCraft 0.21.1 — Build 44 (preserved, install test pending)
+          body: |
+            This release preserves the exact APK produced by GitHub Actions run #44.
+            It is not a rebuilt or modified APK.
+
+            Build 44 passed APK compilation, V3 signature and persistent certificate
+            verification, APK integrity, Android manifest, ARM64 native ABI and
+            ZIP alignment checks.
+
+            IMPORTANT: The Android 12 ARM64 emulator did not boot in the automated
+            test environment, so Package Manager installation was NOT verified.
+            This prerelease is preserved as a QA candidate and must not be described
+            as proven installable on an OPPO device.
+          files: release/effectcraft-0.21.1.apk
+          draft: false
+          prerelease: true
+          fail_on_unmatched_files: true
