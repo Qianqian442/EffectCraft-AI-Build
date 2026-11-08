@@ -123,3 +123,13 @@ pub extern "system" fn Java_com_artcraft_effectcraft_aiassistant_MainActivity_na
         *guard = None;
     }
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_artcraft_effectcraft_aiassistant_InferenceService_nativeRelease(
+    _env: jni::EnvUnowned<'_>,
+    _class: JClass<'_>,
+) {
+    if let Ok(mut guard) = model_store().lock() {
+        *guard = None;
+    }
+}
