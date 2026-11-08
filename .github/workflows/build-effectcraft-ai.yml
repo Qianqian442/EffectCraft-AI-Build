@@ -466,6 +466,37 @@ jobs:
           grep -Fqx 'networkTimeout=300000' "$WRAPPER_PROPERTIES"
           echo "Gradle wrapper download timeout set to 300000 ms (5 minutes)."
 
+          # AGP 8.7.3 generated only V3 with its defaults in the previous APK.
+          # Explicitly enable all required APK signing schemes in the generated Gradle project.
+          GENERATOR="lib/android_project.py"
+          test -s "$GENERATOR"
+          python3 - "$GENERATOR" <<'PY'
+          from pathlib import Path
+          import sys
+
+          path = Path(sys.argv[1])
+          source = path.read_text()
+          needle = "                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')\\n            }}"
+          replacement = (
+              "                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')\\n"
+              "                enableV1Signing = true\\n"
+              "                enableV2Signing = true\\n"
+              "                enableV3Signing = true\\n"
+              "            }}"
+          )
+          if source.count(needle) != 1:
+              raise SystemExit(
+                  f"Expected exactly one generated signing config insertion point; found {source.count(needle)}"
+              )
+          source = source.replace(needle, replacement, 1)
+          for flag in ("enableV1Signing = true", "enableV2Signing = true", "enableV3Signing = true"):
+              if flag not in source:
+                  raise SystemExit(f"Signing flag was not applied: {flag}")
+          path.write_text(source)
+          print("Configured generated APK signing: V1 + V2 + V3.")
+          PY
+
+
           rm -f output/*.apk output/*.tmp
           set -o pipefail
           bash build.sh -effectcraft -appicon="$PWD/source/effectcraft/assets/ae-avatar.png" --noupdate 2>&1 | tee logs/effectcraft-build.log
