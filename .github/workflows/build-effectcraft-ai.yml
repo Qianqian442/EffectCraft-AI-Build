@@ -570,6 +570,51 @@ jobs:
           echo "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:|launchable-activity:)"
           echo "APK signature, manifest, ABI and alignment checks passed."
 
+      - name: Enable KVM for Android 12 installation test
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Test APK installation on Android 12 emulator
+        if: success()
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 32
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 8G
+          emulator-boot-timeout: 600
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK="artcraft/output/effectcraft-0.21.1.apk"
+            test -s "$APK"
+            SDK_LEVEL="$(adb shell getprop ro.build.version.sdk | tr -d '\\r')"
+            test "$SDK_LEVEL" = "32"
+            ABI_LIST="$(adb shell getprop ro.product.cpu.abilist | tr -d '\\r')"
+            echo "Android 12 emulator ABI list: $ABI_LIST"
+            case "$ABI_LIST" in
+              *arm64-v8a*) ;;
+              *)
+                echo "::warning::This Android 12 emulator image has no ARM64 Native Bridge; device install test skipped."
+                exit 0
+                ;;
+            esac
+            echo "Installing the exact release APK through Android Package Manager..."
+            adb install --abi arm64-v8a -r "$APK"
+            PACKAGE_PATH="$(adb shell pm path com.artcraft.effectcraft | tr -d '\\r')"
+            test -n "$PACKAGE_PATH"
+            echo "$PACKAGE_PATH"
+            echo "Android 12 Package Manager installation passed for com.artcraft.effectcraft."
+
       - name: Detect built APK for direct download
         id: apk_available
         if: always() && steps.build_apk.outcome == 'success'
