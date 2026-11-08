@@ -30,6 +30,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # Upstream submodules may use SSH URLs even though CI has no SSH key.
+          # Rewrite both common GitHub SSH forms to authenticated HTTPS for public sources.
+          git config --global --add url."https://github.com/".insteadOf "git@github.com:"
+          git config --global --add url."https://github.com/".insteadOf "ssh://git@github.com/"
           mkdir -p vendor
 
           git clone --depth 1 --branch v0.21.1 https://github.com/storytold/effectcraft.git vendor/effectcraft
