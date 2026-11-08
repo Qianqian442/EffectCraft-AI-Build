@@ -35,9 +35,6 @@ jobs:
       CARGO_PROFILE_RELEASE_LTO: 'false'
       CARGO_BUILD_JOBS: '2'
       CARGO_PROFILE_RELEASE_DEBUG: 'false'
-      RUSTC_WRAPPER: sccache
-      SCCACHE_DIR: /home/runner/.cache/sccache
-      SCCACHE_CACHE_SIZE: 512M
 
     steps:
       - name: Check out ArtCraft Android builder v0.5.0
@@ -375,16 +372,21 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
-      - name: Set up sccache
-        uses: mozilla-actions/sccache-action@v0.0.11
-        with:
-          version: v0.9.0
-
       - name: Install cargo-ndk
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p "$HOME/.cargo/bin"
-          curl -fsSL https://github.com/bbqsrc/cargo-ndk/releases/download/v4.1.2/cargo-ndk-x86_64-unknown-linux-musl-v4.1.2.tgz | tar -xz --strip-components=1 -C "$HOME/.cargo/bin"
-          chmod +x "$HOME/.cargo/bin/cargo-ndk"*
+          ARCHIVE="$RUNNER_TEMP/cargo-ndk-v4.1.2.tgz"
+          if curl -fL --retry 2 --retry-all-errors --retry-delay 3 \
+            "https://github.com/bbqsrc/cargo-ndk/releases/download/v4.1.2/cargo-ndk-x86_64-unknown-linux-musl-v4.1.2.tgz" \
+            -o "$ARCHIVE"; then
+            tar -xzf "$ARCHIVE" --strip-components=1 -C "$HOME/.cargo/bin"
+          else
+            echo "GitHub binary download failed; installing cargo-ndk from crates.io instead."
+            cargo install cargo-ndk --version 4.1.2 --locked
+          fi
+          chmod +x "$HOME/.cargo/bin/cargo-ndk"
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           cargo ndk -V
 
@@ -433,9 +435,6 @@ jobs:
           # These sources and CMake intermediates are no longer needed after the native worker is built.
           rm -rf "$GITHUB_WORKSPACE/native-deps" "$GITHUB_WORKSPACE/native-video-build"
           rm -rf "$GITHUB_WORKSPACE/build-assets"
-          # Drop compiler cache now that compilation is complete; it is reproducible and can consume gigabytes.
-          sccache --stop-server >/dev/null 2>&1 || true
-          rm -rf "$SCCACHE_DIR"/*
           sudo apt-get clean
           sudo rm -rf /var/lib/apt/lists/*
           # Android emulator images are not used by this arm64 APK build.
