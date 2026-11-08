@@ -47,6 +47,15 @@ jobs:
           ref: v0.5.0
           path: artcraft
 
+      - name: Restore persistent EffectCraft APK signing key
+        id: signing_key_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            artcraft/keys/artcraft-builder.jks
+            artcraft/keys/.keystore-password
+          key: effectcraft-apk-signing-v1-${{ github.repository_id }}
+
       - name: Check out EffectCraft v0.21.1 source
         uses: actions/checkout@v4
         with:
@@ -301,6 +310,42 @@ jobs:
           distribution: temurin
           java-version: '21'
 
+      - name: Prepare persistent EffectCraft APK signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artcraft/keys
+          KEY="artcraft/keys/artcraft-builder.jks"
+          PASSWORD_FILE="artcraft/keys/.keystore-password"
+          if [[ -f "$KEY" && ! -s "$PASSWORD_FILE" ]]; then
+            echo "Signing keystore exists but its password file is missing; refusing to replace it." >&2
+            exit 1
+          fi
+          if [[ ! -s "$KEY" ]]; then
+            if [[ ! -s "$PASSWORD_FILE" ]]; then
+              python3 -c 'import secrets; print(secrets.token_hex(32))' > "$PASSWORD_FILE"
+            fi
+            KEY_PASSWORD="$(<"$PASSWORD_FILE")"
+            keytool -genkeypair -noprompt -v \
+              -keystore "$KEY" -storetype JKS \
+              -storepass "$KEY_PASSWORD" -keypass "$KEY_PASSWORD" \
+              -alias artcraftbuilder -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=EffectCraft Android Release, OU=EffectCraft, O=EffectCraft, C=US"
+          fi
+          chmod 600 "$KEY" "$PASSWORD_FILE"
+          KEY_PASSWORD="$(<"$PASSWORD_FILE")"
+          keytool -list -keystore "$KEY" -storepass "$KEY_PASSWORD" -alias artcraftbuilder >/dev/null
+          echo "Persistent APK signing key is ready."
+
+      - name: Save persistent EffectCraft APK signing key
+        if: steps.signing_key_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            artcraft/keys/artcraft-builder.jks
+            artcraft/keys/.keystore-password
+          key: effectcraft-apk-signing-v1-${{ github.repository_id }}
+
       - name: Set up Rust for Android
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -429,13 +474,93 @@ jobs:
           echo "Verified comprehensive Android export resource preflight is present in the APK source."
           grep -Fq 'std::string(argv[1]) == "--probe"' "$GITHUB_WORKSPACE/.github/native/effectcraft_ai_video_worker.cpp"
           echo "Verified native Vulkan capability probe is included."
+          APK_COUNT="$(find output -maxdepth 1 -type f -name '*.apk' | wc -l)"
+          test "$APK_COUNT" -eq 1
           APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$APK"
           SIZE="$(stat -c%s "$APK")"
           test "$SIZE" -gt 1000000
+          # Keep the single-file package below the 2 GiB boundary and validate every ZIP CRC.
+          test "$SIZE" -lt 2147483648
+          file "$APK" | grep -qi 'zip archive'
           unzip -tq "$APK"
           APK_ENTRIES="$(mktemp)"
           unzip -Z1 "$APK" > "$APK_ENTRIES"
+          grep -Fxq "AndroidManifest.xml" "$APK_ENTRIES"
+          grep -Fxq "resources.arsc" "$APK_ENTRIES"
+          grep -Eq '^classes([0-9]+)?\.dex          echo "Verified APK contains DeepSeek, RIFE 4.6, Real-ESRGAN x4 and Android native worker."
+          echo "Verified APK: $APK ($SIZE bytes)"
+          sha256sum "$APK"
+
+      - name: Verify APK signature, Android manifest and alignment
+        if: success()
+        working-directory: artcraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          APK_SIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          test -x "$APK_SIGNER"
+          test -x "$AAPT"
+          test -x "$ZIPALIGN"
+
+          echo "Checking APK v1/v2/v3 signatures and signer certificate..."
+          SIGNATURE_REPORT="$("$APK_SIGNER" verify --verbose --print-certs "$APK")"
+          printf '%s\\n' "$SIGNATURE_REPORT"
+          EXPECTED_CERT="$(keytool -list -v -keystore keys/artcraft-builder.jks \
+            -storepass "$(<keys/.keystore-password)" -alias artcraftbuilder \
+            | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          ACTUAL_CERT="$(printf '%s\\n' "$SIGNATURE_REPORT" \
+            | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          test -n "$EXPECTED_CERT"
+          test -n "$ACTUAL_CERT"
+          test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+          echo "Verified APK was signed by the persistent EffectCraft release key."
+
+          echo "Checking ZIP alignment..."
+          "$ZIPALIGN" -c -v 4 "$APK"
+
+          BADGING="$("$AAPT" dump badging "$APK")"
+          printf '%s\\n' "$BADGING" | grep -Fq "package: name='com.artcraft.effectcraft'"
+          printf '%s\\n' "$BADGING" | grep -Fq "sdkVersion:'28'"
+          printf '%s\\n' "$BADGING" | grep -Fq "native-code: 'arm64-v8a'"
+          echo "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:|launchable-activity:)"
+          echo "APK signature, manifest, ABI and alignment checks passed."
+
+      - name: Publish standalone APK release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: effectcraft-ai-${{ github.run_number }}
+          name: EffectCraft 0.21.1 AI Android APK (Build ${{ github.run_number }})
+          body: |
+            Standalone Android APK built by GitHub Actions.
+            Install the attached .apk file directly; no ZIP extraction is required.
+          files: artcraft/output/*.apk
+          draft: false
+          prerelease: true
+
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-0.21.1-AI-Android-APK
+          path: artcraft/output/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log if build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Android-build-log
+          path: artcraft/logs/*.log
+          if-no-files-found: ignore
+          retention-days: 30 "$APK_ENTRIES"
           grep -Fxq "lib/arm64-v8a/libeffectcraft-ai-video-worker.so" "$APK_ENTRIES"
           grep -Fxq "assets/models/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf" "$APK_ENTRIES"
           grep -Fxq "assets/models/rife-v4.6/flownet.bin" "$APK_ENTRIES"
