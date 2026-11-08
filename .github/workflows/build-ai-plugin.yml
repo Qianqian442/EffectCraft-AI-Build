@@ -62,8 +62,31 @@ jobs:
         id: shared_signing_key
         uses: actions/cache/restore@v4
         with:
-          path: artcraft/keys
+          # Keep these paths identical to the main APK workflow. Cache versioning
+          # includes the path list; restoring the parent directory creates a miss.
+          path: |
+            artcraft/keys/artcraft-builder.jks
+            artcraft/keys/.keystore-password
           key: effectcraft-apk-signing-v1-${{ github.repository_id }}
+
+      - name: Validate shared signing key before native build
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEY="artcraft/keys/artcraft-builder.jks"
+          PASS="artcraft/keys/.keystore-password"
+          test -s "$KEY" && test -s "$PASS" || {
+            echo "Shared EffectCraft signing-key cache is unavailable or incomplete." >&2
+            echo "The plugin must use the exact certificate from the main APK; no replacement key will be generated." >&2
+            exit 1
+          }
+          chmod 600 "$KEY" "$PASS"
+          PASSWORD="$(<"$PASS")"
+          keytool -list -keystore "$KEY" -storepass "$PASSWORD" -alias artcraftbuilder >/dev/null
+          echo "AI_PLUGIN_KEYSTORE=$GITHUB_WORKSPACE/$KEY" >> "$GITHUB_ENV"
+          echo "AI_PLUGIN_STORE_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          echo "AI_PLUGIN_KEY_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          echo "Shared EffectCraft signing certificate restored and validated."
 
       - name: Cache Cargo dependencies
         uses: actions/cache@v4
@@ -87,22 +110,6 @@ jobs:
           test -s ../app/src/main/jniLibs/arm64-v8a/libeffectcraft_ai.so
           file ../app/src/main/jniLibs/arm64-v8a/libeffectcraft_ai.so
 
-      - name: Configure the same signing certificate as the main APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          KEY="artcraft/keys/artcraft-builder.jks"
-          PASS="artcraft/keys/.keystore-password"
-          test -s "$KEY" && test -s "$PASS" || {
-            echo "The shared EffectCraft signing key was not restored; do not create a different plugin identity." >&2
-            exit 1
-          }
-          chmod 600 "$KEY" "$PASS"
-          PASSWORD="$(<"$PASS")"
-          keytool -list -keystore "$KEY" -storepass "$PASSWORD" -alias artcraftbuilder >/dev/null
-          echo "AI_PLUGIN_KEYSTORE=$GITHUB_WORKSPACE/$KEY" >> "$GITHUB_ENV"
-          echo "AI_PLUGIN_STORE_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
-          echo "AI_PLUGIN_KEY_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
