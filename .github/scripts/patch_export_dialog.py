@@ -414,6 +414,46 @@ if "fn export_progress_dialog(app: &mut EffectcraftApp" not in header:
 
 if "fn export_dialog(app: &mut EffectcraftApp" not in header:
     header = header.rstrip() + "\n\n" + dialog_fn.strip() + "\n"
+
+# Supply the resolution-scaling helper used by the export dialog. Keep the source aspect ratio,
+# target the selected short edge (1080P landscape => 1920x1080; portrait => 1080x1920),
+# and round the derived long edge up to an even number for common video encoders.
+dimension_helper = r"""
+/// EFFECTCRAFT_ANDROID_EXPORT_DIMENSIONS_V1
+fn effectcraft_export_dimensions(source_width: u32, source_height: u32, resolution: &str) -> (u32, u32) {
+    let target_short_side = match resolution {
+        "480" => 480_u32,
+        "720" => 720_u32,
+        "1080" => 1080_u32,
+        "1440" => 1440_u32,
+        "2160" => 2160_u32,
+        _ => return (source_width, source_height),
+    };
+
+    if source_width == 0 || source_height == 0 {
+        return (source_width.max(2), source_height.max(2));
+    }
+
+    let even_dimension = |value: f64| -> u32 {
+        let rounded = value.round().max(2.0) as u32;
+        rounded.saturating_add(rounded % 2)
+    };
+
+    if source_width >= source_height {
+        let height = target_short_side;
+        let width = even_dimension(height as f64 * source_width as f64 / source_height as f64);
+        (width, height)
+    } else {
+        let width = target_short_side;
+        let height = even_dimension(width as f64 * source_height as f64 / source_width as f64);
+        (width, height)
+    }
+}
+"""
+
+if "fn effectcraft_export_dimensions(" not in header:
+    header = header.rstrip() + "\\n\\n" + dimension_helper.strip() + "\\n"
+
 header_path.write_text(header)
 
 # Cap the quick-select menus at 240 FPS. Do not expose the former 480/999 FPS choices.
