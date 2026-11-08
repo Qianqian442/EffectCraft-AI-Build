@@ -3,7 +3,7 @@ use std::{
     path::Path,
     sync::{Mutex, OnceLock},
 };
-use jni::{JNIEnv, objects::{JClass, JString}, sys::jstring};
+use jni::{objects::{JClass, JString}, sys::jstring};
 use llama_cpp_2::{
     context::params::LlamaContextParams,
     llama_backend::LlamaBackend,

@@ -58,15 +58,23 @@ jobs:
         with:
           targets: aarch64-linux-android
 
-      - name: Cache Cargo dependencies and stable plugin signing key
+      - name: Restore shared EffectCraft signing key
+        id: shared_signing_key
+        uses: actions/cache/restore@v4
+        with:
+          path: artcraft/keys
+          key: effectcraft-apk-signing-v1-${{ github.repository_id }}
+
+      - name: Cache Cargo dependencies
         uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
             ai-plugin/native/target
-            ai-plugin/keys
-          key: effectcraft-ai-plugin-prototype-v1-ubuntu
+          key: effectcraft-ai-plugin-cargo-v2-${{ runner.os }}-${{ hashFiles('ai-plugin/native/Cargo.toml') }}
+          restore-keys: |
+            effectcraft-ai-plugin-cargo-v2-${{ runner.os }}-
 
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --version 4.1.2 --locked
@@ -79,25 +87,19 @@ jobs:
           test -s ../app/src/main/jniLibs/arm64-v8a/libeffectcraft_ai.so
           file ../app/src/main/jniLibs/arm64-v8a/libeffectcraft_ai.so
 
-      - name: Prepare persistent plugin signing key
+      - name: Configure the same signing certificate as the main APK
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p ai-plugin/keys
-          KEY="ai-plugin/keys/effectcraft-ai-plugin.jks"
-          PASS="ai-plugin/keys/.password"
-          if [[ ! -s "$KEY" ]]; then
-            python3 -c 'import secrets; print(secrets.token_hex(32))' > "$PASS"
-            PASSWORD="$(<"$PASS")"
-            keytool -genkeypair -noprompt -v -keystore "$KEY" -storetype JKS \
-              -storepass "$PASSWORD" -keypass "$PASSWORD" -alias effectcraft-ai-plugin \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=EffectCraft AI Plugin, OU=EffectCraft, O=EffectCraft, C=US"
-          fi
-          test -s "$KEY" && test -s "$PASS"
+          KEY="artcraft/keys/artcraft-builder.jks"
+          PASS="artcraft/keys/.keystore-password"
+          test -s "$KEY" && test -s "$PASS" || {
+            echo "The shared EffectCraft signing key was not restored; do not create a different plugin identity." >&2
+            exit 1
+          }
           chmod 600 "$KEY" "$PASS"
           PASSWORD="$(<"$PASS")"
-          keytool -list -keystore "$KEY" -storepass "$PASSWORD" -alias effectcraft-ai-plugin >/dev/null
+          keytool -list -keystore "$KEY" -storepass "$PASSWORD" -alias artcraftbuilder >/dev/null
           echo "AI_PLUGIN_KEYSTORE=$GITHUB_WORKSPACE/$KEY" >> "$GITHUB_ENV"
           echo "AI_PLUGIN_STORE_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
           echo "AI_PLUGIN_KEY_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
