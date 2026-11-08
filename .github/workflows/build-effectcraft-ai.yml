@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/upgrade_export_preflight.py'
       - '.github/scripts/ai_assistant_local.rs'
       - 'assets/ae-avatar.png'
       - '.github/native/**'
@@ -259,6 +260,11 @@ jobs:
           ESRGAN_SOURCE_DIR: ${{ github.workspace }}/native-deps/realesrgan
         run: python3 build-assets/.github/scripts/integrate_video_ai.py
 
+      - name: Add comprehensive Android export preflight
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/upgrade_export_preflight.py
+
 
 
       - name: Restore original EffectCraft WASM plug-in auto-loading on Android
@@ -419,8 +425,10 @@ jobs:
           echo "Verified the visible top-left WASM plug-in import button is present in the APK source."
           grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_PROGRESS_POPUP_V1" "$HEADER_SRC"
           echo "Verified the centered, draggable live export progress popup is present in the APK source."
-          grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_DEVICE_PREFLIGHT_V1" "$HEADER_SRC"
-          echo "Verified Android export RAM preflight is present in the APK source."
+          grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_DEVICE_PREFLIGHT_V2" "$HEADER_SRC"
+          echo "Verified comprehensive Android export resource preflight is present in the APK source."
+          grep -Fq 'std::string(argv[1]) == "--probe"' "$GITHUB_WORKSPACE/.github/native/effectcraft_ai_video_worker.cpp"
+          echo "Verified native Vulkan capability probe is included."
           APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
           test -n "$APK"
           SIZE="$(stat -c%s "$APK")"

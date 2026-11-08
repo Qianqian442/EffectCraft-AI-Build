@@ -52,6 +52,17 @@ int main(int argc, char** argv) {
     std::ios::sync_with_stdio(false);
     std::cin.tie(nullptr);
 
+    if (argc == 2 && std::string(argv[1]) == "--probe") {
+        ncnn::create_gpu_instance();
+        const int gpu_count = ncnn::get_gpu_count();
+        const int cpu_count = ncnn::get_cpu_count();
+        std::cout << "gpu_count=" << gpu_count << "\n";
+        std::cout << "cpu_count=" << cpu_count << "\n";
+        std::cout.flush();
+        ncnn::destroy_gpu_instance();
+        return 0;
+    }
+
     if (argc != 4) {
         respond(-1);
         return 2;

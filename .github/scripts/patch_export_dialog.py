@@ -60,7 +60,6 @@ dialog_fn = r'''
 fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     let open_id = egui::Id::new("effectcraft-export-dialog-open");
     let draft_id = open_id.with("draft");
-    let preflight_error_id = open_id.with("preflight-error");
     let mut open = ui.ctx().data(|d| d.get_temp::<bool>(open_id).unwrap_or(false));
     if !open {
         return;
@@ -77,10 +76,6 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
         d.get_temp::<(String, f64, String)>(draft_id)
             .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string()))
     });
-    let previous_format = format.clone();
-    let previous_fps = fps;
-    let previous_resolution = resolution.clone();
-    let mut preflight_error = ui.ctx().data(|d| d.get_temp::<Option<String>>(preflight_error_id).flatten());
     let comp_name = app.session.active_comp_id().and_then(|id| app.session.project.item(id)).map(|item| item.name.clone());
     let comp_rate = app.session.active_comp().map(|c| c.frame_rate.as_f64());
     let selected_format = formats.iter()
@@ -116,9 +111,6 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
         .open(&mut open)
         .show(ui.ctx(), |ui| {
             ui.label(comp_name.as_deref().unwrap_or("请先打开一个合成工程"));
-            if let Some(message) = preflight_error.as_deref() {
-                ui.colored_label(Color32::from_rgb(220, 65, 65), message);
-            }
             if let Some(rate) = comp_rate {
                 ui.label(format!("当前工程帧率：{rate:.3} FPS"));
             }
@@ -166,6 +158,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
             ui.add_space(4.0);
             ui.label("最高可选 240 FPS；实际渲染速度取决于工程素材和设备性能。");
             ui.label("确认后进入原有导出队列，再选择视频保存位置。");
+            ui.small("编码使用 APK 内置软件编码器；不依赖手机是否具备硬件视频编码器。");
             ui.add_space(8.0);
             ui.separator();
             ui.label("工程分享");
@@ -187,12 +180,8 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
             });
         });
 
-    if format != previous_format || fps != previous_fps || resolution != previous_resolution {
-        preflight_error = None;
-    }
     if cancel {
         open = false;
-        preflight_error = None;
     }
     if collect_project_files {
         match crate::menus::invoke(app, ui.ctx(), "file.collectFiles", json!({})) {
@@ -204,21 +193,6 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
         match crate::menus::invoke(app, ui.ctx(), "file.saveCopy", json!({})) {
             Ok(_) => open = false,
             Err(error) => app.ui.status = error,
-        }
-    }
-    // Re-check the selected output size and real device memory immediately before queueing.
-    if submit {
-        if let Some(active) = app.session.active_comp() {
-            let (width, height) = if resolution == "source" {
-                (active.width, active.height)
-            } else {
-                effectcraft_export_dimensions(active.width, active.height, &resolution)
-            };
-            let requested_fps = if fps > 0.0 { fps } else { active.frame_rate.as_f64() };
-            if let Some(message) = effectcraft_android_export_preflight(width, height, requested_fps) {
-                preflight_error = Some(message);
-                submit = false;
-            }
         }
     }
     if submit {
@@ -278,7 +252,6 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                         }
                     }
                     open = false;
-                    preflight_error = None;
                 }
                 Err(error) => app.ui.status = error,
             }
@@ -288,7 +261,6 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     ui.ctx().data_mut(|d| {
         d.insert_temp(open_id, open);
         d.insert_temp(draft_id, (format, fps, resolution));
-        d.insert_temp(preflight_error_id, preflight_error);
     });
 }
 '''
@@ -435,62 +407,6 @@ fn export_progress_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     }
 }
 '''
-
-preflight_function = r'''
-/// EFFECTCRAFT_ANDROID_EXPORT_DEVICE_PREFLIGHT_V1
-/// A conservative RAM preflight for Android exports. Unknown OS readings do not block export.
-fn effectcraft_android_export_preflight(width: u32, height: u32, fps: f64) -> Option<String> {
-    #[cfg(target_os = "android")]
-    {
-        const MIB: u64 = 1024 * 1024;
-        const GIB: u64 = 1024 * MIB;
-        if width == 0 || height == 0 {
-            return Some("参数过高，手机性能不足，无法导出，请降低参数再试。".to_string());
-        }
-        let text = std::fs::read_to_string("/proc/meminfo").ok()?;
-        let memory = effectcraft_engine::sysinfo::parse_meminfo(&text)?;
-        let pixels = (width as u64).checked_mul(height as u64)?;
-        let min_total = if pixels > 6_000_000 {
-            6 * GIB
-        } else if pixels > 3_000_000 {
-            4 * GIB
-        } else if pixels > 1_500_000 {
-            3 * GIB
-        } else {
-            2 * GIB
-        };
-        let fps_reserve = if fps >= 240.0 {
-            384 * MIB
-        } else if fps >= 120.0 {
-            256 * MIB
-        } else if fps >= 60.0 {
-            128 * MIB
-        } else {
-            64 * MIB
-        };
-        // Reserve memory for the editor, decoded frames, encoder buffers and local AI working data.
-        let required_available = (768 * MIB)
-            .saturating_add(pixels.saturating_mul(64))
-            .saturating_add(fps_reserve);
-        if memory.total < min_total || memory.available < required_available {
-            return Some(format!(
-                "参数过高，手机性能不足，无法导出，请降低参数再试。\n设备总内存：{} MB；当前可用内存：{} MB；建议至少预留 {} MB。请降低分辨率或帧率后再试。",
-                memory.total / MIB,
-                memory.available / MIB,
-                required_available / MIB
-            ));
-        }
-        None
-    }
-    #[cfg(not(target_os = "android"))]
-    {
-        let _ = (width, height, fps);
-        None
-    }
-}
-'''
-if "fn effectcraft_android_export_preflight(" not in header:
-    header = header.rstrip() + "\n\n" + preflight_function.strip() + "\n"
 
 # Show the actual render-queue progress in a centered, draggable popup.
 if "fn export_progress_dialog(app: &mut EffectcraftApp" not in header:
