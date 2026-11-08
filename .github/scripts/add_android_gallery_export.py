@@ -19,7 +19,7 @@ RUST_MODULE = r'''use std::sync::atomic::{AtomicUsize, Ordering};
 static ANDROID_VM: AtomicUsize = AtomicUsize::new(0);
 
 #[cfg(target_os = "android")]
-pub(crate) fn init_android_gallery_vm(ptr: *mut std::ffi::c_void) {
+pub fn init_android_gallery_vm(ptr: *mut std::ffi::c_void) {
     ANDROID_VM.store(ptr as usize, Ordering::Release);
 }
 
@@ -303,7 +303,9 @@ def patch_ui(effectcraft: Path) -> None:
     lib = ui / "lib.rs"
     source = lib.read_text(encoding="utf-8")
     if "mod android_gallery;" not in source:
-        source = replace_once(source, "pub mod audio;\n", "pub mod audio;\npub(crate) mod android_gallery;\n", "Android Gallery module declaration")
+        source = replace_once(source, "pub mod audio;\n", "pub mod audio;\npub mod android_gallery;\n", "Android Gallery module declaration")
+    # The Android launcher is a separate crate and must be able to initialize this module.
+    source = source.replace("pub(crate) mod android_gallery;", "pub mod android_gallery;")
 
     cargo = ui.parent / "Cargo.toml"
     manifest = cargo.read_text(encoding="utf-8")
@@ -316,6 +318,13 @@ def patch_ui(effectcraft: Path) -> None:
     module = ui / "android_gallery.rs"
     if not module.exists() or "pub(crate) fn start_publish" not in module.read_text(encoding="utf-8"):
         module.write_text(RUST_MODULE, encoding="utf-8")
+    else:
+        module_source = module.read_text(encoding="utf-8")
+        module_source = module_source.replace(
+            "pub(crate) fn init_android_gallery_vm(",
+            "pub fn init_android_gallery_vm(",
+        )
+        module.write_text(module_source, encoding="utf-8")
 
     header = ui / "header.rs"
     h = header.read_text(encoding="utf-8")
