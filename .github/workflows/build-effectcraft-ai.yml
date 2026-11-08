@@ -490,19 +490,23 @@ jobs:
 
           path = Path(sys.argv[1])
           source = path.read_text()
-          needle = "                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')\n            }}"
-          replacement = (
-              "                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')\n"
-              "                enableV1Signing = true\n"
-              "                enableV2Signing = true\n"
-              "                enableV3Signing = true\n"
-              "            }}"
-          )
-          if source.count(needle) != 1:
+          marker = "keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')"
+          if source.count(marker) != 1:
               raise SystemExit(
-                  f"Expected exactly one generated signing config insertion point; found {source.count(needle)}"
+                  f"Expected exactly one generated signing password marker; found {source.count(marker)}"
               )
-          source = source.replace(needle, replacement, 1)
+          # Preserve the generator's Python string literal while adding Gradle signing flags.
+          signing_flags = (
+              "\\n                enableV1Signing = true"
+              "\\n                enableV2Signing = true"
+              "\\n                enableV3Signing = true"
+          )
+          if "enableV1Signing = true" not in source:
+              source = source.replace(marker, marker + signing_flags, 1)
+          for flag in ("enableV1Signing = true", "enableV2Signing = true", "enableV3Signing = true"):
+              if flag not in source:
+                  raise SystemExit(f"Signing flag was not applied: {flag}")
+          path.write_text(source)
           for flag in ("enableV1Signing = true", "enableV2Signing = true", "enableV3Signing = true"):
               if flag not in source:
                   raise SystemExit(f"Signing flag was not applied: {flag}")
@@ -755,6 +759,14 @@ jobs:
           draft: false
           prerelease: true
 
+
+      - name: Ensure Rust and Gradle cache directories exist
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.cargo/registry" "$HOME/.cargo/git"
+          mkdir -p "$GITHUB_WORKSPACE/artcraft/build/effectcraft/target"
+          mkdir -p "$HOME/.gradle/caches" "$HOME/.gradle/wrapper/dists"
 
       - name: Save Rust and Gradle build caches
         if: always() && steps.build_cache.outputs.cache-hit != 'true'
