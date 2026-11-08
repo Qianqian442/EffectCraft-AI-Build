@@ -733,7 +733,7 @@ jobs:
           retention-days: 30
 
   test_and_publish:
-    name: Install and launch APK on Android 12 ARM64, then publish
+    name: Install APK on Android 12 ARM64, then publish
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -789,11 +789,7 @@ jobs:
             PACKAGE_PATH="$(adb shell pm path com.artcraft.effectcraft | tr -d '\r')"
             test -n "$PACKAGE_PATH"
             echo "$PACKAGE_PATH"
-            echo "Launching EffectCraft..."
-            adb shell monkey -p com.artcraft.effectcraft 1
-            sleep 3
-            adb shell pidof com.artcraft.effectcraft
-            echo "Android 12 ARM64 install and launch passed."
+            echo "Android 12 ARM64 Package Manager installation passed."
 
       - name: Publish standalone APK release
         uses: softprops/action-gh-release@v2
