@@ -1,0 +1,75 @@
+name: Vendor complete EffectCraft source tree
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'SOURCE_VENDOR.lock'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: effectcraft-vendor-source
+  cancel-in-progress: false
+
+jobs:
+  vendor:
+    name: Import pinned upstream source code
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out this repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          persist-credentials: true
+
+      - name: Clone the exact EffectCraft and Android builder versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p vendor
+
+          git clone --depth 1 --branch v0.21.1 https://github.com/storytold/effectcraft.git vendor/effectcraft
+          git clone --depth 1 --branch v0.5.0 https://github.com/MostafaXS1/artcraft-android.git vendor/android-builder
+
+          git clone https://github.com/nihui/rife-ncnn-vulkan.git vendor/native-deps/rife
+          git -C vendor/native-deps/rife fetch --depth 1 origin a7532fc3f9f8f008cd6eecd6f2ffe2a9698e0cf7
+          git -C vendor/native-deps/rife checkout --detach a7532fc3f9f8f008cd6eecd6f2ffe2a9698e0cf7
+          git -C vendor/native-deps/rife submodule update --init --recursive --depth 1
+
+          git clone https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan.git vendor/native-deps/realesrgan
+          git -C vendor/native-deps/realesrgan fetch --depth 1 origin 37026f49824c5cf84062e7c6a5dd71445dcf610f
+          git -C vendor/native-deps/realesrgan checkout --detach 37026f49824c5cf84062e7c6a5dd71445dcf610f
+          git -C vendor/native-deps/realesrgan submodule update --init --recursive --depth 1
+
+          {
+            echo '# Vendored source provenance'
+            echo
+            echo '- EffectCraft: https://github.com/storytold/effectcraft @ v0.21.1'
+            echo '- Android builder: https://github.com/MostafaXS1/artcraft-android @ v0.5.0'
+            echo '- RIFE ncnn Vulkan: https://github.com/nihui/rife-ncnn-vulkan @ a7532fc3f9f8f008cd6eecd6f2ffe2a9698e0cf7'
+            echo '- Real-ESRGAN ncnn Vulkan: https://github.com/xinntao/Real-ESRGAN-ncnn-vulkan @ 37026f49824c5cf84062e7c6a5dd71445dcf610f'
+            echo
+            echo 'Third-party submodules are initialized at the revisions recorded by their upstream repositories.'
+            echo 'Large AI model weights are fetched and size-verified by the APK build workflow rather than stored as source code.'
+          } > vendor/SOURCE-VERSIONS.md
+
+          # Remove Git metadata while preserving all checked-out source and submodule files.
+          find vendor -name .git -prune -exec rm -rf {} +
+
+      - name: Commit the complete vendored source tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add vendor
+          if git diff --cached --quiet; then
+            echo "Vendored sources already match the pinned versions."
+            exit 0
+          fi
+          git commit -m "Vendor complete EffectCraft, Android builder, and AI native sources"
+          git push origin HEAD:main
