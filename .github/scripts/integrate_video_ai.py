@@ -773,7 +773,7 @@ signing_replacement = """                keyPassword System.getenv('ARTCRAFT_KEY
                 enableV4Signing = false
             }}
         }}
-    }}""
+    }}"""
 if "enableV1Signing = true" not in gradle_text:
     if gradle_text.count(signing_anchor) != 1:
         raise SystemExit("Could not uniquely locate Gradle APK signing configuration")
