@@ -80,7 +80,7 @@ jobs:
           ref: master
           path: native-deps/realesrgan
 
-      - name: Restore Rust and Gradle build caches
+      - name: Restore Cargo dependency cache
         id: build_cache
         uses: actions/cache/restore@v4
         with:
@@ -706,13 +706,13 @@ jobs:
           compression-level: 0
           retention-days: 2
 
-      - name: Ensure Rust and Gradle cache directories exist
+      - name: Ensure Cargo cache directories exist
         if: always()
         shell: bash
         run: |
           mkdir -p "$HOME/.cargo/registry" "$HOME/.cargo/git"
 
-      - name: Save Rust and Gradle build caches
+      - name: Save Cargo dependency cache
         if: always() && steps.build_cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
@@ -759,7 +759,7 @@ jobs:
       - name: Install and test on Android 12 ARM64 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 32
+          api-level: 31
           target: google_atd
           arch: arm64-v8a
           profile: pixel_6
@@ -774,9 +774,9 @@ jobs:
             set -euo pipefail
             APK="release/effectcraft-0.21.1.apk"
             SDK_LEVEL="$(adb shell getprop ro.build.version.sdk | tr -d '\\r')"
-            test "$SDK_LEVEL" = "32"
+            test "$SDK_LEVEL" = "31"
             ABI_LIST="$(adb shell getprop ro.product.cpu.abilist | tr -d '\\r')"
-            echo "Android 12L ARM64 emulator ABI list: $ABI_LIST"
+            echo "Android 12 ARM64 emulator ABI list: $ABI_LIST"
             case "$ABI_LIST" in
               *arm64-v8a*) ;;
               *)
@@ -793,7 +793,7 @@ jobs:
             adb shell monkey -p com.artcraft.effectcraft 1
             sleep 3
             adb shell pidof com.artcraft.effectcraft
-            echo "Android 12L ARM64 install and launch passed."
+            echo "Android 12 ARM64 install and launch passed."
 
       - name: Publish standalone APK release
         uses: softprops/action-gh-release@v2
@@ -804,7 +804,7 @@ jobs:
             Standalone Android APK built by GitHub Actions.
             Install the attached .apk file directly; no ZIP extraction is required.
             Published after APK signature, certificate, integrity, manifest, ARM64,
-            alignment, Android 12L ARM64 Package Manager installation and launch checks.
+            alignment, Android 12 ARM64 Package Manager installation and launch checks.
           files: release/effectcraft-0.21.1.apk
           draft: false
           prerelease: true
