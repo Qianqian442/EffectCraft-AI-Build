@@ -29,7 +29,7 @@ fn with_vm<T>(f: impl FnOnce(&jni::vm::JavaVM) -> Result<T, String>) -> Result<T
     if ptr == 0 {
         return Err("Android 相册接口尚未初始化。".into());
     }
-    let vm = unsafe { jni::vm::JavaVM::from_raw(ptr as *mut _) };
+    let vm = jni::vm::JavaVM::singleton().map_err(|error| error.to_string())?;
     f(&vm)
 }
 
@@ -73,8 +73,8 @@ pub(crate) fn poll_publish(request_id: &str) -> Result<Option<String>, String> {
             if object.is_null() {
                 return Ok(None);
             }
-            let value = jni::objects::JString::from(object);
-            Ok(Some(env.get_string(&value)?.into()))
+            let value = env.as_cast::<jni::objects::JString>(&object)?;
+            Ok(Some(value.to_string()))
         }).map_err(|error| error.to_string())
     })
 }
