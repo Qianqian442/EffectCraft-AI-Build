@@ -452,7 +452,7 @@ fn effectcraft_export_dimensions(source_width: u32, source_height: u32, resoluti
 """
 
 if "fn effectcraft_export_dimensions(" not in header:
-    header = header.rstrip() + "\\n\\n" + dimension_helper.strip() + "\\n"
+    header = header.rstrip() + "\n\n" + dimension_helper.strip() + "\n"
 
 header_path.write_text(header)
 
