@@ -260,7 +260,7 @@ public final class MainActivity extends Activity {
         addMessage("我", question);
         history.add("用户：" + question);
         while (history.size() > 10) history.remove(0);
-        String prompt = String.join("\\n", history) + "\\nAI：";
+        String prompt = String.join("\n", history) + "\nAI：";
         setBusy(true);
         setStatus("正在加载或运行本地模型，首次加载可能较慢…");
         worker.execute(() -> {
@@ -280,7 +280,7 @@ public final class MainActivity extends Activity {
     }
 
     private void addMessage(String role, String text) {
-        transcript.append(role + "：\\n" + text + "\\n\\n");
+        transcript.append(role + "：\n" + text + "\n\n");
         scroll.post(() -> scroll.fullScroll(ScrollView.FOCUS_DOWN));
     }
 

@@ -35,7 +35,7 @@ fn generate(path: &str, question: &str) -> Result<String, String> {
         *guard = Some(LoadedModel { _backend: backend, model });
     }
     let loaded = guard.as_ref().ok_or_else(|| "模型尚未加载".to_string())?;
-    let system = format!("你是 EffectCraft 0.21.1 中文操作助手。用简体中文回答，优先提供准确菜单路径和步骤；没有依据时明确说明，不要编造。\\n\\n操作手册摘录：\\n{}", KNOWLEDGE);
+    let system = format!("你是 EffectCraft 0.21.1 中文操作助手。用简体中文回答，优先提供准确菜单路径和步骤；没有依据时明确说明，不要编造。\n\n操作手册摘录：\n{}", KNOWLEDGE);
     let messages = vec![
         LlamaChatMessage::new("system".into(), system).map_err(|e| e.to_string())?,
         LlamaChatMessage::new("user".into(), question.to_string()).map_err(|e| e.to_string())?,
