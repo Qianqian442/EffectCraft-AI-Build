@@ -497,9 +497,9 @@ jobs:
               )
           # Preserve the generator's Python string literal while adding Gradle signing flags.
           signing_flags = (
-              "\\n                enableV1Signing = true"
-              "\\n                enableV2Signing = true"
-              "\\n                enableV3Signing = true"
+              "\n                enableV1Signing = true"
+              "\n                enableV2Signing = true"
+              "\n                enableV3Signing = true"
           )
           if "enableV1Signing = true" not in source:
               source = source.replace(marker, marker + signing_flags, 1)
