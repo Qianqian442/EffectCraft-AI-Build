@@ -485,6 +485,28 @@ if draft_save_new not in h:
         raise SystemExit("Could not persist AI options in export dialog state")
     h = h.replace(draft_save_old, draft_save_new, 1)
 export_guard_helpers = r'''
+/// Convert a requested vertical resolution to even pixel dimensions while preserving
+/// the source aspect ratio. This supports landscape, portrait, and square compositions.
+fn effectcraft_export_dimensions(source_width: u32, source_height: u32, resolution: &str) -> (u32, u32) {
+    let target_height = match resolution {
+        "480" => 480_u32,
+        "720" => 720_u32,
+        "1080" => 1080_u32,
+        "1440" => 1440_u32,
+        "2160" => 2160_u32,
+        _ => return (source_width.max(2) & !1, source_height.max(2) & !1),
+    };
+
+    let source_width = source_width.max(1);
+    let source_height = source_height.max(1);
+    let scaled_width = ((source_width as f64 * target_height as f64)
+        / source_height as f64)
+        .round()
+        .clamp(2.0, 8192.0) as u32;
+    let width = (scaled_width.max(2) & !1).max(2);
+    (width, target_height)
+}
+
 /// Do not impose an application-specific runtime memory ceiling.
 /// Only defer an export when Android reports critically low system-wide free memory.
 fn effectcraft_export_memory_ok(
