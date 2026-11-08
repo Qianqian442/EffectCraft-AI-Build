@@ -6,6 +6,7 @@ on:
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/upgrade_export_preflight.py'
       - '.github/scripts/ai_assistant_local.rs'
       - 'assets/ae-avatar.png'
@@ -269,6 +270,13 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/patch_export_dialog.py
+
+      - name: Save exported videos to Android Gallery and show success confirmation
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: python3 build-assets/.github/scripts/add_android_gallery_export.py
+
 
       - name: Integrate RIFE and Real-ESRGAN into actual export frames
         env:
