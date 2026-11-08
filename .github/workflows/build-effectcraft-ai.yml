@@ -461,7 +461,7 @@ jobs:
           if grep -q '^networkTimeout=' "$WRAPPER_PROPERTIES"; then
             sed -i 's/^networkTimeout=.*/networkTimeout=300000/' "$WRAPPER_PROPERTIES"
           else
-            printf '\\nnetworkTimeout=300000\\n' >> "$WRAPPER_PROPERTIES"
+            printf '\nnetworkTimeout=300000\n' >> "$WRAPPER_PROPERTIES"
           fi
           grep -Fqx 'networkTimeout=300000' "$WRAPPER_PROPERTIES"
           echo "Gradle wrapper download timeout set to 300000 ms (5 minutes)."
@@ -476,12 +476,12 @@ jobs:
 
           path = Path(sys.argv[1])
           source = path.read_text()
-          needle = "                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')\\n            }}"
+          needle = "                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')\n            }}"
           replacement = (
-              "                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')\\n"
-              "                enableV1Signing = true\\n"
-              "                enableV2Signing = true\\n"
-              "                enableV3Signing = true\\n"
+              "                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')\n"
+              "                enableV1Signing = true\n"
+              "                enableV2Signing = true\n"
+              "                enableV3Signing = true\n"
               "            }}"
           )
           if source.count(needle) != 1:
@@ -629,14 +629,14 @@ jobs:
 
           echo "Checking APK v1/v2/v3 signatures and signer certificate..."
           SIGNATURE_REPORT="$("$APK_SIGNER" verify --verbose --print-certs "$APK")"
-          printf '%s\\n' "$SIGNATURE_REPORT"
+          printf '%s\n' "$SIGNATURE_REPORT"
           # Require all three install-compatible APK signature schemes. v2/v3 cover modern
           # Android; v1 adds compatibility with OEM installer implementations.
           for SCHEME in \
             "Verified using v1 scheme (JAR signing): true" \
             "Verified using v2 scheme (APK Signature Scheme v2): true" \
             "Verified using v3 scheme (APK Signature Scheme v3): true"; do
-            printf '%s\\n' "$SIGNATURE_REPORT" | grep -Fq "$SCHEME" || {
+            printf '%s\n' "$SIGNATURE_REPORT" | grep -Fq "$SCHEME" || {
               echo "Required APK signature scheme missing: $SCHEME" >&2
               exit 1
             }
@@ -644,7 +644,7 @@ jobs:
           EXPECTED_CERT="$(keytool -list -v -keystore keys/artcraft-builder.jks \
             -storepass "$(<keys/.keystore-password)" -alias artcraftbuilder \
             | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
-          ACTUAL_CERT="$(printf '%s\\n' "$SIGNATURE_REPORT" \
+          ACTUAL_CERT="$(printf '%s\n' "$SIGNATURE_REPORT" \
             | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}')"
           test -n "$EXPECTED_CERT"
           test -n "$ACTUAL_CERT"
@@ -657,9 +657,9 @@ jobs:
           "$ZIPALIGN" -c -v 4 "$APK"
 
           BADGING="$("$AAPT" dump badging "$APK")"
-          printf '%s\\n' "$BADGING" | grep -Fq "package: name='com.artcraft.effectcraft'"
-          printf '%s\\n' "$BADGING" | grep -Fq "sdkVersion:'28'"
-          printf '%s\\n' "$BADGING" | grep -Fq "native-code: 'arm64-v8a'"
+          printf '%s\n' "$BADGING" | grep -Fq "package: name='com.artcraft.effectcraft'"
+          printf '%s\n' "$BADGING" | grep -Fq "sdkVersion:'28'"
+          printf '%s\n' "$BADGING" | grep -Fq "native-code: 'arm64-v8a'"
           echo "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:|launchable-activity:)"
           echo "APK signature, manifest, ABI and alignment checks passed."
 
