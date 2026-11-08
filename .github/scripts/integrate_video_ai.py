@@ -756,7 +756,30 @@ gradle_text = gradle_generator.read_text()
 if "useLegacyPackaging = true" not in gradle_text:
     if "useLegacyPackaging = false" not in gradle_text:
         raise SystemExit("Could not locate Gradle jniLibs packaging configuration")
-    gradle_generator.write_text(gradle_text.replace("useLegacyPackaging = false", "useLegacyPackaging = true", 1))
+    gradle_text = gradle_text.replace("useLegacyPackaging = false", "useLegacyPackaging = true", 1)
+
+# Older Android OEM package installers can be less tolerant of APKs signed only with v2.
+# Explicitly include v1, v2 and v3 signatures while keeping the same persistent certificate.
+# AGP 8.7.3 exposes these exact SigningConfig DSL properties.
+signing_anchor = """                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')
+            }}
+        }}
+    }}
+"""
+signing_replacement = """                keyPassword System.getenv('ARTCRAFT_KEY_PASSWORD')
+            }}
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = true
+            enableV4Signing = false
+        }}
+    }}
+"""
+if "enableV1Signing = true" not in gradle_text:
+    if gradle_text.count(signing_anchor) != 1:
+        raise SystemExit("Could not uniquely locate Gradle APK signing configuration")
+    gradle_text = gradle_text.replace(signing_anchor, signing_replacement, 1)
+gradle_generator.write_text(gradle_text)
 
 # Android 10+ W^X requires executable native code to be installed from the APK's native library
 # directory. Force PackageManager extraction so the worker can be execve'd from nativeLibraryDir.
