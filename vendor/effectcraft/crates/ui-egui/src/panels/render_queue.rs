@@ -1,0 +1,1079 @@
+//! Render Queue panel, laid out like After Effects': a Current Render strip (progress bar,
+//! elapsed / estimated remaining, Stop and Render buttons), the queue list (twirl, Render
+//! checkbox, label, #, Comp Name, Status, Started, Render Time) with expandable Render Settings,
+//! Output Module and Output To rows, and a status footer.
+//!
+//! Every control dispatches an engine `renderQueue.*` command (so agents can do the same) and
+//! registers an automation id: `renderQueue.render`, `renderQueue.stop`, `renderQueue.notify`,
+//! `renderQueue.item.<n>.{row,twirl,render,renderSettings,outputModule,outputTo,outputPath,log}`.
+//!
+//! The Render Settings and Output Module menus list the templates first (Edit ▸ Templates), then
+//! every setting; entries needing numbers (custom time span and frame rate, crop, resize, bitrate,
+//! key frame interval, Make Template) open a form that runs the same command.
+
+use crate::i18n::{tr, tr_args};
+use effectcraft_engine::project::render_queue::{
+    AlphaMode, AudioFormat, AudioOutput, Channels, ColorDepth, CurrentOrOff, EffectsMode, FieldRender, OpusApplication, OutputFormat, PostRenderAction,
+    ProResProfile, Pulldown, RESIZE_PRESETS, RenderLog, RenderQuality, RenderQueueItem, RenderStatus, ResizeQuality, SwitchOverride, TimeSpan, WebmVideoCodec,
+};
+use effectcraft_engine::project::render_templates::RenderTemplates;
+use egui::{Align2, Color32, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
+use serde_json::{Value, json};
+
+use crate::a11y;
+use crate::theme::Tokens;
+use crate::widgets::check_label as mark;
+use crate::{EffectcraftApp, widgets};
+
+const TOP_H: f32 = 74.0;
+const HEAD_H: f32 = 22.0;
+const ROW_H: f32 = 24.0;
+const FOOT_H: f32 = 24.0;
+
+/// `h:mm:ss` for a duration in seconds.
+pub fn hms(secs: f64) -> String {
+    let s = secs.max(0.0).round() as u64;
+    format!("{}:{:02}:{:02}", s / 3600, s / 60 % 60, s % 60)
+}
+
+/// Unix seconds → (proleptic Gregorian year, the same wall-clock instant moved into chrono's range
+/// by whole 400-year cycles). The Gregorian calendar repeats every 400 years (146_097 days), so
+/// month, day and time of day come from chrono and only the year is carried, which keeps every
+/// input exact instead of collapsing out-of-range years to the epoch. `unix` is `u64`, so `days`
+/// always fits an `i64`.
+fn utc_parts(unix: u64) -> (i64, chrono::NaiveDateTime) {
+    use chrono::Datelike;
+    let (days, sod) = ((unix / 86_400) as i64, (unix % 86_400) as i64);
+    let (cycles, rest) = (days.div_euclid(146_097), days.rem_euclid(146_097));
+    // `rest + 719_163` (1970-01-01 is CE day 719_163) is always a valid CE day, and `sod` < 86_400.
+    let date = i32::try_from(rest + 719_163).ok().and_then(chrono::NaiveDate::from_num_days_from_ce_opt);
+    let time = u32::try_from(sod).ok().and_then(|s| chrono::NaiveTime::from_num_seconds_from_midnight_opt(s, 0));
+    match (date, time) {
+        (Some(d), Some(t)) => {
+            let y = i128::from(d.year()) + i128::from(cycles) * 400;
+            (i64::try_from(y).unwrap_or(i64::MAX), d.and_time(t))
+        }
+        _ => (1970, chrono::NaiveDateTime::default()), // unreachable
+    }
+}
+
+/// Unix seconds → `YYYY-MM-DD hh:mm:ss` (UTC). Years far outside chrono's own range are preserved
+/// (the old hand-rolled conversion kept them) rather than collapsing to the epoch.
+pub fn utc_stamp(unix: u64) -> String {
+    let (y, t) = utc_parts(unix);
+    // `{:04}` rather than `%Y`, which writes a `+` before years past 9999.
+    format!("{y:04}-{}", t.format("%m-%d %H:%M:%S"))
+}
+
+/// A queue item's row: its click area, keyboard focus and accessibility node.
+fn row_id(item: u64) -> egui::Id {
+    egui::Id::unique(("rq-row", item))
+}
+
+fn status_color(t: &Tokens, s: &RenderStatus) -> Color32 {
+    match s {
+        RenderStatus::Done => Color32::from_rgb(0x6c, 0xc0, 0x6c),
+        RenderStatus::Rendering => t.accent_hover,
+        RenderStatus::Failed(_) | RenderStatus::NeedsOutput => t.danger,
+        RenderStatus::UserStopped => t.warning,
+        RenderStatus::Unqueued => t.text_faint,
+        RenderStatus::Queued => t.text,
+    }
+}
+
+/// Render Settings menu: (label, params). `{"form": …}` entries open a form.
+fn settings_menu(it: &RenderQueueItem, templates: &RenderTemplates) -> Vec<(String, Value)> {
+    let s = &it.settings;
+    let mut v = vec![];
+    for t in templates.render_settings_list() {
+        v.push((mark(s.name == t.name, &t.name), json!({"template": t.name})));
+    }
+    v.push(("   Make Template…".into(), json!({"form": "makeRenderTemplate"})));
+    v.push(("-".into(), Value::Null));
+    v.push((mark(s.quality == RenderQuality::Best, "Quality: Best"), json!({"quality": "best"})));
+    v.push((mark(s.quality == RenderQuality::Draft, "Quality: Draft"), json!({"quality": "draft"})));
+    for (l, k) in [("Full", "full"), ("Half", "half"), ("Third", "third"), ("Quarter", "quarter")] {
+        v.push((mark(s.resolution_label() == l, &format!("Resolution: {l}")), json!({"resolution": k})));
+    }
+    v.push(("-".into(), Value::Null));
+    for (u, k) in effectcraft_engine::project::render_queue::ProxyUse::ALL.iter().zip(["current", "all", "comp", "none"]) {
+        v.push((mark(s.proxy_use == *u, &tr_args("Proxy Use: {}", &[&(u.label())])), json!({"proxyUse": k})));
+    }
+    for (e, k) in EffectsMode::ALL.iter().zip(["current", "allOn", "allOff"]) {
+        v.push((mark(s.effects == *e, &tr_args("Effects: {}", &[&(e.label())])), json!({"effects": k})));
+    }
+    for (e, k) in [(CurrentOrOff::Current, "current"), (CurrentOrOff::AllOff, "allOff")] {
+        v.push((mark(s.solo == e, &tr_args("Solo Switches: {}", &[&(e.label())])), json!({"solo": k})));
+    }
+    for (e, k) in [(CurrentOrOff::Current, "current"), (CurrentOrOff::AllOff, "allOff")] {
+        v.push((mark(s.guide_layers == e, &tr_args("Guide Layers: {}", &[&(e.label())])), json!({"guideLayers": k})));
+    }
+    for (d, k) in ColorDepth::ALL.iter().zip(["current", "8", "16", "32"]) {
+        v.push((mark(s.color_depth == *d, &tr_args("Color Depth: {}", &[&(d.label())])), json!({"colorDepth": k})));
+    }
+    v.push(("-".into(), Value::Null));
+    for (m, k) in SwitchOverride::ALL.iter().zip(["current", "onForChecked", "offForAll"]) {
+        v.push((mark(s.frame_blending == *m, &tr_args("Frame Blending: {}", &[&(m.label())])), json!({"frameBlending": k})));
+    }
+    for (m, k) in SwitchOverride::ALL.iter().zip(["current", "onForChecked", "offForAll"]) {
+        v.push((mark(s.motion_blur_override() == *m, &tr_args("Motion Blur: {}", &[&(m.label())])), json!({"motionBlur": k})));
+    }
+    for (f, k) in FieldRender::ALL.iter().zip(["off", "upper", "lower"]) {
+        v.push((mark(s.field_render == *f, &tr_args("Field Render: {}", &[&(f.label())])), json!({"fieldRender": k})));
+    }
+    if s.field_render != FieldRender::Off {
+        for pd in Pulldown::ALL {
+            v.push((mark(s.pulldown == pd, &tr_args("3:2 Pulldown: {}", &[&(pd.label())])), json!({"pulldown": pd.label()})));
+        }
+    }
+    v.push(("-".into(), Value::Null));
+    v.push((mark(s.time_span == TimeSpan::WorkArea, "Time Span: Work Area Only"), json!({"timeSpan": "workArea"})));
+    v.push((mark(s.time_span == TimeSpan::LengthOfComp, "Time Span: Length of Comp"), json!({"timeSpan": "comp"})));
+    v.push((mark(matches!(s.time_span, TimeSpan::Custom { .. }), "Time Span: Custom…"), json!({"form": "timeSpan"})));
+    v.push((mark(s.frame_rate.is_none(), "Frame Rate: Use comp's frame rate"), json!({"frameRate": null})));
+    for fps in [12.0, 15.0, 23.976, 24.0, 25.0, 29.97, 30.0, 50.0, 60.0] {
+        let on = s.frame_rate.is_some_and(|r| (r.as_f64() - fps).abs() < 0.01);
+        v.push((mark(on, &format!("Frame Rate: {fps}")), json!({"frameRate": fps})));
+    }
+    v.push(("   Frame Rate: Custom…".into(), json!({"form": "frameRate"})));
+    v.push(("-".into(), Value::Null));
+    v.push((mark(s.skip_existing, "Skip Existing Files"), json!({"skipExisting": !s.skip_existing})));
+    v.push((mark(s.storage_overflow, "Use Storage Overflow"), json!({"storageOverflow": !s.storage_overflow})));
+    v
+}
+
+/// Output Module menu: (label, params). `{"form": …}` entries open a form.
+fn output_menu(it: &RenderQueueItem, available: &[OutputFormat], templates: &RenderTemplates) -> Vec<(String, Value)> {
+    let o = &it.output;
+    let mut v = Vec::new();
+    for t in templates.output_module_list() {
+        if available.contains(&t.format) {
+            v.push((mark(o.name == t.name, &t.name), json!({"template": t.name})));
+        }
+    }
+    v.push(("   Make Template…".into(), json!({"form": "makeOutputTemplate"})));
+    v.push(("-".into(), Value::Null));
+    for f in OutputFormat::ALL {
+        if available.contains(&f) {
+            v.push((mark(o.format == f, &tr_args("Format: {}", &[&(f.label())])), json!({"format": format!("{f:?}")})));
+        }
+    }
+    v.push(("-".into(), Value::Null));
+    v.push((mark(o.channels == Channels::Rgb, "Channels: RGB"), json!({"channels": "rgb"})));
+    if o.supports_alpha() {
+        v.push((mark(o.channels == Channels::Rgba, "Channels: RGB + Alpha"), json!({"channels": "rgba"})));
+    }
+    if !o.format.is_audio_only() {
+        v.push((mark(o.channels == Channels::Alpha, "Channels: Alpha"), json!({"channels": "alpha"})));
+    }
+    if o.channels == Channels::Rgba {
+        v.push((mark(o.alpha_mode == AlphaMode::Straight, "Color: Straight (Unmatted)"), json!({"color": "straight"})));
+        v.push((mark(o.alpha_mode == AlphaMode::Premultiplied, "Color: Premultiplied (Matted)"), json!({"color": "premultiplied"})));
+    }
+    match o.format {
+        OutputFormat::ProRes => {
+            v.push(("-".into(), Value::Null));
+            for p in ProResProfile::ALL {
+                v.push((mark(o.prores_profile == p, p.label()), json!({"proresProfile": format!("{p:?}")})));
+            }
+        }
+        OutputFormat::H264 => {
+            v.push(("-".into(), Value::Null));
+            for kbps in [2_000, 5_000, 10_000, 15_000, 20_000, 40_000] {
+                v.push((mark(o.bitrate_kbps == kbps, &format!("Bitrate: {} Mbps", kbps / 1000)), json!({"bitrate": kbps})));
+            }
+        }
+        OutputFormat::Hevc | OutputFormat::Av1 => codec_menu(o, &mut v),
+        OutputFormat::WebM => {
+            v.push(("-".into(), Value::Null));
+            for c in [WebmVideoCodec::Vp9, WebmVideoCodec::Av1] {
+                v.push((mark(o.webm_codec == c, &tr_args("Video Codec: {}", &[&(c.label())])), json!({"webmCodec": c.label().to_ascii_lowercase()})));
+            }
+            if o.webm_codec == WebmVideoCodec::Av1 {
+                codec_menu(o, &mut v);
+            } else {
+                v.push(("-".into(), Value::Null));
+                for q in [60u8, 80, 90, 100] {
+                    v.push((mark(o.quality == q && !o.webm_bitrate, &format!("Quality: {q}")), json!({"quality": q, "webmBitrate": false})));
+                }
+                v.push((mark(o.webm_bitrate, &format!("Target Bitrate ({} kbps)…", o.bitrate_kbps)), json!({"form": "bitrate"})));
+                v.push((mark(o.keyframe_interval > 0, "Key Frame Interval…"), json!({"form": "keyframes"})));
+            }
+            v.push(("-".into(), Value::Null));
+            for kbps in [24u32, 32, 64, 96, 128, 192, 256] {
+                v.push((mark(o.opus_bitrate_kbps == kbps, &tr_args("Opus Bitrate: {} kbps", &[&kbps])), json!({"audioBitrate": kbps})));
+            }
+            for (a, k) in [(OpusApplication::Audio, "audio"), (OpusApplication::Voip, "voice")] {
+                v.push((mark(o.opus_application == a, &tr_args("Opus Tuning: {}", &[&(a.label())])), json!({"opusApplication": k})));
+            }
+        }
+        OutputFormat::JpegSequence => {
+            v.push(("-".into(), Value::Null));
+            for q in [60u8, 80, 90, 100] {
+                v.push((mark(o.quality == q, &format!("Quality: {q}")), json!({"quality": q})));
+            }
+        }
+        OutputFormat::Gif => {
+            v.push(("-".into(), Value::Null));
+            v.push((mark(o.gif_loop, "Loop Forever"), json!({"loop": !o.gif_loop})));
+        }
+        _ => {}
+    }
+    if !o.format.is_audio_only() {
+        v.push(("-".into(), Value::Null));
+        v.push((mark(!o.crop.enabled, "Crop: Off"), json!({"crop": false})));
+        v.push((mark(o.crop.enabled && o.crop.use_roi, "Crop: Use Region of Interest"), json!({"crop": {"useRoi": true}})));
+        v.push((mark(o.crop.enabled && !o.crop.use_roi, "Crop: Edges…"), json!({"form": "crop"})));
+        v.push((mark(!o.resize.enabled, "Resize: Off"), json!({"resize": false})));
+        for (n, w, h) in RESIZE_PRESETS {
+            let on = o.resize.enabled && o.resize.width == w && o.resize.height == h && !o.resize.lock_aspect;
+            v.push((mark(on, &format!("Resize to: {n} ({w}×{h})")), json!({"resize": {"preset": n}})));
+        }
+        v.push((mark(o.resize.enabled, "Resize to: Custom…"), json!({"form": "resize"})));
+        v.push((
+            mark(o.resize.lock_aspect, "Resize: Lock Aspect Ratio"),
+            json!({"resize": {"enabled": o.resize.enabled, "lockAspect": !o.resize.lock_aspect}}),
+        ));
+        for (q, k) in [(ResizeQuality::Low, "low"), (ResizeQuality::High, "high")] {
+            v.push((mark(o.resize.quality == q, &format!("Resize Quality: {q:?}")), json!({"resize": {"enabled": o.resize.enabled, "quality": k}})));
+        }
+    }
+    v.push(("-".into(), Value::Null));
+    for (a, k) in [
+        (PostRenderAction::None, "none"),
+        (PostRenderAction::Import, "import"),
+        (PostRenderAction::ImportAndReplace, "importAndReplace"),
+        (PostRenderAction::SetProxy, "setProxy"),
+    ] {
+        v.push((mark(it.post_render == a, &tr_args("Post-Render Action: {}", &[&(a.label())])), json!({"postRenderAction": k})));
+    }
+    v.push((mark(o.include_project_link, "Include Project Link"), json!({"includeProjectLink": !o.include_project_link})));
+    if o.format.supports_audio() {
+        v.push(("-".into(), Value::Null));
+        for (a, l) in [(AudioOutput::Auto, "auto"), (AudioOutput::On, "on"), (AudioOutput::Off, "off")] {
+            let label = match a {
+                AudioOutput::Auto => "Audio Output: Auto",
+                AudioOutput::On => "Audio Output: On",
+                AudioOutput::Off => "Audio Output: Off",
+            };
+            v.push((mark(o.audio == a, label), json!({"audio": l})));
+        }
+        for sr in [44_100u32, 48_000, 96_000] {
+            v.push((mark(o.audio_sample_rate == sr, &format!("Sample Rate: {:.1} kHz", sr as f64 / 1000.0)), json!({"sampleRate": sr})));
+        }
+        v.push((mark(o.audio_channels == 1, "Audio Channels: Mono"), json!({"audioChannels": "mono"})));
+        v.push((mark(o.audio_channels != 1, "Audio Channels: Stereo"), json!({"audioChannels": "stereo"})));
+        if matches!(o.format, OutputFormat::ProRes | OutputFormat::Uncompressed | OutputFormat::Wav | OutputFormat::Aiff) {
+            for f in [AudioFormat::S16, AudioFormat::S24, AudioFormat::F32] {
+                v.push((mark(o.audio_format == f, &tr_args("Sample Format: {}", &[&(f.label())])), json!({"audioFormat": f.label()})));
+            }
+        }
+    }
+    v
+}
+
+/// HEVC / AV1 options: profile, level, rate control (bitrate or constant quality), key frames.
+fn codec_menu(o: &effectcraft_engine::project::render_queue::OutputModule, v: &mut Vec<(String, Value)>) {
+    use effectcraft_engine::project::render_queue::{CodecProfile, RateControlMode, VideoCodecOptions};
+    let c = &o.codec;
+    v.push(("-".into(), Value::Null));
+    for p in CodecProfile::ALL {
+        v.push((mark(c.profile == p, &tr_args("Profile: {}", &[&(p.label())])), json!({"profile": format!("{p:?}").to_ascii_lowercase()})));
+    }
+    v.push(("-".into(), Value::Null));
+    v.push((mark(c.level.is_none(), "Level: Auto"), json!({"level": "auto"})));
+    // The common HEVC / AV1 levels (every level is reachable over the control channel).
+    for l in [30u8, 31, 40, 41, 50, 51, 52] {
+        debug_assert!(VideoCodecOptions::HEVC_LEVELS.contains(&l) && VideoCodecOptions::AV1_LEVELS.contains(&l));
+        let name = format!("{}.{}", l / 10, l % 10);
+        v.push((mark(c.level == Some(l), &format!("Level: {name}")), json!({"level": name})));
+    }
+    v.push(("-".into(), Value::Null));
+    for r in [RateControlMode::Bitrate, RateControlMode::Quality] {
+        v.push((mark(c.rate_control == r, &tr_args("Rate Control: {}", &[&(r.label())])), json!({"rateControl": format!("{r:?}").to_ascii_lowercase()})));
+    }
+    if c.rate_control == RateControlMode::Bitrate {
+        for kbps in [1_000u32, 2_000, 5_000, 10_000, 20_000, 40_000] {
+            let l = if kbps < 2_000 { format!("Bitrate: {kbps} kbps") } else { format!("Bitrate: {} Mbps", kbps / 1000) };
+            v.push((mark(o.bitrate_kbps == kbps, &l), json!({"bitrate": kbps})));
+        }
+        v.push((mark(false, "Bitrate: Custom…"), json!({"form": "codecBitrate"})));
+    } else {
+        for q in [40u8, 60, 70, 80, 90, 100] {
+            v.push((mark(c.quality == q, &format!("Quality: {q}")), json!({"quality": q})));
+        }
+    }
+    v.push(("-".into(), Value::Null));
+    for k in [0u32, 1, 30, 60, 120, 250] {
+        let l = match k {
+            0 => "Key Frames: Auto (2 s)".to_string(),
+            1 => "Key Frames: Every Frame (all intra)".to_string(),
+            k => format!("Key Frames: Every {k} Frames"),
+        };
+        v.push((mark(o.keyframe_interval == k, &l), json!({"keyframeInterval": k})));
+    }
+    v.push((mark(false, "Key Frame Interval…"), json!({"form": "keyframes"})));
+}
+
+/// Open the form behind a `{"form": …}` menu entry.
+fn open_menu_form(app: &mut EffectcraftApp, it: &RenderQueueItem, form: &str) {
+    use crate::panels::forms::{Field, form as open};
+    let id = it.id;
+    let o = &it.output;
+    match form {
+        "makeRenderTemplate" => open(
+            app,
+            "Make Render Settings Template",
+            "renderQueue.saveTemplate",
+            json!({"kind": "renderSettings", "item": id}),
+            vec![Field::text("name", "Template name", "")],
+        ),
+        "makeOutputTemplate" => open(
+            app,
+            "Make Output Module Template",
+            "renderQueue.saveTemplate",
+            json!({"kind": "outputModule", "item": id}),
+            vec![Field::text("name", "Template name", "")],
+        ),
+        "timeSpan" => {
+            let comp = app.session.project.comp(it.comp);
+            let (a, b) = comp.map(|c| it.settings.span(c)).unwrap_or_default();
+            open(
+                app,
+                "Custom Time Span",
+                "renderQueue.setRenderSettings",
+                json!({"item": id, "timeSpan": "custom"}),
+                vec![Field::num("start", "Start (s)", a.seconds()), Field::num("duration", "Duration (s)", (b.seconds() - a.seconds()).max(0.04))],
+            )
+        }
+        "frameRate" => {
+            let r = app.session.project.comp(it.comp).map(|c| it.settings.rate(c).as_f64()).unwrap_or(30.0);
+            open(app, "Use This Frame Rate", "renderQueue.setRenderSettings", json!({"item": id}), vec![Field::num("frameRate", "Frames per second", r)])
+        }
+        "crop" => open(
+            app,
+            "Crop",
+            "renderQueue.setOutputModule",
+            json!({"item": id}),
+            vec![
+                Field::num("cropTop", "Top", o.crop.top as f64),
+                Field::num("cropLeft", "Left", o.crop.left as f64),
+                Field::num("cropBottom", "Bottom", o.crop.bottom as f64),
+                Field::num("cropRight", "Right", o.crop.right as f64),
+            ],
+        ),
+        "resize" => open(
+            app,
+            "Resize to",
+            "renderQueue.setOutputModule",
+            json!({"item": id}),
+            vec![Field::num("resizeWidth", "Width", o.resize.width as f64), Field::num("resizeHeight", "Height", o.resize.height as f64)],
+        ),
+        "bitrate" => open(
+            app,
+            "WebM Target Bitrate",
+            "renderQueue.setOutputModule",
+            json!({"item": id, "webmBitrate": true}),
+            vec![Field::num("bitrate", "Bitrate (kbps)", o.bitrate_kbps as f64)],
+        ),
+        "codecBitrate" => open(
+            app,
+            "Target Bitrate",
+            "renderQueue.setOutputModule",
+            json!({"item": id, "rateControl": "bitrate"}),
+            vec![Field::num("bitrate", "Bitrate (kbps)", o.bitrate_kbps as f64)],
+        ),
+        "keyframes" => open(
+            app,
+            "Key Frame Interval",
+            "renderQueue.setOutputModule",
+            json!({"item": id}),
+            vec![Field::num("keyframeInterval", "Frames between key frames (0 = every 2 s)", o.keyframe_interval as f64)],
+        ),
+        _ => {}
+    }
+}
+
+const OUTPUT_TEMPLATES: [&str; 4] = [
+    "[compName].[fileExtension]",
+    "[compName]_[width]x[height].[fileExtension]",
+    "[projectName]_[compName].[fileExtension]",
+    "[compName]/[compName].[fileExtension]",
+];
+
+fn output_to_menu(it: &RenderQueueItem) -> Vec<(String, Value)> {
+    let mut v: Vec<(String, Value)> = OUTPUT_TEMPLATES
+        .iter()
+        .map(|t| {
+            let t = if it.output.format.is_sequence() { t.replace(".[fileExtension]", "_[#####].[fileExtension]") } else { t.to_string() };
+            (t.clone(), json!({"path": t}))
+        })
+        .collect();
+    v.push(("-".into(), Value::Null));
+    v.push(("Choose File…".into(), json!({"choose": true})));
+    v
+}
+
+/// Output To's save dialog, as After Effects' Output Movie To: it opens at the current output
+/// (folder and name, which ends in the format's extension) and offers that extension. `None`
+/// when the host has no save dialog; `Some(None)` when the dialog was cancelled.
+fn pick_output(app: &EffectcraftApp, it: &RenderQueueItem) -> Option<Option<String>> {
+    app.hooks.save_dialog(&app.session.resolve_output(it).unwrap_or_default())
+}
+
+/// A `renderQueue.*` command queued while drawing, run after the frame.
+type Action = (&'static str, Value);
+
+/// What the panel's sections read: the queue, the running render (if any) and the formats.
+#[derive(Clone, Copy)]
+struct RqView<'a> {
+    queue: &'a [RenderQueueItem],
+    progress: Option<&'a effectcraft_engine::render_queue::JobState>,
+    rendering: bool,
+    available: &'a [OutputFormat],
+}
+
+/// Comps dragged from the Project over the panel: an outline while hovering, queued on release.
+fn queue_drop(app: &EffectcraftApp, ui: &egui::Ui, rect: Rect, p: &egui::Painter, rendering: bool, actions: &mut Vec<Action>) {
+    let t = app.tokens;
+    if !rendering
+        && let Some(crate::panels::DragPayload::Item(id)) = egui::DragAndDrop::payload::<crate::panels::DragPayload>(ui.ctx()).as_deref()
+        && app.session.project.comp(effectcraft_engine::project::ItemId(*id)).is_some()
+        && ui.input(|i| i.pointer.hover_pos()).is_some_and(|pos| rect.contains(pos))
+    {
+        let ids: Vec<u64> = if app.session.state.project_selection.contains(&effectcraft_engine::project::ItemId(*id)) {
+            app.session.state.project_selection.iter().filter(|i| app.session.project.comp(**i).is_some()).map(|i| i.0).collect()
+        } else {
+            vec![*id]
+        };
+        if ui.input(|i| i.pointer.any_released()) {
+            for comp in ids {
+                actions.push(("renderQueue.add", json!({"comp": comp})));
+            }
+            egui::DragAndDrop::clear_payload(ui.ctx());
+        } else {
+            p.rect_stroke(rect.shrink(2.0), 0.0, Stroke::new(2.0, t.accent), StrokeKind::Inside);
+        }
+    }
+}
+
+/// Elapsed and estimated remaining seconds at UI time `now`. The job reports them as frames
+/// finish; between reports they count on from the last one, as a clock does, so a slow frame
+/// doesn't read as a stalled render (#2593).
+fn live_times(ctx: &egui::Context, pr: &effectcraft_engine::render_queue::JobState, now: f64) -> (f64, Option<f64>) {
+    let report = (pr.current, pr.done, pr.item_elapsed.to_bits());
+    let since = ctx.data_mut(|d| {
+        let seen = d.get_temp_mut_or_insert_with(egui::Id::unique("rq-progress-seen"), || (report, now));
+        if seen.0 != report {
+            *seen = (report, now);
+        }
+        seen.1
+    });
+    let dt = if pr.finished { 0.0 } else { (now - since).max(0.0) };
+    (pr.item_elapsed + dt, pr.remaining.map(|r| (r - dt).max(0.0)))
+}
+
+/// The Current Render strip inside `top`: title, elapsed / remaining time, Render, Stop, Notify
+/// and the progress bar.
+fn current_render_strip(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Painter, top: Rect, rq: &RqView, actions: &mut Vec<Action>) {
+    let t = app.tokens;
+    let RqView { queue, progress, rendering, available } = *rq;
+    let x0 = top.min.x + 12.0;
+    p.text(pos2(x0, top.min.y + 16.0), Align2::LEFT_CENTER, tr("Current Render"), Tokens::semibold(12.5), t.text);
+    let cur_item = progress.as_ref().and_then(|p| p.current).and_then(|id| queue.iter().find(|i| i.id == id));
+    let cur_name = cur_item.and_then(|i| app.session.project.item(i.comp)).map(|i| i.name.clone());
+    if let Some(pr) = &progress {
+        let (elapsed, remaining) = live_times(ui.ctx(), pr, ui.input(|i| i.time));
+        if rendering {
+            ui.ctx().request_repaint_after(std::time::Duration::from_millis(500));
+        }
+        let rem = remaining.map(hms).unwrap_or_else(|| "–".into());
+        p.text(
+            pos2(top.max.x - 12.0, top.min.y + 16.0),
+            Align2::RIGHT_CENTER,
+            format!("Elapsed: {}     Est. Remain: {rem}", hms(elapsed)),
+            Tokens::ui(11.5),
+            t.text_dim,
+        );
+    }
+    let bw = 76.0;
+    let render_b = Rect::from_min_size(pos2(top.max.x - 12.0 - bw, top.min.y + 34.0), vec2(bw, 26.0));
+    let stop_b = Rect::from_min_size(pos2(render_b.min.x - 8.0 - bw, render_b.min.y), vec2(bw, 26.0));
+    let can_render = !rendering && queue.iter().any(RenderQueueItem::is_queued) && !available.is_empty();
+    let render_label = tr("Render");
+    let render_resp = widgets::text_button(ui, render_b, render_label, can_render, &t, egui::Id::unique("rq-render"));
+    a11y::button(&render_resp, render_label, can_render);
+    if render_resp.clicked() && can_render {
+        actions.push(("renderQueue.render", json!({"wait": false})));
+    }
+    app.auto.add("renderQueue.render", render_b, "Render");
+    // Notify (sound + notification when the queue finishes).
+    let notify = app.session.project.render_prefs.notify;
+    let nb = Rect::from_min_size(pos2(render_b.min.x - 8.0 - 2.0 * bw - 8.0, render_b.min.y + 4.0), vec2(18.0, 18.0));
+    let notify_resp = widgets::checkbox(ui, nb, notify, &t, egui::Id::unique("rq-notify"));
+    a11y::check_box(&notify_resp, tr("Notify"), notify, true);
+    if notify_resp.changed() {
+        actions.push(("renderQueue.setNotify", json!({"notify": !notify})));
+    }
+    p.text(pos2(nb.max.x + 5.0, nb.center().y), Align2::LEFT_CENTER, tr("Notify"), Tokens::ui(11.5), t.text_dim);
+    app.auto.add("renderQueue.notify", nb, if notify { "Notify: on" } else { "Notify: off" });
+    if rendering {
+        if widgets::text_button(ui, stop_b, crate::i18n::tr("Stop"), false, &t, egui::Id::unique("rq-stop")).clicked() {
+            actions.push(("renderQueue.stop", json!({})));
+        }
+        app.auto.add("renderQueue.stop", stop_b, "Stop");
+    }
+    // Progress bar.
+    let bar = Rect::from_min_max(pos2(x0, render_b.min.y + 4.0), pos2(nb.min.x - 16.0, render_b.max.y - 4.0));
+    p.rect_filled(bar, 3.0, t.field_bg);
+    p.rect_stroke(bar, 3.0, Stroke::new(1.0, t.field_border), StrokeKind::Inside);
+    let frac = progress.as_ref().filter(|p| p.total > 0).map(|p| (p.done as f32 / p.total as f32).clamp(0.0, 1.0)).unwrap_or(0.0);
+    if frac > 0.0 {
+        let fill = Rect::from_min_size(bar.min, vec2(bar.width() * frac, bar.height()));
+        p.rect_filled(fill, 3.0, t.accent);
+    }
+    let bar_text = match (&progress, &cur_name) {
+        (Some(pr), Some(n)) if rendering => format!("Rendering “{n}”   {} / {} frames", pr.done, pr.total),
+        _ => {
+            let n = queue.iter().filter(|i| i.is_queued()).count();
+            if available.is_empty() {
+                "Export is not available in this build".to_string()
+            } else if n == 0 {
+                "Composition ▸ Add to Render Queue (Ctrl/⌘ M) to queue a render".to_string()
+            } else {
+                format!("{n} item(s) queued")
+            }
+        }
+    };
+    p.text(pos2(bar.min.x + 8.0, bar.center().y), Align2::LEFT_CENTER, &bar_text, Tokens::ui(11.5), t.text);
+    app.auto.add("renderQueue.progress", bar, &format!("{:.0}%", frac * 100.0));
+    a11y::progress(&ui.interact(bar, egui::Id::unique("rq-progress"), Sense::hover()), &bar_text, frac);
+}
+
+/// The footer: the message line and the totals.
+fn footer(p: &egui::Painter, rect: Rect, rq: &RqView, t: &Tokens) {
+    let RqView { queue, progress, rendering, .. } = *rq;
+    let foot = Rect::from_min_max(pos2(rect.min.x, rect.max.y - FOOT_H), rect.max);
+    p.rect_filled(foot, 0.0, t.tl_ruler_bg);
+    p.line_segment([foot.left_top(), foot.right_top()], Stroke::new(1.0, t.separator));
+    let msg = match &progress {
+        Some(pr) if rendering => format!("Message: Rendering {} of {}", (pr.items_done + 1).min(pr.items_total), pr.items_total),
+        _ => {
+            let done = queue.iter().filter(|i| i.status == RenderStatus::Done).count();
+            format!("Message: {done} of {} done", queue.len())
+        }
+    };
+    p.text(pos2(foot.min.x + 12.0, foot.center().y), Align2::LEFT_CENTER, msg, Tokens::ui(11.0), t.text_dim);
+    let started = queue.iter().filter(|i| i.started.is_some()).count();
+    let total: f64 = queue.iter().filter_map(|i| i.render_time).sum();
+    p.text(
+        pos2(foot.max.x - 12.0, foot.center().y),
+        Align2::RIGHT_CENTER,
+        format!("Renders Started: {started}     Total Time Elapsed: {}", hms(progress.as_ref().filter(|_| rendering).map(|p| p.elapsed).unwrap_or(total))),
+        Tokens::ui(11.0),
+        t.text_dim,
+    );
+}
+
+/// An item row's context menu: Duplicate, Remove and Move Up / Down (row `k` of `len`).
+fn row_menu(ui: &mut egui::Ui, actions: &mut Vec<Action>, item_id: u64, k: usize, len: usize) {
+    if ui.button(tr("Duplicate")).clicked() {
+        actions.push(("renderQueue.duplicate", json!({"item": item_id})));
+        ui.close();
+    }
+    if ui.button(tr("Remove")).clicked() {
+        actions.push(("renderQueue.remove", json!({"item": item_id})));
+        ui.close();
+    }
+    if k > 0 && ui.button(tr("Move Up")).clicked() {
+        actions.push(("renderQueue.move", json!({"item": item_id, "to": k})));
+        ui.close();
+    }
+    if k + 1 < len && ui.button(tr("Move Down")).clicked() {
+        actions.push(("renderQueue.move", json!({"item": item_id, "to": k + 2})));
+        ui.close();
+    }
+}
+
+/// Log: Errors Only / Plus Settings / Plus Per Frame Info.
+fn log_dropdown(app: &mut EffectcraftApp, ui: &mut egui::Ui, row: &ItemRow, it: &RenderQueueItem, actions: &mut Vec<Action>) {
+    let ItemRow { lp, r, n, rendering, .. } = *row;
+    let t = app.tokens;
+    let aid = |s: &str| format!("renderQueue.item.{n}.{s}");
+    let ld = Rect::from_min_size(pos2(r.max.x - 190.0, r.min.y + 3.0), vec2(150.0, ROW_H - 6.0));
+    lp.text(pos2(ld.min.x - 6.0, r.center().y), Align2::RIGHT_CENTER, tr("Log:"), Tokens::ui(11.5), t.text_dim);
+    let lid = egui::Id::unique(("rq-log", it.id));
+    let log_resp = widgets::dropdown(ui, ld, it.log.label(), &t, lid);
+    a11y::combo_box(&log_resp, tr("Log:").trim_end_matches(':'), it.log.label(), !rendering);
+    if log_resp.clicked() && !rendering {
+        widgets::open_popup(ui, lid);
+    }
+    let llabels: Vec<String> = RenderLog::ALL.iter().map(|l| mark(it.log == *l, l.label())).collect();
+    if let Some(i) = widgets::popup_menu(ui, lid, ld.left_bottom(), &llabels, None) {
+        if widgets::by_keyboard(ui) {
+            log_resp.request_focus();
+        }
+        actions.push(("renderQueue.setLog", json!({"item": it.id, "log": RenderLog::ALL[i].label()})));
+    }
+    app.auto.add(&aid("log"), ld, it.log.label());
+}
+
+/// Where an item row's expanded line is drawn.
+#[derive(Clone, Copy)]
+struct ItemRow<'a> {
+    lp: &'a egui::Painter,
+    list: Rect,
+    r: Rect,
+    /// The item's 1-based position in the queue.
+    n: usize,
+    rendering: bool,
+}
+
+/// The expanded "Output To" line: the template menu, and the file name (click to choose it or
+/// edit the template in place).
+fn output_to(
+    app: &mut EffectcraftApp,
+    ui: &mut egui::Ui,
+    row: &ItemRow,
+    it: &RenderQueueItem,
+    dd_right: f32,
+    editing: &mut Option<(u64, String)>,
+    actions: &mut Vec<Action>,
+) {
+    let ItemRow { lp, list, r, n, rendering } = *row;
+    let t = app.tokens;
+    let aid = |s: &str| format!("renderQueue.item.{n}.{s}");
+    let ox = dd_right + 14.0;
+    lp.text(pos2(ox, r.center().y), Align2::LEFT_CENTER, tr("Output To:"), Tokens::ui(11.5), t.text_dim);
+    let odd = Rect::from_min_size(pos2(ox + 62.0, r.min.y + 3.0), vec2(22.0, ROW_H - 6.0));
+    let oid = egui::Id::unique(("rq-out", it.id));
+    let out_resp = widgets::dropdown(ui, odd, "", &t, oid);
+    a11y::combo_box(
+        &out_resp,
+        tr("Output To:").trim_end_matches(':'),
+        &app.session.resolve_output(it).unwrap_or_else(|| "Not yet specified".into()),
+        !rendering,
+    );
+    if out_resp.clicked() && !rendering {
+        widgets::open_popup(ui, oid);
+    }
+    app.auto.add(&aid("outputTo"), odd, "Output To");
+    let omenu = output_to_menu(it);
+    let olabels: Vec<String> = omenu.iter().map(|(l, _)| l.clone()).collect();
+    if let Some(i) = widgets::popup_menu(ui, oid, odd.left_bottom(), &olabels, None) {
+        if widgets::by_keyboard(ui) {
+            out_resp.request_focus();
+        }
+        if omenu[i].1.get("choose").is_some() {
+            match pick_output(app, it) {
+                Some(Some(path)) => actions.push(("renderQueue.setOutput", json!({"item": it.id, "path": path}))),
+                Some(None) => {}
+                None => *editing = Some((it.id, it.output.output.clone())),
+            }
+        } else {
+            let mut params = omenu[i].1.clone();
+            params["item"] = json!(it.id);
+            actions.push(("renderQueue.setOutput", params));
+        }
+    }
+    let path_rect = Rect::from_min_max(pos2(odd.max.x + 6.0, r.min.y + 2.0), pos2(r.max.x - 8.0, r.max.y - 2.0));
+    if editing.as_ref().is_some_and(|(id, _)| *id == it.id) {
+        let mut buf = editing.as_ref().map(|(_, b)| b.clone()).unwrap_or_default();
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(path_rect));
+        let resp = child.add(egui::TextEdit::singleline(&mut buf).desired_width(path_rect.width()).font(Tokens::ui(11.5)));
+        a11y::text_input(&resp, tr("Output file name template"), &buf);
+        if resp.lost_focus() {
+            if ui.input(|i| i.key_pressed(egui::Key::Enter)) && !buf.trim().is_empty() {
+                actions.push(("renderQueue.setOutput", json!({"item": it.id, "path": buf.trim()})));
+            }
+            *editing = None;
+        } else {
+            widgets::keep_focus(ui.ctx(), &resp, &buf);
+            *editing = Some((it.id, buf));
+        }
+    } else {
+        let shown = app.session.resolve_output(it).unwrap_or_else(|| "Not yet specified".into());
+        let resp = ui.interact(path_rect, egui::Id::unique(("rq-path", it.id)), Sense::click());
+        a11y::button(&resp, &tr_args("Output file: {}", &[&shown]), !rendering);
+        let col = if resp.hovered() { t.accent_hover } else { t.hot_text };
+        lp.with_clip_rect(path_rect.intersect(list)).text(pos2(path_rect.min.x, r.center().y), Align2::LEFT_CENTER, &shown, Tokens::ui(11.5), col);
+        // Clicking the file name opens the save dialog (Output Movie To); Alt-click, or a
+        // host without one, edits the name template in place.
+        let dialog = app.hooks.pick_save_file.is_some();
+        if resp.clicked() && !rendering {
+            let picked = if ui.input(|i| i.modifiers.alt) { None } else { pick_output(app, it) };
+            match picked {
+                Some(Some(path)) => actions.push(("renderQueue.setOutput", json!({"item": it.id, "path": path}))),
+                Some(None) => {}
+                None => *editing = Some((it.id, it.output.output.clone())),
+            }
+        }
+        let how = if dialog { "Click to choose where to save; Alt-click to edit the template" } else { "Click to edit" };
+        resp.on_hover_text(tr_args("Template: {}\n{}", &[&it.output.output, &how]));
+        app.auto.add(&aid("outputPath"), path_rect, &shown);
+    }
+}
+
+/// Delete removes the selected item when the panel has focus (`allowed`: not editing a path and
+/// not rendering).
+fn delete_selected(app: &EffectcraftApp, ui: &egui::Ui, allowed: bool, on_row: bool, selected: &mut Option<u64>, actions: &mut Vec<Action>) {
+    if app.ui.focused == crate::dock::PanelKind::RenderQueue
+        && allowed
+        && let Some(id) = *selected
+        && app.dialog.is_none()
+        && !crate::widgets::any_menu_open(ui.ctx())
+        && ui.input(|i| i.key_pressed(egui::Key::Delete) || i.key_pressed(egui::Key::Backspace))
+        // (A focused queue row is not typing; any other focused widget may be.)
+        && (on_row || !ui.ctx().egui_wants_keyboard_input())
+    {
+        actions.push(("renderQueue.remove", json!({"item": id})));
+        *selected = None;
+    }
+}
+
+// Keyboard: Up / Down move between the queued items, Home / End go to the first / last, Right
+// and Left open and close the item's settings, Enter and Space do the same (Space only with a
+// row focused: otherwise it plays the preview). The focus follows the selection.
+///
+/// Returns whether a queue row has keyboard focus.
+fn list_keys(
+    app: &mut EffectcraftApp,
+    ctx: &egui::Context,
+    queue: &[RenderQueueItem],
+    (open, selected): (&mut Vec<u64>, &mut Option<u64>),
+    can_navigate: bool,
+    tops: &[(u64, f32)],
+    list_h: f32,
+) -> bool {
+    let focused = ctx.memory(|m| m.focused());
+    let on_row = focused.is_some_and(|f| queue.iter().any(|i| row_id(i.id) == f));
+    let by_mouse = focused.is_none() && app.ui.focused == crate::dock::PanelKind::RenderQueue;
+    if (on_row || by_mouse) && can_navigate && app.dialog.is_none() && !widgets::any_menu_open(ctx) {
+        let keys: Vec<egui::Key> = ctx.input(|i| {
+            i.events
+                .iter()
+                .filter_map(|e| match e {
+                    egui::Event::Key { key, pressed: true, modifiers, .. } if !modifiers.any() => Some(*key),
+                    _ => None,
+                })
+                .collect()
+        });
+        let mut moved = None;
+        for key in keys {
+            use egui::Key;
+            let at = (*selected).and_then(|s| queue.iter().position(|i| i.id == s));
+            let Some(last) = queue.len().checked_sub(1) else { break };
+            let to = match key {
+                Key::ArrowDown => Some(at.map_or(0, |a| a.saturating_add(1).min(last))),
+                Key::ArrowUp => Some(at.map_or(last, |a| a.saturating_sub(1))),
+                Key::Home if on_row => Some(0),
+                Key::End if on_row => Some(last),
+                _ => None,
+            };
+            if let Some(item) = to.and_then(|to| queue.get(to)) {
+                *selected = Some(item.id);
+                moved = Some(item.id);
+                continue;
+            }
+            let Some(item) = (*selected).filter(|s| queue.iter().any(|i| i.id == *s)) else { continue };
+            match key {
+                Key::ArrowRight if !open.contains(&item) => open.push(item),
+                Key::ArrowLeft => open.retain(|i| *i != item),
+                Key::Enter | Key::Space if on_row || key == Key::Enter => {
+                    if open.contains(&item) {
+                        open.retain(|i| *i != item);
+                    } else {
+                        open.push(item);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if let Some(item) = moved {
+            if let Some((_, top)) = tops.iter().find(|(id, _)| *id == item) {
+                widgets::PanelScroll::reveal(ctx, egui::Id::unique("rq-scroll"), *top, *top + ROW_H, list_h);
+            }
+            app.ui.focused = crate::dock::PanelKind::RenderQueue;
+            if on_row {
+                a11y::focus_next_pass(ctx, "rq", row_id(item));
+            }
+            ctx.request_repaint();
+        }
+        // The arrows are the queue's, not egui's spatial focus moves.
+        if on_row {
+            ctx.memory_mut(|m| m.move_focus(egui::FocusDirection::None));
+        }
+    }
+    on_row
+}
+
+/// An item's Status cell: its state, or the percentage while it is the one rendering.
+fn status_text(it: &RenderQueueItem, progress: Option<&effectcraft_engine::render_queue::JobState>, rendering: bool) -> String {
+    match progress.filter(|p| rendering && p.current == Some(it.id)) {
+        Some(pr) => format!("Rendering {:.0}%", if pr.total > 0 { pr.done as f64 * 100.0 / pr.total as f64 } else { 0.0 }),
+        None => it.status.label().to_string(),
+    }
+}
+
+/// An item's Render Time cell: the running time while it renders, else its last render time.
+fn render_time_text(it: &RenderQueueItem, progress: Option<&effectcraft_engine::render_queue::JobState>, rendering: bool) -> String {
+    match progress.filter(|p| rendering && p.current == Some(it.id)) {
+        Some(p) => hms(p.item_elapsed),
+        None => it.render_time.map(|s| if s < 60.0 { format!("{s:.1} s") } else { hms(s) }).unwrap_or_else(|| "-".into()),
+    }
+}
+
+/// The Render Queue panel: the Current Render strip (elapsed and remaining time, Render/Stop and
+/// Notify, plus the progress bar), the column header, the queued items with their output template,
+/// status and timings, and the footer totals. Comps dragged from the Project are queued on
+/// release. The open items and the selected item are kept in egui temp data; output-template forms
+/// open through a small form, and every change runs a `renderQueue.*` command.
+pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    let t = app.tokens;
+    let p = ui.painter().with_clip_rect(rect);
+    let queue: Vec<RenderQueueItem> = app.session.project.render_queue.clone();
+    let progress = app.session.render_progress();
+    let rendering = app.session.is_rendering();
+    let available = app.session.exporter.as_ref().map(|e| e.formats()).unwrap_or_default();
+    let mut actions: Vec<Action> = Vec::new();
+    let rq = RqView { queue: &queue, progress: progress.as_ref(), rendering, available: &available };
+    app.auto.add("renderQueue.drop", rect, "Drop compositions to queue");
+    queue_drop(app, ui, rect, &p, rendering, &mut actions);
+    let mut forms: Vec<(RenderQueueItem, String)> = Vec::new();
+    let state_id = egui::Id::unique("rq-ui");
+    let (mut open, mut selected): (Vec<u64>, Option<u64>) = ui.data(|d| d.get_temp(state_id).unwrap_or_default());
+
+    // ---------------------------------------------------------- Current Render strip
+    let top = Rect::from_min_size(rect.min, vec2(rect.width(), TOP_H));
+    p.rect_filled(top, 0.0, t.tl_ruler_bg);
+    current_render_strip(app, ui, &p, top, &rq, &mut actions);
+
+    // ---------------------------------------------------------- column header
+    let head = Rect::from_min_size(pos2(rect.min.x, top.max.y), vec2(rect.width(), HEAD_H));
+    // (The scroll begins here for the columns: they line up with the items, clear of its bar.)
+    let list = Rect::from_min_max(pos2(rect.min.x, head.max.y), pos2(rect.max.x, rect.max.y - FOOT_H));
+    let scroll = widgets::PanelScroll::begin(ui, egui::Id::unique("rq-scroll"), list);
+    let list = scroll.content;
+    p.rect_filled(head, 0.0, t.panel_bg);
+    p.line_segment([head.left_bottom(), head.right_bottom()], Stroke::new(1.0, t.separator));
+    // Columns: twirl | Render | label | # | Comp Name | Status | Started | Render Time
+    let cx_twirl = rect.min.x + 4.0;
+    let cx_render = cx_twirl + 20.0;
+    let cx_label = cx_render + 48.0;
+    let cx_num = cx_label + 20.0;
+    let cx_name = cx_num + 28.0;
+    let w_time = 92.0;
+    let w_started = 156.0;
+    let w_status = 112.0;
+    let cx_time = (list.max.x - w_time).max(cx_name + 120.0);
+    let cx_started = cx_time - w_started;
+    let cx_status = cx_started - w_status;
+    let hy = head.center().y;
+    for (x, l) in [(cx_render, "Render"), (cx_num, "#"), (cx_name, "Comp Name"), (cx_status, "Status"), (cx_started, "Started"), (cx_time, "Render Time")] {
+        p.text(pos2(x + 2.0, hy), Align2::LEFT_CENTER, l, Tokens::ui(11.0), t.text_dim);
+    }
+    for x in [cx_render, cx_label, cx_num, cx_name, cx_status, cx_started, cx_time] {
+        p.line_segment([pos2(x - 3.0, head.min.y + 4.0), pos2(x - 3.0, head.max.y - 4.0)], Stroke::new(1.0, t.separator));
+    }
+
+    // ---------------------------------------------------------- items
+    let lp = p.with_clip_rect(list);
+    let mut y = list.min.y - scroll.offset;
+    if queue.is_empty() {
+        lp.text(pos2(list.center().x, list.min.y + 30.0), Align2::CENTER_CENTER, tr("The render queue is empty."), Tokens::ui(12.0), t.text_faint);
+    }
+    let ctx = ui.ctx().clone();
+    // Where each item's row starts in the scrolled content, for the keys.
+    let mut tops: Vec<(u64, f32)> = Vec::new();
+    let editing_id = egui::Id::unique("rq-edit-output");
+    let mut editing: Option<(u64, String)> = ui.data(|d| d.get_temp(editing_id));
+    for (k, it) in queue.iter().enumerate() {
+        let n = k + 1;
+        let aid = |s: &str| format!("renderQueue.item.{n}.{s}");
+        let row = Rect::from_min_size(pos2(list.min.x, y), vec2(list.width(), ROW_H));
+        y += ROW_H;
+        let is_sel = selected == Some(it.id);
+        lp.rect_filled(
+            row,
+            0.0,
+            if is_sel {
+                t.row_selected
+            } else if k % 2 == 0 {
+                t.row
+            } else {
+                t.row_alt
+            },
+        );
+        let row_resp = ui.interact(row, row_id(it.id), Sense::click());
+        tops.push((it.id, row.min.y - list.min.y + scroll.offset));
+        if a11y::take_pending_focus(&ctx, "rq", row_resp.id) {
+            row_resp.request_focus();
+        }
+        if row_resp.clicked() || row_resp.gained_focus() {
+            selected = Some(it.id);
+            app.ui.focused = crate::dock::PanelKind::RenderQueue;
+        }
+        if row_resp.has_focus() {
+            lp.rect_stroke(row.shrink(0.5), 0.0, Stroke::new(1.0, t.accent), StrokeKind::Inside);
+        }
+        let comp_item = app.session.project.item(it.comp);
+        let name = comp_item.map(|i| i.name.clone()).unwrap_or_else(|| "(missing composition)".into());
+        crate::widgets::context_menu(&row_resp, |ui| row_menu(ui, &mut actions, it.id, k, queue.len()));
+        app.auto.add(&aid("row"), row, &format!("#{n}"));
+        let is_open = open.contains(&it.id);
+        let tw = Rect::from_center_size(pos2(cx_twirl + 8.0, row.center().y), vec2(14.0, 14.0));
+        let tw_resp = widgets::twirl(ui, tw, is_open, egui::Id::unique(("rq-twirl", it.id)), &t);
+        a11y::disclosure(&tw_resp, &tr_args(if is_open { "Hide details of {}" } else { "Show details of {}" }, &[&name]), is_open);
+        if tw_resp.clicked() {
+            if is_open {
+                open.retain(|i| *i != it.id);
+            } else {
+                open.push(it.id);
+            }
+        }
+        app.auto.add(&aid("twirl"), tw, "Twirl");
+        let cb = Rect::from_center_size(pos2(cx_render + 20.0, row.center().y), vec2(18.0, 18.0));
+        let cb_resp = ui.add_enabled_ui(!rendering, |ui| widgets::checkbox(ui, cb, it.render, &t, egui::Id::unique(("rq-cb", it.id)))).inner;
+        a11y::check_box(&cb_resp, &format!("{}: {name}", tr("Render")), it.render, !rendering);
+        if cb_resp.changed() && !rendering {
+            actions.push(("renderQueue.setRender", json!({"item": it.id, "render": !it.render})));
+        }
+        app.auto.add(&aid("render"), cb, if it.render { "Render: on" } else { "Render: off" });
+        let label_col = comp_item.map(|i| t.label(i.label)).unwrap_or(t.text_faint);
+        lp.rect_filled(Rect::from_center_size(pos2(cx_label + 6.0, row.center().y), vec2(10.0, 10.0)), 2.0, label_col);
+        lp.text(pos2(cx_num + 2.0, row.center().y), Align2::LEFT_CENTER, n.to_string(), Tokens::ui(12.0), t.text_dim);
+        lp.text(pos2(cx_name + 2.0, row.center().y), Align2::LEFT_CENTER, &name, Tokens::ui(12.0), t.text);
+        let status = status_text(it, progress.as_ref(), rendering);
+        let st_rect = Rect::from_min_size(pos2(cx_status, row.min.y), vec2(w_status, ROW_H));
+        lp.text(pos2(cx_status + 2.0, row.center().y), Align2::LEFT_CENTER, &status, Tokens::ui(12.0), status_color(&t, &it.status));
+        if let RenderStatus::Failed(e) = &it.status {
+            ui.interact(st_rect, egui::Id::unique(("rq-st", it.id)), Sense::hover()).on_hover_text(e);
+        }
+        app.auto.add(&aid("status"), st_rect, &status);
+        a11y::tree_item(&row_resp, &format!("{n}. {name}, {status}"), is_sel, 1, Some(is_open));
+        let (started, started_col) = it.started.map_or(("-".to_string(), t.text_faint), |s| (utc_stamp(s), t.text_dim));
+        lp.text(pos2(cx_started + 2.0, row.center().y), Align2::LEFT_CENTER, started, Tokens::ui(11.5), started_col);
+        let rt = render_time_text(it, progress.as_ref(), rendering);
+        lp.text(pos2(cx_time + 2.0, row.center().y), Align2::LEFT_CENTER, rt, Tokens::ui(11.5), t.text_dim);
+
+        if !is_open {
+            continue;
+        }
+        // Expanded: Render Settings / Output Module + Output To.
+        let ix = cx_name;
+        for sub in 0..2 {
+            let r = Rect::from_min_size(pos2(list.min.x, y), vec2(list.width(), ROW_H));
+            y += ROW_H;
+            lp.rect_filled(r, 0.0, t.panel_bg);
+            let templates = &app.session.project.render_templates;
+            let (label, summary, key, menu): (&str, String, &str, Vec<(String, Value)>) = if sub == 0 {
+                ("Render Settings:", it.settings.summary(), "renderSettings", settings_menu(it, templates))
+            } else {
+                ("Output Module:", it.output.summary(), "outputModule", output_menu(it, &available, templates))
+            };
+            lp.text(pos2(cx_num - 6.0, r.center().y), Align2::LEFT_CENTER, label, Tokens::ui(11.5), t.text_dim);
+            let dd = Rect::from_min_size(pos2(ix + 70.0, r.min.y + 3.0), vec2(220.0, ROW_H - 6.0));
+            let did = egui::Id::unique(("rq-dd", it.id, sub));
+            let shown: String = if summary.chars().count() > 31 { summary.chars().take(30).chain(std::iter::once('…')).collect() } else { summary.clone() };
+            let dd_resp = widgets::dropdown(ui, dd, &shown, &t, did);
+            a11y::combo_box(&dd_resp, label.trim_end_matches(':'), &summary, !rendering);
+            if dd_resp.clicked() && !rendering {
+                widgets::open_popup(ui, did);
+            }
+            let labels: Vec<String> = menu.iter().map(|(l, _)| l.clone()).collect();
+            if let Some(i) = widgets::popup_menu(ui, did, dd.left_bottom(), &labels, None) {
+                if widgets::by_keyboard(ui) {
+                    dd_resp.request_focus();
+                }
+                let mut params = menu[i].1.clone();
+                if let Some(f) = params.get("form").and_then(Value::as_str) {
+                    forms.push((it.clone(), f.to_string()));
+                } else {
+                    params["item"] = json!(it.id);
+                    actions.push((if sub == 0 { "renderQueue.setRenderSettings" } else { "renderQueue.setOutputModule" }, params));
+                }
+            }
+            app.auto.add(&aid(key), dd, &summary);
+            if sub == 0 {
+                let comp = app.session.project.comp(it.comp);
+                if let Some(c) = comp {
+                    let (w, h) = it.settings.output_size(c);
+                    let (a, b) = it.settings.span(c);
+                    let info = format!(
+                        "{w}×{h} · {:.3} fps · {:.2}s – {:.2}s · {} frames",
+                        it.settings.rate(c).as_f64(),
+                        a.seconds(),
+                        b.seconds(),
+                        it.settings.frame_count(c)
+                    );
+                    lp.text(pos2(dd.max.x + 14.0, r.center().y), Align2::LEFT_CENTER, info, Tokens::ui(11.0), t.text_faint);
+                }
+                log_dropdown(app, ui, &ItemRow { lp: &lp, list, r, n, rendering }, it, &mut actions);
+                continue;
+            }
+            output_to(app, ui, &ItemRow { lp: &lp, list, r, n, rendering }, it, dd.max.x, &mut editing, &mut actions);
+        }
+    }
+    let content = y + scroll.offset - list.min.y;
+    scroll.end(ui, &mut app.auto, "renderQueue.scroll", content, &t);
+    ui.data_mut(|d| match &editing {
+        Some(e) => {
+            d.insert_temp(editing_id, e.clone());
+        }
+        None => d.remove::<(u64, String)>(editing_id),
+    });
+
+    let on_row = list_keys(app, &ctx, &queue, (&mut open, &mut selected), editing.is_none(), &tops, list.height());
+
+    delete_selected(app, ui, editing.is_none() && !rendering, on_row, &mut selected, &mut actions);
+
+    // ---------------------------------------------------------- footer
+    footer(&p, rect, &rq, &t);
+
+    open.retain(|id| queue.iter().any(|i| i.id == *id));
+    ui.data_mut(|d| d.insert_temp(state_id, (open, selected)));
+    for (it, f) in forms {
+        open_menu_form(app, &it, &f);
+    }
+    for (id, params) in actions {
+        if let Err(e) = crate::menus::invoke(app, &ctx, id, params) {
+            app.ui.status = e;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn stamps() {
+        assert_eq!(super::utc_stamp(0), "1970-01-01 00:00:00");
+        assert_eq!(super::utc_stamp(1_700_000_000), "2023-11-14 22:13:20");
+        // Years far outside chrono's own range are preserved (the old hand-rolled conversion kept
+        // them) rather than collapsing to the epoch.
+        assert_eq!(super::utc_stamp(10_000_000_000_000), "318857-05-20 17:46:40");
+        assert_eq!(super::utc_stamp(u64::MAX), "584554051223-11-09 07:00:15");
+        assert_eq!(super::hms(3725.4), "1:02:05");
+    }
+
+    /// #2593: between progress reports the times count on from the last report, and a new
+    /// report starts the count again.
+    #[test]
+    fn render_times_tick_between_reports() {
+        let ctx = egui::Context::default();
+        let mut pr = effectcraft_engine::render_queue::JobState {
+            current: Some(1),
+            done: 2,
+            total: 10,
+            item_elapsed: 20.0,
+            remaining: Some(80.0),
+            ..Default::default()
+        };
+        assert_eq!(super::live_times(&ctx, &pr, 100.0), (20.0, Some(80.0)));
+        assert_eq!(super::live_times(&ctx, &pr, 103.0), (23.0, Some(77.0)));
+        assert_eq!(super::live_times(&ctx, &pr, 300.0).1, Some(0.0), "never below zero");
+        (pr.done, pr.item_elapsed, pr.remaining) = (3, 31.0, Some(72.0));
+        assert_eq!(super::live_times(&ctx, &pr, 301.0), (31.0, Some(72.0)));
+        pr.finished = true;
+        assert_eq!(super::live_times(&ctx, &pr, 400.0), (31.0, Some(72.0)), "a finished job stands still");
+    }
+}
