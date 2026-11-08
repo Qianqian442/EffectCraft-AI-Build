@@ -80,6 +80,20 @@ jobs:
           ref: master
           path: native-deps/realesrgan
 
+      - name: Restore Rust and Gradle build caches
+        id: build_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            artcraft/build/effectcraft/target
+            ~/.gradle/caches
+            ~/.gradle/wrapper/dists
+          key: effectcraft-build-cache-v1-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}
+          restore-keys: |
+            effectcraft-build-cache-v1-${{ runner.os }}-
+
       - name: Bundle the offline DeepSeek IQ4_XS model into APK assets
         shell: bash
         run: |
@@ -741,6 +755,18 @@ jobs:
           draft: false
           prerelease: true
 
+
+      - name: Save Rust and Gradle build caches
+        if: always() && steps.build_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            artcraft/build/effectcraft/target
+            ~/.gradle/caches
+            ~/.gradle/wrapper/dists
+          key: effectcraft-build-cache-v1-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}
 
       - name: Upload build log if build fails
         if: failure()
