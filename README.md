@@ -35,4 +35,4 @@ The APK workflow downloads these pinned/identified model assets, verifies their 
 
 ## Android build
 
-The Android workflow targets EffectCraft 0.21.1 and applies the patches in `.github/scripts/` before compiling the arm64 APK. A successful Actions run uploads the APK as an artifact. A queued or running workflow is not a completed APK build.
+The Android workflow targets EffectCraft 0.21.1 and applies the patches in `.github/scripts/` before compiling the arm64 APK. A successful Actions run publishes one standalone `.apk` file in the GitHub Release. Do not install files downloaded from the Actions **Artifacts** area: GitHub wraps those downloads in ZIP archives. A queued or running workflow is not a completed APK build.
