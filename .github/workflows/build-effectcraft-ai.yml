@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   # Only the newest source revision should consume a runner for this APK.
@@ -434,6 +434,19 @@ jobs:
           echo "Verified APK contains DeepSeek, RIFE 4.6, Real-ESRGAN x4 and Android native worker."
           echo "Verified APK: $APK ($SIZE bytes)"
           sha256sum "$APK"
+
+      - name: Publish standalone APK release
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: effectcraft-ai-${{ github.run_number }}
+          name: EffectCraft 0.21.1 AI Android APK (Build ${{ github.run_number }})
+          body: |
+            Standalone Android APK built by GitHub Actions.
+            Install the attached .apk file directly; no ZIP extraction is required.
+          files: artcraft/output/*.apk
+          draft: false
+          prerelease: true
 
       - name: Upload APK artifact
         if: success()
