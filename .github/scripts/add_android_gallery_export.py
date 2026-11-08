@@ -248,15 +248,34 @@ fn saf_video_gallery_stage_path(default: &str) -> Result<Option<String>, String>
 }
 '''
     if "fn saf_video_gallery_stage_path(" not in source:
+        # Locate the EffectCraft entry inside SAF_RECIPES, not the unrelated SPECIAL map
+        # near the top of build-common.sh. Restrict the insertion to that entry's state
+        # literal so the same comment in LightCraft is not counted as a second match.
+        recipes_marker = "SAF_RECIPES = {"
+        if recipes_marker not in source:
+            raise SystemExit("Could not find SAF_RECIPES")
+        recipes_start = source.index(recipes_marker)
         effectcraft_marker = '    "effectcraft": {'
-        if effectcraft_marker not in source:
+        effectcraft_start = source.find(effectcraft_marker, recipes_start)
+        if effectcraft_start < 0:
             raise SystemExit("Could not find the EffectCraft SAF recipe")
-        prefix, effectcraft_recipe = source.split(effectcraft_marker, 1)
-        effectcraft_recipe = replace_once(
-            effectcraft_recipe, recipe_anchor, stage_fn + "\n" + recipe_anchor,
+        state_marker = '"state": SYNC_SAF_STATE + '
+        state_start = source.find(state_marker, effectcraft_start)
+        if state_start < 0:
+            raise SystemExit("Could not find the EffectCraft SAF state block")
+        state_open = source.find("'''", state_start)
+        if state_open < 0:
+            raise SystemExit("Could not find the EffectCraft SAF state string")
+        state_body_start = state_open + 3
+        state_body_end = source.find("'''", state_body_start)
+        if state_body_end < 0:
+            raise SystemExit("Could not find the end of the EffectCraft SAF state string")
+        state_body = source[state_body_start:state_body_end]
+        state_body = replace_once(
+            state_body, recipe_anchor, stage_fn + "\\n" + recipe_anchor,
             "Video gallery staging helper",
         )
-        source = prefix + effectcraft_marker + effectcraft_recipe
+        source = source[:state_body_start] + state_body + source[state_body_end:]
 
     old_save = '            FileDialog::Save { default, .. } => saf_save_path(&bridge, &state, &default).into_iter().collect(),'
     new_save = r'''            FileDialog::Save { default, .. } => {
