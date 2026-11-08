@@ -181,8 +181,9 @@ fn effectcraft_export_device_preflight(
         if (ai_interpolation || ai_upscale) && (width > 2048 || height > 2048) {
             return fail("当前本地 RIFE / Real-ESRGAN 模型单边输入上限为 2048 像素，请降低分辨率或关闭 AI 处理");
         }
-        if !effectcraft_export_memory_ok(width, height, fps, ai_interpolation, ai_upscale)
-            || !effectcraft_export_memory_capacity_ok(width, height, fps, ai_interpolation, ai_upscale) {
+        // This check covers both total RAM and currently available RAM. Keep the
+        // preflight tolerant when Android does not expose readable /proc/meminfo.
+        if !effectcraft_export_memory_capacity_ok(width, height, fps, ai_interpolation, ai_upscale) {
             return fail("系统总内存或当前可用内存不足以安全处理所选分辨率、帧率和 AI 负载");
         }
 
