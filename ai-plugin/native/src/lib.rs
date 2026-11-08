@@ -79,28 +79,47 @@ fn generate(path: &str, question: &str) -> Result<String, String> {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_artcraft_effectcraft_aiassistant_MainActivity_nativeGenerate(
-    mut env: JNIEnv, _class: JClass, model_path: JString, question: JString,
+pub extern "system" fn Java_com_artcraft_effectcraft_aiassistant_MainActivity_nativeGenerate<'local>(
+    mut unowned_env: jni::EnvUnowned<'local>,
+    _class: JClass<'local>,
+    model_path: JString<'local>,
+    question: JString<'local>,
 ) -> jstring {
-    let path: String = match env.get_string(&model_path) {
-        Ok(value) => value.into(),
-        Err(error) => return env.new_string(format!("ERROR: 读取模型路径失败：{error}"))
-            .map_or(std::ptr::null_mut(), |s| s.into_raw()),
-    };
-    let prompt: String = match env.get_string(&question) {
-        Ok(value) => value.into(),
-        Err(error) => return env.new_string(format!("ERROR: 读取问题失败：{error}"))
-            .map_or(std::ptr::null_mut(), |s| s.into_raw()),
-    };
-    let result = std::panic::catch_unwind(|| generate(&path, &prompt))
-        .unwrap_or_else(|_| Err("本地推理发生异常，请关闭助手后重试。".into()));
-    let output = result.unwrap_or_else(|error| format!("ERROR: {error}"));
-    env.new_string(output).map_or(std::ptr::null_mut(), |s| s.into_raw())
+    use jni::errors::ThrowRuntimeExAndDefault;
+    unowned_env.with_env(|env| -> jni::errors::Result<jstring> {
+        let path: String = env.get_string(&model_path)?.into();
+        let prompt: String = env.get_string(&question)?.into();
+        let result = std::panic::catch_unwind(|| generate(&path, &prompt))
+            .unwrap_or_else(|_| Err("本地推理发生异常，请关闭助手后重试。".into()));
+        let output = result.unwrap_or_else(|error| format!("ERROR: {error}"));
+        Ok(env.new_string(output)?.into_raw())
+    }).resolve::<ThrowRuntimeExAndDefault>()
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_artcraft_effectcraft_aiassistant_InferenceService_nativeGenerate<'local>(
+    mut unowned_env: jni::EnvUnowned<'local>,
+    _class: JClass<'local>,
+    model_path: JString<'local>,
+    question: JString<'local>,
+) -> jstring {
+    use jni::errors::ThrowRuntimeExAndDefault;
+    unowned_env.with_env(|env| -> jni::errors::Result<jstring> {
+        let path: String = env.get_string(&model_path)?.into();
+        let prompt: String = env.get_string(&question)?.into();
+        let result = std::panic::catch_unwind(|| generate(&path, &prompt))
+            .unwrap_or_else(|_| Err("本地推理发生异常，请关闭助手后重试。".into()));
+        let output = result.unwrap_or_else(|error| format!("ERROR: {error}"));
+        Ok(env.new_string(output)?.into_raw())
+    }).resolve::<ThrowRuntimeExAndDefault>()
 }
 
 #[no_mangle]
 pub extern "system" fn Java_com_artcraft_effectcraft_aiassistant_MainActivity_nativeRelease(
-    _env: JNIEnv, _class: JClass,
+    _env: jni::EnvUnowned<'_>,
+    _class: JClass<'_>,
 ) {
-    if let Ok(mut guard) = model_store().lock() { *guard = None; }
+    if let Ok(mut guard) = model_store().lock() {
+        *guard = None;
+    }
 }

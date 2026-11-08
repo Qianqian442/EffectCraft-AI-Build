@@ -19,7 +19,7 @@ android {
             if (keyPath != null) {
                 storeFile file(keyPath)
                 storePassword System.getenv("AI_PLUGIN_STORE_PASSWORD")
-                keyAlias "effectcraft-ai-plugin"
+                keyAlias "artcraftbuilder"
                 keyPassword System.getenv("AI_PLUGIN_KEY_PASSWORD")
             }
         }
