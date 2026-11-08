@@ -30,7 +30,7 @@ concurrency:
 jobs:
   build:
     name: Build EffectCraft 0.21.1 with AI helper
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     env:
       ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
