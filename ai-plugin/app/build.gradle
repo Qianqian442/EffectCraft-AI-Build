@@ -1,0 +1,41 @@
+plugins { id "com.android.application" }
+
+android {
+    namespace "com.artcraft.effectcraft.aiassistant"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "com.artcraft.effectcraft.aiassistant"
+        minSdk 28
+        targetSdk 32
+        versionCode 1
+        versionName "0.1.0"
+        ndk { abiFilters "arm64-v8a" }
+    }
+
+    signingConfigs {
+        release {
+            def keyPath = System.getenv("AI_PLUGIN_KEYSTORE")
+            if (keyPath != null) {
+                storeFile file(keyPath)
+                storePassword System.getenv("AI_PLUGIN_STORE_PASSWORD")
+                keyAlias "effectcraft-ai-plugin"
+                keyPassword System.getenv("AI_PLUGIN_KEY_PASSWORD")
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    packaging { jniLibs { useLegacyPackaging = false } }
+}

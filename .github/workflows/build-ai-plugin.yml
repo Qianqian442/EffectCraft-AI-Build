@@ -1,0 +1,156 @@
+name: Build EffectCraft AI Plugin APK
+
+on:
+  push:
+    branches: [ai-plugin-prototype]
+    paths:
+      - "ai-plugin/**"
+      - ".github/workflows/build-ai-plugin.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-ai-plugin-prototype
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build standalone AI companion APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      CARGO_BUILD_JOBS: "2"
+      CMAKE_BUILD_PARALLEL_LEVEL: "2"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install Android build components
+        run: |
+          set -euo pipefail
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Cache Cargo dependencies and stable plugin signing key
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ai-plugin/native/target
+            ai-plugin/keys
+          key: effectcraft-ai-plugin-prototype-v1-ubuntu
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Build ARM64 native inference library
+        run: |
+          set -euo pipefail
+          cargo ndk -t arm64-v8a -P 28 -o ai-plugin/app/src/main/jniLibs build --manifest-path ai-plugin/native/Cargo.toml --release
+          test -s ai-plugin/app/src/main/jniLibs/arm64-v8a/libeffectcraft_ai.so
+          file ai-plugin/app/src/main/jniLibs/arm64-v8a/libeffectcraft_ai.so
+
+      - name: Prepare persistent plugin signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ai-plugin/keys
+          KEY="ai-plugin/keys/effectcraft-ai-plugin.jks"
+          PASS="ai-plugin/keys/.password"
+          if [[ ! -s "$KEY" ]]; then
+            python3 -c 'import secrets; print(secrets.token_hex(32))' > "$PASS"
+            PASSWORD="$(<"$PASS")"
+            keytool -genkeypair -noprompt -v -keystore "$KEY" -storetype JKS \
+              -storepass "$PASSWORD" -keypass "$PASSWORD" -alias effectcraft-ai-plugin \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=EffectCraft AI Plugin, OU=EffectCraft, O=EffectCraft, C=US"
+          fi
+          test -s "$KEY" && test -s "$PASS"
+          chmod 600 "$KEY" "$PASS"
+          PASSWORD="$(<"$PASS")"
+          keytool -list -keystore "$KEY" -storepass "$PASSWORD" -alias effectcraft-ai-plugin >/dev/null
+          echo "AI_PLUGIN_KEYSTORE=$GITHUB_WORKSPACE/$KEY" >> "$GITHUB_ENV"
+          echo "AI_PLUGIN_STORE_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+          echo "AI_PLUGIN_KEY_PASSWORD=$PASSWORD" >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build signed plugin APK
+        run: gradle --no-daemon --stacktrace -p ai-plugin assembleRelease
+
+      - name: Verify plugin APK
+        run: |
+          set -euo pipefail
+          APK="ai-plugin/app/build/outputs/apk/release/app-release.apk"
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose "$APK"
+          unzip -tq "$APK"
+          unzip -l "$APK" | grep -F "lib/arm64-v8a/libeffectcraft_ai.so"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "$APK" | grep -F "package: name='com.artcraft.effectcraft.aiassistant'"
+          sha256sum "$APK"
+          stat -c 'AI plugin APK size: %s bytes' "$APK"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-AI-Plugin-APK
+          path: ai-plugin/app/build/outputs/apk/release/app-release.apk
+          compression-level: 0
+          retention-days: 7
+
+  install_test:
+    name: Install and launch AI plugin on Android 12 ARM64
+    needs: build
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-AI-Plugin-APK
+          path: release
+
+      - name: Install and launch through Android Package Manager
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          target: google_atd
+          arch: arm64-v8a
+          profile: pixel_6
+          cores: 4
+          ram-size: 4096M
+          disk-size: 12G
+          emulator-boot-timeout: 1800
+          emulator-options: -accel off -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK="release/app-release.apk"
+            test -s "$APK"
+            adb install --abi arm64-v8a -r "$APK"
+            PACKAGE_PATH="$(adb shell pm path com.artcraft.effectcraft.aiassistant | tr -d '\r')"
+            test -n "$PACKAGE_PATH"
+            echo "$PACKAGE_PATH"
+            adb shell am start -n com.artcraft.effectcraft.aiassistant/.MainActivity
+            sleep 8
+            PID="$(adb shell pidof com.artcraft.effectcraft.aiassistant | tr -d '\r')"
+            test -n "$PID"
+            echo "AI companion app started, PID=$PID"
+            if adb logcat -d -t 2000 | grep -E "FATAL EXCEPTION|UnsatisfiedLinkError"; then
+              exit 1
+            fi
