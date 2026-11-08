@@ -1,0 +1,94 @@
+name: Verify published EffectCraft APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-effectcraft-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Download and verify the existing Build 17 APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EXPECTED_SHA256: 6a321b379a3a11b60cd91a7cc3829e32dfd36c751f55b6fc5b51f50cb2364db1
+      EXPECTED_SIZE: '1093263904'
+    steps:
+      - name: Download the already-published APK (no rebuild)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/effectcraft-apk-check"
+          gh release download effectcraft-ai-17 \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern 'effectcraft-0.21.1.apk' \
+            --dir "$RUNNER_TEMP/effectcraft-apk-check"
+          APK="$RUNNER_TEMP/effectcraft-apk-check/effectcraft-0.21.1.apk"
+          test -s "$APK"
+          echo "APK_PATH=$APK" >> "$GITHUB_ENV"
+          stat -c 'Downloaded APK size: %s bytes' "$APK"
+          file "$APK"
+
+      - name: Verify exact release bytes and SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          ACTUAL_SIZE="$(stat -c%s "$APK_PATH")"
+          test "$ACTUAL_SIZE" = "$EXPECTED_SIZE"
+          ACTUAL_SHA="$(sha256sum "$APK_PATH" | awk '{print $1}')"
+          echo "Expected SHA-256: $EXPECTED_SHA256"
+          echo "Actual SHA-256:   $ACTUAL_SHA"
+          test "$ACTUAL_SHA" = "$EXPECTED_SHA256"
+          echo "The downloaded file exactly matches the APK published by Build 17."
+
+      - name: Verify ZIP structure, CRCs and bundled application payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -tq "$APK_PATH"
+          ENTRIES="$RUNNER_TEMP/effectcraft-apk-check/apk-entries.txt"
+          unzip -Z1 "$APK_PATH" > "$ENTRIES"
+          grep -Fxq 'AndroidManifest.xml' "$ENTRIES"
+          grep -Fxq 'resources.arsc' "$ENTRIES"
+          grep -Eq '^classes[0-9]*[.]dex$' "$ENTRIES"
+          grep -Fxq 'lib/arm64-v8a/libeffectcraft-ai-video-worker.so' "$ENTRIES"
+          grep -Fxq 'assets/models/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf' "$ENTRIES"
+          grep -Fxq 'assets/models/rife-v4.6/flownet.bin' "$ENTRIES"
+          grep -Fxq 'assets/models/realesrgan-x4plus.bin' "$ENTRIES"
+          echo "ZIP CRC, Android package entries, ARM64 worker and all three local AI model assets passed."
+
+      - name: Verify APK signature, manifest and 4-byte alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          BUILD_TOOLS="$SDK_ROOT/build-tools/35.0.0"
+          if [[ ! -x "$BUILD_TOOLS/apksigner" || ! -x "$BUILD_TOOLS/aapt" || ! -x "$BUILD_TOOLS/zipalign" ]]; then
+            SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager 2>/dev/null | sort -V | tail -n1)"
+            test -n "$SDKMANAGER"
+            yes | "$SDKMANAGER" --licenses >/dev/null
+            "$SDKMANAGER" "build-tools;35.0.0"
+          fi
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK_PATH" \
+            | tee "$RUNNER_TEMP/effectcraft-apk-check/apksigner.txt"
+          "$BUILD_TOOLS/zipalign" -c -v 4 "$APK_PATH"
+          BADGING="$("$BUILD_TOOLS/aapt" dump badging "$APK_PATH")"
+          printf '%s\n' "$BADGING" | tee "$RUNNER_TEMP/effectcraft-apk-check/badging.txt"
+          printf '%s\n' "$BADGING" | grep -Fq "package: name='com.artcraft.effectcraft'"
+          printf '%s\n' "$BADGING" | grep -Fq "sdkVersion:'28'"
+          printf '%s\n' "$BADGING" | grep -Fq "native-code: 'arm64-v8a'"
+          echo "APK signature, Android package identity, minimum SDK, ARM64 ABI and alignment passed."
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Build17-APK-verification-report
+          path: ${{ runner.temp }}/effectcraft-apk-check/
+          if-no-files-found: ignore
