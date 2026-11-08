@@ -474,7 +474,7 @@ fn effectcraft_android_export_preflight(width: u32, height: u32, fps: f64) -> Op
             .saturating_add(fps_reserve);
         if memory.total < min_total || memory.available < required_available {
             return Some(format!(
-                "参数过高，手机性能不足，无法导出，请降低参数再试。\\n设备总内存：{} MB；当前可用内存：{} MB；建议至少预留 {} MB。请降低分辨率或帧率后再试。",
+                "参数过高，手机性能不足，无法导出，请降低参数再试。\n设备总内存：{} MB；当前可用内存：{} MB；建议至少预留 {} MB。请降低分辨率或帧率后再试。",
                 memory.total / MIB,
                 memory.available / MIB,
                 required_available / MIB
@@ -490,7 +490,7 @@ fn effectcraft_android_export_preflight(width: u32, height: u32, fps: f64) -> Op
 }
 '''
 if "fn effectcraft_android_export_preflight(" not in header:
-    header = header.rstrip() + "\\n\\n" + preflight_function.strip() + "\\n"
+    header = header.rstrip() + "\n\n" + preflight_function.strip() + "\n"
 
 # Show the actual render-queue progress in a centered, draggable popup.
 if "fn export_progress_dialog(app: &mut EffectcraftApp" not in header:
