@@ -1,0 +1,454 @@
+name: Build EffectCraft AI Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-effectcraft-ai.yml'
+      - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/ai_assistant_local.rs'
+      - 'assets/ae-avatar.png'
+      - '.github/native/**'
+      - '.github/scripts/integrate_video_ai.py'
+      - '.github/scripts/restore_android_plugins.py'
+      - '.github/scripts/add_plugin_import_button.py'
+      - '.github/scripts/ai_video_export.rs'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Only the newest source revision should consume a runner for this APK.
+  group: effectcraft-ai-android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build EffectCraft 0.21.1 with AI helper
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      ARTCRAFT_BUILD_TOOLS_VERSION: '35.0.0'
+      CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
+      CARGO_PROFILE_RELEASE_LTO: 'false'
+      CARGO_BUILD_JOBS: '2'
+      CARGO_PROFILE_RELEASE_DEBUG: 'false'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_DIR: /home/runner/.cache/sccache
+      SCCACHE_CACHE_SIZE: 512M
+
+    steps:
+      - name: Check out ArtCraft Android builder v0.5.0
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: v0.5.0
+          path: artcraft
+
+      - name: Check out EffectCraft v0.21.1 source
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/effectcraft
+          ref: v0.21.1
+          path: artcraft/source/effectcraft
+
+      - name: Check out project branding assets
+        uses: actions/checkout@v4
+        with:
+          path: build-assets
+
+      - name: Check out RIFE 4.6 ncnn source and model
+        uses: actions/checkout@v4
+        with:
+          repository: nihui/rife-ncnn-vulkan
+          ref: master
+          path: native-deps/rife
+          submodules: recursive
+
+      - name: Check out Real-ESRGAN ncnn source
+        uses: actions/checkout@v4
+        with:
+          repository: xinntao/Real-ESRGAN-ncnn-vulkan
+          ref: master
+          path: native-deps/realesrgan
+
+      - name: Bundle the offline DeepSeek IQ4_XS model into APK assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL_DIR="$GITHUB_WORKSPACE/artcraft/source/effectcraft/assets/models"
+          MODEL_PATH="$MODEL_DIR/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf"
+          mkdir -p "$MODEL_DIR"
+          echo "Downloading the 1.02 GB IQ4_XS local GGUF model (it will be packaged inside the APK)..."
+          curl -fL --retry 5 --retry-all-errors --retry-delay 3 --continue-at - \
+            "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf?download=true"  \
+            -o "$MODEL_PATH"
+          MODEL_BYTES="$(stat -c%s "$MODEL_PATH")"
+          if (( MODEL_BYTES < 950000000 || MODEL_BYTES > 1100000000 )); then
+            echo "Unexpected GGUF size: $MODEL_BYTES bytes" >&2
+            exit 1
+          fi
+          printf 'DeepSeek-R1-Distill-Qwen-1.5B IQ4_XS (space-saving quantization)\nSource: https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF\nBundled in APK assets; copied to app-private storage on first launch.\n' > "$MODEL_DIR/README.txt"
+          echo "Verified local GGUF asset: $MODEL_BYTES bytes"
+
+
+      - name: Bundle the Real-ESRGAN x4 local model
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL_DIR="$GITHUB_WORKSPACE/artcraft/source/effectcraft/assets/models"
+          mkdir -p "$MODEL_DIR"
+          curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+            "https://huggingface.co/edgetools/realesrgan/resolve/main/realesrgan-x4plus.param?download=true" \
+            -o "$MODEL_DIR/realesrgan-x4plus.param"
+          curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+            "https://huggingface.co/edgetools/realesrgan/resolve/main/realesrgan-x4plus.bin?download=true" \
+            -o "$MODEL_DIR/realesrgan-x4plus.bin"
+          PARAM_BYTES="$(stat -c%s "$MODEL_DIR/realesrgan-x4plus.param")"
+          MODEL_BYTES="$(stat -c%s "$MODEL_DIR/realesrgan-x4plus.bin")"
+          if (( PARAM_BYTES < 100000 || MODEL_BYTES < 30000000 || MODEL_BYTES > 40000000 )); then
+            echo "Unexpected Real-ESRGAN x4 model sizes: param=$PARAM_BYTES bin=$MODEL_BYTES" >&2
+            exit 1
+          fi
+          mkdir -p "$MODEL_DIR/rife-v4.6"
+          cp native-deps/rife/models/rife-v4.6/flownet.param "$MODEL_DIR/rife-v4.6/"
+          cp native-deps/rife/models/rife-v4.6/flownet.bin "$MODEL_DIR/rife-v4.6/"
+          test "$(stat -c%s "$MODEL_DIR/rife-v4.6/flownet.bin")" -gt 10000000
+          echo "Bundled RIFE 4.6 and Real-ESRGAN x4 models into APK assets."
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Apply the AI assistant and export changes
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 - <<'PY'
+          import base64, zlib
+          from pathlib import Path
+          payload = "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"
+          Path('/tmp/patch_effectcraft_ai.py').write_bytes(zlib.decompress(base64.b64decode(payload)))
+          PY
+          mkdir -p "$EFFECTCRAFT_DIR/assets"
+          cp "$GITHUB_WORKSPACE/build-assets/assets/ae-avatar.png" "$EFFECTCRAFT_DIR/assets/ae-avatar.png"
+          python3 /tmp/patch_effectcraft_ai.py
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path(os.environ["EFFECTCRAFT_DIR"]) / "crates/ui-egui/src/ai_assistant.rs"
+          s = p.read_text()
+          old = 'const DEFAULT_CHAT_MODEL: &str = "Qwen/Qwen3-8B";'
+          new = 'const DEFAULT_CHAT_MODEL: &str = "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B";'
+          if old not in s:
+              raise SystemExit("Expected default chat model declaration was not found")
+          p.write_text(s.replace(old, new, 1))
+          print("Configured DeepSeek 8B chat and DeepSeek-OCR image recognition.")
+          PY
+
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path(os.environ["EFFECTCRAFT_DIR"]) / "crates/ui-egui/src/ai_assistant.rs"
+          s = p.read_text()
+          old = "if let Some(name) = &state.image_name {"
+          new = "if let Some(name) = state.image_name.clone() {"
+          count = s.count(old)
+          if count != 1:
+              raise SystemExit(f"Expected exactly one image-name borrow site, found {count}")
+          p.write_text(s.replace(old, new, 1))
+          print("Fixed AI image attachment borrow conflict.")
+          PY
+
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path(os.environ["EFFECTCRAFT_DIR"]) / "crates/ui-egui/src/ai_assistant.rs"
+          s = p.read_text()
+          avatar_const = "const MAX_IMAGE_BYTES: u64 = 7 * 1024 * 1024;"
+          if "const AVATAR_PNG:" not in s:
+              if avatar_const not in s:
+                  raise SystemExit("Could not find the AI assistant constants")
+              s = s.replace(
+                  avatar_const,
+                  avatar_const + '\nconst AVATAR_PNG: &[u8] = include_bytes!(\"../../../assets/ae-avatar.png\");',
+                  1,
+              )
+
+          state_field = "    notice: String,\n}"
+          if "avatar_texture: Option<egui::TextureHandle>" not in s:
+              if state_field not in s:
+                  raise SystemExit("Could not find the AI assistant State fields")
+              s = s.replace(
+                  state_field,
+                  "    notice: String,\n    avatar_texture: Option<egui::TextureHandle>,\n}",
+                  1,
+              )
+          state_default = "            notice: String::new(),\n        }"
+          if "avatar_texture: None" not in s:
+              if state_default not in s:
+                  raise SystemExit("Could not find the AI assistant default state")
+              s = s.replace(
+                  state_default,
+                  "            notice: String::new(),\n            avatar_texture: None,\n        }",
+                  1,
+              )
+
+          old_show = "\n".join([
+              "    let ctx = root.ctx().clone();",
+              "    let state = &mut app.ai_assistant;",
+              "    poll_result(state, &ctx);",
+          ]) + "\n"
+          new_show = "\n".join([
+              "    let ctx = root.ctx().clone();",
+              "    let state = &mut app.ai_assistant;",
+              "    let avatar = state.avatar_texture.get_or_insert_with(|| {",
+              "        let decoded = image::load_from_memory(AVATAR_PNG)",
+              "            .expect(\"embedded Ae avatar PNG must decode\")",
+              "            .to_rgba8();",
+              "        let size = [decoded.width() as usize, decoded.height() as usize];",
+              "        ctx.load_texture(",
+              "            \"effectcraft-ai-avatar\",",
+              "            egui::ColorImage::from_rgba_unmultiplied(size, decoded.as_raw()),",
+              "            egui::TextureOptions::LINEAR,",
+              "        )",
+              "    }).clone();",
+              "    poll_result(state, &ctx);",
+          ]) + "\n"
+          if old_show not in s:
+              raise SystemExit("Could not find AI assistant show() initialization block")
+          s = s.replace(old_show, new_show, 1)
+
+          old_button = "\n".join([
+              "            let button = egui::Button::new(egui::RichText::new(\"AI\").strong().color(Color32::WHITE))",
+              "                .fill(Color32::from_rgb(50, 105, 210))",
+              "                .stroke(egui::Stroke::new(1.0, Color32::from_rgb(125, 175, 255)))",
+              "                .corner_radius(24.0);",
+              "            if ui.add_sized(vec2(48.0, 48.0), button).clicked() {",
+              "                state.open = !state.open;",
+              "            }",
+          ]) + "\n"
+          new_button = "\n".join([
+              "            let avatar_button = egui::Image::new(&avatar)",
+              "                .fit_to_exact_size(vec2(48.0, 48.0))",
+              "                .corner_radius(24)",
+              "                .sense(Sense::click());",
+              "            if ui.add(avatar_button).clicked() {",
+              "                state.open = !state.open;",
+              "            }",
+          ]) + "\n"
+          if old_button not in s:
+              raise SystemExit("Could not find floating AI bubble button block")
+          s = s.replace(old_button, new_button, 1)
+
+          p.write_text(s)
+          print("Embedded the supplied Ae avatar in the draggable AI bubble.")
+          PY
+
+      - name: Preserve project import and configure centered export dialog
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/patch_export_dialog.py
+
+      - name: Integrate RIFE and Real-ESRGAN into actual export frames
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          RIFE_SOURCE_DIR: ${{ github.workspace }}/native-deps/rife
+          ESRGAN_SOURCE_DIR: ${{ github.workspace }}/native-deps/realesrgan
+        run: python3 build-assets/.github/scripts/integrate_video_ai.py
+
+
+
+      - name: Restore original EffectCraft WASM plug-in auto-loading on Android
+        env:
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/restore_android_plugins.py
+
+
+
+      - name: Add a top-left WASM plug-in import button
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/add_plugin_import_button.py
+
+      - name: Save generated AI assistant source for offline integration
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-AI-assistant-source
+          path: |
+            artcraft/source/effectcraft/crates/ui-egui/src/ai_assistant.rs
+            artcraft/source/effectcraft/crates/ui-egui/src/lib.rs
+            artcraft/source/effectcraft/crates/ui-egui/Cargo.toml
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Install Python image dependency
+        run: python -m pip install --upgrade pillow
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Rust for Android
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Configure preinstalled Android SDK
+        shell: bash
+        run: |
+          # sdkmanager closes stdin once all licenses are accepted; yes receives an expected
+          # broken pipe. Disable pipefail for this one pipeline only, then restore it.
+          set +o pipefail
+          SDK_ROOT="/usr/local/lib/android/sdk"
+          SDKMANAGER_DIR="$(dirname "$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)")"
+          test -x "$SDKMANAGER_DIR/sdkmanager"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDKMANAGER_DIR" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER_DIR/sdkmanager" --licenses >/dev/null
+          set -o pipefail
+
+      - name: Install Android build components
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Set up sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
+        with:
+          version: v0.9.0
+
+      - name: Install cargo-ndk
+        run: |
+          mkdir -p "$HOME/.cargo/bin"
+          curl -fsSL https://github.com/bbqsrc/cargo-ndk/releases/download/v4.1.2/cargo-ndk-x86_64-unknown-linux-musl-v4.1.2.tgz | tar -xz --strip-components=1 -C "$HOME/.cargo/bin"
+          chmod +x "$HOME/.cargo/bin/cargo-ndk"*
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          cargo ndk -V
+
+      - name: Install GLSL compiler for Real-ESRGAN Vulkan shaders
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y glslang-tools
+
+      - name: Build local RIFE and Real-ESRGAN worker for Android arm64
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_NDK_HOME"
+          SYSROOT="$NDK/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          VULKAN_LIB="$SYSROOT/usr/lib/aarch64-linux-android/28/libvulkan.so"
+          VULKAN_HEADERS="$SYSROOT/usr/include"
+          test -f "$VULKAN_LIB"
+          test -f "$VULKAN_HEADERS/vulkan/vulkan.h"
+          cmake -S artcraft/source/effectcraft/native/effectcraft-ai-video \
+            -B native-video-build \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-28 \
+            -DANDROID_STL=c++_static \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DVulkan_INCLUDE_DIR="$VULKAN_HEADERS" \
+            -DVulkan_LIBRARY="$VULKAN_LIB" \
+            -DRIFE_SOURCE_DIR="$GITHUB_WORKSPACE/native-deps/rife" \
+            -DESRGAN_SOURCE_DIR="$GITHUB_WORKSPACE/native-deps/realesrgan"
+          cmake --build native-video-build --target effectcraft-ai-video-worker --parallel 2
+          WORKER="native-video-build/bin/effectcraft-ai-video-worker"
+          test -s "$WORKER"
+          mkdir -p artcraft/source/effectcraft/native
+          install -m 0755 "$WORKER" artcraft/source/effectcraft/native/effectcraft-ai-video-worker
+          STRIP="$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip"
+          test -x "$STRIP"
+          "$STRIP" --strip-unneeded artcraft/source/effectcraft/native/effectcraft-ai-video-worker
+          file artcraft/source/effectcraft/native/effectcraft-ai-video-worker
+
+      - name: Free temporary build disk space before APK packaging
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Disk usage before cleanup:"
+          df -h "$GITHUB_WORKSPACE"
+          # These sources and CMake intermediates are no longer needed after the native worker is built.
+          rm -rf "$GITHUB_WORKSPACE/native-deps" "$GITHUB_WORKSPACE/native-video-build"
+          rm -rf "$GITHUB_WORKSPACE/build-assets"
+          # Drop compiler cache now that compilation is complete; it is reproducible and can consume gigabytes.
+          sccache --stop-server >/dev/null 2>&1 || true
+          rm -rf "$SCCACHE_DIR"/*
+          sudo apt-get clean
+          sudo rm -rf /var/lib/apt/lists/*
+          # Android emulator images are not used by this arm64 APK build.
+          sudo rm -rf "$ANDROID_HOME/system-images" "$ANDROID_HOME/emulator"
+          echo "Disk usage after cleanup:"
+          df -h "$GITHUB_WORKSPACE"
+
+      - name: Build EffectCraft APK
+        working-directory: artcraft
+        env:
+          BUILD_MODE: release
+          BUILD_SOURCE: v0.21.1
+        run: |
+          mkdir -p logs output
+          rm -f output/*.apk output/*.tmp
+          set -o pipefail
+          bash build.sh -effectcraft -appicon="$PWD/source/effectcraft/assets/ae-avatar.png" --noupdate 2>&1 | tee logs/effectcraft-build.log
+
+      - name: Verify APK integrity
+        if: success()
+        working-directory: artcraft
+        run: |
+          set -e
+          # Confirm the builder generated the Android startup auto-loader into the APK's Rust launcher.
+          LAUNCHER_SRC="source/effectcraft/apps/effectcraft-android/src/lib.rs"
+          test -s "$LAUNCHER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_WASM_PLUGIN_AUTOLOAD_V1" "$LAUNCHER_SRC"
+          echo "Verified Android startup scanning for the original WASM plug-in folder."
+          HEADER_SRC="source/effectcraft/crates/ui-egui/src/header.rs"
+          test -s "$HEADER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1" "$HEADER_SRC"
+          echo "Verified the visible top-left WASM plug-in import button is present in the APK source."
+          grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_PROGRESS_POPUP_V1" "$HEADER_SRC"
+          echo "Verified the centered, draggable live export progress popup is present in the APK source."
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          SIZE="$(stat -c%s "$APK")"
+          test "$SIZE" -gt 1000000
+          unzip -tq "$APK"
+          APK_ENTRIES="$(mktemp)"
+          unzip -Z1 "$APK" > "$APK_ENTRIES"
+          grep -Fxq "lib/arm64-v8a/libeffectcraft-ai-video-worker.so" "$APK_ENTRIES"
+          grep -Fxq "assets/models/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf" "$APK_ENTRIES"
+          grep -Fxq "assets/models/rife-v4.6/flownet.bin" "$APK_ENTRIES"
+          grep -Fxq "assets/models/realesrgan-x4plus.bin" "$APK_ENTRIES"
+          rm -f "$APK_ENTRIES"
+          echo "Verified APK contains DeepSeek, RIFE 4.6, Real-ESRGAN x4 and Android native worker."
+          echo "Verified APK: $APK ($SIZE bytes)"
+          sha256sum "$APK"
+
+      - name: Upload APK artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-0.21.1-AI-Android-APK
+          path: artcraft/output/*.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build log if build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Android-build-log
+          path: artcraft/logs/*.log
+          if-no-files-found: ignore
+          retention-days: 30
