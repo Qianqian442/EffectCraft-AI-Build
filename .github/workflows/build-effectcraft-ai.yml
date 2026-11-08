@@ -545,9 +545,10 @@ jobs:
           fi
           cat "$VERIFY_REPORT"
 
+          # V3 is the required scheme for this Android 12 (API 31) target.
+          # Android 9+ verifies V3; V1 is only needed for legacy Android and V2 is not
+          # a prerequisite when a valid V3 signing block is present.
           for SCHEME in \
-            "Verified using v1 scheme (JAR signing): true" \
-            "Verified using v2 scheme (APK Signature Scheme v2): true" \
             "Verified using v3 scheme (APK Signature Scheme v3): true"; do
             grep -Fqx "$SCHEME" "$VERIFY_REPORT" || {
               echo "Required APK signature scheme missing: $SCHEME" >&2
@@ -645,14 +646,14 @@ jobs:
           test -x "$AAPT"
           test -x "$ZIPALIGN"
 
-          echo "Checking APK v1/v2/v3 signatures and signer certificate..."
+          echo "Checking Android 12-compatible APK V3 signature and signer certificate..."
           SIGNATURE_REPORT="$("$APK_SIGNER" verify --verbose --print-certs "$APK")"
           printf '%s\n' "$SIGNATURE_REPORT"
-          # Require all three install-compatible APK signature schemes. v2/v3 cover modern
-          # Android; v1 adds compatibility with OEM installer implementations.
+          # V3 is supported from Android 9 onward and is sufficient for the Android 12 target.
+          # V3 is the required scheme for this Android 12 (API 31) target.
+          # Android 9+ verifies V3; V1 is only needed for legacy Android and V2 is not
+          # a prerequisite when a valid V3 signing block is present.
           for SCHEME in \
-            "Verified using v1 scheme (JAR signing): true" \
-            "Verified using v2 scheme (APK Signature Scheme v2): true" \
             "Verified using v3 scheme (APK Signature Scheme v3): true"; do
             printf '%s\n' "$SIGNATURE_REPORT" | grep -Fq "$SCHEME" || {
               echo "Required APK signature scheme missing: $SCHEME" >&2
@@ -753,8 +754,8 @@ jobs:
           body: |
             Standalone Android APK built by GitHub Actions.
             Install the attached .apk file directly; no ZIP extraction is required.
-            This APK is published only after package integrity, APK signature, certificate identity,
-            Android manifest, ARM64 ABI and ZIP alignment validations all pass.
+            This APK is published after Android 12-compatible V3 signature verification, certificate identity,
+            package integrity, Android manifest, ARM64 ABI and ZIP alignment validations pass.
           files: artcraft/output/*.apk
           draft: false
           prerelease: true
