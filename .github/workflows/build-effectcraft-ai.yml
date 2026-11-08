@@ -87,12 +87,9 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            artcraft/build/effectcraft/target
-            ~/.gradle/caches
-            ~/.gradle/wrapper/dists
-          key: effectcraft-build-cache-v1-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}-${{ github.run_id }}
+          key: effectcraft-deps-cache-v2-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
-            effectcraft-build-cache-v1-${{ runner.os }}-
+            effectcraft-deps-cache-v2-${{ runner.os }}-
 
       - name: Bundle the offline DeepSeek IQ4_XS model into APK assets
         shell: bash
@@ -682,51 +679,6 @@ jobs:
           echo "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:|launchable-activity:)"
           echo "APK signature, manifest, ABI and alignment checks passed."
 
-      - name: Enable KVM for Android 12 installation test
-        if: success()
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-
-      - name: Test APK installation on Android 12 emulator
-        if: success()
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 32
-          target: google_apis
-          arch: x86_64
-          profile: pixel_6
-          cores: 2
-          ram-size: 2048M
-          disk-size: 8G
-          emulator-boot-timeout: 600
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
-          disable-animations: true
-          script: |
-            set -euo pipefail
-            APK="artcraft/output/effectcraft-0.21.1.apk"
-            test -s "$APK"
-            SDK_LEVEL="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
-            test "$SDK_LEVEL" = "32"
-            ABI_LIST="$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
-            echo "Android 12 emulator ABI list: $ABI_LIST"
-            case "$ABI_LIST" in
-              *arm64-v8a*) ;;
-              *)
-                echo "::warning::This Android 12 emulator image has no ARM64 Native Bridge; device install test skipped."
-                exit 0
-                ;;
-            esac
-            echo "Installing the exact release APK through Android Package Manager..."
-            adb install --abi arm64-v8a -r "$APK"
-            PACKAGE_PATH="$(adb shell pm path com.artcraft.effectcraft | tr -d '\r')"
-            test -n "$PACKAGE_PATH"
-            echo "$PACKAGE_PATH"
-            echo "Android 12 Package Manager installation passed for com.artcraft.effectcraft."
-
       - name: Detect built APK for direct download
         id: apk_available
         if: always() && steps.build_apk.outcome == 'success'
@@ -745,29 +697,20 @@ jobs:
             echo "No non-empty APK was produced; skipping download publication."
           fi
 
-      - name: Publish standalone APK release
+      - name: Upload standalone APK for isolated Android install test
         if: success() && steps.apk_available.outputs.available == 'true'
-        uses: softprops/action-gh-release@v2
+        uses: actions/upload-artifact@v4
         with:
-          tag_name: effectcraft-ai-${{ github.run_number }}
-          name: EffectCraft 0.21.1 AI Android APK (Build ${{ github.run_number }})
-          body: |
-            Standalone Android APK built by GitHub Actions.
-            Install the attached .apk file directly; no ZIP extraction is required.
-            This APK is published after Android 12-compatible V3 signature verification, certificate identity,
-            package integrity, Android manifest, ARM64 ABI and ZIP alignment validations pass.
-          files: artcraft/output/*.apk
-          draft: false
-          prerelease: true
-
+          name: EffectCraft-Android-APK
+          path: artcraft/output/effectcraft-0.21.1.apk
+          compression-level: 0
+          retention-days: 2
 
       - name: Ensure Rust and Gradle cache directories exist
         if: always()
         shell: bash
         run: |
           mkdir -p "$HOME/.cargo/registry" "$HOME/.cargo/git"
-          mkdir -p "$GITHUB_WORKSPACE/artcraft/build/effectcraft/target"
-          mkdir -p "$HOME/.gradle/caches" "$HOME/.gradle/wrapper/dists"
 
       - name: Save Rust and Gradle build caches
         if: always() && steps.build_cache.outputs.cache-hit != 'true'
@@ -776,10 +719,7 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            artcraft/build/effectcraft/target
-            ~/.gradle/caches
-            ~/.gradle/wrapper/dists
-          key: effectcraft-build-cache-v1-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}-${{ github.run_id }}
+          key: effectcraft-deps-cache-v2-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}-${{ github.run_id }}
 
       - name: Upload build log if build fails
         if: failure()
@@ -791,3 +731,80 @@ jobs:
             artcraft/output/*.txt
           if-no-files-found: ignore
           retention-days: 30
+
+  test_and_publish:
+    name: Install and launch APK on Android 12 ARM64, then publish
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: write
+    steps:
+      - name: Download the exact APK produced by the build job
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-Android-APK
+          path: release
+
+      - name: Check APK transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/effectcraft-0.21.1.apk"
+          test -s "$APK"
+          stat -c 'APK size: %s bytes' "$APK"
+          sha256sum "$APK"
+          df -h "$GITHUB_WORKSPACE"
+
+      - name: Install and test on Android 12 ARM64 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 32
+          target: google_atd
+          arch: arm64-v8a
+          profile: pixel_6
+          cores: 2
+          ram-size: 2048M
+          disk-size: 8G
+          emulator-boot-timeout: 1200
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          disable-linux-hw-accel: true
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK="release/effectcraft-0.21.1.apk"
+            SDK_LEVEL="$(adb shell getprop ro.build.version.sdk | tr -d '\\r')"
+            test "$SDK_LEVEL" = "32"
+            ABI_LIST="$(adb shell getprop ro.product.cpu.abilist | tr -d '\\r')"
+            echo "Android 12L ARM64 emulator ABI list: $ABI_LIST"
+            case "$ABI_LIST" in
+              *arm64-v8a*) ;;
+              *)
+                echo "::error::The Android 12 emulator does not expose arm64-v8a; refusing to count this as an install test."
+                exit 1
+                ;;
+            esac
+            echo "Installing the exact APK with Android Package Manager..."
+            adb install --abi arm64-v8a -r "$APK"
+            PACKAGE_PATH="$(adb shell pm path com.artcraft.effectcraft | tr -d '\\r')"
+            test -n "$PACKAGE_PATH"
+            echo "$PACKAGE_PATH"
+            echo "Launching EffectCraft..."
+            adb shell monkey -p com.artcraft.effectcraft 1
+            sleep 3
+            adb shell pidof com.artcraft.effectcraft
+            echo "Android 12L ARM64 install and launch passed."
+
+      - name: Publish standalone APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: effectcraft-ai-${{ github.run_number }}
+          name: EffectCraft 0.21.1 AI Android APK (Build ${{ github.run_number }})
+          body: |
+            Standalone Android APK built by GitHub Actions.
+            Install the attached .apk file directly; no ZIP extraction is required.
+            Published after APK signature, certificate, integrity, manifest, ARM64,
+            alignment, Android 12L ARM64 Package Manager installation and launch checks.
+          files: release/effectcraft-0.21.1.apk
+          draft: false
+          prerelease: true
