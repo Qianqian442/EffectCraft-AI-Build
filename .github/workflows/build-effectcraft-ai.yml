@@ -525,6 +525,17 @@ jobs:
           echo "Checking APK v1/v2/v3 signatures and signer certificate..."
           SIGNATURE_REPORT="$("$APK_SIGNER" verify --verbose --print-certs "$APK")"
           printf '%s\\n' "$SIGNATURE_REPORT"
+          # Require all three install-compatible APK signature schemes. v2/v3 cover modern
+          # Android; v1 adds compatibility with OEM installer implementations.
+          for SCHEME in \
+            "Verified using v1 scheme (JAR signing): true" \
+            "Verified using v2 scheme (APK Signature Scheme v2): true" \
+            "Verified using v3 scheme (APK Signature Scheme v3): true"; do
+            printf '%s\\n' "$SIGNATURE_REPORT" | grep -Fq "$SCHEME" || {
+              echo "Required APK signature scheme missing: $SCHEME" >&2
+              exit 1
+            }
+          done
           EXPECTED_CERT="$(keytool -list -v -keystore keys/artcraft-builder.jks \
             -storepass "$(<keys/.keystore-password)" -alias artcraftbuilder \
             | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
