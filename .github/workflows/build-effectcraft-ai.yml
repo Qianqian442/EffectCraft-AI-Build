@@ -544,7 +544,11 @@ jobs:
           test -n "$EXPECTED_CERT"
           test -n "$ACTUAL_CERT"
           test "$ACTUAL_CERT" = "$EXPECTED_CERT"
-          echo "Verified APK was signed by the persistent EffectCraft release key."
+          # Preserve the Build 17 signing identity so this release remains an in-place
+          # compatible update for installations signed by the original release key.
+          EXPECTED_RELEASE_CERT="3709d0d071dbcb63bbc34c70887910f699e07aaaa53bc9c539558d303916068a"
+          test "$ACTUAL_CERT" = "$EXPECTED_RELEASE_CERT"
+          echo "Verified APK uses the same persistent signing certificate as Build 17."
 
           echo "Checking ZIP alignment..."
           "$ZIPALIGN" -c -v 4 "$APK"
