@@ -90,7 +90,7 @@ jobs:
             artcraft/build/effectcraft/target
             ~/.gradle/caches
             ~/.gradle/wrapper/dists
-          key: effectcraft-build-cache-v1-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}
+          key: effectcraft-build-cache-v1-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}-${{ github.run_id }}
           restore-keys: |
             effectcraft-build-cache-v1-${{ runner.os }}-
 
@@ -778,7 +778,7 @@ jobs:
             artcraft/build/effectcraft/target
             ~/.gradle/caches
             ~/.gradle/wrapper/dists
-          key: effectcraft-build-cache-v1-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}
+          key: effectcraft-build-cache-v1-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}-${{ github.run_id }}
 
       - name: Upload build log if build fails
         if: failure()
