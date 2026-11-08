@@ -449,7 +449,23 @@ jobs:
           BUILD_MODE: release
           BUILD_SOURCE: v0.21.1
         run: |
+          set -euo pipefail
           mkdir -p logs output
+
+          # The upstream Gradle wrapper template uses a 10-second network timeout.
+          # A large Android distribution download exceeded that limit after Rust had
+          # already compiled for 29 minutes. Raise it before android_project.py copies
+          # the wrapper into the generated project.
+          WRAPPER_PROPERTIES="templates/gradle/gradle/wrapper/gradle-wrapper.properties"
+          test -f "$WRAPPER_PROPERTIES"
+          if grep -q '^networkTimeout=' "$WRAPPER_PROPERTIES"; then
+            sed -i 's/^networkTimeout=.*/networkTimeout=300000/' "$WRAPPER_PROPERTIES"
+          else
+            printf '\\nnetworkTimeout=300000\\n' >> "$WRAPPER_PROPERTIES"
+          fi
+          grep -Fqx 'networkTimeout=300000' "$WRAPPER_PROPERTIES"
+          echo "Gradle wrapper download timeout set to 300000 ms (5 minutes)."
+
           rm -f output/*.apk output/*.tmp
           set -o pipefail
           bash build.sh -effectcraft -appicon="$PWD/source/effectcraft/assets/ae-avatar.png" --noupdate 2>&1 | tee logs/effectcraft-build.log
