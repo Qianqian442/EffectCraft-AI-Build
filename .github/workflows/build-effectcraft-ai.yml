@@ -773,9 +773,9 @@ jobs:
           script: |
             set -euo pipefail
             APK="release/effectcraft-0.21.1.apk"
-            SDK_LEVEL="$(adb shell getprop ro.build.version.sdk | tr -d '\\r')"
+            SDK_LEVEL="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
             test "$SDK_LEVEL" = "31"
-            ABI_LIST="$(adb shell getprop ro.product.cpu.abilist | tr -d '\\r')"
+            ABI_LIST="$(adb shell getprop ro.product.cpu.abilist | tr -d '\r')"
             echo "Android 12 ARM64 emulator ABI list: $ABI_LIST"
             case "$ABI_LIST" in
               *arm64-v8a*) ;;
@@ -786,7 +786,7 @@ jobs:
             esac
             echo "Installing the exact APK with Android Package Manager..."
             adb install --abi arm64-v8a -r "$APK"
-            PACKAGE_PATH="$(adb shell pm path com.artcraft.effectcraft | tr -d '\\r')"
+            PACKAGE_PATH="$(adb shell pm path com.artcraft.effectcraft | tr -d '\r')"
             test -n "$PACKAGE_PATH"
             echo "$PACKAGE_PATH"
             echo "Launching EffectCraft..."
