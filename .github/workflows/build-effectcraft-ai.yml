@@ -490,7 +490,17 @@ jobs:
           test "$SIZE" -gt 1000000
           # Keep the single-file package below the 2 GiB boundary and validate every ZIP CRC.
           test "$SIZE" -lt 2147483648
-          file "$APK" | grep -qi 'zip archive'
+          FILE_DESCRIPTION="$(file -b "$APK")"
+          echo "Detected package type: $FILE_DESCRIPTION"
+          case "$FILE_DESCRIPTION" in
+            *"Android package (APK)"*|*"Zip archive"*) ;;
+            *)
+              echo "The generated file is not recognized as an APK/ZIP package: $FILE_DESCRIPTION" >&2
+              exit 1
+              ;;
+          esac
+          # The Android package format is ZIP-based. Validate its complete central directory
+          # and every entry CRC rather than relying on the host 'file' utility's wording.
           unzip -tq "$APK"
           APK_ENTRIES="$(mktemp)"
           unzip -Z1 "$APK" > "$APK_ENTRIES"
