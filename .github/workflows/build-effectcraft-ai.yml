@@ -603,14 +603,6 @@ jobs:
           draft: false
           prerelease: true
 
-      - name: Upload APK artifact
-        if: success() && steps.apk_available.outputs.available == 'true'
-        uses: actions/upload-artifact@v4
-        with:
-          name: EffectCraft-0.21.1-AI-Android-APK
-          path: artcraft/output/*.apk
-          if-no-files-found: error
-          retention-days: 30
 
       - name: Upload build log if build fails
         if: failure()
