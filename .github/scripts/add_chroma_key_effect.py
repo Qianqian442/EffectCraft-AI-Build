@@ -21,9 +21,10 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     keying_path = root / "crates/effects/src/keying.rs"
+    catalog_path = root / "crates/effects/src/catalog.rs"
     i18n_path = root / "crates/ui-egui/src/i18n/effects.rs"
-    if not root.is_dir() or not keying_path.is_file() or not i18n_path.is_file():
-        raise SystemExit("EFFECTCRAFT_DIR must point to EffectCraft source with keying.rs and i18n/effects.rs")
+    if not root.is_dir() or not keying_path.is_file() or not catalog_path.is_file() or not i18n_path.is_file():
+        raise SystemExit("EFFECTCRAFT_DIR must point to EffectCraft source with keying.rs, catalog.rs and i18n/effects.rs")
 
     keying = keying_path.read_text(encoding="utf-8")
     if MARKER not in keying:
@@ -99,15 +100,15 @@ fn chroma_key(ctx: &EffectCtx, mut b: Buf) -> Buf {
             "Chroma Key",
             "Keying",
             vec![
-                p("view", "预览模式", Value::Enum(0), popup(&["最终结果", "原始画面", "遮罩预览"])),
-                p("keyPreset", "扣图颜色", Value::Enum(0), popup(&["绿色", "蓝色", "红色", "黄色", "青色", "洋红", "白色", "黑色", "自定义"])),
-                p("keyColor", "自定义颜色", col(0.0, 1.0, 0.0), ParamUi::Color),
-                p("matchMode", "颜色匹配方式", Value::Enum(0), popup(&["RGB 颜色", "色相", "色度"])),
-                p("tolerance", "匹配容差", num(22.0), pct()),
-                p("softness", "边缘过渡", num(12.0), pct()),
-                p("keyOperation", "扣图方式", Value::Enum(0), popup(&["移除所选颜色", "仅保留所选颜色"])),
-                p("edgeThin", "边缘收缩 / 扩展", num(0.0), thin()),
-                p("edgeFeather", "边缘羽化", num(0.0), feather()),
+                p("view", "预览", Value::Enum(0), ParamUi::Hidden),
+                p("keyPreset", "选择要处理的颜色", Value::Enum(0), popup(&["绿色", "蓝色", "红色", "黄色", "青色", "洋红", "白色", "黑色", "自定义"])),
+                p("keyColor", "自定义取色", col(0.0, 1.0, 0.0), ParamUi::Color),
+                p("matchMode", "匹配方式", Value::Enum(0), ParamUi::Hidden),
+                p("tolerance", "颜色范围", num(22.0), pct()),
+                p("softness", "边缘柔化", num(12.0), pct()),
+                p("keyOperation", "处理方式", Value::Enum(0), popup(&["去掉所选颜色（其他保留）", "只保留所选颜色（其他透明）"])),
+                p("edgeThin", "边缘收缩 / 扩张", num(0.0), ParamUi::Hidden),
+                p("edgeFeather", "边缘羽化", num(0.0), ParamUi::Hidden),
             ],
             chroma_key,
         ),
@@ -118,6 +119,13 @@ fn chroma_key(ctx: &EffectCtx, mut b: Buf) -> Buf {
     fn linear_color_key_removes_green() {
 '''
         tests = '''    #[test]
+    fn chroma_key_can_keep_only_selected_color() {
+        let out = run("ec.key.chromakey", &[("keyOperation", Value::Enum(1))], green_screen());
+        assert!(out.get(2, 2)[3] > 0.99, "selected green should remain: {:?}", out.get(2, 2));
+        assert!(out.get(12, 2)[3] < 0.01, "other colors should become transparent: {:?}", out.get(12, 2));
+    }
+
+    #[test]
     fn chroma_key_removes_green_with_preset() {
         let out = run("ec.key.chromakey", &[], green_screen());
         assert!(out.get(2, 2)[3] < 0.01, "{:?}", out.get(2, 2));
@@ -144,6 +152,22 @@ fn chroma_key(ctx: &EffectCtx, mut b: Buf) -> Buf {
             raise SystemExit("Chroma Key renderer / registry markers did not validate")
         keying_path.write_text(keying, encoding="utf-8")
 
+    # Only show the color swatch and viewer eyedropper when Custom is selected.
+    catalog = catalog_path.read_text(encoding="utf-8")
+    visibility = '''        "ec.key.chromakey" => match param {
+            "keyColor" => e("keyPreset") == 8,
+            _ => true,
+        },
+'''
+    if visibility not in catalog:
+        anchor = '''        "ec.sim.shatter" => match param {
+            "shape/customShatterMap" | "shape/whiteTilesFixed" => e("shape/pattern") == 5,
+            _ => crate::card3d::shown(param, &e).unwrap_or(true),
+        },
+'''
+        catalog = replace_once(catalog, anchor, anchor + visibility, "custom-color visibility rule")
+    catalog_path.write_text(catalog, encoding="utf-8")
+
     i18n = i18n_path.read_text(encoding="utf-8")
     row = '    ("ec.key.chromakey", "Chroma Key", "色度键"),\n'
     if row not in i18n:
@@ -151,7 +175,7 @@ fn chroma_key(ctx: &EffectCtx, mut b: Buf) -> Buf {
         i18n = replace_once(i18n, anchor, row + anchor, "Simplified Chinese Chroma Key name")
     i18n_path.write_text(i18n, encoding="utf-8")
 
-    if MARKER not in keying_path.read_text(encoding="utf-8") or row not in i18n_path.read_text(encoding="utf-8"):
+    if MARKER not in keying_path.read_text(encoding="utf-8") or row not in i18n_path.read_text(encoding="utf-8") or visibility not in catalog_path.read_text(encoding="utf-8"):
         raise SystemExit("Chroma Key integration verification failed")
     print("Added Chroma Key to the Keying effects menu with green, blue, red, yellow, cyan, magenta, white, black and custom color selection.")
     print("Custom color uses Effect Controls' existing color picker and viewer eyedropper; tolerance, softness, edge-thin and feather controls are included.")
