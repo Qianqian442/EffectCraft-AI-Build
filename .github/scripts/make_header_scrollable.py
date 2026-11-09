@@ -48,13 +48,9 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         Stroke::new(1.0, t.app_bg),
     );
 
-    // Keep a dedicated export hit target pinned at the right edge. The remaining tools scroll
-    // horizontally in the space to its left, so Export is always visible on narrow phones.
-    let export_rect = Rect::from_min_max(
-        pos2(rect.max.x - 58.0, rect.min.y + 3.0),
-        pos2(rect.max.x - 4.0, rect.max.y - 3.0),
-    );
-    let scroll_rect = Rect::from_min_max(rect.min, pos2(export_rect.min.x - 4.0, rect.max.y));
+    // Keep the original toolbar—including its original Export button—in one scrollable row.
+    // A second pinned Export button would duplicate the existing right_side() control.
+    let scroll_rect = rect;
 
     // Constrain the scroll area to the available header rectangle.
     let mut header_ui = ui.new_child(
@@ -87,24 +83,9 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             right_side(app, scroll_ui, &p, content_rect, x, cy);
         });
 
-    let export_response = widgets::text_button(
-        ui,
-        export_rect,
-        crate::i18n::tr("导出"),
-        true,
-        &t,
-        egui::Id::new("effectcraft-fixed-export-button"),
-    ).on_hover_text("导出视频");
-    app.auto.add_response("header.exportFixed", &export_response, "导出视频");
-    if export_response.clicked() {
-        ui.ctx().data_mut(|data| {
-            data.insert_temp(egui::Id::new("effectcraft-export-dialog-open"), true);
-        });
-    }
-
-    // Keep modal dialogs outside the horizontally clipped toolbar child. The export click
-    // handler sets this state above; rendering the modal inside ScrollArea would clip it and
-    // allow the scroll content to consume its touch events.
+    // EFFECTCRAFT_ANDROID_SINGLE_EXPORT_BUTTON_V1
+    // The original Export button lives in right_side(); do not add another hit target here.
+    // Render modal dialogs outside the horizontally clipped toolbar child.
     export_dialog(app, ui);
     export_progress_dialog(app, ui);
 }
