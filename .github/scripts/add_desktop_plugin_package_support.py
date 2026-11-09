@@ -335,7 +335,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             item["note"].as_str().unwrap_or("")
         )
     }).collect::<Vec<_>>().join("\n");
-    let install_result = json!({
+    let mut install_result = json!({
         "installed": installed_wasm,
         "panels": installed_panels,
         "loaded": loaded_wasm,
