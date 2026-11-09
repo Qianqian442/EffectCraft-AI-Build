@@ -136,7 +136,7 @@ jobs:
       - name: Configure Android shared-storage SAF fallback
         env:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
-        run: python3 ${{ github.workspace }}/.github/scripts/configure_android_storage_fallback.py
+        run: python3 ${{ github.workspace }}/build-assets/.github/scripts/configure_android_storage_fallback.py
 
       - name: Apply the AI assistant and export changes
         env:
