@@ -351,7 +351,7 @@ fn import_nv_node(
         ];
         let size = ((shape_size[0] * comp.width as f64).abs().clamp(1.0, 8192.0),
                     (shape_size[1] * comp.height as f64).abs().clamp(1.0, 8192.0));
-        let layer = attach_layer(project, comp_id, comp, &name, LayerSource::Shape, (size.0 as u32, size.1 as u32),
+        let mut layer = attach_layer(project, comp_id, comp, &name, LayerSource::Shape, (size.0 as u32, size.1 as u32),
             start, in_point, out_point, stretch, local)?;
         let mut ids = Ids(&mut project.next_id);
         let path = if shape_type == 1 {
@@ -559,7 +559,7 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> R
             } else if kind.eq_ignore_ascii_case("shape") || kind.eq_ignore_ascii_case("color") {
                 let fill = node.attribute("fillColor").unwrap_or("#FFFFFFFF");
                 let rgba = parse_xml_color(fill);
-                let layer = attach_layer(project, cid, &comp_copy, &layer_name, LayerSource::Shape, (width, height),
+                let mut layer = attach_layer(project, cid, &comp_copy, &layer_name, LayerSource::Shape, (width, height),
                     start, 0.0, end - start, 1.0, transform)?;
                 let mut ids = Ids(&mut project.next_id);
                 let shape = build::shape_rect(&mut ids, [width as f64 * 0.5, height as f64 * 0.5], [0.0, 0.0], 0.0);
