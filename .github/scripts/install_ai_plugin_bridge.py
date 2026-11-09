@@ -251,6 +251,10 @@ pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {
     }
 
     private void chooseAiPlugin() {
+        requestAllFilesAccessThen(this::showAiPluginPicker);
+    }
+
+    private void showAiPluginPicker() {
         Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         picker.addCategory(Intent.CATEGORY_OPENABLE);
         picker.setType("*/*");
