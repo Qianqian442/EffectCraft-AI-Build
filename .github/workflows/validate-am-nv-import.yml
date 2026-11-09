@@ -38,7 +38,7 @@ jobs:
 
       - name: Apply the same ZIP and AM/NV patches used by the APK build
         env:
-          EFFECTCRAFT_DIR: \${{ github.workspace }}/effectcraft
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: |
           python3 -m py_compile .github/scripts/add_zip_plugin_support.py .github/scripts/add_am_nv_project_import.py
           python3 .github/scripts/add_zip_plugin_support.py
