@@ -85,9 +85,12 @@ def patch_activity(builder: Path) -> None:
         for (File dir : candidates) {
             try {
                 if ((!dir.isDirectory() && !dir.mkdirs()) || !dir.isDirectory()) continue;
-                if (dir.canWrite()) return dir;
-            } catch (SecurityException error) {
-                Log.i(TAG, "Storage staging path is not available; trying next location: " + dir);
+                // canWrite() alone is not reliable on scoped-storage devices; verify with a
+                // real create/delete operation before returning this directory to Rust.
+                File probe = File.createTempFile(".effectcraft-storage-probe-", ".tmp", dir);
+                if (probe.delete() || !probe.exists()) return dir;
+            } catch (Exception error) {
+                Log.i(TAG, "Storage staging path is not writable; trying next location: " + dir, error);
             }
         }
         throw new java.io.IOException("无法创建可写的导入暂存目录；请在系统文件选择器中从 Download 或 Documents 选择文件。");
