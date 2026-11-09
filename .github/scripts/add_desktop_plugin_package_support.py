@@ -111,9 +111,11 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             else if ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
                 || entry_name.to_ascii_lowercase().contains(".plugin/")
                 || entry_name.to_ascii_lowercase().contains(".ofx.bundle/") { "native" }
-            else if ["cube", "3dl", "lut", "look", "png", "jpg", "jpeg", "webp", "tif", "tiff", "exr",
-                     "ttf", "otf", "json", "xml", "txt", "md", "glsl", "frag", "vert", "wgsl",
-                     "fx", "osl", "h", "hpp", "c", "cc", "cpp", "rs", "sbsar"].contains(&extension.as_str()) { "asset" }
+            else if ["cube", "3dl", "lut", "look", "csp", "spi1d", "spi3d", "spimtx", "cc", "ccc", "cdl", "ocio",
+                     "png", "jpg", "jpeg", "webp", "tif", "tiff", "exr", "ttf", "otf",
+                     "json", "xml", "txt", "md", "toml", "cmake", "mk", "sh", "py", "gradle",
+                     "glsl", "frag", "vert", "wgsl", "hlsl", "dctl", "metal",
+                     "fx", "osl", "h", "hpp", "c", "cpp", "rs", "sbsar"].contains(&extension.as_str()) { "asset" }
             else if extension == "jsxbin" { "encoded_script" }
             else { "unknown" };
 
@@ -294,7 +296,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。\n.cube/.3dl/LUT、纹理、字体和源代码仅作为素材归档；并不表示它们已自动变成可运行效果。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
