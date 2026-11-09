@@ -204,17 +204,81 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         s.scripts_changed();
     }
 
-    let mut install_result = if wasm_count > 0 || panel_count > 0 {
-        s.execute("effect.plugins.install", json!({"folder": install_dir.to_string_lossy()}))?
+    let mut installed_wasm = Vec::<String>::new();
+    let mut loaded_wasm = Vec::<Value>::new();
+    let mut installed_panels = Vec::<String>::new();
+    let mut compatibility_errors = Vec::<Value>::new();
+    let mut install_entries = if install_dir.is_dir() {
+        std::fs::read_dir(&install_dir)
+            .map_err(|error| bad(CMD, format!("无法读取插件暂存目录：{error}")))?
+            .filter_map(std::result::Result::ok)
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>()
     } else {
-        json!({"installed": [], "panels": [], "loaded": [], "errors": []})
+        Vec::new()
     };
-    let wat_result = if wat_count > 0 {
-        s.execute("effect.plugins.load", json!({"folder": wat_dir.to_string_lossy()}))?
-    } else {
-        json!({"loaded": [], "errors": []})
-    };
+    install_entries.sort();
 
+    for source in install_entries {
+        let extension = source.extension().and_then(|value| value.to_str()).unwrap_or_default();
+        let source_text = source.to_string_lossy().to_string();
+        let file_name = source.file_name().map(|value| value.to_string_lossy().to_string()).unwrap_or_default();
+        if extension.eq_ignore_ascii_case("wasm") {
+            match s.execute("effect.plugins.load", json!({"path": source_text})) {
+                Ok(result) => {
+                    // Keep only modules that the host successfully validates and loads.
+                    // A unique name avoids replacing an existing effect on a later import.
+                    let target_name = format!("desktop_{stamp}_{}.wasm", installed_wasm.len());
+                    let target = plugins_dir.join(&target_name);
+                    match std::fs::copy(&source, &target) {
+                        Ok(_) => {
+                            installed_wasm.push(target_name);
+                            loaded_wasm.push(result);
+                        }
+                        Err(error) => {
+                            let _ = std::fs::remove_file(&target);
+                            compatibility_errors.push(json!({"file": file_name, "error": format!("插件已载入本次会话，但无法保存供下次启动使用：{error}")}));
+                        }
+                    }
+                }
+                Err(error) => compatibility_errors.push(json!({"file": file_name, "error": error.to_string()})),
+            }
+        } else if extension.eq_ignore_ascii_case("jsx") {
+            match s.execute("file.installScriptUIPanel", json!({"path": source_text})) {
+                Ok(_) => installed_panels.push(file_name),
+                Err(error) => compatibility_errors.push(json!({"file": file_name, "error": error.to_string()})),
+            }
+        }
+    }
+
+    let mut loaded_wat = Vec::<Value>::new();
+    for index in 0..wat_count {
+        let source = wat_dir.join(format!("archive_{}_", index));
+        let _ = source;
+    }
+    if wat_dir.is_dir() {
+        let mut wat_files = std::fs::read_dir(&wat_dir)
+            .map_err(|error| bad(CMD, format!("无法读取 WAT 插件暂存目录：{error}")))?
+            .filter_map(std::result::Result::ok)
+            .map(|entry| entry.path())
+            .collect::<Vec<_>>();
+        wat_files.sort();
+        for source in wat_files {
+            let file_name = source.file_name().map(|value| value.to_string_lossy().to_string()).unwrap_or_default();
+            match s.execute("effect.plugins.load", json!({"path": source.to_string_lossy()})) {
+                Ok(result) => loaded_wat.push(result),
+                Err(error) => compatibility_errors.push(json!({"file": file_name, "error": error.to_string()})),
+            }
+        }
+    }
+
+    let install_result = json!({
+        "installed": installed_wasm,
+        "panels": installed_panels,
+        "loaded": loaded_wasm,
+        "errors": compatibility_errors
+    });
+    let wat_result = json!({"loaded": loaded_wat, "errors": []});
     let report_dir = plugins_dir.join("Import-Reports");
     std::fs::create_dir_all(&report_dir)
         .map_err(|error| bad(CMD, format!("无法创建插件分析报告目录：{error}")))?;
