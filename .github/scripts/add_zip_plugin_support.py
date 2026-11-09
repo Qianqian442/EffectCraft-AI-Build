@@ -199,18 +199,44 @@ fn extract_effect_plugin_archive(s: &Session, archive_path: &str) -> Result<Vec<
 
 
 def patch_picker(root: Path) -> None:
-    path = root / "crates/engine/src/cmd/frontend.rs"
-    if not path.is_file():
-        # The picker mapping lives in the frontend command module in this EffectCraft release.
-        path = root / "crates/ui-egui/src/menus/frontend.rs"
-    source = path.read_text(encoding="utf-8")
-    source = replace_once(
-        source,
-        '"effect.plugins.load" if params.get("folder").is_none() => ("path", Ask::Open(&["wasm", "wat"])),',
-        '"effect.plugins.load" if params.get("folder").is_none() => ("path", Ask::Open(&["wasm", "wat", "zip"])),',
-        "Plugin file picker ZIP extension",
-    )
-    path.write_text(source, encoding="utf-8")
+    # Some EffectCraft revisions have a similarly named engine module. Patch the file
+    # that actually owns the UI file-dialog mapping instead of selecting by path existence.
+    candidates = [
+        root / "crates/ui-egui/src/menus/frontend.rs",
+        root / "crates/engine/src/cmd/frontend.rs",
+    ]
+    for path in candidates:
+        if not path.is_file():
+            continue
+        source = path.read_text(encoding="utf-8")
+        lines = source.splitlines(keepends=True)
+        changed = False
+        for index, line in enumerate(lines):
+            if '"effect.plugins.load"' not in line or "Ask::Open" not in line:
+                continue
+            if '"zip"' in line:
+                print(f"Plugin picker already accepts ZIP archives: {path}")
+                return
+            if '["wasm", "wat"]' in line:
+                lines[index] = line.replace('["wasm", "wat"]', '["wasm", "wat", "zip"]', 1)
+            elif '["wasm", "wat", "zip"]' in line:
+                print(f"Plugin picker already accepts ZIP archives: {path}")
+                return
+            else:
+                # Keep any future extension added upstream; append ZIP without replacing it.
+                import re
+                match = re.search(r'Ask::Open\\(&\\[(.*?)\\]\\)', line)
+                if not match:
+                    continue
+                entries = match.group(1)
+                lines[index] = line[:match.start(1)] + entries + ', "zip"' + line[match.end(1):]
+            changed = True
+            break
+        if changed:
+            path.write_text("".join(lines), encoding="utf-8")
+            print(f"Enabled ZIP in the effect plug-in picker: {path}")
+            return
+    raise SystemExit("Could not locate the effect.plugins.load file-picker mapping in the expected frontend sources.")
 
 
 def main() -> None:
