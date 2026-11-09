@@ -605,6 +605,8 @@ jobs:
         run: |
           set -Eeuo pipefail
           trap 'status=$?; echo "::error::APK integrity validation failed at line ${LINENO}: ${BASH_COMMAND} (exit ${status})"; exit "$status"' ERR
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
           # Confirm the builder generated the Android startup auto-loader into the APK's Rust launcher.
           LAUNCHER_SRC="source/effectcraft/apps/effectcraft-android/src/lib.rs"
           test -s "$LAUNCHER_SRC"
