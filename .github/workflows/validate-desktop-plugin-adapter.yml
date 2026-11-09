@@ -8,6 +8,8 @@ on:
       - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/scripts/install_ai_plugin_bridge.py'
+      - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
@@ -21,10 +23,17 @@ permissions:
 jobs:
   validate-v0211-integration:
     runs-on: ubuntu-22.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Check out compatibility adapter
         uses: actions/checkout@v4
+
+      - name: Check out ArtCraft Android builder v0.5.0
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: v0.5.0
+          path: artcraft
 
       - name: Check out EffectCraft v0.21.1
         uses: actions/checkout@v4
@@ -47,7 +56,8 @@ jobs:
             .github/scripts/add_plugin_import_button.py \
             .github/scripts/add_zip_plugin_support.py \
             .github/scripts/add_desktop_plugin_package_support.py \
-            .github/scripts/add_plugin_migration_progress.py
+            .github/scripts/add_plugin_migration_progress.py \
+            .github/scripts/install_ai_plugin_bridge.py
 
       - name: Apply the same plug-in patches used by the APK build
         env:
@@ -57,6 +67,12 @@ jobs:
           python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
           python3 .github/scripts/add_plugin_migration_progress.py
+
+      - name: Apply standalone DeepSeek AI plugin bridge
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: python3 .github/scripts/install_ai_plugin_bridge.py
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
