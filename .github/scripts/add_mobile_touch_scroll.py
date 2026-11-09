@@ -175,11 +175,34 @@ fn android_timeline_touch_scroll(app: &mut EffectcraftApp, ui: &egui::Ui, g: &Rw
     path.write_text(source, encoding="utf-8")
 
 
+def patch_preview_clock(root: Path) -> None:
+    path = root / "crates/ui-egui/src/app/frame.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_PREVIEW_CONTINUOUS_TICK_V1"
+    if marker in source:
+        return
+    old = '''            self.advance_playback(ctx, scale, now, active, cid);
+        }
+        self.drain_control(ctx, now);'''
+    new = '''            self.advance_playback(ctx, scale, now, active, cid);
+            // EFFECTCRAFT_ANDROID_PREVIEW_CONTINUOUS_TICK_V1
+            // Keep the monotonic playback clock advancing on Android hosts that coalesce
+            // immediate repaint requests while the preview viewer is already fully cached.
+            if self.playback.playing {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
+        }
+        self.drain_control(ctx, now);'''
+    source = replace_once(source, old, new, "Continuous preview clock refresh")
+    path.write_text(source, encoding="utf-8")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "vendor/effectcraft"))
     patch_shared_panel_scroll(root)
     patch_project_panel(root)
     patch_timeline(root)
+    patch_preview_clock(root)
 
 
 if __name__ == "__main__":
