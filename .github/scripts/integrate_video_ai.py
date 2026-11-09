@@ -588,6 +588,22 @@ if preflight_new not in h:
     if preflight_old not in h:
         raise SystemExit("Could not find the Android export task insertion point for AI preflight.")
     h = h.replace(preflight_old, preflight_new, 1)
+    # The new else branch wraps the original renderQueue.add match. Close that
+    # branch explicitly before closing the active-composition and submit guards.
+    close_anchor = """            }
+        }
+    }
+
+    ui.ctx().data_mut(|d| {"""
+    close_replacement = """            }
+            }
+        }
+    }
+
+    ui.ctx().data_mut(|d| {"""
+    if h.count(close_anchor) != 1:
+        raise SystemExit(f"Expected one export-dialog preflight closing anchor; found {h.count(close_anchor)}")
+    h = h.replace(close_anchor, close_replacement, 1)
 header.write_text(h)
 
 # Copy only neural model weights into app-private storage. Android 10+ blocks execve()
