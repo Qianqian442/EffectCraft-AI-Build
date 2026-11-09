@@ -367,26 +367,65 @@ def patch_builder(builder: Path) -> None:
             log::error!("Could not open the incoming file {path}: {error}");
         }
 \'\'\','''
-    incoming_new = '''    "effectcraft": \'\'\'        let extension = std::path::Path::new(path)
+    incoming_new = '''    "effectcraft": \'''        let extension = std::path::Path::new(path)
             .extension()
             .and_then(|value| value.to_str())
             .unwrap_or_default()
             .to_ascii_lowercase();
-        let command = if matches!(extension.as_str(), "aep" | "aepx") {
-            "file.importAep"
-        } else {
-            "file.open"
-        };
-        if let Err(error) = self.inner.session.execute(command, serde_json::json!({ "path": path })) {
+        if matches!(extension.as_str(), "aep" | "aepx") {
+            if let Err(error) = effectcraft_ui_egui::menus::invoke(
+                &mut self.inner,
+                ctx,
+                "file.importAep",
+                serde_json::json!({ "path": path }),
+            ) {
+                log::error!("Could not import the incoming After Effects project {path}: {error}");
+            }
+        } else if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {
             log::error!("Could not open the incoming file {path}: {error}");
         }
-\'\'\','''
+\''',
     if incoming_new not in source:
         if source.count(incoming_old) != 1:
             raise SystemExit("Could not uniquely locate EffectCraft's incoming-file handler")
         source = source.replace(incoming_old, incoming_new, 1)
     if 'matches!(extension.as_str(), "aep" | "aepx")' not in source:
         raise SystemExit("AEP incoming-file routing was not applied")
+
+    # Preserve the normal AEP loss report and user confirmation for external file opens.
+    generated_route_edits = [
+        (
+            "    fn open_incoming(&mut self, path: &str) {{",
+            "    fn open_incoming(&mut self, ctx: &egui::Context, path: &str) {{",
+            "incoming-file context",
+        ),
+        (
+            "    fn poll_incoming_files(&mut self) {{",
+            "    fn poll_incoming_files(&mut self, ctx: &egui::Context) {{",
+            "incoming-file poll context",
+        ),
+        (
+            "                Ok(Some(path)) => self.open_incoming(&path),",
+            "                Ok(Some(path)) => self.open_incoming(ctx, &path),",
+            "incoming-file dispatch",
+        ),
+        (
+            '            intent_logic = "        self.watch_incoming(ctx);\\n        self.poll_incoming_files();\\n"',
+            '            intent_logic = "        self.watch_incoming(ctx);\\n        self.poll_incoming_files(ctx);\\n"',
+            "incoming-file poll caller",
+        ),
+    ]
+    for old_text, new_text, label in generated_route_edits:
+        if new_text in source:
+            continue
+        count = source.count(old_text)
+        if count != 1:
+            raise SystemExit(f"Could not uniquely patch {label}; found {count}")
+        source = source.replace(old_text, new_text, 1)
+    if "effectcraft_ui_egui::menus::invoke(" not in source:
+        raise SystemExit("The AEP incoming route must use the UI command path")
+    if "fn poll_incoming_files(&mut self, ctx: &egui::Context)" not in source:
+        raise SystemExit("AEP incoming UI context was not propagated")
     path.write_text(source, encoding="utf-8")
 
     associations_path = builder / "lib/file_associations.py"
