@@ -46,7 +46,7 @@ impl Default for State {
             input: String::new(),
             lines: vec![ChatLine {
                 role: "assistant",
-                text: "你好！我是 EffectCraft AI 助手。导入独立 AI 插件并准备 DeepSeek 模型后，即可在这里本地离线对话。".into(),
+                text: "你好！我是 EffectCraft AI 助手。导入 DeepSeek AI 插件 ZIP 并准备本地模型后，即可在这里离线对话。".into(),
             }],
             pending: None,
             notice: String::new(),
@@ -116,11 +116,11 @@ pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {
         .resizable(true)
         .open(&mut window_open)
         .show(&ctx, |ui| {
-            ui.label("DeepSeek 本地推理 · 模型由独立 AI 插件管理");
+            ui.label("DeepSeek 本地推理 · 插件通过 ZIP 导入");
             if state.plugin_installed == Some(true) {
-                ui.small("AI 插件已安装；首次使用请先准备模型。");
+                ui.small("AI 插件已导入；首次使用请先准备模型。");
             } else {
-                ui.colored_label(Color32::from_rgb(210, 145, 35), "尚未检测到 AI 插件。");
+                ui.colored_label(Color32::from_rgb(210, 145, 35), "尚未导入 DeepSeek AI 插件 ZIP。");
             }
             ui.separator();
             egui::ScrollArea::vertical()
@@ -184,7 +184,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {
     if import_plugin {
         match open_ai_plugin_import() {
             Ok(()) => {
-                state.notice = "请选择 AI 插件 APK，并按 Android 系统提示确认安装。".into();
+                state.notice = "请选择 DeepSeek AI 插件 ZIP。随后 Android 会显示一次系统安装确认。".into();
             }
             Err(error) => state.notice = error,
         }
@@ -209,7 +209,7 @@ fn start_request(state: &mut State) {
         return;
     }
     if state.plugin_installed != Some(true) {
-        state.notice = "请先点击“导入 AI 插件”，安装后即可在这里使用本地 DeepSeek。".into();
+        state.notice = "请先点击“导入 AI 插件”，选择 ZIP 并按 Android 系统提示完成安装后，即可使用本地 DeepSeek。".into();
         return;
     }
 
@@ -322,7 +322,7 @@ fn ai_plugin_request(request_id: &str, prompt: &str) -> Result<String, String> {
         }).map_err(|e| e.to_string())
     })?;
     if !submitted {
-        return Err("无法连接 AI 插件。请确认插件已安装，然后重新打开助手。".into());
+        return Err("无法连接 AI 插件。请确认已导入 ZIP 并按系统提示安装插件，然后重新打开助手。".into());
     }
 
     for _ in 0..12_000 {
