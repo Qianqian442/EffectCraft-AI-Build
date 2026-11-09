@@ -468,11 +468,19 @@ fn android_layer_keyframe_marks(g: &Rw, rc: &RowCtx<'_>, bar: Rect) {
         if x < visible.min.x || x > visible.max.x {
             continue;
         }
-        painter.line_segment(
-            [pos2(x, bar.min.y + 1.0), pos2(x, bar.max.y - 1.0)],
-            Stroke::new(1.35, marker_color),
-        );
-        painter.circle_filled(pos2(x, bar.center().y), 2.7, marker_color);
+        let center = pos2(x, bar.center().y);
+        let radius = 3.4;
+        // A small diamond is visually consistent with the keyframe glyphs on the property rows.
+        painter.add(egui::Shape::convex_polygon(
+            vec![
+                pos2(center.x, center.y - radius),
+                pos2(center.x + radius, center.y),
+                pos2(center.x, center.y + radius),
+                pos2(center.x - radius, center.y),
+            ],
+            marker_color,
+            Stroke::NONE,
+        ));
     }
 }
 '''
