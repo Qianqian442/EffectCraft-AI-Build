@@ -16,6 +16,7 @@ on:
       - '.github/scripts/integrate_video_ai.py'
       - '.github/scripts/restore_android_plugins.py'
       - '.github/scripts/add_plugin_import_button.py'
+      - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/ai_video_export.rs'
   workflow_dispatch:
 
@@ -292,6 +293,11 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_plugin_import_button.py
+
+      - name: Add Simplified Chinese, Puppet shortcut, project grouping and single-item keyframes
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/add_chinese_group_puppet_keyframe_ui.py
 
       - name: Save generated AI assistant source for offline integration
         if: always()
