@@ -24,7 +24,7 @@ def patch_activity(builder: Path) -> None:
         print("Android shared-storage SAF fallback already configured.")
         return
 
-    class_anchor = 'public final class __CLASS__ extends NativeActivity {\\n'
+    class_anchor = 'public final class __CLASS__ extends NativeActivity {\n'
     permission_fields = r'''
     // EFFECTCRAFT_ANDROID_PERMISSION_ON_IMPORT_V1
     private static final int REQ_IMPORT_STORAGE_PERMISSION = 0x504A;
@@ -356,7 +356,7 @@ def patch_builder(builder: Path) -> None:
         raise SystemExit("Expected exactly one original startup storage-permission request")
     if permission not in source:
         raise SystemExit("MANAGE_EXTERNAL_STORAGE manifest declaration is missing from build-common.sh")
-    source = source.replace(call + "\\n", "", 1)
+    source = source.replace(call + "\n", "", 1)
     if call in source:
         raise SystemExit("Startup storage-permission request was not removed")
     path.write_text(source, encoding="utf-8")
