@@ -79,6 +79,12 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             let content_rect = Rect::from_min_size(origin, vec2(content_width, rect.height()));
             right_side(app, scroll_ui, &p, content_rect, x, cy);
         });
+
+    // Keep modal dialogs outside the horizontally clipped toolbar child. The export click
+    // handler sets this state above; rendering the modal inside ScrollArea would clip it and
+    // allow the scroll content to consume its touch events.
+    export_dialog(app, ui);
+    export_progress_dialog(app, ui);
 }
 
 '''
