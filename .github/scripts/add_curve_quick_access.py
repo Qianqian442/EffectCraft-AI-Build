@@ -143,6 +143,7 @@ def patch_timeline(root: Path) -> None:
 /// The exact two-key segment selected for the floating curve preset picker.
 #[derive(Clone, Copy)]
 struct AndroidCurveSegment {
+    comp: u64,
     layer: u64,
     prop: u64,
     first: i64,
@@ -175,6 +176,7 @@ fn android_playhead_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSe
         let upper = first_comp.max(second_comp);
         if playhead > lower && playhead < upper {
             return Some(AndroidCurveSegment {
+                comp: comp_id.0,
                 layer: layer_id.0,
                 prop: prop_uid,
                 first: pair[0].time.0,
@@ -194,6 +196,13 @@ fn android_curve_sample(kind: &str, x: f32) -> f32 {
         "ease" => x * x * (3.0 - 2.0 * x),
         "continuous" => x * x * (3.0 - 2.0 * x),
         "bezier" => x * x,
+        "loop_cycle" => (x * 3.0).fract(),
+        "loop_pingpong" => {
+            let phase = (x * 3.0) % 2.0;
+            if phase <= 1.0 { phase } else { 2.0 - phase }
+        }
+        // Offset looping continues the same motion while carrying each cycle's value offset.
+        "loop_offset" => x,
         _ => x,
     }
 }
@@ -215,15 +224,46 @@ fn android_curve_preview(ui: &mut egui::Ui, rect: Rect, kind: &str, color: Color
 }
 
 fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, curve: &str) {
-    let params = serde_json::json!({
-        "layer": segment.layer,
-        "prop": segment.prop,
-        "first": Tick(segment.first).seconds(),
-        "second": Tick(segment.second).seconds(),
-        "curve": curve
-    });
-    if let Err(error) = app.session.execute("keys.setSegmentCurve", params) {
+    let result = match curve {
+        "loop_cycle" => app.session.execute("prop.setExpression", serde_json::json!({
+            "comp": segment.comp,
+            "layer": segment.layer,
+            "prop": segment.prop,
+            "expression": "loopOut(\\"cycle\\")",
+            "enabled": true
+        })),
+        "loop_pingpong" => app.session.execute("prop.setExpression", serde_json::json!({
+            "comp": segment.comp,
+            "layer": segment.layer,
+            "prop": segment.prop,
+            "expression": "loopOut(\\"pingpong\\")",
+            "enabled": true
+        })),
+        "loop_offset" => app.session.execute("prop.setExpression", serde_json::json!({
+            "comp": segment.comp,
+            "layer": segment.layer,
+            "prop": segment.prop,
+            "expression": "loopOut(\\"offset\\")",
+            "enabled": true
+        })),
+        _ => app.session.execute("keys.setSegmentCurve", serde_json::json!({
+            "comp": segment.comp,
+            "layer": segment.layer,
+            "prop": segment.prop,
+            "first": Tick(segment.first).seconds(),
+            "second": Tick(segment.second).seconds(),
+            "curve": curve
+        })),
+    };
+    if let Err(error) = result {
         app.ui.status = error.to_string();
+    } else if curve.starts_with("loop_") {
+        app.ui.status = match curve {
+            "loop_cycle" => "已应用循环表达式：loopOut(cycle)".into(),
+            "loop_pingpong" => "已应用往返循环表达式：loopOut(pingpong)".into(),
+            "loop_offset" => "已应用偏移循环表达式：loopOut(offset)".into(),
+            _ => String::new(),
+        };
     }
 }
 
@@ -261,7 +301,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                 .collapsible(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
-                    ui.label(egui::RichText::new("选择蓝色播放指针所在区间的动画曲线").size(11.5).color(app.tokens.text_dim));
+                    ui.label(egui::RichText::new("选择当前属性的曲线；循环模式会在末尾关键帧之后继续重复").size(11.5).color(app.tokens.text_dim));
                     ui.add_space(5.0);
                     egui::ScrollArea::horizontal()
                         .id_salt("effectcraft-android-curve-presets")
@@ -269,7 +309,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                let presets: [(&str, &str, &str); 8] = [
+                                let presets: [(&str, &str, &str); 11] = [
                                     ("线性", "linear", "linear"),
                                     ("缓入", "ease_in", "ease_in"),
                                     ("缓出", "ease_out", "ease_out"),
@@ -278,6 +318,9 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                                     ("连续贝塞尔", "continuous", "continuous"),
                                     ("自动贝塞尔", "ease", "auto"),
                                     ("保持", "hold", "hold"),
+                                    ("循环", "loop_cycle", "loop_cycle"),
+                                    ("往返循环", "loop_pingpong", "loop_pingpong"),
+                                    ("偏移循环", "loop_offset", "loop_offset"),
                                 ];
                                 for (label, preview, curve) in presets {
                                     let (card, response) = ui.allocate_exact_size(vec2(88.0, 94.0), Sense::click());
