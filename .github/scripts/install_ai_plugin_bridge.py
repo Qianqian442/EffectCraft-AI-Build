@@ -254,6 +254,13 @@ pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {
         Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         picker.addCategory(Intent.CATEGORY_OPENABLE);
         picker.setType("*/*");
+        // Start in shared Download storage; the selected ZIP is read by ContentResolver,
+        // so the installer does not require raw /data or root-directory access.
+        try {
+            picker.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                DocumentsContract.buildDocumentUri(
+                    "com.android.externalstorage.documents", "primary:Download"));
+        } catch (Exception ignored) {}
         picker.putExtra(Intent.EXTRA_TITLE, "选择 EffectCraft DeepSeek AI 插件 ZIP");
         picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(picker, REQ_AI_PICKER);
