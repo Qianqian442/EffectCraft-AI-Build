@@ -41,6 +41,7 @@ jobs:
           test -s artcraft/keys/artcraft-builder.jks
           test -s artcraft/keys/.keystore-password
           KEY_PASSWORD="$(<artcraft/keys/.keystore-password)"
+          echo "::add-mask::$KEY_PASSWORD"
           keytool -list -keystore artcraft/keys/artcraft-builder.jks \
             -storepass "$KEY_PASSWORD" -alias artcraftbuilder >/dev/null
           echo "EFFECTCRAFT_KEYSTORE=$GITHUB_WORKSPACE/artcraft/keys/artcraft-builder.jks" >> "$GITHUB_ENV"
@@ -105,6 +106,26 @@ jobs:
               raise SystemExit("Unexpected upstream llama.cpp Android minimum SDK declaration.")
           path.write_text(text.replace("minSdk = 33", "minSdk = 28", 1))
           print("llama.cpp Android library minSdk configured to API 28.")
+
+          # llama.cpp's latest Android helper calls an API-30-only symbol.
+          # Keep the plugin's API-28 native compatibility by using a threshold
+          # fallback on Android 9/10 and the platform helper on Android 11+.
+          log_path = Path("llama.cpp/examples/llama.android/lib/src/main/cpp/logging.h")
+          log_text = log_path.read_text()
+          old = """static inline int ai_should_log(int prio) {
+              return __android_log_is_loggable(prio, LOG_TAG, LOG_MIN_LEVEL);
+          }"""
+          new = """static inline int ai_should_log(int prio) {
+          #if defined(__ANDROID_API__) && __ANDROID_API__ >= 30
+              return __android_log_is_loggable(prio, LOG_TAG, LOG_MIN_LEVEL);
+          #else
+              return prio >= LOG_MIN_LEVEL;
+          #endif
+          }"""
+          if log_text.count(old) != 1:
+              raise SystemExit("Unexpected llama.cpp logging helper; refusing an unsafe compatibility patch.")
+          log_path.write_text(log_text.replace(old, new, 1))
+          print("llama.cpp Android logging now supports API 28+ without calling API-30 symbols on older targets.")
           PY
 
       - name: Tune local inference memory for mobile devices
