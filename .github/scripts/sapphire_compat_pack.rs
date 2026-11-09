@@ -92,8 +92,13 @@ fn sample_nearest(source: &[[f32; 4]], width: usize, height: usize, x: f32, y: f
 #[cfg(any(sapphire_glow, sapphire_aura))]
 fn render_glow(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], aura: bool) -> i32 {
     let radius = params[0].round().clamp(1.0, 64.0) as usize;
-    let intensity = params[1].clamp(0.0, 2.0) as f32;
-    let threshold = if aura { params[2] } else { params[1] }.clamp(0.05, 0.98) as f32;
+    let (intensity, threshold) = if aura {
+        (params[1].clamp(0.0, 2.0), params[2].clamp(0.05, 0.98))
+    } else {
+        (params[2].clamp(0.0, 2.0), params[1].clamp(0.05, 0.98))
+    };
+    let intensity = intensity as f32;
+    let threshold = threshold as f32;
     let source = pixels.to_vec();
     let mut highlights = Vec::with_capacity(source.len());
     for pixel in &source {
