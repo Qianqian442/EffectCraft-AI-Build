@@ -31,7 +31,7 @@ pub(crate) struct State {
     open: bool,
     input: String,
     lines: Vec<ChatLine>,
-    pending: Option<String>;
+    pending: Option<String>,
     notice: String,
     avatar: Option<egui::TextureHandle>,
     plugin_installed: Option<bool>,
