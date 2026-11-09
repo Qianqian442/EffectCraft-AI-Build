@@ -476,15 +476,15 @@ fn android_layer_keyframe_marks(g: &Rw, rc: &RowCtx<'_>, bar: Rect) {
     }
 }
 '''
-    anchor = "/// The layer's duration bar: source extent, move and trim, markers.\\nfn layer_bar("
+    anchor = "/// The layer's duration bar: source extent, move and trim, markers.\nfn layer_bar("
     if source.count(anchor) != 1:
         raise SystemExit(f"Layer keyframe markers: expected one layer_bar insertion point, found {source.count(anchor)}")
-    source = source.replace(anchor, helper + "\\n" + anchor, 1)
+    source = source.replace(anchor, helper + "\n" + anchor, 1)
 
-    call = "    layer_bar_markers(app, ui, g, rc);\\n"
+    call = "    layer_bar_markers(app, ui, g, rc);\n"
     if source.count(call) != 1:
         raise SystemExit(f"Layer keyframe markers: expected one existing layer marker call, found {source.count(call)}")
-    source = source.replace(call, call + "    android_layer_keyframe_marks(g, rc, bar);\\n", 1)
+    source = source.replace(call, call + "    android_layer_keyframe_marks(g, rc, bar);\n", 1)
     path.write_text(source, encoding="utf-8")
 
 
