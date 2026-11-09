@@ -5,6 +5,7 @@ on:
     branches: [desktop-plugin-compat]
     paths:
       - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
@@ -46,6 +47,7 @@ jobs:
             .github/scripts/add_plugin_import_button.py \
             .github/scripts/add_zip_plugin_support.py \
             .github/scripts/add_desktop_plugin_package_support.py
+            .github/scripts/add_plugin_migration_progress.py
 
       - name: Apply the same plug-in patches used by the APK build
         env:
@@ -54,6 +56,7 @@ jobs:
           python3 .github/scripts/add_plugin_import_button.py
           python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
+          python3 .github/scripts/add_plugin_migration_progress.py
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
