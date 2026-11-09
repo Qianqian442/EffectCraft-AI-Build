@@ -579,7 +579,7 @@ preflight_new = """            let (check_width, check_height) = app.session.act
                 app.ui.status = if upscale_input_too_large {
                     "Real-ESRGAN ×4 当前输入尺寸超过 2048 像素，请降低分辨率或关闭 AI 超分".to_string()
                 } else {
-                    "系统可用内存暂时过低，已暂停本次导出以避免 Android 强制结束应用；释放后台内存后可重试。EffectCraft 不设置固定运行内存上限。".into()
+                    "系统可用内存暂时过低，已暂停本次导出以避免 Android 强制结束应用；释放后台内存后可重试。EffectCraft 不设置固定运行内存上限。".to_string()
                 };
             } else {
                 let ctx = ui.ctx().clone();
