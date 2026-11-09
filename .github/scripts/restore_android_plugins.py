@@ -100,10 +100,10 @@ def main() -> None:
     if let Err(error) = std::fs::create_dir_all(&plugins_dir) {
         log::warn!("Could not create EffectCraft plug-in folder {}: {error}", plugins_dir.display());
     } else {
-        // EFFECTCRAFT_ANDROID_SAPPHIRE_COMPAT_BUILTIN_V1
-        // Ship compatible effects in the host APK itself; this is not the proprietary desktop Sapphire binary.
-        const SAPPHIRE_COMPAT_VERSION: &str = "1.0.0";
-        let bundled_modules: [(&str, &[u8]); 7] = [
+        // EFFECTCRAFT_ANDROID_BUILTIN_EFFECTS_V1
+        // Ship original compatibility and color-grading modules in the host APK itself.
+        const BUILTIN_EFFECTS_VERSION: &str = "1.1.0";
+        let bundled_modules: [(&str, &[u8]); 8] = [
             ("ec_sapphire_glow.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_glow.wasm")),
             ("ec_sapphire_aura.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_aura.wasm")),
             ("ec_sapphire_lensflare.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_lensflare.wasm")),
@@ -111,10 +111,11 @@ def main() -> None:
             ("ec_sapphire_distort.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_distort.wasm")),
             ("ec_sapphire_stylize.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_stylize.wasm")),
             ("ec_sapphire_motion.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_motion.wasm")),
+            ("ec_looks_studio.wasm", include_bytes!("../../../assets/looks-compat/ec_looks_studio.wasm")),
         ];
-        let marker_path = plugins_dir.join(".effectcraft-sapphire-compat-version");
+        let marker_path = plugins_dir.join(".effectcraft-builtin-effects-version");
         let marker_matches = std::fs::read_to_string(&marker_path)
-            .map(|value| value.trim() == SAPPHIRE_COMPAT_VERSION)
+            .map(|value| value.trim() == BUILTIN_EFFECTS_VERSION)
             .unwrap_or(false);
         let module_missing = bundled_modules.iter().any(|(name, _)| !plugins_dir.join(*name).is_file());
         if !marker_matches || module_missing {
@@ -122,12 +123,12 @@ def main() -> None:
             for (name, bytes) in bundled_modules.iter() {
                 if let Err(error) = std::fs::write(plugins_dir.join(*name), *bytes) {
                     all_written = false;
-                    log::warn!("Could not install built-in Sapphire-compatible effect {name}: {error}");
+                    log::warn!("Could not install built-in effect module {name}: {error}");
                 }
             }
             if all_written {
                 if let Err(error) = std::fs::write(&marker_path, SAPPHIRE_COMPAT_VERSION) {
-                    log::warn!("Could not record built-in Sapphire-compatible pack version: {error}");
+                    log::warn!("Could not record built-in effect pack version: {error}");
                 }
             }
         }
