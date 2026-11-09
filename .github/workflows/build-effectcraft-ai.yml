@@ -31,6 +31,7 @@ on:
       - '.github/scripts/add_bottom_left_media_import.py'
       - '.github/scripts/add_puppet_pin_links.py'
       - '.github/scripts/add_mobile_touch_scroll.py'
+      - '.github/scripts/add_mobile_rsmb_controls.py'
       - '.github/scripts/ai_video_export.rs'
       - '.github/scripts/sapphire_compat_pack.rs'
       - '.github/scripts/build_sapphire_compat_pack.py'
@@ -372,6 +373,13 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_mobile_touch_scroll.py
+
+      - name: Make RSMB controls touch-friendly
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_mobile_rsmb_controls.py
+          python3 build-assets/.github/scripts/add_mobile_rsmb_controls.py
 
       - name: Add creator attribution notice on every app launch
         env:
