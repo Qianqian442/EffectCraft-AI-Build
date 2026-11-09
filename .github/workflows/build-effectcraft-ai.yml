@@ -567,7 +567,7 @@ jobs:
           set -o pipefail
           bash build.sh -effectcraft -appicon="$PWD/source/effectcraft/assets/ae-avatar.png" --noupdate 2>&1 | tee logs/effectcraft-build.log
 
-      - name: Verify Gradle APK signature and persistent certificate
+      - name: Align and sign APK with V1 V2 V3, then verify persistent certificate
         if: success()
         working-directory: artcraft
         shell: bash
@@ -579,14 +579,37 @@ jobs:
           PASSWORD_FILE="keys/.keystore-password"
           test -s "$KEYSTORE" && test -s "$PASSWORD_FILE"
           KEY_PASSWORD="$(<"$PASSWORD_FILE")"
-          APK_SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          APK_SIGNER="$BUILD_TOOLS/apksigner"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
           VERIFY_REPORT="output/effectcraft-signature-verify.txt"
           KEY_REPORT="output/effectcraft-keystore-certificate.txt"
-          test -x "$APK_SIGNER"
+          ALIGNED_APK="output/effectcraft-aligned-unsigned.apk"
+          RESIGNED_APK="output/effectcraft-v1-v2-v3.apk"
+          test -x "$APK_SIGNER" && test -x "$ZIPALIGN"
 
-          # build.sh already signs the APK with this persistent keystore through Gradle.
-          # Do not sign the same package a second time; verify the original Gradle output.
-          echo "Verifying the Gradle-signed APK without rewriting its signature..."
+          # Gradle/AGP 8.7.3 emitted a V3-only APK even though its signing config was
+          # patched. Align the package and explicitly sign the aligned bytes with the
+          # persistent project key, enabling the three schemes required by Android.
+          echo "Aligning APK for 4-byte entries and page-aligned native libraries..."
+          "$ZIPALIGN" -f -p 4 "$APK" "$ALIGNED_APK"
+          "$ZIPALIGN" -c -p 4 "$ALIGNED_APK"
+
+          echo "Signing final APK with V1 + V2 + V3 using the persistent project key..."
+          "$APK_SIGNER" sign \
+            --ks "$KEYSTORE" \
+            --ks-key-alias artcraftbuilder \
+            --ks-pass "pass:$KEY_PASSWORD" \
+            --key-pass "pass:$KEY_PASSWORD" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            --out "$RESIGNED_APK" \
+            "$ALIGNED_APK"
+          mv -f "$RESIGNED_APK" "$APK"
+          rm -f "$ALIGNED_APK"
+
+          echo "Verifying the final signed APK..."
           if ! "$APK_SIGNER" verify --verbose --print-certs "$APK" > "$VERIFY_REPORT" 2>&1; then
             cat "$VERIFY_REPORT" >&2
             exit 1
@@ -616,7 +639,7 @@ jobs:
             echo "APK signer does not match the persistent project keystore." >&2
             exit 1
           }
-          echo "Gradle APK signature schemes and persistent certificate verified."
+          echo "Final APK V1/V2/V3 signatures and persistent certificate verified."
 
       - name: Verify APK integrity
         if: success()
