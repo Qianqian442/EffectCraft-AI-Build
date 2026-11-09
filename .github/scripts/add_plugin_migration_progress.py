@@ -182,7 +182,7 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
         .and_then(Value::as_array)
         .is_some_and(|matches| matches.iter().any(|item| {
             item.get("effect_id").and_then(Value::as_str)
-                == Some("org.effectcraft.sapphire.compat.rsmb-style-motion-blur")
+                == Some("org.effectcraft.compat.rsmb-motion-blur")
         }));
     if has_rsmb_compatibility {
         lines.push("RSMB 已匹配到“RSMB 风格方向模糊（非原版）”。它已加入效果列表，但不会自动添加到图层；请先把该效果添加到当前图层，再在右侧控件调整方向角度、模糊距离和效果强度。".into());
