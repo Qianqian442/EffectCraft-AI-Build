@@ -360,7 +360,7 @@ fn ai_plugin_request(_request_id: &str, _prompt: &str) -> Result<String, String>
 }
 
 #[cfg(target_os = "android")]
-fn open_ai_plugin_import() -> Result<(), String> {
+pub(crate) fn open_ai_plugin_import() -> Result<(), String> {
     with_android_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             env.call_static_method(
@@ -375,7 +375,7 @@ fn open_ai_plugin_import() -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "android"))]
-fn open_ai_plugin_import() -> Result<(), String> {
+pub(crate) fn open_ai_plugin_import() -> Result<(), String> {
     Err("请在 Android 版 EffectCraft 中导入 AI 插件。".into())
 }
 
