@@ -365,7 +365,12 @@ pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {
     private void initAiBridge() {
         aiActivity = new WeakReference<>(this);
         try {
-            registerReceiver(aiInstallReceiver, new IntentFilter(AI_INSTALL_ACTION));
+            IntentFilter installFilter = new IntentFilter(AI_INSTALL_ACTION);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                registerReceiver(aiInstallReceiver, installFilter, Context.RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(aiInstallReceiver, installFilter);
+            }
             aiReceiverRegistered = true;
         } catch (Exception error) {
             Log.w(TAG, "Could not register the AI plugin installer callback.", error);
