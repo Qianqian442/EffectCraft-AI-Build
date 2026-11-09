@@ -638,6 +638,11 @@ jobs:
           HEADER_SRC="source/effectcraft/crates/ui-egui/src/header.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" "$HEADER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_SINGLE_EXPORT_BUTTON_V1" "$HEADER_SRC"
+          if grep -Fq "effectcraft-fixed-export-button" "$HEADER_SRC"; then
+            echo "Duplicate pinned Export button detected in Android header." >&2
+            exit 1
+          fi
           echo "Verified narrow-screen touch scrolling keeps every toolbar button reachable."
           echo "Verified the visible top-left WASM plug-in import button is present in the APK source."
           grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_PROGRESS_POPUP_V1" "$HEADER_SRC"
