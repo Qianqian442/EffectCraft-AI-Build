@@ -89,6 +89,16 @@ jobs:
           python3 .github/scripts/add_desktop_plugin_package_support.py
           python3 .github/scripts/add_plugin_migration_progress.py
 
+      - name: Apply the Android export dialog patch and compile its UI
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          mkdir -p artcraft/source
+          if [ ! -e artcraft/source/effectcraft ]; then
+            ln -s "$GITHUB_WORKSPACE/effectcraft" artcraft/source/effectcraft
+          fi
+          python3 .github/scripts/patch_export_dialog.py
+
       - name: Validate the original AE menu and connect AEP/AEPX to Import Project
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
