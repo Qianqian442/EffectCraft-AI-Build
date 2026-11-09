@@ -33,14 +33,20 @@ def main() -> None:
 
     lib = ui / "src/lib.rs"
     c = lib.read_text(encoding="utf-8")
-    if "init_android_ai_bridge" not in c:
-        bridge_exports = """mod ai_assistant;
-
+    if "mod ai_assistant;" not in c:
+        c = "mod ai_assistant;\n" + c
+    if "pub fn init_android_ai_bridge" not in c:
+        init_bridge = """
 #[cfg(target_os = "android")]
 pub fn init_android_ai_bridge(vm_ptr: *mut std::ffi::c_void) {
     ai_assistant::init_android_vm(vm_ptr);
 }
-
+"""
+        c += init_bridge
+    # Keep toolbar routing independent from the VM-init marker. Older patch revisions
+    # could leave the VM initializer present while omitting this function, which breaks UI compilation.
+    if "pub(crate) fn open_ai_plugin_import_from_toolbar" not in c:
+        toolbar_bridge = """
 #[cfg(target_os = "android")]
 pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {
     ai_assistant::open_ai_plugin_import()
@@ -51,8 +57,8 @@ pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {
     Err("请在 Android 版 EffectCraft 中导入 AI 插件。".into())
 }
 """
-        c = once(c, "mod ai_assistant;\n", bridge_exports, "AI bridge export")
-        lib.write_text(c, encoding="utf-8")
+        c += toolbar_bridge
+    lib.write_text(c, encoding="utf-8")
 
     build_common = builder / "lib/build-common.sh"
     c = build_common.read_text(encoding="utf-8")
