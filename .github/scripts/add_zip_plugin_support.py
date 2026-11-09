@@ -225,7 +225,7 @@ def patch_picker(root: Path) -> None:
             else:
                 # Keep any future extension added upstream; append ZIP without replacing it.
                 import re
-                match = re.search(r'Ask::Open\\(&\\[(.*?)\\]\\)', line)
+                match = re.search(r'Ask::Open\(&\[(.*?)\]\)', line)
                 if not match:
                     continue
                 entries = match.group(1)
