@@ -71,7 +71,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     let mut menu_open = ui.ctx().data(|d| d.get_temp::<bool>(menu_id).unwrap_or(false));
     let response = ui
         .put(rect, egui::Button::new("导入插件"))
-        .on_hover_text("导入 WASM 效果插件或 DeepSeek AI ZIP");
+        .on_hover_text("导入 WASM、WAT、ZIP 效果插件或 DeepSeek AI ZIP");
     app.auto.add_response("header.importPlugin", &response, "Import Plug-in");
     widgets::focus_outline(ui, &response, &app.tokens);
     if response.clicked() {
@@ -94,7 +94,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
             .open(&mut popup_open)
             .show(ui.ctx(), |popup| {
                 popup.label("选择插件类型");
-                if popup.button("WASM / WAT 效果插件").clicked() {
+                if popup.button("WASM / WAT / ZIP 效果插件").clicked() {
                     import_wasm = true;
                 }
                 if popup.button("DeepSeek AI 插件 ZIP").clicked() {
