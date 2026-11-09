@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="com.artcraft.effectcraft.permission.BIND_AI_PLUGIN" />
+
+    <application
+        android:allowBackup="false"
+        android:label="EffectCraft DeepSeek AI 插件"
+        android:theme="@android:style/Theme.Material.Light.NoActionBar"
+        android:usesCleartextTraffic="false">
+        <activity
+            android:name=".PluginManagerActivity"
+            android:exported="true"
+            android:screenOrientation="unspecified">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".InferenceService"
+            android:exported="true"
+            android:permission="com.artcraft.effectcraft.permission.BIND_AI_PLUGIN">
+            <intent-filter>
+                <action android:name="com.artcraft.effectcraft.aiassistant.BIND_INFERENCE" />
+            </intent-filter>
+        </service>
+    </application>
+</manifest>
