@@ -82,6 +82,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     let mut import_ai = false;
     if menu_open {
         let mut popup_open = true;
+        let mut close_menu = false;
         egui::Window::new("导入插件")
             .id(menu_id.with("popup"))
             .order(egui::Order::Foreground)
@@ -100,10 +101,10 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                     import_ai = true;
                 }
                 if popup.button("关闭").clicked() {
-                    popup_open = false;
+                    close_menu = true;
                 }
             });
-        menu_open = popup_open && !import_wasm && !import_ai;
+        menu_open = popup_open && !close_menu && !import_wasm && !import_ai;
     }
     ui.ctx().data_mut(|d| d.insert_temp(menu_id, menu_open));
 
