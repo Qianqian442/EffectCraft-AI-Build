@@ -101,6 +101,8 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                     import_ai = true;
                 }
                 popup.label("电脑版 AE 原生插件 .aex 不能直接在 Android 运行");
+                popup.label(".aep / .aepx 是 AE 工程文件，请用“导入工程”，不要走“开始移植”。");
+                popup.label("只有包含 .aex / .dll / .ofx 等插件的 ZIP 才用这里的插件移植入口。");
                 if popup.button("关闭").clicked() {
                     close_menu = true;
                 }
