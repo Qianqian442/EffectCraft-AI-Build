@@ -218,8 +218,8 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
     }
 }
 '''
-    anchor = "/// Synthetic group uid for the Geometry Options row of a 3D text or shape layer in a Classic 3D comp, which only offers \\\"Change Renderer…\\\" (never a real property uid).\\n"
-    source = replace_once(source, anchor, type_and_helpers + "\\n" + anchor, "curve quick access helpers")
+    anchor = '/// Synthetic group uid for the Geometry Options row of a 3D text or shape layer in a Classic 3D comp, which only offers "Change Renderer…" (never a real property uid).\n'
+    source = replace_once(source, anchor, type_and_helpers + "\n" + anchor, "curve quick access helpers")
 
     prop_anchor = '''    prop_expression_hint(app, ui, g, rc, prop);
     if !g.graph_on {
