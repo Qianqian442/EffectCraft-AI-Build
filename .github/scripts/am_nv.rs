@@ -485,10 +485,10 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> R
     let rate = FrameRate::from_f64(fps);
     let name = Path::new(path).file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "Alight Motion Project".into());
 
-    let mut layer_nodes = Vec::new();
-    for node in scene.descendants().filter(|n| n.is_element() && n.tag_name().name() == "layer") {
-        layer_nodes.push(node);
-    }
+    // Alight Motion uses concrete layer tags such as shape/text/group/color, not <layer>.
+    let layer_nodes: Vec<_> = scene.descendants().filter(|n| {
+        n.is_element() && matches!(n.tag_name().name(), "shape" | "text" | "group" | "color" | "drawing")
+    }).collect();
     if layer_nodes.is_empty() {
         return Err(err("Alight Motion scene does not contain any supported layer elements"));
     }
@@ -524,8 +524,8 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> R
                 doc.text = content;
                 doc.font = node.attribute("font").unwrap_or("Inter").to_string();
                 doc.size = attr_f(*node, "size", 72.0).clamp(1.0, 512.0);
-                if let Some(color) = node.attribute("fillColor") {
-                    let rgba = parse_xml_color(color);
+                if let Some(color_node) = xml_child(*node, "fillColor") {
+                    let rgba = parse_xml_color(&xml_value(color_node, "value", "#FFFFFFFF"));
                     doc.fill = [rgba[0] as f32, rgba[1] as f32, rgba[2] as f32, rgba[3] as f32];
                 }
                 if node.descendants().any(|n| n.is_element() && n.tag_name().name() == "kf") {
@@ -536,14 +536,19 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> R
                 }
                 push_layer(project, cid, layer)?;
                 warnings.push(format!("{layer_name}: unsupported Alight Motion text styling/effects were simplified"));
-            } else if kind.eq_ignore_ascii_case("media") || kind.eq_ignore_ascii_case("image") {
+            } else if kind.eq_ignore_ascii_case("media") || kind.eq_ignore_ascii_case("image")
+                || (kind.eq_ignore_ascii_case("shape") && node.attribute("fillType").is_some_and(|v| v.eq_ignore_ascii_case("media"))) {
                 let media = node.descendants().find(|n| n.is_element() && n.tag_name().name() == "media");
-                let stored = media.and_then(|m| m.attribute("filename").or_else(|| m.attribute("uri"))).unwrap_or("");
+                let stored = media.and_then(|m| m.attribute("filename").or_else(|| m.attribute("uri")).or_else(|| m.attribute("path")))
+                    .or_else(|| node.attribute("fillVideo"))
+                    .or_else(|| node.attribute("fillImage"))
+                    .unwrap_or("");
+                let stored = stored.strip_prefix("file://").unwrap_or(stored);
                 let found = media_file(base, stored);
                 let media_path = found.clone().unwrap_or_else(|| stored.to_string());
                 let mut footage = Footage::default();
                 footage.path = media_path.clone();
-                footage.kind = if matches!(ext(stored).as_str(), "mp4" | "mov" | "m4v" | "mkv" | "webm" | "avi") { FootageKind::Video } else { FootageKind::Still };
+                footage.kind = if matches!(ext(stored).as_str(), "mp4" | "mov" | "m4v" | "mkv" | "webm" | "avi") || node.attribute("fillVideo").is_some() { FootageKind::Video } else { FootageKind::Still };
                 footage.width = width;
                 footage.height = height;
                 footage.frame_rate = rate;
@@ -557,8 +562,10 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> R
                     start, 0.0, end - start, 1.0, transform)?;
                 push_layer(project, cid, layer)?;
             } else if kind.eq_ignore_ascii_case("shape") || kind.eq_ignore_ascii_case("color") {
-                let fill = node.attribute("fillColor").unwrap_or("#FFFFFFFF");
-                let rgba = parse_xml_color(fill);
+                let fill = xml_child(*node, "fillColor").map(|v| xml_value(v, "value", "#FFFFFFFF"))
+                    .or_else(|| node.attribute("fillColor").map(str::to_string))
+                    .unwrap_or_else(|| "#FFFFFFFF".to_string());
+                let rgba = parse_xml_color(&fill);
                 let mut layer = attach_layer(project, cid, &comp_copy, &layer_name, LayerSource::Shape, (width, height),
                     start, 0.0, end - start, 1.0, transform)?;
                 let mut ids = Ids(&mut project.next_id);
@@ -663,8 +670,9 @@ mod tests {
 
     #[test]
     fn alight_motion_xml_scene_is_parsed() {
-        let xml = r#"<scene width="1080" height="1920" fps="30"><layer type="shape" startTime="0" endTime="1000"/></scene>"#;
+        let xml = r#"<scene width="1080" height="1920" fps="30"><shape s=".rect" startTime="0" endTime="1000"><fillColor value="#FFFF8800"/></shape></scene>"#;
         let parsed = roxmltree::Document::parse(xml).expect("basic scene XML");
         assert_eq!(parsed.root_element().tag_name().name(), "scene");
+        assert!(parsed.root_element().descendants().any(|n| n.is_element() && matches!(n.tag_name().name(), "shape" | "text" | "group")));
     }
 }
