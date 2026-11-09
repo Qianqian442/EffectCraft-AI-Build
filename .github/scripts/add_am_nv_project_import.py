@@ -60,14 +60,14 @@ def main() -> None:
     replace_once(
         import_project,
         '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx")\n',
-        '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") || lower.ends_with(".nv") || lower.ends_with(".zip") || lower.ends_with(".alight")\n',
-        "NodeVideo and project package routing",
+        '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") || lower.ends_with(".nv") || lower.ends_with(".zip") || lower.ends_with(".alight") || lower.ends_with(".xml") || lower.ends_with(".aep") || lower.ends_with(".aepx")\n',
+        "AE, NodeVideo and project package routing",
     )
     replace_once(
         import_project,
         '    let path = str_p(p, "path").ok_or_else(|| bad(C, "missing `path` (.ecproj)"))?.to_string();\n    let (mut sub, saved_by) = read_project(s, &path)?;',
-        '    let path = str_p(p, "path").ok_or_else(|| bad(C, "missing project path"))?.to_string();\n    let lower = path.to_ascii_lowercase();\n    if !lower.ends_with(".ecproj") && !lower.ends_with(".ecprojx") {\n        return super::am_nv::import_path(s, &path);\n    }\n    let (mut sub, saved_by) = read_project(s, &path)?;',
-        "route non-EffectCraft project files to the format importer",
+        '    let path = str_p(p, "path").ok_or_else(|| bad(C, "missing project path"))?.to_string();\n    let lower = path.to_ascii_lowercase();\n    if lower.ends_with(".aep") || lower.ends_with(".aepx") {\n        return super::aep::import_aep(s, p);\n    }\n    if !lower.ends_with(".ecproj") && !lower.ends_with(".ecprojx") {\n        return super::am_nv::import_path(s, &path);\n    }\n    let (mut sub, saved_by) = read_project(s, &path)?;',
+        "route AE, AM and NV projects through the original project import control",
     )
     replace_once(
         import_project,
@@ -76,11 +76,19 @@ def main() -> None:
         "project import command format documentation",
     )
 
+    aep_cmd = root / "crates/engine/src/cmd/aep.rs"
+    replace_once(
+        aep_cmd,
+        "fn import_aep(s: &mut Session, p: &Value) -> Result<Value> {",
+        "pub(crate) fn import_aep(s: &mut Session, p: &Value) -> Result<Value> {",
+        "make the original AE importer callable from the unified project importer",
+    )
+
     frontend = root / "crates/ui-egui/src/menus/frontend.rs"
     replace_once(
         frontend,
         '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx"])),',
-        '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "xml", "alight"])),',
+        '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "xml", "alight", "aep", "aepx"])),',
         "original Import Project picker formats",
     )
 
@@ -89,7 +97,7 @@ def main() -> None:
     if "mod am_nv;" not in cmd_registry.read_text(encoding="utf-8"):
         raise SystemExit("Alight Motion / NodeVideo import command module is not registered")
     print("Installed Alight Motion XML and NodeVideo .nv / ZIP project import.")
-    print("The existing EffectCraft Project import control is retained; AE .aep/.aepx stays separate.")
+    print("The existing EffectCraft Project import control now routes .aep/.aepx, .nv/.zip and AM XML; the dedicated AE menu stays available.")
     print("Unsupported effects, 3D conversions and missing media are reported to the user.")
 
 
