@@ -200,7 +200,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     .replace('-', "")
                     .replace(' ', "");
                 let mapping = if token.contains("rsmb") {
-                    Some(("org.effectcraft.compat.rsmb-motion-blur,
+                    Some(("org.effectcraft.compat.rsmb-motion-blur",
                           "RSMB 风格方向模糊（非原版）",
                           "安卓方向模糊兼容效果；不是原厂 RSMB 运动矢量估算"))
                 } else if token.contains("sglowaura") || token.contains("sapphireglowaura") {
