@@ -1,0 +1,176 @@
+name: Build EffectCraft DeepSeek AI Plugin
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android-ai-plugin/**"
+      - ".github/workflows/build-effectcraft-ai-plugin.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: effectcraft-deepseek-plugin-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-deepseek-plugin:
+    name: Build and verify standalone DeepSeek plugin APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out EffectCraft plugin project
+        uses: actions/checkout@v4
+
+      - name: Restore the same persistent signing certificate as the host APK
+        id: signing_key_cache
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            artcraft/keys/artcraft-builder.jks
+            artcraft/keys/.keystore-password
+          key: effectcraft-apk-signing-v1-${{ github.repository_id }}
+
+      - name: Refuse to sign with a different project key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s artcraft/keys/artcraft-builder.jks
+          test -s artcraft/keys/.keystore-password
+          KEY_PASSWORD="$(<artcraft/keys/.keystore-password)"
+          keytool -list -keystore artcraft/keys/artcraft-builder.jks \
+            -storepass "$KEY_PASSWORD" -alias artcraftbuilder >/dev/null
+          echo "EFFECTCRAFT_KEYSTORE=$GITHUB_WORKSPACE/artcraft/keys/artcraft-builder.jks" >> "$GITHUB_ENV"
+          echo "EFFECTCRAFT_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
+          echo "Restored the persistent EffectCraft signing identity."
+
+      - name: Check out llama.cpp Android inference runtime
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/llama.cpp
+          ref: master
+          path: llama.cpp
+
+      - name: Record inference runtime revision
+        shell: bash
+        run: |
+          echo "llama.cpp revision: $(git -C llama.cpp rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.13"
+
+      - name: Set up Android SDK and native toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" --install \
+            "platform-tools" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "ndk;29.0.13113456" \
+            "cmake;3.31.6"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/29.0.13113456" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$SDK_ROOT/ndk/29.0.13113456" >> "$GITHUB_ENV"
+
+      - name: Allow the llama.cpp Android runtime on Android 9 and newer
+        shell: bash
+        run: |
+          set -euo pipefail
+          LIB_BUILD="llama.cpp/examples/llama.android/lib/build.gradle.kts"
+          test -s "$LIB_BUILD"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("llama.cpp/examples/llama.android/lib/build.gradle.kts")
+          text = path.read_text()
+          if "minSdk = 33" not in text:
+              raise SystemExit("Unexpected upstream llama.cpp Android minimum SDK declaration.")
+          path.write_text(text.replace("minSdk = 33", "minSdk = 28", 1))
+          print("llama.cpp Android library minSdk configured to API 28.")
+          PY
+
+      - name: Build the standalone AI plugin APK
+        working-directory: android-ai-plugin
+        env:
+          EFFECTCRAFT_KEYSTORE: ${{ github.workspace }}/artcraft/keys/artcraft-builder.jks
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release.apk
+
+      - name: Verify package, ARM64 native runtime, APK integrity and shared signature
+        shell: bash
+        env:
+          EFFECTCRAFT_KEYSTORE: ${{ github.workspace }}/artcraft/keys/artcraft-builder.jks
+        run: |
+          set -euo pipefail
+          APK="android-ai-plugin/app/build/outputs/apk/release/app-release.apk"
+          KEY_PASSWORD="$(<artcraft/keys/.keystore-password)"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
+          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > plugin-signature.txt
+          grep -Fqx "Verified using v3 scheme (APK Signature Scheme v3): true" plugin-signature.txt
+          EXPECTED_CERT="$(keytool -list -v -keystore "$EFFECTCRAFT_KEYSTORE" \
+            -storepass "$KEY_PASSWORD" -alias artcraftbuilder \
+            | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          ACTUAL_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' plugin-signature.txt)"
+          test -n "$EXPECTED_CERT" && test "$EXPECTED_CERT" = "$ACTUAL_CERT"
+          "$BUILD_TOOLS/zipalign" -c -v 4 "$APK"
+          unzip -t "$APK" >/dev/null
+          ENTRIES="$(mktemp)"
+          unzip -Z1 "$APK" > "$ENTRIES"
+          grep -Fxq "lib/arm64-v8a/libai-chat.so" "$ENTRIES"
+          grep -Eq "^lib/arm64-v8a/libllama\.so$" "$ENTRIES"
+          rm -f "$ENTRIES"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" > plugin-badging.txt
+          grep -Fq "package: name='com.artcraft.effectcraft.aiassistant'" plugin-badging.txt
+          grep -Fq "sdkVersion:'28'" plugin-badging.txt
+          grep -Fq "native-code: 'arm64-v8a'" plugin-badging.txt
+          cat plugin-badging.txt | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:|launchable-activity:)"
+          echo "Plugin certificate matches the host APK; V3 signature, ZIP integrity, ARM64 llama.cpp libraries and manifest verified."
+          sha256sum "$APK"
+
+      - name: Upload standalone DeepSeek AI plugin APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-DeepSeek-AI-Plugin
+          path: android-ai-plugin/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
+
+      - name: Publish direct plugin APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: effectcraft-deepseek-plugin-${{ github.run_number }}
+          name: EffectCraft DeepSeek AI Plugin (Build ${{ github.run_number }})
+          body: |
+            Standalone EffectCraft DeepSeek local inference plugin APK.
+
+            - Package: com.artcraft.effectcraft.aiassistant
+            - ARM64 native llama.cpp inference runtime
+            - Signed with the same persistent certificate as the EffectCraft host APK
+            - Open the plugin once and download the approximately 1.02 GB GGUF model; inference then runs locally/offline
+            - No cloud inference endpoint or API key is used
+
+            The model download is a separate one-time step inside the plugin and is not bundled into this APK.
+          files: android-ai-plugin/app/build/outputs/apk/release/app-release.apk
+          draft: false
+          prerelease: true
