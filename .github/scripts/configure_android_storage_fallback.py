@@ -139,21 +139,21 @@ def patch_activity(builder: Path) -> None:
 def patch_builder(builder: Path) -> None:
     path = builder / "lib/build-common.sh"
     source = path.read_text(encoding="utf-8")
-    call = "    saf_bridge.request_storage_permission();\n"
-    if call in source:
-        source = source.replace(call, "    // SAF document picker handles user-selected storage; no broad all-files permission required.\n", 1)
-        print("Disabled forced MANAGE_EXTERNAL_STORAGE settings prompt; SAF remains enabled.")
-    elif "saf_bridge.request_storage_permission();" in source:
-        raise SystemExit("Found an unexpected storage permission call; refusing a broad replacement.")
 
-    permission = '''[[package.metadata.android.uses_permission]]
-name = "android.permission.MANAGE_EXTERNAL_STORAGE"
+    # Preserve the builder's original permission-first behavior:
+    # - Android 11+: safRequestStoragePermission() checks Environment.isExternalStorageManager()
+    #   and opens the per-app All files access settings page when not yet granted.
+    # - Android 6-10: it requests the legacy READ/WRITE storage runtime permissions.
+    # Do not silently strip either the request call or MANAGE_EXTERNAL_STORAGE declaration.
+    call = "    saf_bridge.request_storage_permission();"
+    permission = 'name = "android.permission.MANAGE_EXTERNAL_STORAGE"'
+    if call not in source:
+        raise SystemExit("Original storage permission request call is missing from build-common.sh")
+    if permission not in source:
+        raise SystemExit("MANAGE_EXTERNAL_STORAGE manifest declaration is missing from build-common.sh")
 
-'''
-    if permission in source:
-        source = source.replace(permission, "", 1)
-        print("Removed the broad all-files permission from the generated APK manifest.")
-    path.write_text(source, encoding="utf-8")
+    print("Preserved the original All files access permission request and manifest declaration.")
+    print("If the user declines or the settings activity is unavailable, the SAF picker remains the fallback.")
 
 
 def main() -> None:
