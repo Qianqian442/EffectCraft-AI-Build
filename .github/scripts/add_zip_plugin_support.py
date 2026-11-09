@@ -25,7 +25,7 @@ def patch_manifests(root: Path) -> None:
         source,
         'wasmi = { version = "2", default-features = false, features = ["std", "validate", "wat", "deterministic", "portable-dispatch"] }\n',
         'wasmi = { version = "2", default-features = false, features = ["std", "validate", "wat", "deterministic", "portable-dispatch"] }\n'
-        'zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2", "flate2/rust_backend"] }\n',
+        'zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }\n',
         "ZIP archive reader workspace dependency",
     )
     workspace.write_text(source, encoding="utf-8")
