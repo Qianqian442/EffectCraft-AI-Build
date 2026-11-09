@@ -24,6 +24,68 @@ def patch_activity(builder: Path) -> None:
         print("Android shared-storage SAF fallback already configured.")
         return
 
+    class_anchor = 'public final class __CLASS__ extends NativeActivity {\\n'
+    permission_fields = r'''
+    // EFFECTCRAFT_ANDROID_PERMISSION_ON_IMPORT_V1
+    private static final int REQ_IMPORT_STORAGE_PERMISSION = 0x504A;
+    private Runnable pendingStorageContinuation;
+    private boolean waitingForAllFilesAccessSettings = false;
+
+    /**
+     * Request "Allow management of all files" only when a file import is requested.
+     * When the user returns from Settings, continue the exact import that opened it.
+     * A refusal or unavailable Settings screen still falls through to the SAF picker.
+     */
+    public void requestAllFilesAccessThen(Runnable continuation) {
+        if (continuation == null) return;
+        runOnUiThread(() -> {
+            if (hasOriginalStorageAccess()) {
+                continuation.run();
+                return;
+            }
+            if (pendingStorageContinuation != null) {
+                Log.i(TAG, "A storage-permission request is already pending.");
+                return;
+            }
+            pendingStorageContinuation = continuation;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                try {
+                    Intent settings = new Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION);
+                    settings.setData(Uri.parse("package:" + getPackageName()));
+                    waitingForAllFilesAccessSettings = true;
+                    startActivity(settings);
+                } catch (Exception error) {
+                    waitingForAllFilesAccessSettings = false;
+                    Log.w(TAG, "All files access settings unavailable; continuing with SAF.", error);
+                    finishPendingStorageContinuation();
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                    && checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                try {
+                    requestPermissions(new String[] {
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE
+                    }, REQ_IMPORT_STORAGE_PERMISSION);
+                } catch (Exception error) {
+                    Log.w(TAG, "Legacy storage permission request failed; continuing with SAF.", error);
+                    finishPendingStorageContinuation();
+                }
+            } else {
+                finishPendingStorageContinuation();
+            }
+        });
+    }
+
+    private void finishPendingStorageContinuation() {
+        Runnable continuation = pendingStorageContinuation;
+        pendingStorageContinuation = null;
+        if (continuation != null) continuation.run();
+    }
+
+'''
+    source = replace_once(source, class_anchor, class_anchor + permission_fields,
+                          "on-demand storage permission fields and helper")
+
     open_anchor = '''                intent.setType("*/*");
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);'''
     open_replacement = '''                intent.setType("*/*");
@@ -35,6 +97,82 @@ def patch_activity(builder: Path) -> None:
                         "com.android.externalstorage.documents", "primary:Download"));
                 intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);'''
     source = replace_once(source, open_anchor, open_replacement, "SAF open picker start folder")
+
+    # Route every ordinary file-open request through the same permission-first mechanism.
+    # This is the existing picker used by both plug-in import and project import.
+    old_open_method = '''    public void safRequestOpen(long id, boolean multiple) {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
+                // EFFECTCRAFT_ANDROID_SHARED_STORAGE_SAF_FALLBACK_V1
+                // Open the ordinary shared Download folder first, not / or Android/data.
+                // The user can still navigate to other shared-storage folders in DocumentsUI.
+                intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                    DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:Download"));
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+                requestIds.put(REQ_OPEN, id);
+                startActivityForResult(intent, REQ_OPEN);
+            } catch (Exception e) {
+                enqueueError(id, "open", e.toString());
+            }
+        });
+    }'''
+    new_open_method = '''    public void safRequestOpen(long id, boolean multiple) {
+        requestAllFilesAccessThen(() -> launchSafOpenPicker(id, multiple));
+    }
+
+    private void launchSafOpenPicker(long id, boolean multiple) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                DocumentsContract.buildDocumentUri(
+                    "com.android.externalstorage.documents", "primary:Download"));
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            requestIds.put(REQ_OPEN, id);
+            startActivityForResult(intent, REQ_OPEN);
+        } catch (Exception e) {
+            enqueueError(id, "open", e.toString());
+        }
+    }'''
+    source = replace_once(source, old_open_method, new_open_method,
+                          "permission-first shared plug-in and project file picker")
+
+    resume_old = '''    protected void onResume() {
+        super.onResume();
+        suppressSelectionHandles();
+    }'''
+    resume_new = '''    protected void onResume() {
+        super.onResume();
+        if (waitingForAllFilesAccessSettings) {
+            waitingForAllFilesAccessSettings = false;
+            // Continue whichever import asked for permission. Granted access uses the original
+            // shared-storage path; a refusal uses SAF plus the app-owned staging fallback.
+            finishPendingStorageContinuation();
+        }
+        suppressSelectionHandles();
+    }'''
+    source = replace_once(source, resume_old, resume_new, "resume import after all-files settings")
+
+    permissions_result = '''    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == REQ_IMPORT_STORAGE_PERMISSION) {
+            // SAF remains available even when the legacy runtime permission is declined.
+            finishPendingStorageContinuation();
+        }
+    }
+
+'''
+    permissions_anchor = '    private void extractAssetsIfNeeded() {'
+    source = replace_once(source, permissions_anchor, permissions_result + permissions_anchor,
+                          "legacy storage permission callback")
 
     folder_anchor = '''                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
                 requestIds.put(REQ_FOLDER, id);'''
@@ -209,20 +347,23 @@ def patch_builder(builder: Path) -> None:
     path = builder / "lib/build-common.sh"
     source = path.read_text(encoding="utf-8")
 
-    # Preserve the builder's original permission-first behavior:
-    # - Android 11+: safRequestStoragePermission() checks Environment.isExternalStorageManager()
-    #   and opens the per-app All files access settings page when not yet granted.
-    # - Android 6-10: it requests the legacy READ/WRITE storage runtime permissions.
-    # Do not silently strip either the request call or MANAGE_EXTERNAL_STORAGE declaration.
+    # Keep the special Android "Allow management of all files" permission in the manifest,
+    # but do not interrupt normal launches. The permission is requested when either import
+    # entry opens the shared file picker, and then the original import continues after Settings.
     call = "    saf_bridge.request_storage_permission();"
     permission = 'name = "android.permission.MANAGE_EXTERNAL_STORAGE"'
-    if call not in source:
-        raise SystemExit("Original storage permission request call is missing from build-common.sh")
+    if source.count(call) != 1:
+        raise SystemExit("Expected exactly one original startup storage-permission request")
     if permission not in source:
         raise SystemExit("MANAGE_EXTERNAL_STORAGE manifest declaration is missing from build-common.sh")
+    source = source.replace(call + "\\n", "", 1)
+    if call in source:
+        raise SystemExit("Startup storage-permission request was not removed")
+    path.write_text(source, encoding="utf-8")
 
-    print("Preserved the original All files access permission request and manifest declaration.")
-    print("If the user declines or the settings activity is unavailable, the SAF picker remains the fallback.")
+    print("Kept MANAGE_EXTERNAL_STORAGE in the Android manifest.")
+    print("Moved the storage permission prompt from app startup to plug-in/project import.")
+    print("Denied or unavailable access continues through the SAF picker and app-owned staging.")
 
 
 def main() -> None:
