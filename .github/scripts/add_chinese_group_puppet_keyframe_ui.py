@@ -22,6 +22,22 @@ def patch_default_language(root: Path) -> None:
     new = '    language: String = "zh-hans".into(),'
     path.write_text(replace_once(source, old, new, "Simplified Chinese default"), encoding="utf-8")
 
+    # Existing installations may retain a saved "system" preference. On Android, that
+    # fallback resolves to Simplified Chinese; explicit language choices remain untouched.
+    language_path = root / "crates/ui-egui/src/i18n.rs"
+    language_source = language_path.read_text(encoding="utf-8")
+    old_system = '        "system" => system_language(),'
+    new_system = '''        "system" => {
+            #[cfg(target_os = "android")]
+            { "zh-hans" }
+            #[cfg(not(target_os = "android"))]
+            { system_language() }
+        },'''
+    language_path.write_text(
+        replace_once(language_source, old_system, new_system, "Android Simplified Chinese runtime default"),
+        encoding="utf-8",
+    )
+
 
 def patch_project_commands(root: Path) -> None:
     path = root / "crates/engine/src/cmd/project_items.rs"
@@ -48,12 +64,12 @@ fn group_items(s: &mut Session, p: &Value) -> Result<Value> {
         }
     }
     if unique.len() < 2 {
-        return Err(bad(cmd, "select at least two project items to group"));
+        return Err(bad(cmd, "请至少选择两个素材进行编组"));
     }
     for id in &unique {
         let item = s.project.item(*id).ok_or_else(|| bad(cmd, format!("project item {} no longer exists", id.0)))?;
         if item.is_folder() {
-            return Err(bad(cmd, "folders cannot be included in a new group"));
+            return Err(bad(cmd, "不能将文件夹加入新编组"));
         }
     }
 
@@ -67,7 +83,7 @@ fn group_items(s: &mut Session, p: &Value) -> Result<Value> {
     };
     let name = str_p(p, "name").map(str::trim).filter(|name| !name.is_empty()).unwrap_or("编组").to_string();
 
-    let folder = s.edit("Group Project Items", None, |proj, st| {
+    let folder = s.edit("编组素材", None, |proj, st| {
         let unique_name = proj.numbered_item_name(&name, |_| false);
         let folder = proj.add_item(&unique_name, label, parent, ItemKind::Folder);
         for id in &unique {
@@ -84,11 +100,11 @@ fn ungroup_item(s: &mut Session, p: &Value) -> Result<Value> {
     let cmd = "project.ungroup";
     let id = match p.get("item") {
         Some(value) => item_ref(s, value, cmd)?,
-        None => *s.state.project_selection.first().ok_or_else(|| bad(cmd, "select a group folder first"))?,
+        None => *s.state.project_selection.first().ok_or_else(|| bad(cmd, "请先选择一个编组文件夹"))?,
     };
-    let folder = s.project.item(id).ok_or_else(|| bad(cmd, "group folder no longer exists"))?;
+    let folder = s.project.item(id).ok_or_else(|| bad(cmd, "编组文件夹已不存在"))?;
     if !folder.is_folder() {
-        return Err(bad(cmd, "the selected project item is not a group folder"));
+        return Err(bad(cmd, "所选项目不是编组文件夹"));
     }
     let parent = folder.parent;
     let children: Vec<ItemId> = s.project.items.values()
@@ -96,7 +112,7 @@ fn ungroup_item(s: &mut Session, p: &Value) -> Result<Value> {
         .map(|item| item.id)
         .collect();
 
-    s.edit("Ungroup Project Items", None, |proj, st| {
+    s.edit("解除编组", None, |proj, st| {
         for child in &children {
             proj.item_mut(*child).ok_or_else(|| bad(cmd, format!("group child {} vanished", child.0)))?.parent = parent;
         }
@@ -152,7 +168,7 @@ fn puppet_quick_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy: 
         egui::Id::new("effectcraft-puppet-quick-button"),
     )
     .on_hover_text("木偶控点：单击添加控点，拖动控点可调整位置");
-    app.auto.add_response("header.puppetQuick", &response, "Puppet Position Pin Tool");
+    app.auto.add_response("header.puppetQuick", &response, "木偶控点工具");
     widgets::focus_outline(ui, &response, &t);
     if response.clicked() {
         app.ui.tool = Tool::Puppet;
@@ -308,23 +324,21 @@ fn project_row_long_press_id() -> egui::Id {
     source = replace_once(source, release_anchor, release_anchor + release_code, "Project long-press release cleanup")
 
     # Keep the action visible if an engine operation fails; dismiss it only after success.
-    action_loop = (
-        "    for (id, params) in actions {\\n"
-        "        if let Err(e) = crate::menus::invoke(app, &ctx, &id, params) {\\n"
-        "            app.ui.status = e;\\n"
-        "        }\\n"
-        "    }\\n"
-    )
-    action_loop_new = (
-        "    for (id, params) in actions {\\n"
-        "        let is_group_action = matches!(id.as_str(), \"project.group\" | \"project.ungroup\");\\n"
-        "        if let Err(e) = crate::menus::invoke(app, &ctx, &id, params) {\\n"
-        "            app.ui.status = e;\\n"
-        "        } else if is_group_action {\\n"
-        "            ctx.data_mut(|data| data.remove::<ProjectGroupMode>(project_group_mode_id()));\\n"
-        "        }\\n"
-        "    }\\n"
-    )
+    action_loop = '''    for (id, params) in actions {
+        if let Err(e) = crate::menus::invoke(app, &ctx, &id, params) {
+            app.ui.status = e;
+        }
+    }
+'''
+    action_loop_new = '''    for (id, params) in actions {
+        let is_group_action = matches!(id.as_str(), "project.group" | "project.ungroup");
+        if let Err(e) = crate::menus::invoke(app, &ctx, &id, params) {
+            app.ui.status = e;
+        } else if is_group_action {
+            ctx.data_mut(|data| data.remove::<ProjectGroupMode>(project_group_mode_id()));
+        }
+    }
+'''
     source = replace_once(source, action_loop, action_loop_new, "Project group action success cleanup")
     path.write_text(source, encoding="utf-8")
 
@@ -373,7 +387,7 @@ def patch_timeline_keyframe_button(root: Path) -> None:
             egui::Id::new("effectcraft-single-item-keyframe"),
         )
     }).inner.on_hover_text(keyframe_hint);
-    app.auto.add_response("timeline.addKeyframe", &keyframe_response, "Add Keyframe");
+    app.auto.add_response("timeline.addKeyframe", &keyframe_response, "添加关键帧");
     if keyframe_response.clicked() && keyframe_enabled {
         if let (Some(_item), Some(layer_id)) = (project_item, selected_layer) {
             let mut properties: Vec<u64> = app.session.state.selected_props.iter()
