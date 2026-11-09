@@ -142,11 +142,15 @@ def main() -> None:
                 Intent confirmation = intent.getParcelableExtra(Intent.EXTRA_INTENT);
                 if (confirmation != null) startActivity(confirmation);
             } else if (status == PackageInstaller.STATUS_SUCCESS) {
-                Log.i(TAG, "EffectCraft AI plugin installed.");
+                Log.i(TAG, "EffectCraft AI plugin installed from ZIP.");
+                Toast.makeText(__CLASS__.this, "DeepSeek AI 插件已导入成功。", Toast.LENGTH_LONG).show();
                 ensureAiBound();
             } else {
-                Log.w(TAG, "AI plugin installation failed: " +
-                    intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE));
+                String reason = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE);
+                Log.w(TAG, "AI plugin installation failed: " + reason);
+                Toast.makeText(__CLASS__.this,
+                    "DeepSeek 插件安装未完成：" + (reason == null ? "请按系统提示重试。" : reason),
+                    Toast.LENGTH_LONG).show();
             }
         }
     };
