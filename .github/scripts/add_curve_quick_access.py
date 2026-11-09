@@ -229,21 +229,21 @@ fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, c
             "comp": segment.comp,
             "layer": segment.layer,
             "prop": segment.prop,
-            "expression": "loopOut(\\"cycle\\")",
+            "expression": "loopOut(\"cycle\")",
             "enabled": true
         })),
         "loop_pingpong" => app.session.execute("prop.setExpression", serde_json::json!({
             "comp": segment.comp,
             "layer": segment.layer,
             "prop": segment.prop,
-            "expression": "loopOut(\\"pingpong\\")",
+            "expression": "loopOut(\"pingpong\")",
             "enabled": true
         })),
         "loop_offset" => app.session.execute("prop.setExpression", serde_json::json!({
             "comp": segment.comp,
             "layer": segment.layer,
             "prop": segment.prop,
-            "expression": "loopOut(\\"offset\\")",
+            "expression": "loopOut(\"offset\")",
             "enabled": true
         })),
         _ => app.session.execute("keys.setSegmentCurve", serde_json::json!({
