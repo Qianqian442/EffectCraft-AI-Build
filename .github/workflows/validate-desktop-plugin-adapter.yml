@@ -72,7 +72,10 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
-        run: python3 .github/scripts/install_ai_plugin_bridge.py
+        run: |
+          mkdir -p "$EFFECTCRAFT_DIR/assets"
+          cp "$GITHUB_WORKSPACE/assets/ae-avatar.png" "$EFFECTCRAFT_DIR/assets/ae-avatar.png"
+          python3 .github/scripts/install_ai_plugin_bridge.py
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
