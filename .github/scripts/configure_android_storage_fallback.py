@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Prefer Android's shared-storage SAF picker and fall back safely for staged file reads."""
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+MARKER = "EFFECTCRAFT_ANDROID_SHARED_STORAGE_SAF_FALLBACK_V1"
+
+
+def replace_once(source: str, old: str, new: str, label: str) -> str:
+    if new in source:
+        return source
+    count = source.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one insertion point, found {count}")
+    return source.replace(old, new, 1)
+
+
+def patch_activity(builder: Path) -> None:
+    path = builder / "templates/android/SafActivity.java"
+    source = path.read_text(encoding="utf-8")
+    if MARKER in source:
+        print("Android shared-storage SAF fallback already configured.")
+        return
+
+    open_anchor = '''                intent.setType("*/*");
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);'''
+    open_replacement = '''                intent.setType("*/*");
+                // EFFECTCRAFT_ANDROID_SHARED_STORAGE_SAF_FALLBACK_V1
+                // Open the ordinary shared Download folder first, not / or Android/data.
+                // The user can still navigate to other shared-storage folders in DocumentsUI.
+                intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                    DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:Download"));
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);'''
+    source = replace_once(source, open_anchor, open_replacement, "SAF open picker start folder")
+
+    folder_anchor = '''                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+                requestIds.put(REQ_FOLDER, id);'''
+    folder_replacement = '''                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+                // Start in user-visible shared storage; never require root or Android/data.
+                intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                    DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:Download"));
+                requestIds.put(REQ_FOLDER, id);'''
+    source = replace_once(source, folder_anchor, folder_replacement, "SAF folder picker start folder")
+
+    old_stage = '        File dir = new File(appStorageDir(), "media");'
+    new_stage = '        File dir = mediaStagingDirectory();'
+    source = replace_once(source, old_stage, new_stage, "media staging directory selection")
+
+    # Keep the Rust bridge's files_dir()/media convention aligned with whichever writable
+    # directory was selected, including the public shared-storage fallback.
+    old_files_dir = '    public String safFilesDir() { return appStorageDir().getAbsolutePath(); }'
+    new_files_dir = '''    public String safFilesDir() {
+        try {
+            File media = mediaStagingDirectory();
+            File parent = media.getParentFile();
+            return (parent == null ? appStorageDir() : parent).getAbsolutePath();
+        } catch (Exception error) {
+            Log.w(TAG, "Falling back to app storage for SAF staging.", error);
+            return appStorageDir().getAbsolutePath();
+        }
+    }'''
+    source = replace_once(source, old_files_dir, new_files_dir, "SAF files directory bridge")
+
+    stage_helper = r'''
+    /**
+     * Path-based EffectCraft readers need a local working copy after Android grants a content://
+     * URI from DocumentsUI. Prefer an ordinary shared-storage directory when the device allows
+     * it, then fall back to app-specific external storage, private files, and cache. Reading the
+     * selected source itself always goes through ContentResolver, not raw root or Android/data
+     * traversal.
+     */
+    private File mediaStagingDirectory() throws Exception {
+        List<File> candidates = new ArrayList<>();
+        File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+        candidates.add(new File(downloads, "EffectCraft/Media"));
+        File external = getExternalFilesDir(null);
+        if (external != null) candidates.add(new File(external, "media"));
+        candidates.add(new File(getFilesDir(), "media"));
+        candidates.add(new File(getCacheDir(), "media"));
+
+        for (File dir : candidates) {
+            try {
+                if ((!dir.isDirectory() && !dir.mkdirs()) || !dir.isDirectory()) continue;
+                if (dir.canWrite()) return dir;
+            } catch (SecurityException error) {
+                Log.i(TAG, "Storage staging path is not available; trying next location: " + dir);
+            }
+        }
+        throw new java.io.IOException("无法创建可写的导入暂存目录；请在系统文件选择器中从 Download 或 Documents 选择文件。");
+    }
+
+'''
+    helper_anchor = '    private File newStageFile(String name, Uri uri) throws Exception {'
+    source = replace_once(source, helper_anchor, stage_helper + helper_anchor, "media staging fallback helper")
+
+    path.write_text(source, encoding="utf-8")
+    print("Configured SAF pickers to start in shared Download storage.")
+    print("Added ordered writable staging fallback: Download/EffectCraft/Media, app external files, private files, then cache.")
+    print("The engine receives a local staged path; source documents are opened via Android ContentResolver.")
+
+
+def patch_builder(builder: Path) -> None:
+    path = builder / "lib/build-common.sh"
+    source = path.read_text(encoding="utf-8")
+    call = "    saf_bridge.request_storage_permission();\n"
+    if call in source:
+        source = source.replace(call, "    // SAF document picker handles user-selected storage; no broad all-files permission required.\n", 1)
+        print("Disabled forced MANAGE_EXTERNAL_STORAGE settings prompt; SAF remains enabled.")
+    elif "saf_bridge.request_storage_permission();" in source:
+        raise SystemExit("Found an unexpected storage permission call; refusing a broad replacement.")
+
+    permission = '''[[package.metadata.android.uses_permission]]
+name = "android.permission.MANAGE_EXTERNAL_STORAGE"
+
+'''
+    if permission in source:
+        source = source.replace(permission, "", 1)
+        print("Removed the broad all-files permission from the generated APK manifest.")
+    path.write_text(source, encoding="utf-8")
+
+
+def main() -> None:
+    builder = Path(os.environ.get("ARTCRAFT_DIR", "")).resolve()
+    if not builder.is_dir():
+        raise SystemExit("ARTCRAFT_DIR must point to the checked-out Android builder")
+    patch_activity(builder)
+    patch_builder(builder)
+
+
+if __name__ == "__main__":
+    main()
