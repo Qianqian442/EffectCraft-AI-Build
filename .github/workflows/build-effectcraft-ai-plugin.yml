@@ -107,6 +107,27 @@ jobs:
           print("llama.cpp Android library minSdk configured to API 28.")
           PY
 
+      - name: Tune local inference memory for mobile devices
+        shell: bash
+        run: |
+          set -euo pipefail
+          CPP="llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp")
+          text = path.read_text()
+          replacements = {
+              "constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;": "constexpr int   DEFAULT_CONTEXT_SIZE    = 1536;",
+              "constexpr int   BATCH_SIZE              = 512;": "constexpr int   BATCH_SIZE              = 128;",
+          }
+          for old, new in replacements.items():
+              if text.count(old) != 1:
+                  raise SystemExit(f"Could not safely tune llama.cpp setting: {old}")
+              text = text.replace(old, new, 1)
+          path.write_text(text)
+          print("DeepSeek plugin context tuned to 1536 tokens and batch size 128.")
+          PY
+
       - name: Build the standalone AI plugin APK
         working-directory: android-ai-plugin
         env:
