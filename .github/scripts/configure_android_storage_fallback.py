@@ -98,8 +98,79 @@ def patch_activity(builder: Path) -> None:
     }
 
 '''
+
+    direct_path_helper = r''' 
+    /** Use the original shared-storage path only when Android says broad path access is granted. */
+    private boolean hasOriginalStorageAccess() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                return Environment.isExternalStorageManager();
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !Environment.isExternalStorageLegacy()) {
+                return false;
+            }
+            return Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+        } catch (Throwable error) {
+            Log.i(TAG, "Could not confirm original storage access; using SAF staging.", error);
+            return false;
+        }
+    }
+
+    /**
+     * Resolve only primary shared-storage DocumentsProvider URIs to raw paths, and only after
+     * the original broad permission has actually been granted. Every other provider/device
+     * falls through to the ContentResolver copy path, so no guessed /data or root paths are used.
+     */
+    private String originalSharedStoragePath(Uri uri) {
+        if (uri == null || !hasOriginalStorageAccess()) return null;
+        if (!"com.android.externalstorage.documents".equals(uri.getAuthority())) return null;
+        try {
+            String documentId = DocumentsContract.getDocumentId(uri);
+            if (documentId == null) return null;
+            int colon = documentId.indexOf(':');
+            if (colon <= 0 || !"primary".equalsIgnoreCase(documentId.substring(0, colon))) return null;
+            String relative = documentId.substring(colon + 1);
+            if (relative.isEmpty()) return null;
+            File root = Environment.getExternalStorageDirectory().getCanonicalFile();
+            File candidate = new File(root, relative).getCanonicalFile();
+            String prefix = root.getPath() + File.separator;
+            if (!candidate.getPath().startsWith(prefix)) return null;
+            if (!candidate.isFile() || !candidate.canRead()) return null;
+            return candidate.getAbsolutePath();
+        } catch (Exception error) {
+            Log.i(TAG, "Original shared-storage path unavailable; falling back to SAF staging for " + uri, error);
+            return null;
+        }
+    }
+
+'''
     helper_anchor = '    private File newStageFile(String name, Uri uri) throws Exception {'
-    source = replace_once(source, helper_anchor, stage_helper + helper_anchor, "media staging fallback helper")
+    source = replace_once(source, helper_anchor, direct_path_helper + helper_anchor, "permission-gated original path helper")
+    source = replace_once(source, anchor, helper + anchor, "media staging fallback helper")
+
+    open_loop_old = '''                for (Uri uri : uris) {
+                    File stage = newStageFile(displayName(uri), uri);
+                    copyUriToFile(uri, stage);
+                    rememberUri(stage, uri);
+                    paths.put(stage.getAbsolutePath());
+                }'''
+    open_loop_new = '''                for (Uri uri : uris) {
+                    // The same SAF open handler serves plug-ins and project imports (.ecproj/.aep).
+                    // Preserve their real source parent when the original broad permission is granted.
+                    String originalPath = originalSharedStoragePath(uri);
+                    if (originalPath != null) {
+                        Log.i(TAG, "Using original shared-storage path for import: " + originalPath);
+                        paths.put(originalPath);
+                        continue;
+                    }
+                    File stage = newStageFile(displayName(uri), uri);
+                    copyUriToFile(uri, stage);
+                    rememberUri(stage, uri);
+                    Log.i(TAG, "Using SAF staged path for import: " + stage.getAbsolutePath());
+                    paths.put(stage.getAbsolutePath());
+                }'''
+    source = replace_once(source, open_loop_old, open_loop_new, "permission-first original path import")
 
     # Replace the builder's file-channel copy with ContentResolver streaming. Some
     # DocumentsProviders expose pipes whose FileChannel.size() is zero even for non-empty files.
@@ -133,7 +204,7 @@ def patch_activity(builder: Path) -> None:
     path.write_text(source, encoding="utf-8")
     print("Configured SAF pickers to start in shared Download storage.")
     print("Added ordered writable staging fallback: app external files, private files, then cache.")
-    print("The engine receives a local staged path; source documents are opened via Android ContentResolver.")
+    print("Granted shared-storage files keep their original path; other providers use ContentResolver staged copies.")
 
 
 def patch_builder(builder: Path) -> None:
