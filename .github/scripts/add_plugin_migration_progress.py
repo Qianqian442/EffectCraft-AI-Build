@@ -67,8 +67,10 @@ pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool 
     for index in 0..archive.len() {
         let Ok(entry) = archive.by_index(index) else { continue };
         if entry.is_dir() { continue; }
-        let name = entry.name().to_ascii_lowercase();
-        let extension = Path::new(entry.name()).extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase();
+        let Ok(entry_name) = entry.name() else { continue };
+        let entry_name = entry_name.into_owned();
+        let name = entry_name.to_ascii_lowercase();
+        let extension = Path::new(&entry_name).extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase();
         let is_native = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
             || name.contains(".plugin/") || name.contains(".ofx.bundle/");
         if is_native { native_count += 1; }
@@ -103,9 +105,10 @@ fn scan_archive(path: &str, progress: &AtomicUsize) -> Result<ScanReport, String
     for index in 0..archive.len() {
         let entry = archive.by_index(index).map_err(|error| format!("读取 ZIP 目录失败：{error}"))?;
         if entry.is_dir() { continue; }
+        let entry_name = entry.name().map(|name| name.into_owned()).map_err(|error| format!("读取 ZIP 文件名失败：{error}"))?;
         let size = entry.size();
         if size > MAX_ENTRY_BYTES {
-            return Err(format!("文件 {} 超过 64 MB 单文件安全上限", entry.name()));
+            return Err(format!("文件 {entry_name} 超过 64 MB 单文件安全上限"));
         }
         total_bytes = total_bytes.checked_add(size).ok_or_else(|| "插件包大小计算溢出".to_string())?;
         if total_bytes > MAX_TOTAL_BYTES {
@@ -123,7 +126,7 @@ fn scan_archive(path: &str, progress: &AtomicUsize) -> Result<ScanReport, String
         let mut entry = archive.by_index(index).map_err(|error| format!("读取 ZIP 文件失败：{error}"))?;
         if entry.is_dir() { continue; }
         file_count += 1;
-        let entry_name = entry.name().to_string();
+        let entry_name = entry.name().map(|name| name.into_owned()).map_err(|error| format!("读取 ZIP 文件名失败：{error}"))?;
         let lower = entry_name.to_ascii_lowercase();
         let extension = Path::new(&entry_name).extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase();
         let is_native = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
