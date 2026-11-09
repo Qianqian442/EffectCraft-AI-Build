@@ -26,6 +26,7 @@ on:
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
+      - '.github/scripts/add_startup_attribution_notice.py'
       - '.github/scripts/add_puppet_pin_links.py'
       - '.github/scripts/add_mobile_touch_scroll.py'
       - '.github/scripts/ai_video_export.rs'
@@ -369,6 +370,13 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_mobile_touch_scroll.py
+
+      - name: Add creator attribution notice on every app launch
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_startup_attribution_notice.py
+          python3 build-assets/.github/scripts/add_startup_attribution_notice.py
 
       - name: Save generated AI assistant source for offline integration
         if: always()
