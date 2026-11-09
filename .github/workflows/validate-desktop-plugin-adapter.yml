@@ -10,6 +10,10 @@ on:
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
+concurrency:
+  group: desktop-plugin-adapter-validation-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
