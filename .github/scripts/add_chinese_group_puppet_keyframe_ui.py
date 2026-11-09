@@ -22,6 +22,22 @@ def patch_default_language(root: Path) -> None:
     new = '    language: String = "zh-hans".into(),'
     path.write_text(replace_once(source, old, new, "Simplified Chinese default"), encoding="utf-8")
 
+    # Existing installations may already have a saved "system" preference. Keep explicit
+    # language choices intact, but make that first-run/default value Chinese on Android too.
+    language_path = root / "crates/ui-egui/src/i18n.rs"
+    language_source = language_path.read_text(encoding="utf-8")
+    old_system = '        "system" => system_language(),'
+    new_system = '''        "system" => {
+            #[cfg(target_os = "android")]
+            { "zh-hans" }
+            #[cfg(not(target_os = "android"))]
+            { system_language() }
+        },'''
+    language_path.write_text(
+        replace_once(language_source, old_system, new_system, "Android Simplified Chinese runtime default"),
+        encoding="utf-8",
+    )
+
 
 def patch_project_commands(root: Path) -> None:
     path = root / "crates/engine/src/cmd/project_items.rs"
