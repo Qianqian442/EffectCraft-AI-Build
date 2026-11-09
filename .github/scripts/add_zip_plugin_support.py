@@ -98,7 +98,9 @@ fn extract_effect_plugin_archive(s: &Session, archive_path: &str) -> Result<Vec<
             continue;
         }
 
-        let entry_name = entry.name().to_string();
+        let entry_name = entry.name()
+            .map_err(|error| bad(CMD, format!("无法读取 ZIP 条目名称：{error}")))?
+            .into_owned();
         if entry_name.contains('\\') || entry_name.contains('\0') {
             continue;
         }
