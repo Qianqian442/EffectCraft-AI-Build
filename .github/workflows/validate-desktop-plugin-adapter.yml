@@ -12,7 +12,6 @@ on:
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
-      - '.github/scripts/add_chroma_key_effect.py'
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
@@ -80,7 +79,7 @@ jobs:
             .github/scripts/add_startup_attribution_notice.py \
             .github/scripts/patch_export_dialog.py \
             .github/scripts/add_project_import_formats.py \
-            .github/scripts/add_am_nv_project_import.py
+            .github/scripts/add_am_nv_project_import.py \
             .github/scripts/add_chroma_key_effect.py
 
       - name: Apply the same plug-in patches used by the APK build
