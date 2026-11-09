@@ -189,30 +189,74 @@ jobs:
           echo "Plugin certificate matches the host APK; V3 signature, ZIP integrity, ARM64 llama.cpp libraries and manifest verified."
           sha256sum "$APK"
 
-      - name: Upload standalone DeepSeek AI plugin APK
+      - name: Package the signed plugin as an importable ZIP bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android-ai-plugin/app/build/outputs/apk/release/app-release.apk"
+          BUNDLE="plugin-bundle"
+          mkdir -p "$BUNDLE"
+          cp "$APK" "$BUNDLE/plugin.apk"
+          python3 - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          apk = Path("plugin-bundle/plugin.apk")
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          manifest = {
+              "format": "effectcraft-android-plugin",
+              "format_version": 1,
+              "id": "com.artcraft.effectcraft.aiassistant",
+              "name": "EffectCraft DeepSeek AI Plugin",
+              "version": 1,
+              "apk": "plugin.apk",
+              "sha256": digest,
+              "abi": ["arm64-v8a"],
+              "min_android_api": 28
+          }
+          Path("plugin-bundle/plugin.json").write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8"
+          )
+          print("Plugin APK SHA-256:", digest)
+          PY
+          (
+            cd "$BUNDLE"
+            zip -0 -q EffectCraft-DeepSeek-AI-Plugin.zip plugin.apk
+            zip -9 -q EffectCraft-DeepSeek-AI-Plugin.zip plugin.json
+            unzip -tq EffectCraft-DeepSeek-AI-Plugin.zip
+            unzip -p EffectCraft-DeepSeek-AI-Plugin.zip plugin.apk > extracted-plugin.apk
+            cmp plugin.apk extracted-plugin.apk
+            rm extracted-plugin.apk
+          )
+          test -s "$BUNDLE/EffectCraft-DeepSeek-AI-Plugin.zip"
+          sha256sum "$BUNDLE/EffectCraft-DeepSeek-AI-Plugin.zip"
+          echo "Built a ZIP import bundle containing the signed companion APK and plugin.json manifest."
+
+      - name: Upload importable DeepSeek AI plugin ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: EffectCraft-DeepSeek-AI-Plugin
-          path: android-ai-plugin/app/build/outputs/apk/release/app-release.apk
+          name: EffectCraft-DeepSeek-AI-Plugin-ZIP
+          path: plugin-bundle/EffectCraft-DeepSeek-AI-Plugin.zip
           if-no-files-found: error
           compression-level: 0
           retention-days: 14
 
-      - name: Publish direct plugin APK release
+      - name: Publish direct plugin ZIP release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: effectcraft-deepseek-plugin-${{ github.run_number }}
-          name: EffectCraft DeepSeek AI Plugin (Build ${{ github.run_number }})
+          name: EffectCraft DeepSeek AI Plugin ZIP (Build ${{ github.run_number }})
           body: |
-            Standalone EffectCraft DeepSeek local inference plugin APK.
+            Importable EffectCraft DeepSeek AI plugin ZIP bundle.
 
-            - Package: com.artcraft.effectcraft.aiassistant
-            - ARM64 native llama.cpp inference runtime
-            - Signed with the same persistent certificate as the EffectCraft host APK
-            - Open the plugin once and download the approximately 1.02 GB GGUF model; inference then runs locally/offline
-            - No cloud inference endpoint or API key is used
+            - Import the ZIP from EffectCraft's top-left plug-in import entry.
+            - The ZIP contains a signed ARM64 companion APK plus a plugin.json manifest.
+            - EffectCraft validates the package name and signing certificate before invoking Android's system installer.
+            - Android may ask once for permission to install packages and for confirmation; this is required by Android.
+            - Open the installed plug-in's model manager and download the approximately 1.02 GB GGUF model once.
+            - Inference runs locally/offline; no cloud inference endpoint or API key is used.
 
-            The model download is a separate one-time step inside the plugin and is not bundled into this APK.
-          files: android-ai-plugin/app/build/outputs/apk/release/app-release.apk
+            The model is not bundled in the ZIP and is downloaded once inside the plug-in.
+          files: plugin-bundle/EffectCraft-DeepSeek-AI-Plugin.zip
           draft: false
           prerelease: true
