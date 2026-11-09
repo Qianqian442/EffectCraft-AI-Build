@@ -80,6 +80,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
 
     let mut import_wasm = false;
     let mut import_ai = false;
+    let mut import_aep = false;
     if menu_open {
         let mut popup_open = true;
         let mut close_menu = false;
@@ -100,11 +101,15 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                 if popup.button("DeepSeek AI 插件 ZIP").clicked() {
                     import_ai = true;
                 }
+                if popup.button("电脑版 AE 工程 (.aep / .aepx)").clicked() {
+                    import_aep = true;
+                }
+                popup.label("电脑版 AE 原生插件 .aex 不能直接在 Android 运行");
                 if popup.button("关闭").clicked() {
                     close_menu = true;
                 }
             });
-        menu_open = popup_open && !close_menu && !import_wasm && !import_ai;
+        menu_open = popup_open && !close_menu && !import_wasm && !import_ai && !import_aep;
     }
     ui.ctx().data_mut(|d| d.insert_temp(menu_id, menu_open));
 
@@ -118,6 +123,11 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
             Ok(()) => app.ui.status = "请选择 DeepSeek AI 插件 ZIP；随后按 Android 系统提示确认安装。".into(),
             Err(error) => app.ui.status = error,
         }
+    }
+    if import_aep
+        && let Err(error) = crate::menus::invoke(app, ui.ctx(), "file.importAep", json!({}))
+    {
+        app.ui.status = error;
     }
     x + 84.0
 }
