@@ -259,9 +259,9 @@ fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, c
         app.ui.status = error.to_string();
     } else if curve.starts_with("loop_") {
         app.ui.status = match curve {
-            "loop_cycle" => "已应用循环表达式：loopOut(cycle)".into(),
-            "loop_pingpong" => "已应用往返循环表达式：loopOut(pingpong)".into(),
-            "loop_offset" => "已应用偏移循环表达式：loopOut(offset)".into(),
+            "loop_cycle" => "已应用周期运动：loopOut(cycle)".into(),
+            "loop_pingpong" => "已应用往返周期：loopOut(pingpong)".into(),
+            "loop_offset" => "已应用偏移周期：loopOut(offset)".into(),
             _ => String::new(),
         };
     }
@@ -301,7 +301,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                 .collapsible(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
-                    ui.label(egui::RichText::new("选择当前属性的曲线；循环模式会在末尾关键帧之后继续重复").size(11.5).color(app.tokens.text_dim));
+                    ui.label(egui::RichText::new("选择当前属性的曲线；周期模式会在末尾关键帧之后继续重复").size(11.5).color(app.tokens.text_dim));
                     ui.add_space(5.0);
                     egui::ScrollArea::horizontal()
                         .id_salt("effectcraft-android-curve-presets")
@@ -318,9 +318,9 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                                     ("连续贝塞尔", "continuous", "continuous"),
                                     ("自动贝塞尔", "ease", "auto"),
                                     ("保持", "hold", "hold"),
-                                    ("循环", "loop_cycle", "loop_cycle"),
-                                    ("往返循环", "loop_pingpong", "loop_pingpong"),
-                                    ("偏移循环", "loop_offset", "loop_offset"),
+                                    ("周期运动", "loop_cycle", "loop_cycle"),
+                                    ("往返周期", "loop_pingpong", "loop_pingpong"),
+                                    ("偏移周期", "loop_offset", "loop_offset"),
                                 ];
                                 for (label, preview, curve) in presets {
                                     let (card, response) = ui.allocate_exact_size(vec2(88.0, 94.0), Sense::click());
