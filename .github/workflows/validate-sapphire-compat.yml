@@ -47,7 +47,7 @@ jobs:
           python3 .github/scripts/build_looks_compat_pack.py
           test -s "$EFFECTCRAFT_DIR/assets/looks-compat/ec_looks_studio.wasm"
           test -s "$EFFECTCRAFT_DIR/assets/looks-compat/bundle.json"
-          python3 -c 'import json, pathlib; m=json.loads(pathlib.Path("$EFFECTCRAFT_DIR/assets/looks-compat/bundle.json").read_text()); assert m["effects"][0]["id"] == "org.effectcraft.looks.studio"'
+          python3 -c 'import json, pathlib; m=json.loads(pathlib.Path("validation/effectcraft/assets/looks-compat/bundle.json").read_text()); assert m["effects"][0]["id"] == "org.effectcraft.looks.studio"'
 
       - name: Parse Android APK workflow YAML
         run: ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/build-effectcraft-ai.yml"); puts "Android APK workflow YAML syntax is valid."'
