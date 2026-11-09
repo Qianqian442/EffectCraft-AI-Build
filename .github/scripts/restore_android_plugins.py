@@ -116,11 +116,11 @@ def main() -> None:
         let marker_matches = std::fs::read_to_string(&marker_path)
             .map(|value| value.trim() == SAPPHIRE_COMPAT_VERSION)
             .unwrap_or(false);
-        let module_missing = bundled_modules.iter().any(|(name, _)| !plugins_dir.join(name).is_file());
+        let module_missing = bundled_modules.iter().any(|(name, _)| !plugins_dir.join(*name).is_file());
         if !marker_matches || module_missing {
             let mut all_written = true;
             for (name, bytes) in bundled_modules.iter() {
-                if let Err(error) = std::fs::write(plugins_dir.join(name), *bytes) {
+                if let Err(error) = std::fs::write(plugins_dir.join(*name), *bytes) {
                     all_written = false;
                     log::warn!("Could not install built-in Sapphire-compatible effect {name}: {error}");
                 }
