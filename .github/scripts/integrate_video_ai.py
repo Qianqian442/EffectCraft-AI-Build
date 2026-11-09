@@ -431,13 +431,13 @@ export_lib.write_text(s)
 # Patch the centered export dialog created by patch_export_dialog.py.
 header = root / "crates/ui-egui/src/header.rs"
 h = header.read_text()
-draft_old = """    let (mut format, mut fps, mut resolution) = ui.ctx().data(|d| {
-        d.get_temp::<(String, f64, String)>(draft_id)
-            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string()))
+draft_old = """    let (mut format, mut fps, mut resolution, mut bitrate_mbps) = ui.ctx().data(|d| {
+        d.get_temp::<(String, f64, String, f64)>(draft_id)
+            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string(), 12.0))
     });"""
-draft_new = """    let (mut format, mut fps, mut resolution, mut ai_interpolation, mut ai_upscale) = ui.ctx().data(|d| {
-        d.get_temp::<(String, f64, String, bool, bool)>(draft_id)
-            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string(), false, false))
+draft_new = """    let (mut format, mut fps, mut resolution, mut bitrate_mbps, mut ai_interpolation, mut ai_upscale) = ui.ctx().data(|d| {
+        d.get_temp::<(String, f64, String, f64, bool, bool)>(draft_id)
+            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string(), 12.0, false, false))
     });"""
 if draft_new not in h:
     if draft_old not in h:
@@ -478,8 +478,8 @@ if params_new not in h:
         raise SystemExit("Could not pass AI options to renderQueue.add")
     h = h.replace(params_old, params_new, 1)
 
-draft_save_old = 'd.insert_temp(draft_id, (format, fps, resolution));'
-draft_save_new = 'd.insert_temp(draft_id, (format, fps, resolution, ai_interpolation, ai_upscale));'
+draft_save_old = 'd.insert_temp(draft_id, (format, fps, resolution, bitrate_mbps));'
+draft_save_new = 'd.insert_temp(draft_id, (format, fps, resolution, bitrate_mbps, ai_interpolation, ai_upscale));'
 if draft_save_new not in h:
     if draft_save_old not in h:
         raise SystemExit("Could not persist AI options in export dialog state")
