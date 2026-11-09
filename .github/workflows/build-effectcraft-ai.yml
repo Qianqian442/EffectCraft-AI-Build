@@ -317,7 +317,9 @@ jobs:
       - name: Add desktop plug-in package inspection and AE script import
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-        run: python3 build-assets/.github/scripts/add_desktop_plugin_package_support.py
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_desktop_plugin_package_support.py
+          python3 build-assets/.github/scripts/add_desktop_plugin_package_support.py
 
       - name: Route AE projects through the original Import Project control
         env:
@@ -668,7 +670,9 @@ jobs:
           grep -Fq "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
           grep -Fq "AE 脚本 / ScriptUI 面板 (.jsx/.js)" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_PACKAGE_IMPORT_V1" "source/effectcraft/crates/engine/src/cmd/effect.rs"
-          grep -Fq 'effect.plugins.install' "source/effectcraft/crates/engine/src/cmd/effect.rs"
+          grep -Fq '"file.installScriptUIPanel"' "source/effectcraft/crates/engine/src/cmd/scripts.rs"
+          grep -Fq '"file.installScript"' "source/effectcraft/crates/engine/src/cmd/scripts.rs"
+          grep -Fq '"effect.plugins.load"' "source/effectcraft/crates/engine/src/cmd/effect.rs"
           grep -Fq "Desktop-Originals" "source/effectcraft/crates/engine/src/cmd/effect.rs"
           grep -Fq "open_ai_plugin_import_from_toolbar" "source/effectcraft/crates/ui-egui/src/lib.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" "$HEADER_SRC"
