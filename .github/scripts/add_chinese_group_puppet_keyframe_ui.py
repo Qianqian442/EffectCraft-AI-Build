@@ -221,7 +221,6 @@ fn project_row_long_press_id() -> egui::Id {
             } else {
                 actions.push(("project.group".into(), json!({"items": mode.selected.iter().map(|id| id.0).collect::<Vec<_>>()})));
             }
-            ctx.data_mut(|data| data.remove::<ProjectGroupMode>(project_group_mode_id()));
         }
     }
 '''
@@ -307,6 +306,26 @@ fn project_row_long_press_id() -> egui::Id {
         }
 '''
     source = replace_once(source, release_anchor, release_anchor + release_code, "Project long-press release cleanup")
+
+    # Keep the action visible if an engine operation fails; dismiss it only after success.
+    action_loop = (
+        "    for (id, params) in actions {\\n"
+        "        if let Err(e) = crate::menus::invoke(app, &ctx, &id, params) {\\n"
+        "            app.ui.status = e;\\n"
+        "        }\\n"
+        "    }\\n"
+    )
+    action_loop_new = (
+        "    for (id, params) in actions {\\n"
+        "        let is_group_action = matches!(id.as_str(), \"project.group\" | \"project.ungroup\");\\n"
+        "        if let Err(e) = crate::menus::invoke(app, &ctx, &id, params) {\\n"
+        "            app.ui.status = e;\\n"
+        "        } else if is_group_action {\\n"
+        "            ctx.data_mut(|data| data.remove::<ProjectGroupMode>(project_group_mode_id()));\\n"
+        "        }\\n"
+        "    }\\n"
+    )
+    source = replace_once(source, action_loop, action_loop_new, "Project group action success cleanup")
     path.write_text(source, encoding="utf-8")
 
 
@@ -324,26 +343,36 @@ def patch_timeline_keyframe_button(root: Path) -> None:
     // selected layer. Selected properties on that layer are keyed; with none selected, Position
     // receives the key at the current composition time. No other layer can be modified.
     let project_item = (app.session.state.project_selection.len() == 1).then(|| app.session.state.project_selection[0]);
-    let selected_layer = (app.session.state.selected_layers.len() == 1).then(|| app.session.state.selected_layers[0]);
-    let keyframe_enabled = match (project_item, selected_layer) {
-        (Some(item), Some(layer)) => g.tl.comp.layer(layer).is_some_and(|layer| layer.source.item() == Some(item)),
-        _ => false,
-    };
+    let selected_layer = project_item.and_then(|item| {
+        // Prefer the one explicitly selected matching layer; otherwise auto-target only when the
+        // asset appears exactly once in the active composition.
+        let selected_match = match app.session.state.selected_layers.as_slice() {
+            [layer] => g.tl.comp.layer(*layer).filter(|layer| layer.source.item() == Some(item)).map(|layer| layer.id),
+            _ => None,
+        };
+        selected_match.or_else(|| {
+            let mut matches = g.tl.comp.layers.iter().filter(|layer| layer.source.item() == Some(item));
+            let first = matches.next()?;
+            if matches.next().is_none() { Some(first.id) } else { None }
+        })
+    });
+    let keyframe_enabled = project_item.is_some() && selected_layer.is_some();
     let keyframe_rect = Rect::from_min_size(pos2(footer.min.x + 8.0, footer.min.y + 2.0), vec2(24.0, 22.0));
     let keyframe_hint = if keyframe_enabled {
         "添加关键帧（仅作用于当前单个素材）"
     } else {
-        "请先在左侧项目面板选中一个素材，并在时间轴中选中对应的单个图层"
+        "请先在左侧项目面板选中一个素材；若素材在当前合成中出现多次，请在时间轴中选中其中一个对应图层"
     };
-    let keyframe_response = widgets::icon_button(
-        ui,
-        keyframe_rect,
-        Icon::Keyframe,
-        false,
-        &t,
-        egui::Id::new("effectcraft-single-item-keyframe"),
-    )
-    .on_hover_text(keyframe_hint);
+    let keyframe_response = ui.add_enabled_ui(keyframe_enabled, |ui| {
+        widgets::icon_button(
+            ui,
+            keyframe_rect,
+            Icon::Keyframe,
+            false,
+            &t,
+            egui::Id::new("effectcraft-single-item-keyframe"),
+        )
+    }).inner.on_hover_text(keyframe_hint);
     app.auto.add_response("timeline.addKeyframe", &keyframe_response, "Add Keyframe");
     if keyframe_response.clicked() && keyframe_enabled {
         if let (Some(_item), Some(layer_id)) = (project_item, selected_layer) {
