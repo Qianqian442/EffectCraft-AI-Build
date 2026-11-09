@@ -204,7 +204,7 @@ fn project_keyframe_target(app: &EffectcraftApp) -> Option<(effectcraft_engine::
     let comp = app.session.project.comp(comp_id)?;
     let matching: Vec<LayerId> = comp.layers.iter().filter_map(|layer| {
         let uses_item = match &layer.source {
-            LayerSource::Footage { item } | LayerSource::Solid { item } | LayerSource::Comp { item } => *item == item_id,
+            LayerSource::Footage { item } | LayerSource::Solid { item } | LayerSource::Comp { item } | LayerSource::Model { item } => *item == item_id,
             _ => false,
         };
         uses_item.then_some(layer.id)
