@@ -348,7 +348,7 @@ def patch_toolbar(root: Path) -> None:
         return
 
     old_state = "    let mut import_wasm = false;\n    let mut import_ai = false;\n"
-    new_state = old_state + "    let mut import_script = false;\n"
+    new_state = old_state + "    let mut import_script = false;\n    let mut import_panel = false;\n"
     source = replace_once(source, old_state, new_state, "toolbar import state")
 
     old_button = '''                if popup.button("DeepSeek AI 插件 ZIP").clicked() {
@@ -359,14 +359,17 @@ def patch_toolbar(root: Path) -> None:
                     import_ai = true;
                 }
                 // EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1
-                if popup.button("AE 脚本 / ScriptUI 面板 (.jsx/.js)").clicked() {
+                if popup.button("AE 脚本 (.jsx/.js)").clicked() {
                     import_script = true;
+                }
+                if popup.button("ScriptUI 面板 (.jsx)").clicked() {
+                    import_panel = true;
                 }
                 popup.label("电脑插件 ZIP 可自动装入 WASM、JSX 和脚本；原生 .aex/.dll/.ofx 需要移植");'''
     source = replace_once(source, old_button, new_button, "desktop script menu item")
 
     old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai;\n"
-    new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai && !import_script;\n"
+    new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai && !import_script && !import_panel;\n"
     source = replace_once(source, old_close, new_close, "desktop script menu close state")
 
     old_ai = '''    if import_ai {
@@ -379,6 +382,12 @@ def patch_toolbar(root: Path) -> None:
     new_ai = old_ai + '''    if import_script {
         match crate::menus::invoke(app, ui.ctx(), "file.installScript", json!({})) {
             Ok(_) => app.ui.status = "AE 脚本已导入；可在 文件 → 脚本 中使用。".into(),
+            Err(error) => app.ui.status = error,
+        }
+    }
+    if import_panel {
+        match crate::menus::invoke(app, ui.ctx(), "file.installScriptUIPanel", json!({})) {
+            Ok(_) => app.ui.status = "ScriptUI 面板已导入；可在 窗口 菜单中打开。".into(),
             Err(error) => app.ui.status = error,
         }
     }
