@@ -390,12 +390,20 @@ def main() -> None:
     app_path.write_text(source, encoding="utf-8")
 
     source = header_path.read_text(encoding="utf-8")
-    source = replace_once(
-        source,
-        "    right_side(app, ui, &p, rect, x, cy);\n}",
-        "    right_side(app, ui, &p, rect, x, cy);\n    #[cfg(not(target_arch = \"wasm32\"))]\n    crate::plugin_migration::show(app, ui.ctx());\n}",
-        "migration windows draw call",
-    )
+    migration_draw = "    #[cfg(not(target_arch = \"wasm32\"))]\n    crate::plugin_migration::show(app, ui.ctx());\n"
+    if migration_draw not in source:
+        patched_tail = (
+            "    right_side(app, ui, &p, rect, x, cy);\n"
+            "    export_dialog(app, ui);\n"
+            "    export_progress_dialog(app, ui);\n}"
+        )
+        original_tail = "    right_side(app, ui, &p, rect, x, cy);\n}"
+        if source.count(patched_tail) == 1:
+            source = source.replace(patched_tail, patched_tail[:-1] + migration_draw + "}", 1)
+        elif source.count(original_tail) == 1:
+            source = source.replace(original_tail, original_tail[:-1] + migration_draw + "}", 1)
+        else:
+            raise SystemExit("migration windows draw call: expected one original or export-patched header tail")
     header_path.write_text(source, encoding="utf-8")
 
     source = frontend_path.read_text(encoding="utf-8")
