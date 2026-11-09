@@ -8,6 +8,8 @@ on:
       - '.github/workflows/validate-sapphire-compat.yml'
       - '.github/scripts/sapphire_compat_pack.rs'
       - '.github/scripts/build_sapphire_compat_pack.py'
+      - '.github/scripts/looks_compat_pack.rs'
+      - '.github/scripts/build_looks_compat_pack.py'
       - '.github/scripts/restore_android_plugins.py'
 
 permissions:
@@ -32,7 +34,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Validate Python build scripts
-        run: python3 -m py_compile .github/scripts/build_sapphire_compat_pack.py .github/scripts/restore_android_plugins.py
+        run: python3 -m py_compile .github/scripts/build_sapphire_compat_pack.py .github/scripts/build_looks_compat_pack.py .github/scripts/restore_android_plugins.py
 
       - name: Compile all bundled effect modules
         env:
@@ -42,6 +44,10 @@ jobs:
           python3 .github/scripts/build_sapphire_compat_pack.py
           test "$(find "$EFFECTCRAFT_DIR/assets/sapphire-compat" -maxdepth 1 -name '*.wasm' | wc -l)" -eq 7
           test -s "$EFFECTCRAFT_DIR/assets/sapphire-compat/bundle.json"
+          python3 .github/scripts/build_looks_compat_pack.py
+          test -s "$EFFECTCRAFT_DIR/assets/looks-compat/ec_looks_studio.wasm"
+          test -s "$EFFECTCRAFT_DIR/assets/looks-compat/bundle.json"
+          python3 -c 'import json, pathlib; m=json.loads(pathlib.Path("$EFFECTCRAFT_DIR/assets/looks-compat/bundle.json").read_text()); assert m["effects"][0]["id"] == "org.effectcraft.looks.studio"'
 
       - name: Parse Android APK workflow YAML
         run: ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/build-effectcraft-ai.yml"); puts "Android APK workflow YAML syntax is valid."'
