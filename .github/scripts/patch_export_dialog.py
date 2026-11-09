@@ -48,11 +48,33 @@ if new_click not in header:
 
 show_tail = '    right_side(app, ui, &p, rect, x, cy);\n}'
 if 'export_dialog(app, ui);' not in header:
-    if show_tail not in header:
-        raise SystemExit("Could not find the header show() insertion point.")
-    header = header.replace(show_tail, '    right_side(app, ui, &p, rect, x, cy);\n    export_dialog(app, ui);\n    export_progress_dialog(app, ui);\n}', 1)
+    if show_tail in header:
+        header = header.replace(show_tail, '    right_side(app, ui, &p, rect, x, cy);\n    export_dialog(app, ui);\n    export_progress_dialog(app, ui);\n}', 1)
+    else:
+        # The AI toolbar patch can change the right_side call's local arguments.
+        # Insert at the actual end of pub fn show(), not by depending on exact variable names.
+        show_start = header.find('pub fn show(')
+        if show_start < 0:
+            raise SystemExit("Could not find pub fn show() in the Android header.")
+        import re as _re
+        show_end_match = _re.search(r"(?m)^}\s*$", header[show_start:])
+        if not show_end_match:
+            raise SystemExit("Could not find the end of pub fn show() in the Android header.")
+        insert_at = show_start + show_end_match.start()
+        header = header[:insert_at] + '    export_dialog(app, ui);\n    export_progress_dialog(app, ui);\n' + header[insert_at:]
 elif 'export_progress_dialog(app, ui);' not in header:
-    header = header.replace('    export_dialog(app, ui);\n}', '    export_dialog(app, ui);\n    export_progress_dialog(app, ui);\n}', 1)
+    if show_tail in header:
+        header = header.replace(show_tail, '    right_side(app, ui, &p, rect, x, cy);\n    export_progress_dialog(app, ui);\n}', 1)
+    else:
+        show_start = header.find('pub fn show(')
+        if show_start < 0:
+            raise SystemExit("Could not find pub fn show() in the Android header.")
+        import re as _re
+        show_end_match = _re.search(r"(?m)^}\s*$", header[show_start:])
+        if not show_end_match:
+            raise SystemExit("Could not find the end of pub fn show() in the Android header.")
+        insert_at = show_start + show_end_match.start()
+        header = header[:insert_at] + '    export_progress_dialog(app, ui);\n' + header[insert_at:]
 
 dialog_fn = r'''
 /// A centered export setup page. The existing Render Queue remains responsible for choosing
