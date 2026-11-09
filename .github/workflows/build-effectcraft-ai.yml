@@ -656,7 +656,7 @@ jobs:
           HEADER_SRC="source/effectcraft/crates/ui-egui/src/header.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
-          grep -Fq "WASM / WAT 效果插件" "$HEADER_SRC"
+          grep -Fq "WASM / WAT / ZIP 效果插件" "$HEADER_SRC"
           grep -Fq "DeepSeek AI 插件 ZIP" "$HEADER_SRC"
           grep -Fq "open_ai_plugin_import_from_toolbar" "source/effectcraft/crates/ui-egui/src/lib.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" "$HEADER_SRC"
