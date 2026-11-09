@@ -593,10 +593,11 @@ jobs:
           fi
           cat "$VERIFY_REPORT"
 
-          # V3 is the required scheme for this Android 12 (API 31) target.
-          # Android 9+ verifies V3; V1 is only needed for legacy Android and V2 is not
-          # a prerequisite when a valid V3 signing block is present.
+          # Require all three schemes: V1 for broad legacy installer compatibility,
+          # V2 for Android 7+, and V3 for modern Android devices including Android 12.
           for SCHEME in \
+            "Verified using v1 scheme (JAR signing): true" \
+            "Verified using v2 scheme (APK Signature Scheme v2): true" \
             "Verified using v3 scheme (APK Signature Scheme v3): true"; do
             grep -Fqx "$SCHEME" "$VERIFY_REPORT" || {
               echo "Required APK signature scheme missing: $SCHEME" >&2
