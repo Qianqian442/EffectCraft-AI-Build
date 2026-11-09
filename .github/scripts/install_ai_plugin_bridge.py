@@ -35,7 +35,7 @@ def main() -> None:
     c = lib.read_text(encoding="utf-8")
     if "init_android_ai_bridge" not in c:
         c = once(c, "mod ai_assistant;\n",
-                 "mod ai_assistant;\n\n#[cfg(target_os = \"android\")]\npub fn init_android_ai_bridge(vm_ptr: *mut std::ffi::c_void) {\n    ai_assistant::init_android_vm(vm_ptr);\n}\n\n#[cfg(target_os = \\"android\\")]\npub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {\n    ai_assistant::open_ai_plugin_import()\n}\n\n#[cfg(not(target_os = \\"android\\))]\npub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {\n    Err(\\"请在 Android 版 EffectCraft 中导入 AI 插件。\\".into())\n}\n",
+                 "mod ai_assistant;\n\n#[cfg(target_os = \"android\")]\npub fn init_android_ai_bridge(vm_ptr: *mut std::ffi::c_void) {\n    ai_assistant::init_android_vm(vm_ptr);\n}\n\n#[cfg(target_os = \"android\")]\npub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {\n    ai_assistant::open_ai_plugin_import()\n}\n\n#[cfg(not(target_os = \"android\\))]\npub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {\n    Err(\"请在 Android 版 EffectCraft 中导入 AI 插件。\".into())\n}\n",
                  "AI bridge export")
         lib.write_text(c, encoding="utf-8")
 
