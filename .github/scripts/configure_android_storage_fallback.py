@@ -76,8 +76,8 @@ def patch_activity(builder: Path) -> None:
      */
     private File mediaStagingDirectory() throws Exception {
         List<File> candidates = new ArrayList<>();
-        File downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-        candidates.add(new File(downloads, "EffectCraft/Media"));
+        // Source files are read from the shared-storage URI returned by SAF. Keep the
+        // engine's working copies in app-owned writable locations, not in public Download.
         File external = getExternalFilesDir(null);
         if (external != null) candidates.add(new File(external, "media"));
         candidates.add(new File(getFilesDir(), "media"));
@@ -103,7 +103,7 @@ def patch_activity(builder: Path) -> None:
 
     path.write_text(source, encoding="utf-8")
     print("Configured SAF pickers to start in shared Download storage.")
-    print("Added ordered writable staging fallback: Download/EffectCraft/Media, app external files, private files, then cache.")
+    print("Added ordered writable staging fallback: app external files, private files, then cache.")
     print("The engine receives a local staged path; source documents are opened via Android ContentResolver.")
 
 
