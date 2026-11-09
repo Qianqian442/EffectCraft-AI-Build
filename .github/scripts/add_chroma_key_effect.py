@@ -140,7 +140,7 @@ fn chroma_key(ctx: &EffectCtx, mut b: Buf) -> Buf {
 
 '''
         keying = replace_once(keying, test_anchor, tests + test_anchor, "chroma key tests")
-        if MARKER not in keying or keying.count('"ec.key.chromakey"') != 2:
+        if MARKER not in keying or keying.count('"ec.key.chromakey"') < 3:
             raise SystemExit("Chroma Key renderer / registry markers did not validate")
         keying_path.write_text(keying, encoding="utf-8")
 
