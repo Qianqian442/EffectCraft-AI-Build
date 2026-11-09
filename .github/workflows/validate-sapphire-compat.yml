@@ -1,0 +1,47 @@
+name: Validate Sapphire-compatible APK sources
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-effectcraft-ai.yml'
+      - '.github/workflows/validate-sapphire-compat.yml'
+      - '.github/scripts/sapphire_compat_pack.rs'
+      - '.github/scripts/build_sapphire_compat_pack.py'
+      - '.github/scripts/restore_android_plugins.py'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate WASM effects and Android workflow syntax
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Rust with WebAssembly target
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Validate Python build scripts
+        run: python3 -m py_compile .github/scripts/build_sapphire_compat_pack.py .github/scripts/restore_android_plugins.py
+
+      - name: Compile all bundled effect modules
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/validation/effectcraft
+        run: |
+          mkdir -p "$EFFECTCRAFT_DIR"
+          python3 .github/scripts/build_sapphire_compat_pack.py
+          test "$(find "$EFFECTCRAFT_DIR/assets/sapphire-compat" -maxdepth 1 -name '*.wasm' | wc -l)" -eq 7
+          test -s "$EFFECTCRAFT_DIR/assets/sapphire-compat/bundle.json"
+
+      - name: Parse Android APK workflow YAML
+        run: ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/build-effectcraft-ai.yml"); puts "Android APK workflow YAML syntax is valid."'
