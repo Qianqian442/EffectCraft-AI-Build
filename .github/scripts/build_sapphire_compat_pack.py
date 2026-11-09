@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile the built-in Android Sapphire-compatible effect pack to sandboxed WASM modules."""
+"""Compile the built-in Android Sapphire-compatible visual-effect modules to sandboxed WASM."""
 from __future__ import annotations
 
 import hashlib
@@ -15,7 +15,6 @@ VARIANTS = {
     "blur": "org.effectcraft.sapphire.compat.blur",
     "distort": "org.effectcraft.sapphire.compat.distort",
     "stylize": "org.effectcraft.sapphire.compat.stylize",
-    "motion": "org.effectcraft.sapphire.compat.rsmb-style-motion-blur",
 }
 
 def main() -> None:
@@ -55,7 +54,7 @@ def main() -> None:
 
     bundle = {
         "name": "EffectCraft Sapphire-compatible effects",
-        "version": "1.1.0",
+        "version": "1.2.0",
         "format": "EffectCraft sandboxed WebAssembly effect modules",
         "desktop_binary_support": False,
         "effects": records,
