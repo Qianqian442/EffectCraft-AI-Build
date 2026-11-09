@@ -107,6 +107,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {
     egui::Window::new("EffectCraft AI 助手")
         .id(Id::new("effectcraft-ai-chat-window"))
         .order(Order::Foreground)
+        .movable(true)
         .default_pos(pos2(
             (screen.max.x - 350.0).max(screen.min.x + 8.0),
             (screen.max.y - 560.0).max(screen.min.y + 8.0),
