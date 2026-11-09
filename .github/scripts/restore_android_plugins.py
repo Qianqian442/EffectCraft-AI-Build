@@ -127,7 +127,7 @@ def main() -> None:
                 }
             }
             if all_written {
-                if let Err(error) = std::fs::write(&marker_path, SAPPHIRE_COMPAT_VERSION) {
+                if let Err(error) = std::fs::write(&marker_path, BUILTIN_EFFECTS_VERSION) {
                     log::warn!("Could not record built-in effect pack version: {error}");
                 }
             }
