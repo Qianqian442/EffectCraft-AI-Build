@@ -51,7 +51,7 @@ pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {
     Err("请在 Android 版 EffectCraft 中导入 AI 插件。".into())
 }
 """
-        c = once(c, "mod ai_assistant;\\n", bridge_exports, "AI bridge export")
+        c = once(c, "mod ai_assistant;\n", bridge_exports, "AI bridge export")
         lib.write_text(c, encoding="utf-8")
 
     build_common = builder / "lib/build-common.sh"
