@@ -31,6 +31,8 @@ on:
       - '.github/scripts/ai_video_export.rs'
       - '.github/scripts/sapphire_compat_pack.rs'
       - '.github/scripts/build_sapphire_compat_pack.py'
+      - '.github/scripts/looks_compat_pack.rs'
+      - '.github/scripts/build_looks_compat_pack.py'
   workflow_dispatch:
 
 permissions:
@@ -434,6 +436,11 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/build_sapphire_compat_pack.py
+
+      - name: Build built-in Looks-style color grading effect
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/build_looks_compat_pack.py
 
       - name: Configure preinstalled Android SDK
         shell: bash
