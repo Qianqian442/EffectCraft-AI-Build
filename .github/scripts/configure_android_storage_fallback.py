@@ -101,8 +101,8 @@ def patch_activity(builder: Path) -> None:
     helper_anchor = '    private File newStageFile(String name, Uri uri) throws Exception {'
     source = replace_once(source, helper_anchor, stage_helper + helper_anchor, "media staging fallback helper")
 
-    // Replace the builder's file-channel copy with ContentResolver streaming. Some
-    // DocumentsProviders expose pipes whose FileChannel.size() is zero even for non-empty files.
+    # Replace the builder's file-channel copy with ContentResolver streaming. Some
+    # DocumentsProviders expose pipes whose FileChannel.size() is zero even for non-empty files.
     copy_start = source.find("    private void copyUriToFile(Uri uri, File destination) throws Exception {")
     if copy_start < 0:
         raise SystemExit("Could not locate Android SAF URI copy method")
