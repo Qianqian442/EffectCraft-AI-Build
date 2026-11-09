@@ -11,6 +11,7 @@ on:
       - '.github/scripts/install_ai_plugin_bridge.py'
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/add_curve_quick_access.py'
+      - '.github/scripts/add_startup_attribution_notice.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
@@ -83,6 +84,7 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: python3 .github/scripts/add_curve_quick_access.py
+          python3 .github/scripts/add_startup_attribution_notice.py
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
