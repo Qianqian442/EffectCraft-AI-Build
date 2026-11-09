@@ -77,6 +77,9 @@ def main() -> None:
         "import android.os.RemoteException;",
         "import java.lang.ref.WeakReference;",
         "import java.util.concurrent.ConcurrentHashMap;",
+        "import java.util.zip.ZipEntry;",
+        "import java.util.zip.ZipInputStream;",
+        "import android.widget.Toast;",
     ]
     if "import android.app.PendingIntent;" not in c:
         c = once(c, "import android.content.Context;\n",
@@ -231,8 +234,8 @@ def main() -> None:
     private void chooseAiPlugin() {
         Intent picker = new Intent(Intent.ACTION_OPEN_DOCUMENT);
         picker.addCategory(Intent.CATEGORY_OPENABLE);
-        picker.setType("application/vnd.android.package-archive");
-        picker.putExtra(Intent.EXTRA_TITLE, "选择 EffectCraft AI 插件 APK");
+        picker.setType("*/*");
+        picker.putExtra(Intent.EXTRA_TITLE, "选择 EffectCraft DeepSeek AI 插件 ZIP");
         picker.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(picker, REQ_AI_PICKER);
     }
@@ -250,33 +253,27 @@ def main() -> None:
 
     private void createAiInstallSession(Uri uri) {
         File archive = new File(getCacheDir(), "effectcraft-ai-plugin.apk");
-        try (InputStream input = getContentResolver().openInputStream(uri);
-             FileOutputStream output = new FileOutputStream(archive, false)) {
-            if (input == null) throw new IllegalStateException("无法读取 AI 插件 APK。");
-            byte[] buffer = new byte[1024 * 1024];
-            int n;
-            while ((n = input.read(buffer)) != -1) output.write(buffer, 0, n);
-            output.flush();
-            output.getFD().sync();
-        } catch (Exception error) {
-            archive.delete();
-            Log.e(TAG, "Could not copy AI plugin APK.", error);
-            return;
-        }
-
         try {
-            android.content.pm.PackageInfo info = getPackageManager().getPackageArchiveInfo(archive.getAbsolutePath(), 0);
+            extractAiPluginApk(uri, archive);
+            PackageManager packageManager = getPackageManager();
+            PackageInfo info = packageManager.getPackageArchiveInfo(
+                archive.getAbsolutePath(), PackageManager.GET_SIGNING_CERTIFICATES);
             if (info == null || !AI_PACKAGE.equals(info.packageName)) {
-                throw new IllegalStateException("所选文件不是 EffectCraft AI 插件 APK。");
+                throw new IllegalStateException("ZIP 中没有有效的 EffectCraft DeepSeek 插件。");
             }
-            PackageInstaller installer = getPackageManager().getPackageInstaller();
-            PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            if (!hasMatchingAiPluginSigner(archive)) {
+                throw new SecurityException("插件签名与当前 EffectCraft 不一致，已拒绝导入。");
+            }
+
+            PackageInstaller installer = packageManager.getPackageInstaller();
+            PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(
+                PackageInstaller.SessionParams.MODE_FULL_INSTALL);
             params.setAppPackageName(AI_PACKAGE);
             int id = installer.createSession(params);
             try (PackageInstaller.Session session = installer.openSession(id);
                  FileInputStream input = new FileInputStream(archive);
                  OutputStream output = session.openWrite("ai-plugin.apk", 0, archive.length())) {
-                byte[] buffer = new byte[1024 * 1024];
+                byte[] buffer = new byte[64 * 1024];
                 int n;
                 while ((n = input.read(buffer)) != -1) output.write(buffer, 0, n);
                 session.fsync(output);
@@ -286,11 +283,64 @@ def main() -> None:
                 PendingIntent result = PendingIntent.getBroadcast(this, id, status, flags);
                 session.commit(result.getIntentSender());
             }
+            runOnUiThread(() -> Toast.makeText(this,
+                "ZIP 已识别，接下来请在 Android 系统页面确认安装 DeepSeek 插件。",
+                Toast.LENGTH_LONG).show());
         } catch (Exception error) {
-            Log.e(TAG, "Could not install AI plugin APK.", error);
+            Log.e(TAG, "Could not import AI plugin ZIP.", error);
+            String detail = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+            runOnUiThread(() -> Toast.makeText(this,
+                "AI 插件 ZIP 导入失败：" + detail, Toast.LENGTH_LONG).show());
         } finally {
             archive.delete();
         }
+    }
+
+    private void extractAiPluginApk(Uri uri, File destination) throws Exception {
+        InputStream raw = getContentResolver().openInputStream(uri);
+        if (raw == null) throw new java.io.IOException("无法读取所选 ZIP 文件。");
+        int matches = 0;
+        long written = 0L;
+        try (ZipInputStream zip = new ZipInputStream(raw)) {
+            ZipEntry entry;
+            while ((entry = zip.getNextEntry()) != null) {
+                if (!entry.isDirectory() && "plugin.apk".equals(entry.getName())) {
+                    matches++;
+                    if (matches != 1) throw new java.io.IOException("ZIP 中出现重复的 plugin.apk。");
+                    try (FileOutputStream output = new FileOutputStream(destination, false)) {
+                        byte[] buffer = new byte[64 * 1024];
+                        int count;
+                        while ((count = zip.read(buffer)) != -1) {
+                            written += count;
+                            if (written > 512L * 1024L * 1024L) {
+                                throw new java.io.IOException("插件文件超过 512 MB 安全上限。");
+                            }
+                            output.write(buffer, 0, count);
+                        }
+                        output.flush();
+                        output.getFD().sync();
+                    }
+                }
+                zip.closeEntry();
+            }
+        }
+        if (matches != 1 || !destination.isFile() || destination.length() < 1024L * 1024L) {
+            destination.delete();
+            throw new java.io.IOException("这不是 EffectCraft DeepSeek 插件 ZIP：缺少根目录 plugin.apk。");
+        }
+    }
+
+    private boolean hasMatchingAiPluginSigner(File archive) throws PackageManager.NameNotFoundException {
+        int flags = PackageManager.GET_SIGNING_CERTIFICATES;
+        PackageInfo hostInfo = getPackageManager().getPackageInfo(getPackageName(), flags);
+        PackageInfo pluginInfo = getPackageManager().getPackageArchiveInfo(archive.getAbsolutePath(), flags);
+        if (hostInfo == null || pluginInfo == null ||
+                hostInfo.signingInfo == null || pluginInfo.signingInfo == null) return false;
+        android.content.pm.Signature[] hostSigners = hostInfo.signingInfo.getApkContentsSigners();
+        android.content.pm.Signature[] pluginSigners = pluginInfo.signingInfo.getApkContentsSigners();
+        return hostSigners != null && pluginSigners != null &&
+            hostSigners.length == 1 && pluginSigners.length == 1 &&
+            hostSigners[0].equals(pluginSigners[0]);
     }
 
     private void initAiBridge() {
@@ -364,7 +414,7 @@ def main() -> None:
 
     print("EffectCraft host UI now uses the independent AI plugin service.")
     print("The host removes llama.cpp and the bundled model; the plugin owns local inference.")
-    print("AI plugin import uses Android PackageInstaller and Messenger IPC with signature permission.")
+    print("AI plugin import accepts a ZIP bundle, extracts its signed plugin.apk, verifies the signing certificate, then uses Android PackageInstaller and Messenger IPC.")
 
 
 if __name__ == "__main__":
