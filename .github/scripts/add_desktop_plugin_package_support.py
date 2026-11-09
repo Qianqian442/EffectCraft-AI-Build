@@ -70,6 +70,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let mut script_names: Vec<String> = Vec::new();
     let mut asset_names: Vec<String> = Vec::new();
     let mut native_names: Vec<String> = Vec::new();
+    let mut native_mappings: Vec<Value> = Vec::new();
     let mut skipped_names: Vec<String> = Vec::new();
 
     for index in 0..archive.len() {
@@ -192,6 +193,51 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                 std::fs::write(originals_dir.join(&destination_name), &bytes)
                     .map_err(|error| bad(CMD, format!("无法保存原始插件 {file_name}：{error}")))?;
                 native_names.push(destination_name);
+                // Map common desktop plug-in filenames to compatible recreations
+                // already bundled with this EffectCraft APK.
+                let token = entry_name.to_ascii_lowercase()
+                    .replace('_', "")
+                    .replace('-', "")
+                    .replace(' ', "");
+                let mapping = if token.contains("rsmb") {
+                    Some(("org.effectcraft.sapphire.compat.rsmb-style-motion-blur",
+                          "RSMB-style Motion Blur (Directional)",
+                          "方向性模糊近似；不是原版 RSMB 的运动矢量估算"))
+                } else if token.contains("sglowaura") || token.contains("sapphireglowaura") {
+                    Some(("org.effectcraft.sapphire.compat.glow-aura",
+                          "Sapphire-style Glow Aura",
+                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
+                } else if token.contains("sglow") || token.contains("sapphireglow") {
+                    Some(("org.effectcraft.sapphire.compat.glow",
+                          "Sapphire-style Glow",
+                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
+                } else if token.contains("slensflare") || token.contains("sapphirelensflare") {
+                    Some(("org.effectcraft.sapphire.compat.lensflare",
+                          "Sapphire-style LensFlare",
+                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
+                } else if token.contains("sblur") || token.contains("sapphireblur") {
+                    Some(("org.effectcraft.sapphire.compat.blur",
+                          "Sapphire-style Blur",
+                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
+                } else if token.contains("sdistort") || token.contains("sapphiredistort") {
+                    Some(("org.effectcraft.sapphire.compat.distort",
+                          "Sapphire-style Distort",
+                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
+                } else if token.contains("sstylize") || token.contains("sapphirestylize") {
+                    Some(("org.effectcraft.sapphire.compat.stylize",
+                          "Sapphire-style Stylize",
+                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
+                } else {
+                    None
+                };
+                if let Some((effect_id, effect_name, note)) = mapping {
+                    native_mappings.push(json!({
+                        "source": entry_name,
+                        "effect_id": effect_id,
+                        "effect_name": effect_name,
+                        "note": note
+                    }));
+                }
             }
             _ => {}
         }
@@ -280,11 +326,21 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         }
     }
 
+    let compatibility_match_count = native_mappings.len();
+    let compatibility_summary = native_mappings.iter().map(|item| {
+        format!(
+            "{} → {}：{}",
+            item["source"].as_str().unwrap_or(""),
+            item["effect_name"].as_str().unwrap_or("兼容效果"),
+            item["note"].as_str().unwrap_or("")
+        )
+    }).collect::<Vec<_>>().join("\n");
     let install_result = json!({
         "installed": installed_wasm,
         "panels": installed_panels,
         "loaded": loaded_wasm,
-        "errors": compatibility_errors
+        "errors": compatibility_errors,
+        "native_compatibility_matches": native_mappings.clone()
     });
     let wat_result = json!({"loaded": loaded_wat, "errors": []});
     let report_dir = plugins_dir.join("Import-Reports");
@@ -296,7 +352,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。若文件名匹配已内置兼容效果，报告会列出替代效果；替代效果不是原厂插件。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
@@ -306,6 +362,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         object.insert("desktop_scripts".into(), json!(script_names));
         object.insert("desktop_assets".into(), json!(asset_names));
         object.insert("desktop_native_requires_port".into(), json!(native_names));
+        object.insert("desktop_native_compatibility_matches".into(), json!(native_mappings));
         object.insert("desktop_skipped".into(), json!(skipped_names));
         object.insert("wat_result".into(), wat_result);
         object.insert("compatibility_report".into(), json!(report_path.to_string_lossy()));
@@ -315,6 +372,9 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     );
     if native_count > 0 {
         notice.push_str(&format!("；另有 {native_count} 个电脑原生插件需要移植，未在安卓执行"));
+    }
+    if compatibility_match_count > 0 {
+        notice.push_str(&format!("；另匹配到 {compatibility_match_count} 个内置兼容效果"));
     }
     if skipped_count > 0 {
         notice.push_str(&format!("；跳过 {skipped_count} 个不支持或超限文件"));
