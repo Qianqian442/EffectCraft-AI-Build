@@ -69,10 +69,9 @@ def patch_activity(builder: Path) -> None:
     stage_helper = r'''
     /**
      * Path-based EffectCraft readers need a local working copy after Android grants a content://
-     * URI from DocumentsUI. Prefer an ordinary shared-storage directory when the device allows
-     * it, then fall back to app-specific external storage, private files, and cache. Reading the
-     * selected source itself always goes through ContentResolver, not raw root or Android/data
-     * traversal.
+     * URI from DocumentsUI. The open path first tries an original primary shared-storage path
+     * when All files access is granted; otherwise it stages through ContentResolver into
+     * app-specific external storage, private files, or cache.
      */
     private File mediaStagingDirectory() throws Exception {
         List<File> candidates = new ArrayList<>();
@@ -146,8 +145,7 @@ def patch_activity(builder: Path) -> None:
 
 '''
     helper_anchor = '    private File newStageFile(String name, Uri uri) throws Exception {'
-    source = replace_once(source, helper_anchor, direct_path_helper + helper_anchor, "permission-gated original path helper")
-    source = replace_once(source, anchor, helper + anchor, "media staging fallback helper")
+    source = replace_once(source, helper_anchor, stage_helper + direct_path_helper + helper_anchor, "storage staging and original-path helpers")
 
     open_loop_old = '''                for (Uri uri : uris) {
                     File stage = newStageFile(displayName(uri), uri);
