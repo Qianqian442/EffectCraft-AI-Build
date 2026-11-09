@@ -363,11 +363,11 @@ def patch_builder(builder: Path) -> None:
 
     # Route QQ / Files / browser ACTION_VIEW handoffs for AEP documents to the AEP
     # importer, rather than treating them as native EffectCraft project files.
-    incoming_old = '''    "effectcraft": \'\'\'        if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {
+    incoming_old = """    "effectcraft": '''        if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {
             log::error!("Could not open the incoming file {path}: {error}");
         }
-\'\'\','''
-    incoming_new = '''    "effectcraft": \'''        let extension = std::path::Path::new(path)
+''',"""
+    incoming_new = """    "effectcraft": '''        let extension = std::path::Path::new(path)
             .extension()
             .and_then(|value| value.to_str())
             .unwrap_or_default()
@@ -384,7 +384,7 @@ def patch_builder(builder: Path) -> None:
         } else if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {
             log::error!("Could not open the incoming file {path}: {error}");
         }
-\''',
+''',"""
     if incoming_new not in source:
         if source.count(incoming_old) != 1:
             raise SystemExit("Could not uniquely locate EffectCraft's incoming-file handler")
