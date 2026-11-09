@@ -426,6 +426,68 @@ def patch_timeline_keyframe_button(root: Path) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def patch_layer_keyframe_markers(root: Path) -> None:
+    """Draw a visible tick on each layer bar at the times where that layer has keyframes."""
+    path = root / "crates/ui-egui/src/panels/timeline.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_LAYER_KEYFRAME_MARKS_V1"
+    if marker in source:
+        return
+
+    helper = r'''
+// EFFECTCRAFT_ANDROID_LAYER_KEYFRAME_MARKS_V1
+/// Collect keyframe times from every property in this layer, including collapsed groups.
+fn android_collect_layer_keyframes(group: &PropGroup, times: &mut Vec<i64>) {
+    for node in &group.children {
+        match node {
+            Node::Prop(prop) => times.extend(prop.keys.iter().map(|key| key.time.0)),
+            Node::Group(child) => android_collect_layer_keyframes(child, times),
+        }
+    }
+}
+
+/// Display-only marks on the layer's own duration bar; native keyframe data and hit targets are unchanged.
+fn android_layer_keyframe_marks(g: &Rw, rc: &RowCtx<'_>, bar: Rect) {
+    let mut times = Vec::new();
+    android_collect_layer_keyframes(&rc.layer.props, &mut times);
+    if times.is_empty() {
+        return;
+    }
+    times.sort_unstable();
+    times.dedup();
+
+    let visible = bar.intersect(g.right_clip);
+    if !visible.is_positive() {
+        return;
+    }
+    let painter = g.gp.clone().with_clip_rect(visible);
+    let marker_color = Color32::from_rgb(255, 214, 86);
+    for time in times {
+        let comp_time = rc.layer.comp_time(Tick(time)).seconds();
+        let x = g.tl.tm.x(comp_time);
+        if x < visible.min.x || x > visible.max.x {
+            continue;
+        }
+        painter.line_segment(
+            [pos2(x, bar.min.y + 1.0), pos2(x, bar.max.y - 1.0)],
+            Stroke::new(1.35, marker_color),
+        );
+        painter.circle_filled(pos2(x, bar.center().y), 2.7, marker_color);
+    }
+}
+'''
+    anchor = "/// The layer's duration bar: source extent, move and trim, markers.\\nfn layer_bar("
+    if source.count(anchor) != 1:
+        raise SystemExit(f"Layer keyframe markers: expected one layer_bar insertion point, found {source.count(anchor)}")
+    source = source.replace(anchor, helper + "\\n" + anchor, 1)
+
+    call = "    layer_bar_markers(app, ui, g, rc);\\n"
+    if source.count(call) != 1:
+        raise SystemExit(f"Layer keyframe markers: expected one existing layer marker call, found {source.count(call)}")
+    source = source.replace(call, call + "    android_layer_keyframe_marks(g, rc, bar);\\n", 1)
+    path.write_text(source, encoding="utf-8")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -435,6 +497,7 @@ def main() -> None:
     patch_puppet_quick_button(root)
     patch_project_panel(root)
     patch_timeline_keyframe_button(root)
+    patch_layer_keyframe_markers(root)
     print("Default interface language set to Simplified Chinese.")
     print("Added one-tap access to the original native Puppet Position Pin tool.")
     print("Added long-press project grouping and folder ungrouping.")
