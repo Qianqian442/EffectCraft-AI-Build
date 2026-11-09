@@ -18,6 +18,7 @@ on:
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
       - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
@@ -322,6 +323,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_desktop_plugin_package_support.py
           python3 build-assets/.github/scripts/add_desktop_plugin_package_support.py
+
+      - name: Add draggable AE plug-in migration and progress windows
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_plugin_migration_progress.py
+          python3 build-assets/.github/scripts/add_plugin_migration_progress.py
 
       - name: Route AE projects through the original Import Project control
         env:
