@@ -12,6 +12,9 @@ on:
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
+      - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/add_project_import_formats.py'
+      - '.github/scripts/add_am_nv_project_import.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   pull_request:
     branches: [main]
@@ -20,6 +23,9 @@ on:
       - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/add_project_import_formats.py'
+      - '.github/scripts/add_am_nv_project_import.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
@@ -69,7 +75,10 @@ jobs:
             .github/scripts/add_plugin_migration_progress.py \
             .github/scripts/install_ai_plugin_bridge.py \
             .github/scripts/add_curve_quick_access.py \
-            .github/scripts/add_startup_attribution_notice.py
+            .github/scripts/add_startup_attribution_notice.py \
+            .github/scripts/patch_export_dialog.py \
+            .github/scripts/add_project_import_formats.py \
+            .github/scripts/add_am_nv_project_import.py
 
       - name: Apply the same plug-in patches used by the APK build
         env:
@@ -79,6 +88,15 @@ jobs:
           python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
           python3 .github/scripts/add_plugin_migration_progress.py
+
+      - name: Validate the original AE menu and connect AEP/AEPX to Import Project
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: |
+          python3 .github/scripts/add_project_import_formats.py
+          python3 .github/scripts/add_am_nv_project_import.py
+          grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
+          grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
 
       - name: Apply standalone DeepSeek AI plugin bridge
         env:
