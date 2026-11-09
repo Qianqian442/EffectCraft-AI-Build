@@ -361,6 +361,45 @@ def patch_builder(builder: Path) -> None:
         raise SystemExit("Startup storage-permission request was not removed")
     path.write_text(source, encoding="utf-8")
 
+    # Route QQ / Files / browser ACTION_VIEW handoffs for AEP documents to the AEP
+    # importer, rather than treating them as native EffectCraft project files.
+    incoming_old = '''    "effectcraft": \'\'\'        if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {
+            log::error!("Could not open the incoming file {path}: {error}");
+        }
+\'\'\','''
+    incoming_new = '''    "effectcraft": \'\'\'        let extension = std::path::Path::new(path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        let command = if matches!(extension.as_str(), "aep" | "aepx") {
+            "file.importAep"
+        } else {
+            "file.open"
+        };
+        if let Err(error) = self.inner.session.execute(command, serde_json::json!({ "path": path })) {
+            log::error!("Could not open the incoming file {path}: {error}");
+        }
+\'\'\','''
+    if incoming_new not in source:
+        if source.count(incoming_old) != 1:
+            raise SystemExit("Could not uniquely locate EffectCraft's incoming-file handler")
+        source = source.replace(incoming_old, incoming_new, 1)
+    if 'matches!(extension.as_str(), "aep" | "aepx")' not in source:
+        raise SystemExit("AEP incoming-file routing was not applied")
+    path.write_text(source, encoding="utf-8")
+
+    associations_path = builder / "lib/file_associations.py"
+    associations = associations_path.read_text(encoding="utf-8")
+    old_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate"],'
+    new_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate", "aep", "aepx"],'
+    if new_association not in associations:
+        count = associations.count(old_association)
+        if count != 1:
+            raise SystemExit(f"Could not uniquely find EffectCraft's Android file associations (found {count})")
+        associations = associations.replace(old_association, new_association, 1)
+    associations_path.write_text(associations, encoding="utf-8")
+
     print("Kept MANAGE_EXTERNAL_STORAGE in the Android manifest.")
     print("Moved the storage permission prompt from app startup to plug-in/project import.")
     print("Denied or unavailable access continues through the SAF picker and app-owned staging.")
