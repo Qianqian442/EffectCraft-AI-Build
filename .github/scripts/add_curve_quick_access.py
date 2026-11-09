@@ -154,49 +154,28 @@ fn android_curve_segment_id() -> egui::Id {
     egui::Id::new("effectcraft-android-curve-segment")
 }
 
-/// Make the gap between adjacent keyframes clickable without covering either key's hit target.
-fn android_curve_segment_hit(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &mut Rw, rc: &RowCtx<'_>, prop: &Property) {
-    if g.graph_on || prop.keys.len() < 2 {
-        return;
+/// Resolve the exact adjacent keyframe pair currently selected by the user.
+fn android_selected_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSegment> {
+    let [a, b] = app.session.state.selected_keys.as_slice() else {
+        return None;
+    };
+    if a.layer != b.layer || a.prop != b.prop {
+        return None;
     }
-    let uid = prop.uid;
-    for pair in prop.keys.windows(2) {
-        let (a, b) = (&pair[0], &pair[1]);
-        let x0 = g.tl.tm.x(rc.layer.comp_time(a.time).seconds());
-        let x1 = g.tl.tm.x(rc.layer.comp_time(b.time).seconds());
-        let segment = Rect::from_min_max(pos2(x0 + 7.0, rc.cy - 7.0), pos2(x1 - 7.0, rc.cy + 7.0)).intersect(g.right_clip);
-        if segment.width() < 5.0 || !segment.is_positive() {
-            continue;
-        }
-        let response = ui.interact(
-            segment,
-            egui::Id::new(("effectcraft-curve-between-keys", rc.layer.id.0, uid, a.time.0, b.time.0)),
-            Sense::click(),
-        );
-        if response.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-            ui.painter().line_segment(
-                [pos2(x0 + 8.0, rc.cy), pos2(x1 - 8.0, rc.cy)],
-                Stroke::new(2.0, app.tokens.accent.gamma_multiply(0.8)),
-            );
-        }
-        app.auto.add(
-            &format!("timeline.curveSegment.{}.{}.{}", rc.layer.id.0, uid, a.time.0),
-            segment,
-            "Open curve presets for the two keyframes",
-        );
-        if response.clicked() {
-            ui.ctx().data_mut(|data| {
-                data.insert_temp(android_curve_segment_id(), AndroidCurveSegment {
-                    layer: rc.layer.id.0,
-                    prop: uid,
-                    first: a.time.0,
-                    second: b.time.0,
-                    open: true,
-                });
-            });
-        }
+    let (first, second) = if a.time <= b.time { (a.time, b.time) } else { (b.time, a.time) };
+    let comp = app.session.active_comp()?;
+    let layer = comp.layer(a.layer)?;
+    let prop = layer.props.find(a.prop)?;
+    if !prop.keys.windows(2).any(|pair| pair[0].time == first && pair[1].time == second) {
+        return None;
     }
+    Some(AndroidCurveSegment {
+        layer: a.layer.0,
+        prop: a.prop,
+        first: first.0,
+        second: second.0,
+        open: true,
+    })
 }
 
 fn android_curve_sample(kind: &str, x: f32) -> f32 {
@@ -253,11 +232,12 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
     p.text(button_rect.center(), Align2::CENTER_CENTER, "曲线", Tokens::semibold(11.5), app.tokens.text);
     app.auto.add("timeline.curveQuickButton", button_rect, "Curve presets");
     if button.clicked() {
-        if let Some(mut current) = state {
-            current.open = !current.open;
+        if let Some(mut current) = android_selected_curve_segment(app) {
+            current.open = true;
             state = Some(current);
+            ctx.data_mut(|data| data.insert_temp(id, current));
         } else {
-            app.ui.status = "请先点击时间轴上两个关键帧之间的区段".into();
+            app.ui.status = "请先在同一属性上选中两个相邻关键帧，再点左下角“曲线”。".into();
         }
     }
 
@@ -273,7 +253,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                 .collapsible(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
-                    ui.label(egui::RichText::new("选择这两个关键帧之间的动画曲线").size(11.5).color(app.tokens.text_dim));
+                    ui.label(egui::RichText::new("选择当前选中的两个关键帧之间的动画曲线").size(11.5).color(app.tokens.text_dim));
                     ui.add_space(5.0);
                     egui::ScrollArea::horizontal()
                         .id_salt("effectcraft-android-curve-presets")
@@ -325,7 +305,6 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
 '''
     prop_replacement = '''    prop_expression_hint(app, ui, g, rc, prop);
     if !g.graph_on {
-        android_curve_segment_hit(app, ui, g, rc, prop);
         for k in &prop.keys {
 '''
     source = replace_once(source, prop_anchor, prop_replacement, "curve segment hit targets")
