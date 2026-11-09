@@ -44,7 +44,7 @@ def main() -> None:
                 // On a touch device, expand this compatibility effect's sliders once when first shown.
                 // Users can then drag the full-width tracks instead of trying to scrub tiny number fields.
                 if ui.input(|i| i.has_touch_screen())
-                    && fx.effect == "org.effectcraft.sapphire.compat.rsmb-style-motion-blur"
+                    && fx.effect == "org.effectcraft.compat.rsmb-motion-blur"
                     && matches!(pr.ui, ParamUi::Slider { .. })
                 {
                     let opened_id = egui::Id::new(("ec-rsmb-touch-open-once", pr.uid));
