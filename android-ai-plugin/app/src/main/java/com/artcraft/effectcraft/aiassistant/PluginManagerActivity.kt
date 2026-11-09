@@ -67,9 +67,17 @@ class PluginManagerActivity : Activity() {
                     }
                     DownloadManager.STATUS_FAILED -> {
                         val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                        val usedMirror = preferences.getBoolean(KEY_USE_MIRROR, true)
                         preferences.edit().remove(KEY_DOWNLOAD_ID).apply()
-                        statusText.text = "模型下载失败（错误 " + reason + "）。请检查网络后重试。"
-                        downloadButton.isEnabled = true
+                        modelFile.delete()
+                        if (usedMirror) {
+                            statusText.text = "国内镜像暂不可用（错误 " + reason + "），正在自动切换官方源…"
+                            downloadButton.isEnabled = false
+                            handler.postDelayed({ enqueueModelDownload(false) }, 1200L)
+                        } else {
+                            statusText.text = "镜像和官方源均下载失败（错误 " + reason + "）。请更换网络后重试。"
+                            downloadButton.isEnabled = true
+                        }
                         return
                     }
                     else -> handler.postDelayed(this, 1000L)
@@ -145,17 +153,26 @@ class PluginManagerActivity : Activity() {
         downloadButton.isEnabled = false
         progressBar.progress = 0
         statusText.text = "正在创建下载任务…"
+        enqueueModelDownload(true)
+    }
+
+    private fun enqueueModelDownload(useMirror: Boolean) {
+        val source = if (useMirror) MODEL_MIRROR_URL else MODEL_URL
         try {
-            val request = DownloadManager.Request(Uri.parse(MODEL_URL))
+            val request = DownloadManager.Request(Uri.parse(source))
                 .setTitle("DeepSeek 本地模型")
-                .setDescription("EffectCraft AI 助手离线模型（约 1.02 GB）")
+                .setDescription(if (useMirror) "国内镜像优先 · EffectCraft 离线模型（约 1.02 GB）" else "官方源备用 · EffectCraft 离线模型（约 1.02 GB）")
                 .setMimeType("application/octet-stream")
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)
                 .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                 .setDestinationInExternalFilesDir(this, Environment.DIRECTORY_DOWNLOADS, MODEL_FILE)
             val id = downloadManager.enqueue(request)
-            preferences.edit().putLong(KEY_DOWNLOAD_ID, id).apply()
+            preferences.edit()
+                .putLong(KEY_DOWNLOAD_ID, id)
+                .putBoolean(KEY_USE_MIRROR, useMirror)
+                .apply()
+            statusText.text = if (useMirror) "正在尝试国内镜像下载 DeepSeek 模型…" else "正在切换 Hugging Face 官方源下载…"
             handler.removeCallbacks(pollDownload)
             handler.post(pollDownload)
         } catch (error: Exception) {
@@ -189,7 +206,9 @@ class PluginManagerActivity : Activity() {
     companion object {
         private const val MODEL_FILE = "DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf"
         private const val KEY_DOWNLOAD_ID = "model_download_id"
+        private const val KEY_USE_MIRROR = "model_download_use_mirror"
         private const val MIN_MODEL_BYTES = 500L * 1024L * 1024L
+        private const val MODEL_MIRROR_URL = "https://hf-mirror.com/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf?download=true"
         private const val MODEL_URL = "https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf?download=true"
     }
 }
