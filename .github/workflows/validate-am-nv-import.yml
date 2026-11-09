@@ -1,0 +1,57 @@
+name: Validate Alight Motion and NodeVideo project importer
+
+on:
+  push:
+    branches: [am-nv-project-import]
+    paths:
+      - '.github/scripts/add_am_nv_project_import.py'
+      - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/scripts/am_nv.rs'
+      - '.github/workflows/validate-am-nv-import.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - name: Check out build adapter
+        uses: actions/checkout@v4
+
+      - name: Check out EffectCraft 0.21.1
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/effectcraft
+          ref: v0.21.1
+          path: effectcraft
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Apply the same ZIP and AM/NV patches used by the APK build
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: |
+          python3 -m py_compile .github/scripts/add_zip_plugin_support.py .github/scripts/add_am_nv_project_import.py
+          python3 .github/scripts/add_zip_plugin_support.py
+          python3 .github/scripts/add_am_nv_project_import.py
+
+      - name: Compile-check EffectCraft engine with project import support
+        working-directory: effectcraft
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo check -p effectcraft-engine --locked
+
+      - name: Run AM/NV importer unit tests
+        working-directory: effectcraft
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo test -p effectcraft-engine am_nv::tests --lib --locked
