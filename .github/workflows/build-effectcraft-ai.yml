@@ -17,6 +17,7 @@ on:
       - '.github/scripts/restore_android_plugins.py'
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
+      - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/ai_video_export.rs'
   workflow_dispatch:
 
@@ -298,6 +299,11 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_chinese_group_puppet_keyframe_ui.py
+
+      - name: Make Android toolbar touch-scrollable on narrow screens
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/make_header_scrollable.py
 
       - name: Save generated AI assistant source for offline integration
         if: always()
@@ -582,6 +588,8 @@ jobs:
           HEADER_SRC="source/effectcraft/crates/ui-egui/src/header.rs"
           test -s "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1" "$HEADER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" "$HEADER_SRC"
+          echo "Verified narrow-screen touch scrolling keeps every toolbar button reachable."
           echo "Verified the visible top-left WASM plug-in import button is present in the APK source."
           grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_PROGRESS_POPUP_V1" "$HEADER_SRC"
           echo "Verified the centered, draggable live export progress popup is present in the APK source."
