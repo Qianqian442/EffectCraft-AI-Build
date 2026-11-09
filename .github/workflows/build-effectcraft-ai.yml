@@ -27,6 +27,7 @@ on:
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
+      - '.github/scripts/add_chroma_key_effect.py'
       - '.github/scripts/add_bottom_left_media_import.py'
       - '.github/scripts/add_puppet_pin_links.py'
       - '.github/scripts/add_mobile_touch_scroll.py'
@@ -378,6 +379,14 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_startup_attribution_notice.py
           python3 build-assets/.github/scripts/add_startup_attribution_notice.py
+
+      - name: Add Chroma Key effect with color presets and eyedropper
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_chroma_key_effect.py
+          python3 build-assets/.github/scripts/add_chroma_key_effect.py
+
 
       - name: Add bottom-left media import quick entry
         env:
@@ -748,6 +757,11 @@ jobs:
           echo "Verified the centered, draggable live export progress popup is present in the APK source."
           grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_DEVICE_PREFLIGHT_V2" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_GALLERY_SUCCESS_POPUP_V1" "$HEADER_SRC"
+          KEYING_SRC="source/effectcraft/crates/effects/src/keying.rs"
+          grep -Fq "EFFECTCRAFT_ANDROID_CHROMA_KEY_V1" "$KEYING_SRC"
+          grep -Fq '"ec.key.chromakey"' "$KEYING_SRC"
+          grep -Fq '("ec.key.chromakey", "Chroma Key", "色度键")' "source/effectcraft/crates/ui-egui/src/i18n/effects.rs"
+          echo "Verified the Chroma Key effect, selectable screen-color presets and custom color picker are in the APK source."
           test -s "source/effectcraft/crates/ui-egui/src/android_gallery.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_AI_PLUGIN_BRIDGE_V1" "templates/android/SafActivity.java"
           grep -Fq "new ZipInputStream(raw)" "templates/android/SafActivity.java"
