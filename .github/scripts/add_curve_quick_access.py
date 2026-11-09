@@ -154,28 +154,36 @@ fn android_curve_segment_id() -> egui::Id {
     egui::Id::new("effectcraft-android-curve-segment")
 }
 
-/// Resolve the exact adjacent keyframe pair currently selected by the user.
-fn android_selected_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSegment> {
-    let [a, b] = app.session.state.selected_keys.as_slice() else {
-        return None;
-    };
-    if a.layer != b.layer || a.prop != b.prop {
-        return None;
-    }
-    let (first, second) = if a.time <= b.time { (a.time, b.time) } else { (b.time, a.time) };
-    let comp = app.session.active_comp()?;
-    let layer = comp.layer(a.layer)?;
-    let prop = layer.props.find(a.prop)?;
-    if !prop.keys.windows(2).any(|pair| pair[0].time == first && pair[1].time == second) {
+/// Resolve the adjacent keyframe pair surrounding the current Timeline playhead
+/// on the one selected property. The user only needs to position the playhead between keys.
+fn android_playhead_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSegment> {
+    let mut selected = app.session.state.selected_props.iter();
+    let (layer_id, prop_uid) = *selected.next()?;
+    if selected.next().is_some() {
         return None;
     }
-    Some(AndroidCurveSegment {
-        layer: a.layer.0,
-        prop: a.prop,
-        first: first.0,
-        second: second.0,
-        open: true,
-    })
+    let comp_id = app.session.active_comp_id()?;
+    let comp = app.session.project.comp(comp_id)?;
+    let layer = comp.layer(layer_id)?;
+    let prop = layer.props.find(prop_uid)?;
+    let playhead = app.session.time_of(comp_id);
+
+    for pair in prop.keys.windows(2) {
+        let first_comp = layer.comp_time(pair[0].time);
+        let second_comp = layer.comp_time(pair[1].time);
+        let lower = first_comp.min(second_comp);
+        let upper = first_comp.max(second_comp);
+        if playhead > lower && playhead < upper {
+            return Some(AndroidCurveSegment {
+                layer: layer_id.0,
+                prop: prop_uid,
+                first: pair[0].time.0,
+                second: pair[1].time.0,
+                open: true,
+            });
+        }
+    }
+    None
 }
 
 fn android_curve_sample(kind: &str, x: f32) -> f32 {
@@ -232,12 +240,12 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
     p.text(button_rect.center(), Align2::CENTER_CENTER, "曲线", Tokens::semibold(11.5), app.tokens.text);
     app.auto.add("timeline.curveQuickButton", button_rect, "Curve presets");
     if button.clicked() {
-        if let Some(mut current) = android_selected_curve_segment(app) {
+        if let Some(mut current) = android_playhead_curve_segment(app) {
             current.open = true;
             state = Some(current);
             ctx.data_mut(|data| data.insert_temp(id, current));
         } else {
-            app.ui.status = "请先在同一属性上选中两个相邻关键帧，再点左下角“曲线”。".into();
+            app.ui.status = "请先选中一个属性，并把蓝色播放指针移到两个相邻关键帧之间，再点左下角“曲线”。".into();
         }
     }
 
@@ -253,7 +261,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                 .collapsible(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
-                    ui.label(egui::RichText::new("选择当前选中的两个关键帧之间的动画曲线").size(11.5).color(app.tokens.text_dim));
+                    ui.label(egui::RichText::new("选择蓝色播放指针所在区间的动画曲线").size(11.5).color(app.tokens.text_dim));
                     ui.add_space(5.0);
                     egui::ScrollArea::horizontal()
                         .id_salt("effectcraft-android-curve-presets")
