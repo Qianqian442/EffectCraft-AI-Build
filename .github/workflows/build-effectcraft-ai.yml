@@ -17,6 +17,7 @@ on:
       - '.github/scripts/restore_android_plugins.py'
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
@@ -305,6 +306,11 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_zip_plugin_support.py
+
+      - name: Route AE projects through the original Import Project control
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/add_project_import_formats.py
 
       - name: Add Simplified Chinese, Puppet shortcut, project grouping and single-item keyframes
         env:
