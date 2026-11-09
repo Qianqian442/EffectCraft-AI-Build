@@ -18,7 +18,121 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
     return source.replace(old, new, 1)
 
 
+
+def patch_engine(root: Path) -> None:
+    path = root / "crates/engine/src/cmd/anim.rs"
+    source = path.read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_SEGMENT_CURVE_COMMAND_V1" in source:
+        return
+
+    source = replace_once(
+        source,
+        "use super::{CommandSpec, bad, comp_id, f_p, has_comp, has_keys, layers_p, merge_p, str_p, time_p};",
+        "use super::{CommandSpec, bad, comp_id, f_p, has_comp, has_keys, layer_mut, layers_p, merge_p, str_p, time_p};",
+        "Segment curve command imports",
+    )
+    anchor = "pub fn specs() -> Vec<CommandSpec> {"
+    code = r'''
+// EFFECTCRAFT_ANDROID_SEGMENT_CURVE_COMMAND_V1
+/// Apply a curve preset to exactly one adjacent pair of keyframes on one property.
+fn set_segment_curve(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "keys.setSegmentCurve";
+    let cid = comp_id(s, p)?;
+    let lid = LayerId(p.get("layer").and_then(Value::as_u64).ok_or_else(|| bad(C, "missing layer"))?);
+    let uid = p.get("prop").and_then(Value::as_u64).ok_or_else(|| bad(C, "missing prop"))?;
+    let first = Tick::from_seconds_f64(f_p(p, "first").ok_or_else(|| bad(C, "missing first key time"))?);
+    let second = Tick::from_seconds_f64(f_p(p, "second").ok_or_else(|| bad(C, "missing second key time"))?);
+    let curve = str_p(p, "curve").ok_or_else(|| bad(C, "missing curve"))?;
+
+    s.edit("Set Keyframe Segment Curve", merge_p(p), |proj, st| {
+        let layer = layer_mut(proj, cid, lid)?;
+        if layer.switches.locked {
+            return Err(bad(C, "the layer is locked"));
+        }
+        let prop = layer.props.find_mut(uid).ok_or_else(|| bad(C, "no animated property"))?;
+        let i = prop.keys.iter().position(|key| key.time == first).ok_or_else(|| bad(C, "first keyframe no longer exists"))?;
+        let j = prop.keys.iter().position(|key| key.time == second).ok_or_else(|| bad(C, "second keyframe no longer exists"))?;
+        if j != i + 1 {
+            return Err(bad(C, "the selected keyframes are no longer adjacent"));
+        }
+        let (before, after) = prop.keys.split_at_mut(j);
+        let a = &mut before[i];
+        let b = &mut after[0];
+        match curve {
+            "linear" => {
+                a.out_interp = Interp::Linear;
+                b.in_interp = Interp::Linear;
+                a.auto_bezier = false;
+                b.auto_bezier = false;
+                a.continuous = false;
+                b.continuous = false;
+            }
+            "bezier" | "ease" => {
+                a.continuous = false;
+                b.continuous = false;
+                effectcraft_keyframe::easy_ease(a, false, true);
+                effectcraft_keyframe::easy_ease(b, true, false);
+            }
+            "ease_in" => {
+                a.out_interp = Interp::Bezier;
+                a.out_ease = vec![Ease::EASY; a.value.dims().max(1)];
+                a.auto_bezier = false;
+                b.in_interp = Interp::Linear;
+                b.auto_bezier = false;
+            }
+            "ease_out" => {
+                a.out_interp = Interp::Linear;
+                a.auto_bezier = false;
+                b.in_interp = Interp::Bezier;
+                b.in_ease = vec![Ease::EASY; b.value.dims().max(1)];
+                b.auto_bezier = false;
+            }
+            "continuous" => {
+                effectcraft_keyframe::easy_ease(a, false, true);
+                effectcraft_keyframe::easy_ease(b, true, false);
+                a.continuous = true;
+                b.continuous = true;
+                a.auto_bezier = false;
+                b.auto_bezier = false;
+            }
+            "auto" => {
+                a.out_interp = Interp::Bezier;
+                b.in_interp = Interp::Bezier;
+                a.auto_bezier = true;
+                b.auto_bezier = true;
+                a.continuous = false;
+                b.continuous = false;
+            }
+            "hold" => {
+                a.out_interp = Interp::Hold;
+                b.in_interp = Interp::Hold;
+                a.auto_bezier = false;
+                b.auto_bezier = false;
+            }
+            _ => return Err(bad(C, format!("unknown curve preset: {curve}"))),
+        }
+        st.selected_keys = vec![
+            KeyRef { layer: lid, prop: uid, time: first },
+            KeyRef { layer: lid, prop: uid, time: second },
+        ];
+        Ok(json!({"layer": lid.0, "prop": uid, "first": first.seconds(), "second": second.seconds(), "curve": curve}))
+    })
+}
+
+'''
+    source = replace_once(source, anchor, code + anchor, "Segment curve command")
+    spec_anchor = '        cmd!("keys.nudge", "Nudge Keyframes", [], None, "{frames, merge?}", has_keys, nudge),'
+    source = replace_once(
+        source,
+        spec_anchor,
+        '        cmd!("keys.setSegmentCurve", "Set Keyframe Segment Curve", [], None, "{layer, prop, first, second, curve}", has_comp, set_segment_curve),\n' + spec_anchor,
+        "Segment curve command registration",
+    )
+    path.write_text(source, encoding="utf-8")
+
+
 def patch_timeline(root: Path) -> None:
+    patch_engine(root)
     path = root / "crates/ui-egui/src/panels/timeline.rs"
     source = path.read_text(encoding="utf-8")
     if MARKER in source:
@@ -113,32 +227,16 @@ fn android_curve_preview(ui: &mut egui::Ui, rect: Rect, kind: &str, color: Color
     }
 }
 
-fn android_apply_curve(
-    app: &mut EffectcraftApp,
-    ctx: &egui::Context,
-    segment: AndroidCurveSegment,
-    command: &str,
-    params: serde_json::Value,
-) {
-    let Some(comp) = app.session.active_comp() else {
-        app.ui.status = "请先打开一个合成".into();
-        return;
-    };
-    let layer = LayerId(segment.layer);
-    let valid = comp.layer(layer).and_then(|l| l.props.find(segment.prop)).is_some_and(|prop| {
-        prop.keys.iter().any(|k| k.time.0 == segment.first)
-            && prop.keys.iter().any(|k| k.time.0 == segment.second)
+fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, curve: &str) {
+    let params = serde_json::json!({
+        "layer": segment.layer,
+        "prop": segment.prop,
+        "first": Tick(segment.first).seconds(),
+        "second": Tick(segment.second).seconds(),
+        "curve": curve
     });
-    if !valid {
-        app.ui.status = "这两个关键帧已发生变化，请重新选择区段".into();
-        return;
-    }
-    app.session.state.selected_keys = vec![
-        effectcraft_engine::KeyRef { layer, prop: segment.prop, time: Tick(segment.first) },
-        effectcraft_engine::KeyRef { layer, prop: segment.prop, time: Tick(segment.second) },
-    ];
-    if let Err(error) = crate::menus::invoke(app, ctx, command, params) {
-        app.ui.status = error;
+    if let Err(error) = app.session.execute("keys.setSegmentCurve", params) {
+        app.ui.status = error.to_string();
     }
 }
 
@@ -166,7 +264,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
     if let Some(mut current) = state {
         if current.open {
             let mut open = true;
-            let mut picked: Option<(&'static str, serde_json::Value)> = None;
+            let mut picked: Option<&'static str> = None;
             egui::Window::new("曲线选项")
                 .id(egui::Id::new("effectcraft-android-curve-picker-window"))
                 .default_pos(ctx.screen_rect().center() - vec2(210.0, 88.0))
@@ -183,31 +281,31 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                let presets: [(&str, &str, &str, serde_json::Value); 8] = [
-                                    ("线性", "linear", "keys.interpolation", serde_json::json!({"interpolation": "linear"})),
-                                    ("缓入", "ease_in", "keys.easyEaseIn", serde_json::json!({})),
-                                    ("缓出", "ease_out", "keys.easyEaseOut", serde_json::json!({})),
-                                    ("缓入缓出", "ease", "keys.easyEase", serde_json::json!({})),
-                                    ("贝塞尔", "bezier", "keys.interpolation", serde_json::json!({"interpolation": "bezier"})),
-                                    ("连续贝塞尔", "continuous", "keys.interpolation", serde_json::json!({"interpolation": "continuousBezier"})),
-                                    ("自动贝塞尔", "ease", "keys.interpolation", serde_json::json!({"interpolation": "autoBezier"})),
-                                    ("保持", "hold", "keys.interpolation", serde_json::json!({"interpolation": "hold"})),
+                                let presets: [(&str, &str, &str); 8] = [
+                                    ("线性", "linear", "linear"),
+                                    ("缓入", "ease_in", "ease_in"),
+                                    ("缓出", "ease_out", "ease_out"),
+                                    ("缓入缓出", "ease", "ease"),
+                                    ("贝塞尔", "bezier", "bezier"),
+                                    ("连续贝塞尔", "continuous", "continuous"),
+                                    ("自动贝塞尔", "ease", "auto"),
+                                    ("保持", "hold", "hold"),
                                 ];
-                                for (label, preview, command, params) in presets {
+                                for (label, preview, curve) in presets {
                                     let (card, response) = ui.allocate_exact_size(vec2(88.0, 94.0), Sense::click());
                                     ui.painter().rect_filled(card, 6.0, if response.hovered() { app.tokens.accent.gamma_multiply(0.22) } else { app.tokens.panel });
                                     ui.painter().rect_stroke(card, 6.0, Stroke::new(1.0, if response.hovered() { app.tokens.accent } else { app.tokens.separator }), StrokeKind::Inside);
                                     android_curve_preview(ui, card, preview, app.tokens.accent);
                                     ui.painter().text(pos2(card.center().x, card.max.y - 13.0), Align2::CENTER_CENTER, label, Tokens::ui(10.5), app.tokens.text);
                                     if response.clicked() {
-                                        picked = Some((command, params));
+                                        picked = Some(curve);
                                     }
                                 }
                             });
                         });
                 });
-            if let Some((command, params)) = picked {
-                android_apply_curve(app, &ctx, current, command, params);
+            if let Some(curve) = picked {
+                android_apply_curve(app, current, curve);
                 current.open = false;
             }
             if !open {
