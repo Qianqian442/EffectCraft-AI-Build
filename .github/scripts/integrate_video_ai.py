@@ -553,112 +553,32 @@ fn effectcraft_export_memory_ok(
 if "fn effectcraft_export_dimensions(" not in h:
     h = h.rstrip() + "\n\n" + export_guard_helpers.strip() + "\n"
 
-preflight_old = """            let ctx = ui.ctx().clone();
-            match crate::menus::invoke(app, &ctx, "renderQueue.add", params) {
-                Ok(added) => {
-                    let fallback_id = added.get("id").and_then(|value| value.as_u64());
-                    let mut queued_ids: Vec<u64> = app.session.project.render_queue
-                        .iter()
-                        .filter(|item| item.is_queued())
-                        .map(|item| item.id)
-                        .collect();
-                    if queued_ids.is_empty() {
-                        if let Some(id) = fallback_id {
-                            queued_ids.push(id);
-                        }
-                    }
-                    ctx.data_mut(|data| {
-                        data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
-                        data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), queued_ids);
-                        data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
-                    });
-                    match crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false})) {
-                        Ok(result) => {
-                            let started_ids: Vec<u64> = result.get("items")
-                                .and_then(|items| items.as_array())
-                                .map(|items| items.iter().filter_map(|item| item.get("id").and_then(|id| id.as_u64())).collect())
-                                .unwrap_or_default();
-                            if !started_ids.is_empty() {
-                                ctx.data_mut(|data| {
-                                    data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), started_ids);
-                                });
-                            }
-                        }
-                        Err(error) => {
-                            app.ui.status = error.clone();
-                            ctx.data_mut(|data| {
-                                data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
-                            });
-                        }
-                    }
-                    open = false;
-                }
-                Err(error) => app.ui.status = error,
-            }"""
-preflight_new = """            let (check_width, check_height) = app.session.active_comp()
-                .map(|active| effectcraft_export_dimensions(active.width, active.height, &resolution))
-                .unwrap_or((1920, 1080));
-            let effective_fps = if fps > 0.0 {
-                fps
+preflight_old = """    if submit {
+        if let Some(comp) = app.session.active_comp_id() {"""
+preflight_new = """    if submit {
+        // EFFECTCRAFT_EXPORT_MEMORY_PREFLIGHT_V2
+        let (check_width, check_height) = app.session.active_comp()
+            .map(|active| effectcraft_export_dimensions(active.width, active.height, &resolution))
+            .unwrap_or((1920, 1080));
+        let effective_fps = if fps > 0.0 {
+            fps
+        } else {
+            app.session.active_comp().map(|active| active.frame_rate.as_f64()).unwrap_or(30.0)
+        };
+        let upscale_input_too_large = ai_upscale && (check_width > 2048 || check_height > 2048);
+        if upscale_input_too_large
+            || !effectcraft_export_memory_ok(check_width, check_height, effective_fps, ai_interpolation, ai_upscale)
+        {
+            app.ui.status = if upscale_input_too_large {
+                "Real-ESRGAN ×4 当前输入尺寸超过 2048 像素，请降低输入分辨率或关闭 AI 超分".to_string()
             } else {
-                app.session.active_comp().map(|active| active.frame_rate.as_f64()).unwrap_or(30.0)
+                "系统可用内存暂时过低，已暂停本次导出以避免 Android 强制结束应用；释放后台内存后可重试。EffectCraft 不设置固定运行内存上限。".to_string()
             };
-            let upscale_input_too_large = ai_upscale && (check_width > 2048 || check_height > 2048);
-            if upscale_input_too_large
-                || !effectcraft_export_memory_ok(check_width, check_height, effective_fps, ai_interpolation, ai_upscale)
-            {
-                app.ui.status = if upscale_input_too_large {
-                    "Real-ESRGAN ×4 当前输入尺寸超过 2048 像素，请降低输入分辨率或关闭 AI 超分".to_string()
-                } else {
-                    "系统可用内存暂时过低，已暂停本次导出以避免 Android 强制结束应用；释放后台内存后可重试。EffectCraft 不设置固定运行内存上限。".to_string()
-                };
-            } else {
-                let ctx = ui.ctx().clone();
-                match crate::menus::invoke(app, &ctx, "renderQueue.add", params) {
-                    Ok(added) => {
-                        let fallback_id = added.get("id").and_then(|value| value.as_u64());
-                        let mut queued_ids: Vec<u64> = app.session.project.render_queue
-                            .iter()
-                            .filter(|item| item.is_queued())
-                            .map(|item| item.id)
-                            .collect();
-                        if queued_ids.is_empty() {
-                            if let Some(id) = fallback_id {
-                                queued_ids.push(id);
-                            }
-                        }
-                        ctx.data_mut(|data| {
-                            data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
-                            data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), queued_ids);
-                            data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
-                        });
-                        match crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false})) {
-                            Ok(result) => {
-                                let started_ids: Vec<u64> = result.get("items")
-                                    .and_then(|items| items.as_array())
-                                    .map(|items| items.iter().filter_map(|item| item.get("id").and_then(|id| id.as_u64())).collect())
-                                    .unwrap_or_default();
-                                if !started_ids.is_empty() {
-                                    ctx.data_mut(|data| {
-                                        data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), started_ids);
-                                    });
-                                }
-                            }
-                            Err(error) => {
-                                app.ui.status = error.clone();
-                                ctx.data_mut(|data| {
-                                    data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
-                                });
-                            }
-                        }
-                        open = false;
-                    }
-                    Err(error) => app.ui.status = error,
-                }
-            }"""
+            open = false;
+        } else if let Some(comp) = app.session.active_comp_id() {"""
 if preflight_new not in h:
     if preflight_old not in h:
-        raise SystemExit("Could not find the export preflight insertion point.")
+        raise SystemExit("Could not find the centered export dialog submit entry point for AI memory preflight.")
     h = h.replace(preflight_old, preflight_new, 1)
 header.write_text(h)
 
