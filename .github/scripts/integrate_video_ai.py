@@ -550,8 +550,17 @@ fn effectcraft_export_memory_ok(
     }
 }
 '''
+helper_split_marker = "/// Do not impose an application-specific runtime memory ceiling."
+helper_split = export_guard_helpers.index(helper_split_marker)
+dimension_helper = export_guard_helpers[:helper_split].strip()
+memory_helper = export_guard_helpers[helper_split:].strip()
+missing_helpers = []
 if "fn effectcraft_export_dimensions(" not in h:
-    h = h.rstrip() + "\n\n" + export_guard_helpers.strip() + "\n"
+    missing_helpers.append(dimension_helper)
+if "fn effectcraft_export_memory_ok(" not in h:
+    missing_helpers.append(memory_helper)
+if missing_helpers:
+    h = h.rstrip() + "\n\n" + "\n\n".join(missing_helpers) + "\n"
 
 preflight_old = """    if submit {
         if let Some(comp) = app.session.active_comp_id() {"""
