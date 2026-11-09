@@ -89,7 +89,11 @@ pub(crate) fn poll_publish(_request_id: &str) -> Result<Option<String>, String> 
 JAVA_IMPORTS = [
     "import android.content.ContentValues;",
     "import android.media.MediaScannerConnection;",
+    "import android.os.Handler;",
+    "import android.os.Looper;",
+    "import android.os.Message;",
     "import android.provider.MediaStore;",
+    "import java.io.BufferedInputStream;",
     "import java.util.concurrent.ConcurrentHashMap;",
 ]
 
@@ -125,7 +129,7 @@ JAVA_BRIDGE = r'''
                     values.put(MediaStore.Video.Media.RELATIVE_PATH,
                         Environment.DIRECTORY_DCIM + "/EffectCraft");
                     values.put(MediaStore.Video.Media.IS_PENDING, 1);
-                    inserted = getContentResolver().insert(
+                    inserted = activity.getContentResolver().insert(
                         MediaStore.Video.Media.EXTERNAL_CONTENT_URI, values);
                     if (inserted == null) {
                         throw new IllegalStateException("Android 相册没有接受视频文件。");
@@ -167,7 +171,7 @@ JAVA_BRIDGE = r'''
                         while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
                     }
                     MediaScannerConnection.scanFile(
-                        this, new String[] { destination.getAbsolutePath() }, new String[] { mime }, null);
+                        activity, new String[] { destination.getAbsolutePath() }, new String[] { mime }, null);
                 }
 
                 source.delete();
