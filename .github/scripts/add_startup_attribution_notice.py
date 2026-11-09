@@ -55,7 +55,7 @@ fn effectcraft_startup_attribution_notice(ctx: &egui::Context) {
         .id(egui::Id::new("effectcraft-startup-attribution-window"))
         .order(egui::Order::Foreground)
         .fixed_pos(screen.center() - egui::vec2(164.0, 78.0))
-        .fixed_size(328.0, 156.0)
+        .fixed_size((328.0, 156.0))
         .movable(false)
         .collapsible(false)
         .resizable(false)
