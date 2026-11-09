@@ -256,7 +256,7 @@ def main() -> None:
         try {
             extractAiPluginApk(uri, archive);
             PackageManager packageManager = getPackageManager();
-            PackageInfo info = packageManager.getPackageArchiveInfo(
+            android.content.pm.PackageInfo info = packageManager.getPackageArchiveInfo(
                 archive.getAbsolutePath(), PackageManager.GET_SIGNING_CERTIFICATES);
             if (info == null || !AI_PACKAGE.equals(info.packageName)) {
                 throw new IllegalStateException("ZIP 中没有有效的 EffectCraft DeepSeek 插件。");
@@ -332,8 +332,8 @@ def main() -> None:
 
     private boolean hasMatchingAiPluginSigner(File archive) throws PackageManager.NameNotFoundException {
         int flags = PackageManager.GET_SIGNING_CERTIFICATES;
-        PackageInfo hostInfo = getPackageManager().getPackageInfo(getPackageName(), flags);
-        PackageInfo pluginInfo = getPackageManager().getPackageArchiveInfo(archive.getAbsolutePath(), flags);
+        android.content.pm.PackageInfo hostInfo = getPackageManager().getPackageInfo(getPackageName(), flags);
+        android.content.pm.PackageInfo pluginInfo = getPackageManager().getPackageArchiveInfo(archive.getAbsolutePath(), flags);
         if (hostInfo == null || pluginInfo == null ||
                 hostInfo.signingInfo == null || pluginInfo.signingInfo == null) return false;
         android.content.pm.Signature[] hostSigners = hostInfo.signingInfo.getApkContentsSigners();
