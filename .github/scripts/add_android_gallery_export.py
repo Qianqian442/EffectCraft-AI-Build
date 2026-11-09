@@ -135,7 +135,7 @@ JAVA_BRIDGE = r'''
                         throw new IllegalStateException("Android 相册没有接受视频文件。");
                     }
                     try (InputStream input = new BufferedInputStream(new FileInputStream(source));
-                         OutputStream raw = getContentResolver().openOutputStream(inserted, "w")) {
+                         OutputStream raw = activity.getContentResolver().openOutputStream(inserted, "w")) {
                         if (raw == null) throw new IllegalStateException("无法写入 Android 相册。");
                         try (java.io.BufferedOutputStream output = new java.io.BufferedOutputStream(raw)) {
                             byte[] buffer = new byte[1024 * 1024];
@@ -153,7 +153,7 @@ JAVA_BRIDGE = r'''
                     }
                     ContentValues publish = new ContentValues();
                     publish.put(MediaStore.Video.Media.IS_PENDING, 0);
-                    if (getContentResolver().update(inserted, publish, null, null) <= 0) {
+                    if (activity.getContentResolver().update(inserted, publish, null, null) <= 0) {
                         throw new IllegalStateException("视频已复制，但未能完成相册发布。");
                     }
                 } else {
@@ -179,7 +179,7 @@ JAVA_BRIDGE = r'''
                 Log.i(TAG, "Published EffectCraft video to DCIM/EffectCraft: " + name);
             } catch (Exception error) {
                 if (inserted != null) {
-                    try { getContentResolver().delete(inserted, null, null); } catch (Exception ignored) {}
+                    try { activity.getContentResolver().delete(inserted, null, null); } catch (Exception ignored) {}
                 }
                 String detail = error.getMessage();
                 galleryPublishResults.put(requestId, "ERROR: " +
