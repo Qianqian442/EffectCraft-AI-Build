@@ -262,7 +262,17 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         for source in wat_files {
             let file_name = source.file_name().map(|value| value.to_string_lossy().to_string()).unwrap_or_default();
             match s.execute("effect.plugins.load", json!({"path": source.to_string_lossy()})) {
-                Ok(result) => loaded_wat.push(result),
+                Ok(result) => {
+                    let target_name = format!("desktop_{stamp}_{}.wat", loaded_wat.len());
+                    let target = plugins_dir.join(&target_name);
+                    match std::fs::copy(&source, &target) {
+                        Ok(_) => loaded_wat.push(result),
+                        Err(error) => {
+                            let _ = std::fs::remove_file(&target);
+                            compatibility_errors.push(json!({"file": file_name, "error": format!("WAT 已载入本次会话，但无法保存供下次启动使用：{error}")}));
+                        }
+                    }
+                }
                 Err(error) => compatibility_errors.push(json!({"file": file_name, "error": error.to_string()})),
             }
         }
