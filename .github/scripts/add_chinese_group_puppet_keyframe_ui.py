@@ -371,25 +371,23 @@ def patch_timeline_keyframe_button(root: Path) -> None:
         })
     });
     let keyframe_enabled = project_item.is_some() && selected_layer.is_some();
-    let keyframe_rect = Rect::from_min_size(pos2(footer.min.x + 8.0, footer.min.y + 2.0), vec2(24.0, 22.0));
+    let keyframe_rect = Rect::from_min_size(pos2(footer.min.x + 8.0, footer.min.y + 2.0), vec2(84.0, 22.0));
     let keyframe_hint = if keyframe_enabled {
         "添加关键帧（仅作用于当前单个素材）"
     } else {
         "请先在左侧项目面板选中一个素材；若素材在当前合成中出现多次，请在时间轴中选中其中一个对应图层"
     };
-    let keyframe_response = ui.add_enabled_ui(keyframe_enabled, |ui| {
-        widgets::icon_button(
-            ui,
-            keyframe_rect,
-            Icon::Keyframe,
-            false,
-            &t,
-            egui::Id::new("effectcraft-single-item-keyframe"),
-        )
-    }).inner.on_hover_text(keyframe_hint);
+    // A clearly labeled, full-width touch target stays visible even before an item is selected.
+    // Tapping it without a valid single-item target explains what must be selected first.
+    let keyframe_response = ui.put(
+        keyframe_rect,
+        egui::Button::new("＋关键帧").min_size(vec2(84.0, 22.0)),
+    ).on_hover_text(keyframe_hint);
     app.auto.add_response("timeline.addKeyframe", &keyframe_response, "添加关键帧");
-    if keyframe_response.clicked() && keyframe_enabled {
-        if let (Some(_item), Some(layer_id)) = (project_item, selected_layer) {
+    if keyframe_response.clicked() {
+        if !keyframe_enabled {
+            app.ui.status = keyframe_hint.to_string();
+        } else if let (Some(_item), Some(layer_id)) = (project_item, selected_layer) {
             let mut properties: Vec<u64> = app.session.state.selected_props.iter()
                 .filter_map(|(selected, property)| (*selected == layer_id).then_some(*property))
                 .collect();
@@ -416,7 +414,7 @@ def patch_timeline_keyframe_button(root: Path) -> None:
         source = replace_once(source, anchor, keyframe_code + anchor, "Single-item keyframe button")
     source = replace_once(
         source,
-        'let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));',
+        'let tgl = Rect::from_min_size(pos2(footer.min.x + 100.0, footer.min.y + 3.0), vec2(150.0, 18.0));',
         'let tgl = Rect::from_min_size(pos2(footer.min.x + 38.0, footer.min.y + 3.0), vec2(150.0, 18.0));',
         "Timeline footer spacing",
     )
