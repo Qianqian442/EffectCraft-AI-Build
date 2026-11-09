@@ -522,7 +522,9 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> R
                     (width, height), start, 0.0, end - start, 1.0, transform)?;
                 let mut doc = TextDoc::default();
                 doc.text = content;
-                doc.font = node.attribute("font").unwrap_or("Inter").to_string();
+                let font_spec = node.attribute("font").unwrap_or("Inter");
+                doc.font = font_spec.strip_prefix("googlefonts?name=")
+                    .unwrap_or(font_spec).split('&').next().unwrap_or("Inter").to_string();
                 doc.size = attr_f(*node, "size", 72.0).clamp(1.0, 512.0);
                 if let Some(color_node) = xml_child(*node, "fillColor") {
                     let rgba = parse_xml_color(&xml_value(color_node, "value", "#FFFFFFFF"));
@@ -566,10 +568,23 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> R
                     .or_else(|| node.attribute("fillColor").map(str::to_string))
                     .unwrap_or_else(|| "#FFFFFFFF".to_string());
                 let rgba = parse_xml_color(&fill);
+                let mut shape_size = [width as f64 * 0.5, height as f64 * 0.5];
+                if let Some(size_prop) = node.children().find(|n| n.is_element() && n.tag_name().name() == "property" && n.attribute("name") == Some("size")) {
+                    shape_size = split_pair(&xml_value(size_prop, "value", ""), shape_size);
+                }
+                if kind.eq_ignore_ascii_case("color") { shape_size = [width as f64, height as f64]; }
                 let mut layer = attach_layer(project, cid, &comp_copy, &layer_name, LayerSource::Shape, (width, height),
                     start, 0.0, end - start, 1.0, transform)?;
                 let mut ids = Ids(&mut project.next_id);
-                let shape = build::shape_rect(&mut ids, [width as f64 * 0.5, height as f64 * 0.5], [0.0, 0.0], 0.0);
+                let shape_name = node.attribute("s").unwrap_or("");
+                let shape = if shape_name.contains("circle") || shape_name.contains("ellipse") {
+                    build::shape_ellipse(&mut ids, shape_size, [0.0, 0.0])
+                } else {
+                    if !shape_name.is_empty() && !shape_name.contains("rect") {
+                        warnings.push(format!("{layer_name}: Alight Motion vector shape {shape_name} was simplified to a rectangle"));
+                    }
+                    build::shape_rect(&mut ids, shape_size, [0.0, 0.0], 0.0)
+                };
                 let fill = build::shape_fill(&mut ids, rgba);
                 let group = build::shape_group(&mut ids, &layer_name, vec![shape, fill]);
                 drop(ids);
@@ -670,7 +685,7 @@ mod tests {
 
     #[test]
     fn alight_motion_xml_scene_is_parsed() {
-        let xml = r#"<scene width="1080" height="1920" fps="30"><shape s=".rect" startTime="0" endTime="1000"><fillColor value="#FFFF8800"/></shape></scene>"#;
+        let xml = r##"<scene width="1080" height="1920" fps="30"><shape s=".rect" startTime="0" endTime="1000"><fillColor value="#FFFF8800"/></shape></scene>"##;
         let parsed = roxmltree::Document::parse(xml).expect("basic scene XML");
         assert_eq!(parsed.root_element().tag_name().name(), "scene");
         assert!(parsed.root_element().descendants().any(|n| n.is_element() && matches!(n.tag_name().name(), "shape" | "text" | "group")));
