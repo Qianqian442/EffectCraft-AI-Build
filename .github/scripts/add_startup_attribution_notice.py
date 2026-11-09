@@ -54,16 +54,15 @@ fn effectcraft_startup_attribution_notice(ctx: &egui::Context) {
     egui::Window::new("软件说明")
         .id(egui::Id::new("effectcraft-startup-attribution-window"))
         .order(egui::Order::Foreground)
-        .fixed_pos(screen.center() - egui::vec2(164.0, 78.0))
+        .default_pos(screen.center() - egui::vec2(164.0, 78.0))
         .fixed_size((328.0, 156.0))
-        .movable(false)
+        .movable(true)
         .collapsible(false)
         .resizable(false)
-        .title_bar(false)
+        .title_bar(true)
         .show(ctx, |ui| {
             ui.add_space(12.0);
             ui.vertical_centered(|ui| {
-                ui.heading("软件说明");
                 ui.add_space(14.0);
                 ui.label("该Ae软件由千千改装与新增功能，QQ号：1939023875");
                 ui.add_space(18.0);
@@ -81,7 +80,7 @@ fn effectcraft_startup_attribution_notice(ctx: &egui::Context) {
 '''
     source = replace_once(source, impl_anchor, helper + impl_anchor, "startup attribution notice helper")
     path.write_text(source, encoding="utf-8")
-    print("Installed a centered startup attribution page with an OK button; it appears on every new app launch.")
+    print("Installed a centered, draggable startup attribution page with an OK button; it appears on every new app launch.")
 
 
 if __name__ == "__main__":
