@@ -13,6 +13,14 @@ on:
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/scripts/add_plugin_import_button.py'
+      - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
 concurrency:
