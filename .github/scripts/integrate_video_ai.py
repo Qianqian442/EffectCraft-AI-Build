@@ -562,32 +562,31 @@ if "fn effectcraft_export_memory_ok(" not in h:
 if missing_helpers:
     h = h.rstrip() + "\n\n" + "\n\n".join(missing_helpers) + "\n"
 
-preflight_old = """    if submit {
-        if let Some(comp) = app.session.active_comp_id() {"""
-preflight_new = """    if submit {
-        // EFFECTCRAFT_EXPORT_MEMORY_PREFLIGHT_V2
-        let (check_width, check_height) = app.session.active_comp()
-            .map(|active| effectcraft_export_dimensions(active.width, active.height, &resolution))
-            .unwrap_or((1920, 1080));
-        let effective_fps = if fps > 0.0 {
-            fps
-        } else {
-            app.session.active_comp().map(|active| active.frame_rate.as_f64()).unwrap_or(30.0)
-        };
-        let upscale_input_too_large = ai_upscale && (check_width > 2048 || check_height > 2048);
-        if upscale_input_too_large
-            || !effectcraft_export_memory_ok(check_width, check_height, effective_fps, ai_interpolation, ai_upscale)
-        {
-            app.ui.status = if upscale_input_too_large {
-                "Real-ESRGAN ×4 当前输入尺寸超过 2048 像素，请降低输入分辨率或关闭 AI 超分".to_string()
+preflight_old = """            let ctx = ui.ctx().clone();
+            match crate::menus::invoke(app, &ctx, "renderQueue.add", params) {"""
+preflight_new = """            let (check_width, check_height) = app.session.active_comp()
+                .map(|active| effectcraft_export_dimensions(active.width, active.height, &resolution))
+                .unwrap_or((1920, 1080));
+            let effective_fps = if fps > 0.0 {
+                fps
             } else {
-                "系统可用内存暂时过低，已暂停本次导出以避免 Android 强制结束应用；释放后台内存后可重试。EffectCraft 不设置固定运行内存上限。".to_string()
+                app.session.active_comp().map(|active| active.frame_rate.as_f64()).unwrap_or(30.0)
             };
-            open = false;
-        } else if let Some(comp) = app.session.active_comp_id() {"""
+            let upscale_input_too_large = ai_upscale && (check_width > 2048 || check_height > 2048);
+            if upscale_input_too_large
+                || !effectcraft_export_memory_ok(check_width, check_height, effective_fps, ai_interpolation, ai_upscale)
+            {
+                app.ui.status = if upscale_input_too_large {
+                    "Real-ESRGAN ×4 当前输入尺寸超过 2048 像素，请降低分辨率或关闭 AI 超分".to_string()
+                } else {
+                    "系统可用内存暂时过低，已暂停本次导出以避免 Android 强制结束应用；释放后台内存后可重试。EffectCraft 不设置固定运行内存上限。".into()
+                };
+            } else {
+                let ctx = ui.ctx().clone();
+                match crate::menus::invoke(app, &ctx, "renderQueue.add", params) {"""
 if preflight_new not in h:
     if preflight_old not in h:
-        raise SystemExit("Could not find the centered export dialog submit entry point for AI memory preflight.")
+        raise SystemExit("Could not find the Android export task insertion point for AI preflight.")
     h = h.replace(preflight_old, preflight_new, 1)
 header.write_text(h)
 
