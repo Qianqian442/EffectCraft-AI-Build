@@ -651,6 +651,9 @@ jobs:
           grep -Fq "EFFECTCRAFT_ANDROID_GALLERY_SUCCESS_POPUP_V1" "$HEADER_SRC"
           test -s "source/effectcraft/crates/ui-egui/src/android_gallery.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_AI_PLUGIN_BRIDGE_V1" "templates/android/SafActivity.java"
+          grep -Fq "new ZipInputStream(raw)" "templates/android/SafActivity.java"
+          grep -Fq \"plugin.apk\" "templates/android/SafActivity.java"
+          grep -Fq "hasMatchingAiPluginSigner" "templates/android/SafActivity.java"
           grep -Fq "init_android_ai_bridge" "lib/build-common.sh"
           if grep -Eq "llama-cpp-(2|sys-2)" "source/effectcraft/crates/ui-egui/Cargo.toml"; then
             echo "DeepSeek inference dependency must live in the standalone plugin, not the host APK." >&2
