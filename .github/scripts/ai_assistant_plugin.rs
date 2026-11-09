@@ -3,7 +3,6 @@
 use std::{
     sync::{
         atomic::{AtomicU64, AtomicUsize, Ordering},
-        mpsc::{self, Receiver},
     },
     time::Duration,
 };
@@ -32,7 +31,7 @@ pub(crate) struct State {
     open: bool,
     input: String,
     lines: Vec<ChatLine>,
-    pending: Option<Receiver<Result<String, String>>>,
+    pending: Option<String>;
     notice: String,
     avatar: Option<egui::TextureHandle>,
     plugin_installed: Option<bool>,
@@ -232,21 +231,25 @@ fn start_request(state: &mut State) {
         .collect::<Vec<_>>()
         .join("\n");
     let id = REQUEST_ID.fetch_add(1, Ordering::Relaxed).to_string();
-    let (tx, rx) = mpsc::channel();
-    state.pending = Some(rx);
-
-    std::thread::spawn(move || {
-        let result = ai_plugin_request(&id, &history);
-        let _ = tx.send(result);
-    });
+    match ai_plugin_submit(&id, &history) {
+        Ok(true) => state.pending = Some(id),
+        Ok(false) => state.notice = "无法连接 AI 插件服务，请确认插件已安装后重新打开助手。".into(),
+        Err(error) => state.notice = error,
+    }
 }
 
 fn poll_result(state: &mut State, ctx: &egui::Context) {
-    let Some(rx) = state.pending.as_ref() else {
+    let Some(request_id) = state.pending.clone() else {
         return;
     };
-    match rx.try_recv() {
-        Ok(Ok(text)) => {
+    match ai_plugin_poll(&request_id) {
+        Ok(Some(response)) => {
+            let text = if let Some(message) = response.strip_prefix("ERROR: ") {
+                state.notice = message.to_string();
+                message.to_string()
+            } else {
+                response
+            };
             state.lines.push(ChatLine {
                 role: "assistant",
                 text,
@@ -254,7 +257,8 @@ fn poll_result(state: &mut State, ctx: &egui::Context) {
             state.pending = None;
             ctx.request_repaint();
         }
-        Ok(Err(error)) => {
+        Ok(None) => ctx.request_repaint_after(Duration::from_millis(150)),
+        Err(error) => {
             state.lines.push(ChatLine {
                 role: "assistant",
                 text: error.clone(),
@@ -262,17 +266,6 @@ fn poll_result(state: &mut State, ctx: &egui::Context) {
             state.notice = error;
             state.pending = None;
             ctx.request_repaint();
-        }
-        Err(mpsc::TryRecvError::Disconnected) => {
-            state.lines.push(ChatLine {
-                role: "assistant",
-                text: "AI 插件通信意外中断，请重新连接插件后重试。".into(),
-            });
-            state.pending = None;
-            ctx.request_repaint();
-        }
-        Err(mpsc::TryRecvError::Empty) => {
-            ctx.request_repaint_after(Duration::from_millis(120));
         }
     }
 }
@@ -310,8 +303,8 @@ fn ai_plugin_available() -> bool {
 }
 
 #[cfg(target_os = "android")]
-fn ai_plugin_request(request_id: &str, prompt: &str) -> Result<String, String> {
-    let submitted = with_android_vm(|vm| {
+fn ai_plugin_submit(request_id: &str, prompt: &str) -> Result<bool, String> {
+    with_android_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
             let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.EffectCraftActivity"))?;
             let id = env.new_string(request_id)?;
@@ -323,43 +316,37 @@ fn ai_plugin_request(request_id: &str, prompt: &str) -> Result<String, String> {
                 &[jni::objects::JValue::Object(&id), jni::objects::JValue::Object(&prompt)],
             )?.z()?)
         }).map_err(|e| e.to_string())
-    })?;
-    if !submitted {
-        return Err("无法连接 AI 插件。请确认已导入 ZIP 并按系统提示安装插件，然后重新打开助手。".into());
-    }
+    })
+}
 
-    for _ in 0..12_000 {
-        let response = with_android_vm(|vm| {
-            vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
-                let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.EffectCraftActivity"))?;
-                let id = env.new_string(request_id)?;
-                let object = env.call_static_method(
-                    &activity_class,
-                    jni::jni_str!("pollAiResponse"),
-                    jni::jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"),
-                    &[jni::objects::JValue::Object(&id)],
-                )?.l()?;
-                if object.is_null() {
-                    return Ok(None);
-                }
-                let response = env.as_cast::<jni::objects::JString>(&object)?;
-                Ok(Some(response.to_string()))
-            }).map_err(|e| e.to_string())
-        })?;
-        if let Some(response) = response {
-            return if let Some(message) = response.strip_prefix("ERROR: ") {
-                Err(message.to_string())
-            } else {
-                Ok(response)
-            };
-        }
-        std::thread::sleep(Duration::from_millis(150));
-    }
-    Err("AI 插件响应超时，请检查模型是否已准备好，并确保手机没有清理插件进程。".into())
+#[cfg(target_os = "android")]
+fn ai_plugin_poll(request_id: &str) -> Result<Option<String>, String> {
+    with_android_vm(|vm| {
+        vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
+            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.EffectCraftActivity"))?;
+            let id = env.new_string(request_id)?;
+            let object = env.call_static_method(
+                &activity_class,
+                jni::jni_str!("pollAiResponse"),
+                jni::jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"),
+                &[jni::objects::JValue::Object(&id)],
+            )?.l()?;
+            if object.is_null() {
+                return Ok(None);
+            }
+            let response = env.as_cast::<jni::objects::JString>(&object)?;
+            Ok(Some(response.to_string()))
+        }).map_err(|e| e.to_string())
+    })
 }
 
 #[cfg(not(target_os = "android"))]
-fn ai_plugin_request(_request_id: &str, _prompt: &str) -> Result<String, String> {
+fn ai_plugin_submit(_request_id: &str, _prompt: &str) -> Result<bool, String> {
+    Err("独立 AI 插件连接仅在 Android 版本中启用。".into())
+}
+
+#[cfg(not(target_os = "android"))]
+fn ai_plugin_poll(_request_id: &str) -> Result<Option<String>, String> {
     Err("独立 AI 插件连接仅在 Android 版本中启用。".into())
 }
 
