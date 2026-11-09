@@ -690,7 +690,7 @@ jobs:
           LAUNCHER_SRC="source/effectcraft/apps/effectcraft-android/src/lib.rs"
           test -s "$LAUNCHER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_WASM_PLUGIN_AUTOLOAD_V1" "$LAUNCHER_SRC"
-          grep -Fq "EFFECTCRAFT_ANDROID_SAPPHIRE_COMPAT_BUILTIN_V1" "$LAUNCHER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_BUILTIN_EFFECTS_V1" "$LAUNCHER_SRC"
           for MODULE in glow aura lensflare blur distort stylize motion; do
             test -s "source/effectcraft/assets/sapphire-compat/ec_sapphire_${MODULE}.wasm"
           done
