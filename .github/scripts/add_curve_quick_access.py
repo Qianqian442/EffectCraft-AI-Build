@@ -248,7 +248,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
     let button_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, rect.max.y - 56.0), vec2(64.0, 24.0));
     let button = ui.interact(button_rect, egui::Id::new("effectcraft-curve-quick-button"), Sense::click());
     let p = ui.painter();
-    p.rect_filled(button_rect, 5.0, if button.hovered() { app.tokens.accent.gamma_multiply(0.25) } else { app.tokens.panel });
+    p.rect_filled(button_rect, 5.0, if button.hovered() { app.tokens.accent.gamma_multiply(0.25) } else { app.tokens.panel_bg });
     p.rect_stroke(button_rect, 5.0, Stroke::new(1.0, app.tokens.separator), StrokeKind::Inside);
     p.text(button_rect.center(), Align2::CENTER_CENTER, "曲线", Tokens::semibold(11.5), app.tokens.text);
     app.auto.add("timeline.curveQuickButton", button_rect, "Curve presets");
@@ -267,7 +267,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
             let mut picked: Option<&'static str> = None;
             egui::Window::new("曲线选项")
                 .id(egui::Id::new("effectcraft-android-curve-picker-window"))
-                .default_pos(ctx.screen_rect().center() - vec2(210.0, 88.0))
+                .default_pos(ctx.content_rect().center() - vec2(210.0, 88.0))
                 .default_size(vec2(430.0, 174.0))
                 .resizable(false)
                 .collapsible(false)
@@ -293,7 +293,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                                 ];
                                 for (label, preview, curve) in presets {
                                     let (card, response) = ui.allocate_exact_size(vec2(88.0, 94.0), Sense::click());
-                                    ui.painter().rect_filled(card, 6.0, if response.hovered() { app.tokens.accent.gamma_multiply(0.22) } else { app.tokens.panel });
+                                    ui.painter().rect_filled(card, 6.0, if response.hovered() { app.tokens.accent.gamma_multiply(0.22) } else { app.tokens.panel_bg });
                                     ui.painter().rect_stroke(card, 6.0, Stroke::new(1.0, if response.hovered() { app.tokens.accent } else { app.tokens.separator }), StrokeKind::Inside);
                                     android_curve_preview(ui, card, preview, app.tokens.accent);
                                     ui.painter().text(pos2(card.center().x, card.max.y - 13.0), Align2::CENTER_CENTER, label, Tokens::ui(10.5), app.tokens.text);
