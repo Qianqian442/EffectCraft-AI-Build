@@ -39,10 +39,11 @@ def patch_activity(builder: Path) -> None:
     folder_anchor = '''                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
                 requestIds.put(REQ_FOLDER, id);'''
     folder_replacement = '''                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
-                // Start in user-visible shared storage; never require root or Android/data.
+                // ACTION_OPEN_DOCUMENT_TREE cannot grant Download/root on Android 11+.
+                // Start in the ordinary Documents folder, where directory grants are allowed.
                 intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
                     DocumentsContract.buildDocumentUri(
-                        "com.android.externalstorage.documents", "primary:Download"));
+                        "com.android.externalstorage.documents", "primary:Documents"));
                 requestIds.put(REQ_FOLDER, id);'''
     source = replace_once(source, folder_anchor, folder_replacement, "SAF folder picker start folder")
 
