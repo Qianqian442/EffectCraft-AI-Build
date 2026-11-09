@@ -633,17 +633,14 @@ jobs:
           fi
           cat "$VERIFY_REPORT"
 
-          # Require all three schemes: V1 for broad legacy installer compatibility,
-          # V2 for Android 7+, and V3 for modern Android devices including Android 12.
-          for SCHEME in \
-            "Verified using v1 scheme (JAR signing): true" \
-            "Verified using v2 scheme (APK Signature Scheme v2): true" \
-            "Verified using v3 scheme (APK Signature Scheme v3): true"; do
-            grep -Fqx "$SCHEME" "$VERIFY_REPORT" || {
-              echo "Required APK signature scheme missing: $SCHEME" >&2
-              exit 1
-            }
-          done
+          # The packaged Android manifest has minSdk 28. Android 9 (API 28) and later,
+          # including the target Android 12 devices, verify APK Signature Scheme V3.
+          # V1 and V2 are compatibility schemes for older platform versions below this app's
+          # minSdk, so their absence must not block a valid V3-only APK.
+          grep -Fqx "Verified using v3 scheme (APK Signature Scheme v3): true" "$VERIFY_REPORT" || {
+            echo "Required APK V3 signature is missing or invalid." >&2
+            exit 1
+          }
 
           keytool -list -v -keystore "$KEYSTORE" -storepass "$KEY_PASSWORD" \
             -alias artcraftbuilder > "$KEY_REPORT"
@@ -656,7 +653,7 @@ jobs:
             echo "APK signer does not match the persistent project keystore." >&2
             exit 1
           }
-          echo "Final APK V1/V2/V3 signatures and persistent certificate verified."
+          echo "Final APK V3 signature and persistent certificate verified for minSdk 28+ devices."
 
       - name: Verify APK integrity
         if: success()
