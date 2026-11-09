@@ -60,7 +60,8 @@ jobs:
             .github/scripts/add_desktop_plugin_package_support.py \
             .github/scripts/add_plugin_migration_progress.py \
             .github/scripts/install_ai_plugin_bridge.py \
-            .github/scripts/add_curve_quick_access.py
+            .github/scripts/add_curve_quick_access.py \
+            .github/scripts/add_startup_attribution_notice.py
 
       - name: Apply the same plug-in patches used by the APK build
         env:
@@ -83,7 +84,7 @@ jobs:
       - name: Apply Android curve presets, including loop modes
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
-        run: python3 .github/scripts/add_curve_quick_access.py
+        run: |
           python3 .github/scripts/add_startup_attribution_notice.py
 
       - name: Compile-check v0.21.1 engine and Android UI integration
