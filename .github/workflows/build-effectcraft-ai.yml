@@ -617,7 +617,23 @@ jobs:
           SAPPHIRE_STRINGS="$(mktemp)"
           while IFS= read -r ENTRY; do
             unzip -p "$APK" "$ENTRY" | strings
-          done < <(unzip -Z1 "$APK" | grep '^lib/arm64-v8a/.*[.]so
+          done < <(unzip -Z1 "$APK" | grep '^lib/arm64-v8a/.*[.]so$') > "$SAPPHIRE_STRINGS"
+          for EFFECT_ID in \
+            "org.effectcraft.sapphire.compat.glow" \
+            "org.effectcraft.sapphire.compat.glow-aura" \
+            "org.effectcraft.sapphire.compat.lensflare" \
+            "org.effectcraft.sapphire.compat.blur" \
+            "org.effectcraft.sapphire.compat.distort" \
+            "org.effectcraft.sapphire.compat.stylize" \
+            "org.effectcraft.sapphire.compat.rsmb-style-motion-blur"; do
+            grep -Fq "$EFFECT_ID" "$SAPPHIRE_STRINGS" || {
+              echo "Built-in Sapphire-compatible module missing from APK: $EFFECT_ID" >&2
+              exit 1
+            }
+          done
+          rm -f "$SAPPHIRE_STRINGS"
+          echo "Verified all seven Sapphire-compatible WASM effect modules are embedded in the main APK."
+          HEADER_SRC="source/effectcraft/crates/ui-egui/src/header.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" "$HEADER_SRC"
           echo "Verified narrow-screen touch scrolling keeps every toolbar button reachable."
