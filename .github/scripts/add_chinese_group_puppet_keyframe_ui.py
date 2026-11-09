@@ -370,19 +370,24 @@ def patch_timeline_keyframe_button(root: Path) -> None:
             if matches.next().is_none() { Some(first.id) } else { None }
         })
     });
+    // EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V2
     let keyframe_enabled = project_item.is_some() && selected_layer.is_some();
-    let keyframe_rect = Rect::from_min_size(pos2(footer.min.x + 8.0, footer.min.y + 2.0), vec2(84.0, 22.0));
+    let keyframe_height = (footer.height() - 2.0).max(18.0);
+    let keyframe_rect = Rect::from_min_size(
+        pos2(footer.min.x + 8.0, footer.center().y - keyframe_height * 0.5),
+        vec2(112.0, keyframe_height),
+    );
     let keyframe_hint = if keyframe_enabled {
         "添加关键帧（仅作用于当前单个素材）"
     } else {
-        "请先在左侧项目面板选中一个素材；若素材在当前合成中出现多次，请在时间轴中选中其中一个对应图层"
+        "先在左侧项目面板选中一个素材，再在时间轴中选中它对应的图层"
     };
-    // A clearly labeled, full-width touch target stays visible even before an item is selected.
-    // Tapping it without a valid single-item target explains what must be selected first.
-    let keyframe_response = ui.put(
-        keyframe_rect,
-        egui::Button::new("＋关键帧").min_size(vec2(84.0, 22.0)),
-    ).on_hover_text(keyframe_hint);
+    // A high-contrast, wide touch target is always visible in the timeline footer.
+    // It remains tappable when disabled so the required single-item selection is explained.
+    let keyframe_button = egui::Button::new("＋ 添加关键帧")
+        .fill(if keyframe_enabled { t.accent } else { t.field_bg })
+        .min_size(keyframe_rect.size());
+    let keyframe_response = ui.put(keyframe_rect, keyframe_button).on_hover_text(keyframe_hint);
     app.auto.add_response("timeline.addKeyframe", &keyframe_response, "添加关键帧");
     if keyframe_response.clicked() {
         if !keyframe_enabled {
@@ -410,12 +415,12 @@ def patch_timeline_keyframe_button(root: Path) -> None:
         }
     }
 '''
-    if "effectcraft-single-item-keyframe" not in source:
+    if "EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V2" not in source:
         source = replace_once(source, anchor, keyframe_code + anchor, "Single-item keyframe button")
     source = replace_once(
         source,
         'let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));',
-        'let tgl = Rect::from_min_size(pos2(footer.min.x + 100.0, footer.min.y + 3.0), vec2(150.0, 18.0));',
+        'let tgl = Rect::from_min_size(pos2(footer.min.x + 128.0, footer.min.y + 3.0), vec2(140.0, 18.0));',
         "Timeline footer spacing",
     )
     path.write_text(source, encoding="utf-8")

@@ -48,11 +48,18 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         Stroke::new(1.0, t.app_bg),
     );
 
-    // Constrain the scroll area to the actual header rectangle; the content width is computed
-    // after the left-side controls so right-side controls are placed immediately after them.
+    // Keep a dedicated export hit target pinned at the right edge. The remaining tools scroll
+    // horizontally in the space to its left, so Export is always visible on narrow phones.
+    let export_rect = Rect::from_min_max(
+        pos2(rect.max.x - 58.0, rect.min.y + 3.0),
+        pos2(rect.max.x - 4.0, rect.max.y - 3.0),
+    );
+    let scroll_rect = Rect::from_min_max(rect.min, pos2(export_rect.min.x - 4.0, rect.max.y));
+
+    // Constrain the scroll area to the available header rectangle.
     let mut header_ui = ui.new_child(
         egui::UiBuilder::new()
-            .max_rect(rect)
+            .max_rect(scroll_rect)
             .layout(egui::Layout::left_to_right(egui::Align::Center)),
     );
     egui::ScrollArea::horizontal()
@@ -62,7 +69,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         .show(&mut header_ui, |scroll_ui| {
             let origin = scroll_ui.min_rect().min;
             let p = scroll_ui.painter().clone();
-            let cy = origin.y + rect.height() * 0.5;
+            let cy = origin.y + scroll_rect.height() * 0.5;
             let x = origin.x + if app.integrated_titlebar && !app.ui.show_menu_bar { 80.0 } else { 10.0 };
             let x = brand_and_home(app, scroll_ui, &p, x, cy);
             let x = plugin_import_button(app, scroll_ui, x, cy);
@@ -74,11 +81,26 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             // Reserve enough trailing space for community, appearance and workspace controls.
             // On a phone this makes the whole toolbar swipeable; on a wide display the original
             // right-aligned layout is preserved without introducing unnecessary scrolling.
-            let content_width = rect.width().max((x - origin.x + 250.0).max(360.0));
-            scroll_ui.set_min_size(vec2(content_width, rect.height()));
-            let content_rect = Rect::from_min_size(origin, vec2(content_width, rect.height()));
+            let content_width = scroll_rect.width().max((x - origin.x + 250.0).max(360.0));
+            scroll_ui.set_min_size(vec2(content_width, scroll_rect.height()));
+            let content_rect = Rect::from_min_size(origin, vec2(content_width, scroll_rect.height()));
             right_side(app, scroll_ui, &p, content_rect, x, cy);
         });
+
+    let export_response = widgets::text_button(
+        ui,
+        export_rect,
+        crate::i18n::tr("导出"),
+        true,
+        &t,
+        egui::Id::new("effectcraft-fixed-export-button"),
+    ).on_hover_text("导出视频");
+    app.auto.add_response("header.exportFixed", &export_response, "导出视频");
+    if export_response.clicked() {
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(egui::Id::new("effectcraft-export-dialog-open"), true);
+        });
+    }
 
     // Keep modal dialogs outside the horizontally clipped toolbar child. The export click
     // handler sets this state above; rendering the modal inside ScrollArea would clip it and

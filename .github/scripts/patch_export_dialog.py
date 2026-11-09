@@ -197,6 +197,8 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     }
     if submit {
         if let Some(comp) = app.session.active_comp_id() {
+            // Never auto-start old queued jobs together with this new export.
+            let has_existing_queued = app.session.project.render_queue.iter().any(|item| item.is_queued());
             let mut params = json!({"comp": comp.0, "format": format});
             if fps > 0.0 {
                 params["frameRate"] = json!(fps);
@@ -216,44 +218,97 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
             let ctx = ui.ctx().clone();
             match crate::menus::invoke(app, &ctx, "renderQueue.add", params) {
                 Ok(added) => {
-                    let fallback_id = added.get("id").and_then(|value| value.as_u64());
-                    let mut queued_ids: Vec<u64> = app.session.project.render_queue
-                        .iter()
-                        .filter(|item| item.is_queued())
-                        .map(|item| item.id)
-                        .collect();
-                    if queued_ids.is_empty() {
-                        if let Some(id) = fallback_id {
-                            queued_ids.push(id);
-                        }
-                    }
-                    ctx.data_mut(|data| {
-                        data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
-                        data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), queued_ids);
-                        data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
-                    });
-                    match crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false})) {
-                        Ok(result) => {
-                            let started_ids: Vec<u64> = result.get("items")
-                                .and_then(|items| items.as_array())
-                                .map(|items| items.iter().filter_map(|item| item.get("id").and_then(|id| id.as_u64())).collect())
-                                .unwrap_or_default();
-                            if !started_ids.is_empty() {
-                                ctx.data_mut(|data| {
-                                    data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), started_ids);
-                                });
+                    // The engine returns the newly created queue row as "item", not "id".
+                    if let Some(item_id) = added.get("item").and_then(|value| value.as_u64()) {
+                        let default_output = app.session.project.render_queue.iter()
+                            .find(|item| item.id == item_id)
+                            .and_then(|item| app.session.resolve_output(item))
+                            .unwrap_or_else(|| "EffectCraft.mp4".to_string());
+
+                        // Use the Android builder's existing SAF Save picker. On Android this
+                        // is routed to the app's private staging path, then published to Gallery.
+                        match app.hooks.save_dialog(&default_output) {
+                            Some(Some(path)) if !path.trim().is_empty() => {
+                                match crate::menus::invoke(
+                                    app,
+                                    &ctx,
+                                    "renderQueue.setOutput",
+                                    json!({"item": item_id, "path": path}),
+                                ) {
+                                    Ok(_) => {
+                                        open = false;
+                                        if has_existing_queued {
+                                            app.show_panel(crate::dock::PanelKind::RenderQueue);
+                                            app.ui.status = "已选择视频保存位置并加入导出队列。检测到已有排队任务，为避免误导出其他项目，请检查队列后再点击“渲染”。".into();
+                                        } else {
+                                            ctx.data_mut(|data| {
+                                                data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
+                                                data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), vec![item_id]);
+                                                data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
+                                            });
+                                            match crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false})) {
+                                                Ok(result) => {
+                                                    let started_ids: Vec<u64> = result.get("items")
+                                                        .and_then(|items| items.as_array())
+                                                        .map(|items| items.iter()
+                                                            .filter_map(|item| item.get("id").and_then(|id| id.as_u64()))
+                                                            .collect())
+                                                        .unwrap_or_default();
+                                                    let ids = if started_ids.is_empty() { vec![item_id] } else { started_ids };
+                                                    ctx.data_mut(|data| {
+                                                        data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), ids);
+                                                    });
+                                                }
+                                                Err(error) => {
+                                                    let _ = crate::menus::invoke(
+                                                        app, &ctx, "renderQueue.setRender",
+                                                        json!({"item": item_id, "render": false}),
+                                                    );
+                                                    app.ui.status = error.clone();
+                                                    ctx.data_mut(|data| {
+                                                        data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
+                                                    });
+                                                }
+                                            }
+                                        }
+                                    }
+                                    Err(error) => {
+                                        let _ = crate::menus::invoke(
+                                            app, &ctx, "renderQueue.setRender",
+                                            json!({"item": item_id, "render": false}),
+                                        );
+                                        app.ui.status = format!("设置视频保存位置失败：{error}");
+                                        open = false;
+                                    }
+                                }
+                            }
+                            Some(_) => {
+                                let _ = crate::menus::invoke(
+                                    app, &ctx, "renderQueue.setRender",
+                                    json!({"item": item_id, "render": false}),
+                                );
+                                app.ui.status = "已取消保存位置选择，视频没有开始导出。".into();
+                                open = false;
+                            }
+                            None => {
+                                let _ = crate::menus::invoke(
+                                    app, &ctx, "renderQueue.setRender",
+                                    json!({"item": item_id, "render": false}),
+                                );
+                                app.show_panel(crate::dock::PanelKind::RenderQueue);
+                                app.ui.status = "当前设备未提供保存位置选择器，导出任务已暂停。请在导出队列的“输出到”中选择保存位置。".into();
+                                open = false;
                             }
                         }
-                        Err(error) => {
-                            app.ui.status = error.clone();
-                            ctx.data_mut(|data| {
-                                data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
-                            });
-                        }
+                    } else {
+                        app.ui.status = "导出任务已创建，但没有取得队列项目编号，未开始渲染。".into();
+                        open = false;
                     }
+                }
+                Err(error) => {
+                    app.ui.status = format!("创建导出任务失败：{error}");
                     open = false;
                 }
-                Err(error) => app.ui.status = error,
             }
         }
     }
