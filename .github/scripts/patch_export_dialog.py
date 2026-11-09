@@ -157,7 +157,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                 });
             ui.add_space(4.0);
             ui.label("最高可选 240 FPS；实际渲染速度取决于工程素材和设备性能。");
-            ui.label("确认后进入原有导出队列，再选择视频保存位置。");
+            ui.label("导出完成后自动保存到手机相册 DCIM/EffectCraft，无需手动选择位置。");
             ui.small("编码使用 APK 内置软件编码器；不依赖手机是否具备硬件视频编码器。");
             ui.add_space(8.0);
             ui.separator();
@@ -225,8 +225,8 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                             .and_then(|item| app.session.resolve_output(item))
                             .unwrap_or_else(|| "EffectCraft.mp4".to_string());
 
-                        // Use the Android builder's existing SAF Save picker. On Android this
-                        // is routed to the app's private staging path, then published to Gallery.
+                        // The Android SAF hook routes video Save requests to a private staging path
+                        // automatically; MediaStore then publishes the completed file to DCIM/EffectCraft.
                         match app.hooks.save_dialog(&default_output) {
                             Some(Some(path)) if !path.trim().is_empty() => {
                                 match crate::menus::invoke(
@@ -239,7 +239,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                                         open = false;
                                         if has_existing_queued {
                                             app.show_panel(crate::dock::PanelKind::RenderQueue);
-                                            app.ui.status = "已选择视频保存位置并加入导出队列。检测到已有排队任务，为避免误导出其他项目，请检查队列后再点击“渲染”。".into();
+                                            app.ui.status = "视频已加入导出队列。检测到已有排队任务，为避免误导出其他项目，请检查队列后再点击“渲染”。".into();
                                         } else {
                                             ctx.data_mut(|data| {
                                                 data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
@@ -277,7 +277,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                                             app, &ctx, "renderQueue.setRender",
                                             json!({"item": item_id, "render": false}),
                                         );
-                                        app.ui.status = format!("设置视频保存位置失败：{error}");
+                                        app.ui.status = format!("设置视频输出文件失败：{error}");
                                         open = false;
                                     }
                                 }
@@ -287,7 +287,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                                     app, &ctx, "renderQueue.setRender",
                                     json!({"item": item_id, "render": false}),
                                 );
-                                app.ui.status = "已取消保存位置选择，视频没有开始导出。".into();
+                                app.ui.status = "视频暂存操作未完成，视频没有开始导出。".into();
                                 open = false;
                             }
                             None => {
@@ -296,7 +296,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                                     json!({"item": item_id, "render": false}),
                                 );
                                 app.show_panel(crate::dock::PanelKind::RenderQueue);
-                                app.ui.status = "当前设备未提供保存位置选择器，导出任务已暂停。请在导出队列的“输出到”中选择保存位置。".into();
+                                app.ui.status = "未能创建视频暂存文件，导出任务已暂停。请检查设备存储空间后重试。".into();
                                 open = false;
                             }
                         }
