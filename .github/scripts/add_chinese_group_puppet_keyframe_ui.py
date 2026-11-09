@@ -369,7 +369,8 @@ def patch_timeline_keyframe_button(root: Path) -> None:
         }
     }
 '''
-    source = replace_once(source, anchor, keyframe_code + anchor, "Single-item keyframe button")
+    if "effectcraft-single-item-keyframe" not in source:
+        source = replace_once(source, anchor, keyframe_code + anchor, "Single-item keyframe button")
     source = replace_once(
         source,
         'let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));',
