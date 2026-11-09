@@ -1,0 +1,58 @@
+name: Validate desktop plug-in compatibility adapter
+
+on:
+  push:
+    branches: [desktop-plugin-compat]
+    paths:
+      - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/add_plugin_import_button.py'
+      - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/workflows/validate-desktop-plugin-adapter.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-v0211-integration:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out compatibility adapter
+        uses: actions/checkout@v4
+
+      - name: Check out EffectCraft v0.21.1
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/effectcraft
+          ref: v0.21.1
+          path: effectcraft
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Syntax-check all Android plug-in patch scripts
+        run: |
+          python3 -m py_compile \
+            .github/scripts/add_plugin_import_button.py \
+            .github/scripts/add_zip_plugin_support.py \
+            .github/scripts/add_desktop_plugin_package_support.py
+
+      - name: Apply the same plug-in patches used by the APK build
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: |
+          python3 .github/scripts/add_plugin_import_button.py
+          python3 .github/scripts/add_zip_plugin_support.py
+          python3 .github/scripts/add_desktop_plugin_package_support.py
+
+      - name: Compile-check v0.21.1 engine and Android UI integration
+        working-directory: effectcraft
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo check -p effectcraft-engine -p effectcraft-ui-egui
