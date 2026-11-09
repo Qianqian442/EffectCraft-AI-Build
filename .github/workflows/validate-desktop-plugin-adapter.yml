@@ -81,10 +81,11 @@ jobs:
           cp "$GITHUB_WORKSPACE/assets/ae-avatar.png" "$EFFECTCRAFT_DIR/assets/ae-avatar.png"
           python3 .github/scripts/install_ai_plugin_bridge.py
 
-      - name: Apply Android curve presets, including loop modes
+      - name: Apply Android curve presets and startup attribution notice
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: |
+          python3 .github/scripts/add_curve_quick_access.py
           python3 .github/scripts/add_startup_attribution_notice.py
 
       - name: Compile-check v0.21.1 engine and Android UI integration
