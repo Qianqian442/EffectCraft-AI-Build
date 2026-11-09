@@ -234,8 +234,9 @@ fn project_row_long_press_id() -> egui::Id {
         let pointer_down = ctx.input(|input| input.pointer.button_down(egui::PointerButton::Primary));
         let mut row_press: Option<ProjectRowLongPress> = ctx.data(|data| data.get_temp(project_row_long_press_id()));
         if pointer_pressed && resp.contains_pointer() {
-            row_press = Some(ProjectRowLongPress { item: *id, started: now, triggered: false });
-            ctx.data_mut(|data| data.insert_temp(project_row_long_press_id(), row_press));
+            let new_press = ProjectRowLongPress { item: *id, started: now, triggered: false };
+            row_press = Some(new_press);
+            ctx.data_mut(|data| data.insert_temp(project_row_long_press_id(), new_press));
         }
         if resp.drag_started() {
             ctx.data_mut(|data| data.remove::<ProjectRowLongPress>(project_row_long_press_id()));
@@ -251,6 +252,7 @@ fn project_row_long_press_id() -> egui::Id {
                 };
                 ctx.data_mut(|data| data.insert_temp(project_group_mode_id(), mode));
                 app.session.state.project_selection = vec![*id];
+                ctx.request_repaint();
                 held.triggered = true;
                 row_press = Some(held);
                 ctx.data_mut(|data| data.insert_temp(project_row_long_press_id(), held));
@@ -288,6 +290,7 @@ fn project_row_long_press_id() -> egui::Id {
                     }
                     app.session.state.project_selection = mode.selected.clone();
                     ctx.data_mut(|data| data.insert_temp(project_group_mode_id(), mode));
+                    ctx.request_repaint();
                 }
             } else {
                 select_click(app, ui, &ctx, *id, &rows);
