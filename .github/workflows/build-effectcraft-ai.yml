@@ -35,6 +35,7 @@ on:
       - '.github/scripts/ai_video_export.rs'
       - '.github/scripts/sapphire_compat_pack.rs'
       - '.github/scripts/build_sapphire_compat_pack.py'
+      - '.github/scripts/build_rsmb_compat.py'
       - '.github/scripts/looks_compat_pack.rs'
       - '.github/scripts/build_looks_compat_pack.py'
   workflow_dispatch:
@@ -470,6 +471,11 @@ jobs:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/build_sapphire_compat_pack.py
 
+      - name: Build standalone RSMB-style directional blur effect
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/build_rsmb_compat.py
+
       - name: Build built-in Looks-style color grading effect
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
@@ -716,9 +722,10 @@ jobs:
           test -s "$LAUNCHER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_WASM_PLUGIN_AUTOLOAD_V1" "$LAUNCHER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_BUILTIN_EFFECTS_V1" "$LAUNCHER_SRC"
-          for MODULE in glow aura lensflare blur distort stylize motion; do
+          for MODULE in glow aura lensflare blur distort stylize; do
             test -s "source/effectcraft/assets/sapphire-compat/ec_sapphire_${MODULE}.wasm"
           done
+          test -s "source/effectcraft/assets/rsmb-compat/ec_rsmb_motion_blur.wasm"
           echo "Verified Android startup scanning for the original WASM plug-in folder and built-in Sapphire-compatible pack."
           SAPPHIRE_STRINGS="$(mktemp)"
           while IFS= read -r ENTRY; do
@@ -730,15 +737,18 @@ jobs:
             "org.effectcraft.sapphire.compat.lensflare" \
             "org.effectcraft.sapphire.compat.blur" \
             "org.effectcraft.sapphire.compat.distort" \
-            "org.effectcraft.sapphire.compat.stylize" \
-            "org.effectcraft.sapphire.compat.rsmb-style-motion-blur"; do
+            "org.effectcraft.sapphire.compat.stylize"; do
             grep -Fq "$EFFECT_ID" "$SAPPHIRE_STRINGS" || {
               echo "Built-in Sapphire-compatible module missing from APK: $EFFECT_ID" >&2
               exit 1
             }
           done
+          grep -Fq "org.effectcraft.compat.rsmb-motion-blur" "$SAPPHIRE_STRINGS" || {
+            echo "Standalone RSMB-compatible WASM module is missing from APK." >&2
+            exit 1
+          }
           rm -f "$SAPPHIRE_STRINGS"
-          echo "Verified all seven Sapphire-compatible WASM effect modules are embedded in the main APK."
+          echo "Verified six Sapphire-compatible modules plus the separately packaged RSMB-compatible module are embedded in the main APK."
           HEADER_SRC="source/effectcraft/crates/ui-egui/src/header.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
