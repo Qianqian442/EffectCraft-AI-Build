@@ -41,7 +41,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         .ok_or_else(|| bad(CMD, "当前会话没有可写的插件目录"))?;
     let root = cfg.dir()
         .ok_or_else(|| bad(CMD, "当前存储环境没有可访问的插件目录"))?;
-    let plugins_dir = root.join(PLUGINS_DIR);
+    let plugins_dir = root.join("Plug-ins");
     std::fs::create_dir_all(&plugins_dir)
         .map_err(|error| bad(CMD, format!("无法创建插件目录：{error}")))?;
 
@@ -81,7 +81,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         }
         let entry_name = entry.name()
             .map_err(|error| bad(CMD, format!("无法读取 ZIP 文件名：{error}")))?
-            .to_owned();
+            .into_owned();
         if entry_name.contains('\\') || entry_name.contains('\0') {
             skipped_names.push(entry_name);
             continue;
