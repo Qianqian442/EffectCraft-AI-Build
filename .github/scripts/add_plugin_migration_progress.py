@@ -177,6 +177,16 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
     if matched > 0 {
         lines.push(format!("匹配到 {matched} 个内置兼容效果。它们是兼容重实现/近似效果，不是原厂 AE 插件。"));
     }
+    let has_rsmb_compatibility = value
+        .get("desktop_native_compatibility_matches")
+        .and_then(Value::as_array)
+        .is_some_and(|matches| matches.iter().any(|item| {
+            item.get("effect_id").and_then(Value::as_str)
+                == Some("org.effectcraft.compat.rsmb-motion-blur")
+        }));
+    if has_rsmb_compatibility {
+        lines.push("RSMB 已匹配到“RSMB 风格方向模糊（非原版）”。它已加入效果列表，但不会自动添加到图层；请先把该效果添加到当前图层，再在右侧控件调整方向角度、模糊距离和效果强度。".into());
+    }
     if native_unmatched > 0 {
         lines.push(format!("还有 {native_unmatched} 个电脑版原生插件无法自动移植；原件已归档，不会在 Android 上执行。"));
         if !scan.native_names.is_empty() {

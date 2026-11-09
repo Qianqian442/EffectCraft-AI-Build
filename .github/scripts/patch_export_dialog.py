@@ -48,11 +48,33 @@ if new_click not in header:
 
 show_tail = '    right_side(app, ui, &p, rect, x, cy);\n}'
 if 'export_dialog(app, ui);' not in header:
-    if show_tail not in header:
-        raise SystemExit("Could not find the header show() insertion point.")
-    header = header.replace(show_tail, '    right_side(app, ui, &p, rect, x, cy);\n    export_dialog(app, ui);\n    export_progress_dialog(app, ui);\n}', 1)
+    if show_tail in header:
+        header = header.replace(show_tail, '    right_side(app, ui, &p, rect, x, cy);\n    export_dialog(app, ui);\n    export_progress_dialog(app, ui);\n}', 1)
+    else:
+        # The AI toolbar patch can change the right_side call's local arguments.
+        # Insert at the actual end of pub fn show(), not by depending on exact variable names.
+        show_start = header.find('pub fn show(')
+        if show_start < 0:
+            raise SystemExit("Could not find pub fn show() in the Android header.")
+        import re as _re
+        show_end_match = _re.search(r"(?m)^}\s*$", header[show_start:])
+        if not show_end_match:
+            raise SystemExit("Could not find the end of pub fn show() in the Android header.")
+        insert_at = show_start + show_end_match.start()
+        header = header[:insert_at] + '    export_dialog(app, ui);\n    export_progress_dialog(app, ui);\n' + header[insert_at:]
 elif 'export_progress_dialog(app, ui);' not in header:
-    header = header.replace('    export_dialog(app, ui);\n}', '    export_dialog(app, ui);\n    export_progress_dialog(app, ui);\n}', 1)
+    if show_tail in header:
+        header = header.replace(show_tail, '    right_side(app, ui, &p, rect, x, cy);\n    export_progress_dialog(app, ui);\n}', 1)
+    else:
+        show_start = header.find('pub fn show(')
+        if show_start < 0:
+            raise SystemExit("Could not find pub fn show() in the Android header.")
+        import re as _re
+        show_end_match = _re.search(r"(?m)^}\s*$", header[show_start:])
+        if not show_end_match:
+            raise SystemExit("Could not find the end of pub fn show() in the Android header.")
+        insert_at = show_start + show_end_match.start()
+        header = header[:insert_at] + '    export_progress_dialog(app, ui);\n' + header[insert_at:]
 
 dialog_fn = r'''
 /// A centered export setup page. The existing Render Queue remains responsible for choosing
@@ -72,9 +94,9 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
         ("webm", "WebM"),
         ("prores", "ProRes MOV"),
     ];
-    let (mut format, mut fps, mut resolution) = ui.ctx().data(|d| {
-        d.get_temp::<(String, f64, String)>(draft_id)
-            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string()))
+    let (mut format, mut fps, mut resolution, mut bitrate_mbps) = ui.ctx().data(|d| {
+        d.get_temp::<(String, f64, String, f64)>(draft_id)
+            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string(), 12.0))
     });
     let comp_name = app.session.active_comp_id().and_then(|id| app.session.project.item(id)).map(|item| item.name.clone());
     let comp_rate = app.session.active_comp().map(|c| c.frame_rate.as_f64());
@@ -155,6 +177,18 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                         ui.selectable_value(&mut fps, value, format!("{value:.0} FPS"));
                     }
                 });
+            ui.add_space(6.0);
+            if matches!(format.as_str(), "h264" | "hevc" | "av1" | "webm") {
+                ui.add(
+                    egui::Slider::new(&mut bitrate_mbps, 1.0..=100.0)
+                        .step_by(0.5)
+                        .text("视频码率"),
+                );
+                ui.label(format!("当前码率：{bitrate_mbps:.1} Mbps"));
+                ui.small("码率越高通常画质越好，文件也越大；此项由你手动调整。");
+            } else if format == "prores" {
+                ui.small("ProRes 码率由编码档位控制，不使用普通视频码率滑块。");
+            }
             ui.add_space(4.0);
             ui.label("最高可选 240 FPS；实际渲染速度取决于工程素材和设备性能。");
             ui.label("导出完成后自动保存到手机相册 DCIM/EffectCraft，无需手动选择位置。");
@@ -200,6 +234,13 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
             // Never auto-start old queued jobs together with this new export.
             let has_existing_queued = app.session.project.render_queue.iter().any(|item| item.is_queued());
             let mut params = json!({"comp": comp.0, "format": format});
+            if matches!(format.as_str(), "h264" | "hevc" | "av1" | "webm") {
+                // The engine expects bitrate in kbit/s. WebM VP9 uses its explicit bitrate mode.
+                params["bitrate"] = json!((bitrate_mbps * 1000.0).round() as u32);
+                if format == "webm" {
+                    params["webmBitrate"] = json!(true);
+                }
+            }
             if fps > 0.0 {
                 params["frameRate"] = json!(fps);
             }
@@ -315,7 +356,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
 
     ui.ctx().data_mut(|d| {
         d.insert_temp(open_id, open);
-        d.insert_temp(draft_id, (format, fps, resolution));
+        d.insert_temp(draft_id, (format, fps, resolution, bitrate_mbps));
     });
 }
 '''
