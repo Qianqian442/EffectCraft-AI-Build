@@ -2,7 +2,7 @@ name: Validate desktop plug-in compatibility adapter
 
 on:
   push:
-    branches: [desktop-plugin-compat]
+    branches: [main, desktop-plugin-compat]
     paths:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
@@ -46,7 +46,7 @@ jobs:
           python3 -m py_compile \
             .github/scripts/add_plugin_import_button.py \
             .github/scripts/add_zip_plugin_support.py \
-            .github/scripts/add_desktop_plugin_package_support.py
+            .github/scripts/add_desktop_plugin_package_support.py \
             .github/scripts/add_plugin_migration_progress.py
 
       - name: Apply the same plug-in patches used by the APK build
