@@ -33,8 +33,18 @@ def main() -> None:
 
     lib = ui / "src/lib.rs"
     c = lib.read_text(encoding="utf-8")
+    # Keep Rust crate-level documentation and inner attributes at the top of lib.rs.
+    # Module declarations must follow them, not precede the //! comments.
     if "mod ai_assistant;" not in c:
-        c = "mod ai_assistant;\n" + c
+        c = once(c, "pub(crate) mod a11y;\n",
+                 "mod ai_assistant;\npub(crate) mod a11y;\n",
+                 "AI assistant module declaration")
+    # The bridge UI keeps its state on EffectcraftApp. The main APK patch may already
+    # have added it; the standalone validation path needs the same field and initializer.
+    if "pub(crate) ai_assistant:" not in c:
+        c = once(c, "    pub ui: UiState,\n",
+                 "    pub ui: UiState,\n    pub(crate) ai_assistant: crate::ai_assistant::State,\n",
+                 "AI assistant app state field")
     if "pub fn init_android_ai_bridge" not in c:
         init_bridge = """
 #[cfg(target_os = "android")]
@@ -59,6 +69,14 @@ pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {
 """
         c += toolbar_bridge
     lib.write_text(c, encoding="utf-8")
+
+    app_source = ui / "src/app.rs"
+    c = app_source.read_text(encoding="utf-8")
+    if "ai_assistant:" not in c:
+        c = once(c, "        EffectcraftApp {\n            session,\n            ui,\n",
+                 "        EffectcraftApp {\n            session,\n            ui,\n            ai_assistant: crate::ai_assistant::State::default(),\n",
+                 "AI assistant app state initialization")
+        app_source.write_text(c, encoding="utf-8")
 
     build_common = builder / "lib/build-common.sh"
     c = build_common.read_text(encoding="utf-8")
