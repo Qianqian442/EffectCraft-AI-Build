@@ -23,8 +23,17 @@ def main() -> None:
         raise SystemExit("Could not uniquely locate the EffectCraft header show() function.")
 
     old = source[start:end]
-    required = [
-        "brand_and_home(app, ui,",
+    # The export dialog patch must leave exactly one visible toolbar export action.
+    # The old pinned overlay is forbidden because it overlaps the normal toolbar button.
+    export_click_count = source.count("if export_response.clicked()")
+    if export_click_count != 1:
+        raise SystemExit(f"Expected exactly one Export button handler, found {export_click_count}.")
+    if "effectcraft-fixed-export-button" in source:
+        raise SystemExit("A duplicate fixed-position Export button is present; refusing to build an overlapping toolbar.")
+    if old.count("right_side(app, ui,") != 1:
+        raise SystemExit("Expected one right-side toolbar layout call; refusing to duplicate toolbar controls.")
+
+    required = [        "brand_and_home(app, ui,",
         "plugin_import_button(app, ui,",
         "puppet_quick_button(app, ui,",
         "tool_slots(app, ui,",
@@ -74,10 +83,11 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             let x = tool_options_bar(app, scroll_ui, &p, x + 10.0, cy);
             let x = snapping_toggle(app, scroll_ui, &p, x, cy);
 
-            // Reserve enough trailing space for community, appearance and workspace controls.
-            // On a phone this makes the whole toolbar swipeable; on a wide display the original
-            // right-aligned layout is preserved without introducing unnecessary scrolling.
-            let content_width = scroll_rect.width().max((x - origin.x + 250.0).max(360.0));
+            // Reserve a non-overlapping trailing lane for community, appearance and workspace
+            // controls. The 440-point lane is intentionally larger than their combined hit areas;
+            // narrower screens scroll horizontally instead of painting controls over each other.
+            // This also keeps every button fully inside the scrollable content rectangle.
+            let content_width = scroll_rect.width().max((x - origin.x + 440.0).max(520.0));
             scroll_ui.set_min_size(vec2(content_width, scroll_rect.height()));
             let content_rect = Rect::from_min_size(origin, vec2(content_width, scroll_rect.height()));
             right_side(app, scroll_ui, &p, content_rect, x, cy);
