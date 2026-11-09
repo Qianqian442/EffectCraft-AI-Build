@@ -63,20 +63,60 @@ def main() -> None:
         raise SystemExit("Could not uniquely locate the toolbar helper insertion point; refusing to patch.")
 
     helper = '''/// EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1
-/// A persistent import entry beside the app logo and Home button, at the far left of the Tools bar.
-/// It deliberately invokes the existing engine command so Android's SAF picker and the original
-/// Wasmi loader remain the single source of truth.
+/// EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1
+/// One compact top-left entry routes both WASM effects and the DeepSeek ZIP.
 fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy: f32) -> f32 {
     let rect = Rect::from_min_size(pos2(x, cy - 13.0), vec2(78.0, 26.0));
+    let menu_id = egui::Id::new("effectcraft-plugin-import-menu");
+    let mut menu_open = ui.ctx().data(|d| d.get_temp::<bool>(menu_id).unwrap_or(false));
     let response = ui
         .put(rect, egui::Button::new("导入插件"))
-        .on_hover_text("选择 .wasm 或 .wat 插件文件");
-    app.auto.add_response("header.importPlugin", &response, "Import Effect Plug-in");
+        .on_hover_text("导入 WASM 效果插件或 DeepSeek AI ZIP");
+    app.auto.add_response("header.importPlugin", &response, "Import Plug-in");
     widgets::focus_outline(ui, &response, &app.tokens);
-    if response.clicked()
+    if response.clicked() {
+        menu_open = !menu_open;
+    }
+
+    let mut import_wasm = false;
+    let mut import_ai = false;
+    if menu_open {
+        let mut popup_open = true;
+        egui::Window::new("导入插件")
+            .id(menu_id.with("popup"))
+            .order(egui::Order::Foreground)
+            .default_pos(rect.left_bottom() + vec2(0.0, 4.0))
+            .movable(false)
+            .collapsible(false)
+            .resizable(false)
+            .title_bar(false)
+            .open(&mut popup_open)
+            .show(ui.ctx(), |popup| {
+                popup.label("选择插件类型");
+                if popup.button("WASM / WAT 效果插件").clicked() {
+                    import_wasm = true;
+                }
+                if popup.button("DeepSeek AI 插件 ZIP").clicked() {
+                    import_ai = true;
+                }
+                if popup.button("关闭").clicked() {
+                    popup_open = false;
+                }
+            });
+        menu_open = popup_open && !import_wasm && !import_ai;
+    }
+    ui.ctx().data_mut(|d| d.insert_temp(menu_id, menu_open));
+
+    if import_wasm
         && let Err(error) = crate::menus::invoke(app, ui.ctx(), "effect.plugins.load", json!({}))
     {
         app.ui.status = error;
+    }
+    if import_ai {
+        match crate::open_ai_plugin_import_from_toolbar() {
+            Ok(()) => app.ui.status = "请选择 DeepSeek AI 插件 ZIP；随后按 Android 系统提示确认安装。".into(),
+            Err(error) => app.ui.status = error,
+        }
     }
     x + 84.0
 }
