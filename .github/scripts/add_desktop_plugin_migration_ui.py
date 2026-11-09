@@ -291,17 +291,6 @@ fn result_from_import(pending: Pending, scan: ScanResult, result: Result<Value, 
         detail.push_str(&format!("\n未导入或跳过的文件：{} 个", skipped));
     }
     detail.push_str("\n\n说明：.aex/.dll/.ofx 等 Windows/macOS 原生插件不能直接在 Android 执行；匹配到的兼容效果是替代实现，不是原厂插件。");
-    let has_rsmb_compatibility = value
-        .get("desktop_native_compatibility_matches")
-        .and_then(Value::as_array)
-        .or_else(|| value.get("native_compatibility_matches").and_then(Value::as_array))
-        .is_some_and(|matches| matches.iter().any(|item| {
-            item.get("effect_id").and_then(Value::as_str)
-                == Some("org.effectcraft.sapphire.compat.rsmb-style-motion-blur")
-        }));
-    if has_rsmb_compatibility {
-        detail.push_str("\nRSMB 已匹配到内置替代效果“RSMB 风格方向模糊（非原版）”。它会出现在效果列表中，但导入不会自动添加到图层；请先把这个效果添加到当前图层，再在右侧效果控件调整方向角度、模糊距离和效果强度。");
-    }
     if successful {
         detail.push_str("\n可加载的 WASM 插件已注册到 EffectCraft；点击 OK 关闭窗口。");
     } else {
