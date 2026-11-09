@@ -17,6 +17,7 @@ on:
       - '.github/scripts/restore_android_plugins.py'
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
@@ -312,6 +313,13 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_zip_plugin_support.py
+
+      - name: Add desktop plug-in package inspection and AE script import
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_desktop_plugin_package_support.py
+          python3 build-assets/.github/scripts/add_desktop_plugin_package_support.py
 
       - name: Route AE projects through the original Import Project control
         env:
@@ -682,6 +690,14 @@ jobs:
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
           grep -Fq "WASM / WAT / ZIP 效果插件" "$HEADER_SRC"
           grep -Fq "DeepSeek AI 插件 ZIP" "$HEADER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
+          grep -Fq "AE 脚本 (.jsx/.js)" "$HEADER_SRC"
+          grep -Fq "ScriptUI 面板 (.jsx)" "$HEADER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_PACKAGE_IMPORT_V1" "source/effectcraft/crates/engine/src/cmd/effect.rs"
+          grep -Fq '"file.installScriptUIPanel"' "source/effectcraft/crates/engine/src/cmd/scripts.rs"
+          grep -Fq '"file.installScript"' "source/effectcraft/crates/engine/src/cmd/scripts.rs"
+          grep -Fq '"effect.plugins.load"' "source/effectcraft/crates/engine/src/cmd/effect.rs"
+          grep -Fq "Desktop-Originals" "source/effectcraft/crates/engine/src/cmd/effect.rs"
           grep -Fq "open_ai_plugin_import_from_toolbar" "source/effectcraft/crates/ui-egui/src/lib.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_SINGLE_EXPORT_BUTTON_V1" "$HEADER_SRC"
