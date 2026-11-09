@@ -81,6 +81,7 @@ jobs:
             .github/scripts/patch_export_dialog.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_am_nv_project_import.py
+            .github/scripts/add_chroma_key_effect.py
 
       - name: Apply the same plug-in patches used by the APK build
         env:
