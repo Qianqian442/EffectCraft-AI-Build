@@ -177,6 +177,40 @@ fn nv_transform(node: &J, refs: &HashMap<&str, &J>) -> Xform {
         opacity: number(p("_opacity"), 1.0),
     }
 }
+fn register_imported_fonts(base: &str) -> HashMap<String, String> {
+    let mut families = HashMap::new();
+    let mut pending = vec![
+        Path::new(base).join("Fonts"),
+        Path::new(base).join("fonts"),
+    ];
+    let mut checked = 0usize;
+    while let Some(dir) = pending.pop() {
+        if checked >= 256 { break; }
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            checked += 1;
+            if checked >= 256 { break; }
+            let path = entry.path();
+            if path.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            let extension = ext(&path.to_string_lossy());
+            if !matches!(extension.as_str(), "ttf" | "otf" | "ttc" | "otc") { continue; }
+            let Ok(metadata) = std::fs::metadata(&path) else { continue };
+            if metadata.len() == 0 || metadata.len() > 32 * 1024 * 1024 { continue; }
+            let Ok(bytes) = std::fs::read(&path) else { continue };
+            let ids = effectcraft_text::fonts::add_font_data(bytes);
+            let Some(id) = ids.first().copied() else { continue };
+            let family = effectcraft_text::fonts::face(id).info.family.clone();
+            if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
+                families.insert(file_name.to_ascii_lowercase(), family);
+            }
+        }
+    }
+    families
+}
+
 fn media_file(base: &str, stored: &str) -> Option<String> {
     let stored_path = Path::new(stored);
     let basename = stored_path.file_name()?;
@@ -289,6 +323,7 @@ fn import_nv_node(
     node: &J,
     refs: &HashMap<&str, &J>,
     base: &str,
+    font_map: &HashMap<String, String>,
     parent: Xform,
     depth: usize,
     missing: &mut Vec<String>,
@@ -372,7 +407,8 @@ fn import_nv_node(
         let data = data_of(node, refs, "DataText3D");
         let params = data.and_then(|d| d.get("Params"));
         let text = params.and_then(|p| p.get("_text")).map(|v| deref(v, refs)).and_then(|v| v.get("Text")).and_then(J::as_str).unwrap_or("").to_string();
-        let font = params.and_then(|p| p.get("_font")).map(|v| deref(v, refs)).and_then(|v| v.get("PickedFont")).and_then(J::as_str).unwrap_or("Inter").to_string();
+        let picked_font = params.and_then(|p| p.get("_font")).map(|v| deref(v, refs)).and_then(|v| v.get("PickedFont")).and_then(J::as_str).unwrap_or("Inter").to_string();
+        let font = font_map.get(&picked_font.to_ascii_lowercase()).cloned().unwrap_or(picked_font);
         let size = params.and_then(|p| p.get("_size")).map(|v| deref(v, refs)).map(|v| number(Some(v), 1.0)).unwrap_or(1.0);
         let mut layer = attach_layer(project, comp_id, comp, &name, LayerSource::Text, (comp.width, comp.height),
             start, in_point, out_point, stretch, local)?;
@@ -398,13 +434,13 @@ fn import_nv_node(
 
     if let Some(children) = node.get("ChildList").and_then(J::as_array) {
         for child in children {
-            import_nv_node(project, folder, comp_id, comp, child, refs, base, local, depth + 1, missing, warnings, created_items)?;
+            import_nv_node(project, folder, comp_id, comp, child, refs, base, font_map, local, depth + 1, missing, warnings, created_items)?;
         }
     }
     Ok(())
 }
 
-fn import_nodevideo(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> Result<J> {
+fn import_nodevideo(s: &mut Session, path: &str, base: &str, bytes: &[u8], font_map: &HashMap<String, String>) -> Result<J> {
     if bytes.len() > MAX_PROJECT_BYTES { return Err(err("NodeVideo project is larger than 128 MB")); }
     let root: J = serde_json::from_slice(bytes).map_err(|e| err(format!("NodeVideo .nv file is not valid JSON: {e}")))?;
     let refs = collect_refs(&root);
@@ -424,7 +460,7 @@ fn import_nodevideo(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> Re
         let mut missing = Vec::new();
         let mut warnings = Vec::new();
         for node in &roots {
-            import_nv_node(project, folder, cid, &comp_copy, node, &refs, base, Xform::default(), 0,
+            import_nv_node(project, folder, cid, &comp_copy, node, &refs, base, font_map, Xform::default(), 0,
                 &mut missing, &mut warnings, &mut items)?;
         }
         if !missing.is_empty() { warnings.push(format!("{} media file(s) were not found; placeholders were created", missing.len())); }
@@ -468,7 +504,7 @@ fn xml_transform(node: roxmltree::Node<'_, '_>, width: u32, height: u32) -> Xfor
     if opacity > 1.0 { opacity /= 100.0; }
     Xform { pos: [pos[0] / width.max(1) as f64, pos[1] / height.max(1) as f64], scale, rotation, opacity: opacity.clamp(0.0, 1.0) }
 }
-fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> Result<J> {
+fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8], font_map: &HashMap<String, String>) -> Result<J> {
     if bytes.len() > MAX_PROJECT_BYTES { return Err(err("Alight Motion XML is larger than 128 MB")); }
     let text = std::str::from_utf8(bytes).map_err(|_| err("Alight Motion XML must be UTF-8"))?;
     if text.contains("<!DOCTYPE") || text.contains("<!ENTITY") {
@@ -523,8 +559,10 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> R
                 let mut doc = TextDoc::default();
                 doc.text = content;
                 let font_spec = node.attribute("font").unwrap_or("Inter");
-                doc.font = font_spec.strip_prefix("googlefonts?name=")
+                let requested_font = font_spec.strip_prefix("googlefonts?name=")
                     .unwrap_or(font_spec).split('&').next().unwrap_or("Inter").to_string();
+                let font_key = Path::new(&requested_font).file_name().and_then(|n| n.to_str()).unwrap_or(&requested_font).to_ascii_lowercase();
+                doc.font = font_map.get(&font_key).cloned().unwrap_or(requested_font);
                 doc.size = attr_f(*node, "size", 72.0).clamp(1.0, 512.0);
                 if let Some(color_node) = xml_child(*node, "fillColor") {
                     let rgba = parse_xml_color(&xml_value(color_node, "value", "#FFFFFFFF"));
@@ -626,10 +664,12 @@ pub fn import_path(s: &mut Session, path: &str) -> Result<J> {
     };
     if ext(&actual) == "nv" || bytes.first().is_some_and(|b| *b == b'{') {
         let base = Path::new(&actual).parent().unwrap_or(Path::new("")).to_string_lossy().to_string();
-        import_nodevideo(s, &actual, &base, &bytes)
+        let font_map = register_imported_fonts(&base);
+        import_nodevideo(s, &actual, &base, &bytes, &font_map)
     } else if ext(&actual) == "xml" || ext(&actual) == "alight" || bytes.starts_with(b"<?xml") || bytes.starts_with(b"<scene") {
         let base = Path::new(&actual).parent().unwrap_or(Path::new("")).to_string_lossy().to_string();
-        import_alight_xml(s, &actual, &base, &bytes)
+        let font_map = register_imported_fonts(&base);
+        import_alight_xml(s, &actual, &base, &bytes, &font_map)
     } else {
         Err(err("This package is not a supported NodeVideo or Alight Motion project"))
     }
