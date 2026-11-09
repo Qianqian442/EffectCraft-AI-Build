@@ -205,7 +205,7 @@ def patch_picker(root: Path) -> None:
     source = path.read_text(encoding="utf-8")
     source = replace_once(
         source,
-        '"effect.plugins.load" if params.get("folder").is_none() => (("path"), Ask::Open(&["wasm", "wat"])),',
+        '"effect.plugins.load" if params.get("folder").is_none() => ("path", Ask::Open(&["wasm", "wat", "zip"])),',
         '"effect.plugins.load" if params.get("folder").is_none() => (("path"), Ask::Open(&["wasm", "wat", "zip"])),',
         "Plugin file picker ZIP extension",
     )
