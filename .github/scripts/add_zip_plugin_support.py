@@ -25,7 +25,7 @@ def patch_manifests(root: Path) -> None:
         source,
         'wasmi = { version = "2", default-features = false, features = ["std", "validate", "wat", "deterministic", "portable-dispatch"] }\n',
         'wasmi = { version = "2", default-features = false, features = ["std", "validate", "wat", "deterministic", "portable-dispatch"] }\n'
-        'zip = "9.1.3"\n',
+        'zip = { version = "7.4.0", default-features = false, features = ["deflate-flate2"] }\n',
         "ZIP archive reader workspace dependency",
     )
     workspace.write_text(source, encoding="utf-8")
@@ -44,9 +44,19 @@ def patch_manifests(root: Path) -> None:
     if package_end < 0:
         raise SystemExit("Could not locate effectcraft-engine dependency list in Cargo.lock")
     block = source[package_start:package_end]
-    if '"zip 9.1.3"' not in block:
+    if '"zip 7.4.0"' not in block:
         block = replace_once(block, ' "web-time",', ' "web-time",\n "zip 9.1.3",', "Cargo.lock engine ZIP dependency")
         source = source[:package_start] + block + source[package_end:]
+    zip_start = source.find('name = "zip"\\nversion = "7.4.0"')
+    if zip_start < 0:
+        raise SystemExit("Could not locate zip 7.4.0 in Cargo.lock")
+    zip_end = source.find("\\n]\\n", zip_start)
+    if zip_end < 0:
+        raise SystemExit("Could not locate zip 7.4.0 dependency list in Cargo.lock")
+    zip_block = source[zip_start:zip_end]
+    if '"flate2"' not in zip_block:
+        zip_block = replace_once(zip_block, ' "crc32fast",', ' "crc32fast",\\n "flate2",', "Cargo.lock ZIP deflate backend")
+        source = source[:zip_start] + zip_block + source[zip_end:]
     lock.write_text(source, encoding="utf-8")
 
 
