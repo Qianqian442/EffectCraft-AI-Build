@@ -25,7 +25,7 @@ def patch_manifests(root: Path) -> None:
         source,
         'wasmi = { version = "2", default-features = false, features = ["std", "validate", "wat", "deterministic", "portable-dispatch"] }\n',
         'wasmi = { version = "2", default-features = false, features = ["std", "validate", "wat", "deterministic", "portable-dispatch"] }\n'
-        'zip = { version = "7.4.0", default-features = false, features = ["deflate-flate2"] }\n',
+        'zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2", "flate2/rust_backend"] }\n',
         "ZIP archive reader workspace dependency",
     )
     workspace.write_text(source, encoding="utf-8")
@@ -44,19 +44,10 @@ def patch_manifests(root: Path) -> None:
     if package_end < 0:
         raise SystemExit("Could not locate effectcraft-engine dependency list in Cargo.lock")
     block = source[package_start:package_end]
-    if '"zip 7.4.0"' not in block:
+    if '"zip 9.1.3"' not in block:
         block = replace_once(block, ' "web-time",', ' "web-time",\n "zip 9.1.3",', "Cargo.lock engine ZIP dependency")
         source = source[:package_start] + block + source[package_end:]
-    zip_start = source.find('name = "zip"\nversion = "7.4.0"')
-    if zip_start < 0:
-        raise SystemExit("Could not locate zip 7.4.0 in Cargo.lock")
-    zip_end = source.find("\n]\n", zip_start)
-    if zip_end < 0:
-        raise SystemExit("Could not locate zip 7.4.0 dependency list in Cargo.lock")
-    zip_block = source[zip_start:zip_end]
-    if '"flate2"' not in zip_block:
-        zip_block = replace_once(zip_block, ' "crc32fast",', ' "crc32fast",\n "flate2",', "Cargo.lock ZIP deflate backend")
-        source = source[:zip_start] + zip_block + source[zip_end:]
+    # zip 9.1.3 and flate2 are already present in the upstream lockfile.
     lock.write_text(source, encoding="utf-8")
 
 
@@ -215,8 +206,8 @@ def patch_picker(root: Path) -> None:
     source = path.read_text(encoding="utf-8")
     source = replace_once(
         source,
-        '"effect.plugins.load" if params.get("folder").is_none() => ("path", Ask::Open(&["wasm", "wat"]))',
-        '"effect.plugins.load" if params.get("folder").is_none() => ("path", Ask::Open(&["wasm", "wat", "zip"]))',
+        '"effect.plugins.load" if params.get("folder").is_none() => ("path", Ask::Open(&["wasm", "wat"])),',
+        '"effect.plugins.load" if params.get("folder").is_none() => ("path", Ask::Open(&["wasm", "wat", "zip"])),',
         "Plugin file picker ZIP extension",
     )
     path.write_text(source, encoding="utf-8")
