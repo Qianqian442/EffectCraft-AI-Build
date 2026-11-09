@@ -20,6 +20,8 @@ on:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/add_project_import_formats.py'
+      - '.github/scripts/add_am_nv_project_import.py'
+      - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
@@ -325,6 +327,13 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_project_import_formats.py
+
+      - name: Add Alight Motion and NodeVideo project import support
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_am_nv_project_import.py
+          python3 build-assets/.github/scripts/add_am_nv_project_import.py
 
       - name: Add Simplified Chinese, Puppet shortcut, project grouping and single-item keyframes
         env:
