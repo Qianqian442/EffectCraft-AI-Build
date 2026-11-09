@@ -101,6 +101,35 @@ def patch_activity(builder: Path) -> None:
     helper_anchor = '    private File newStageFile(String name, Uri uri) throws Exception {'
     source = replace_once(source, helper_anchor, stage_helper + helper_anchor, "media staging fallback helper")
 
+    // Replace the builder's file-channel copy with ContentResolver streaming. Some
+    // DocumentsProviders expose pipes whose FileChannel.size() is zero even for non-empty files.
+    copy_start = source.find("    private void copyUriToFile(Uri uri, File destination) throws Exception {")
+    if copy_start < 0:
+        raise SystemExit("Could not locate Android SAF URI copy method")
+    copy_end = source.find("\n    /**\n     * Collect the file(s) an", copy_start)
+    if copy_end < 0:
+        raise SystemExit("Could not locate the end of Android SAF URI copy method")
+    copy_method = r'''    private void copyUriToFile(Uri uri, File destination) throws Exception {
+        InputStream input = getContentResolver().openInputStream(uri);
+        if (input == null) {
+            throw new java.io.IOException("Android document provider did not open the selected file");
+        }
+        try (InputStream in = input; FileOutputStream out = new FileOutputStream(destination, false)) {
+            byte[] buffer = new byte[256 * 1024];
+            int count;
+            while ((count = in.read(buffer)) != -1) {
+                out.write(buffer, 0, count);
+            }
+            out.flush();
+            out.getFD().sync();
+        }
+        if (!destination.isFile() || destination.length() == 0) {
+            throw new java.io.IOException("所选文件读取结果为空，请重新选择文件。");
+        }
+    }
+'''
+    source = source[:copy_start] + copy_method + source[copy_end:]
+
     path.write_text(source, encoding="utf-8")
     print("Configured SAF pickers to start in shared Download storage.")
     print("Added ordered writable staging fallback: app external files, private files, then cache.")
