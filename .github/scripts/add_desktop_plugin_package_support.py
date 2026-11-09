@@ -252,10 +252,6 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     }
 
     let mut loaded_wat = Vec::<Value>::new();
-    for index in 0..wat_count {
-        let source = wat_dir.join(format!("archive_{}_", index));
-        let _ = source;
-    }
     if wat_dir.is_dir() {
         let mut wat_files = std::fs::read_dir(&wat_dir)
             .map_err(|error| bad(CMD, format!("无法读取 WAT 插件暂存目录：{error}")))?
