@@ -58,7 +58,8 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
         String savedServer = getPreferences(MODE_PRIVATE).getString("server", "");
         server = savedServer.startsWith("https://") ? trimServer(savedServer) : DEFAULT_SERVER;
-        adminToken = server.equals(DEFAULT_SERVER) ? "" : getPreferences(MODE_PRIVATE).getString("admin_token", "");
+        adminToken = savedServer.startsWith("https://")
+            ? getPreferences(MODE_PRIVATE).getString("admin_token", "") : "";
         if (!adminToken.isEmpty()) {
             showConnecting("正在连接云端账号服务并恢复管理员登录…");
             loadUsers("");
@@ -480,7 +481,10 @@ public final class MainActivity extends Activity {
                     } catch (Exception ignored) {}
                     requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
                         if (result != null) {
-                            toast("已封禁该账号");
+                            int delivered = result.optInt("notification_delivered", 0);
+                            toast(delivered > 0
+                                ? "已封禁，并已通知在线 Ae 设备（" + delivered + " 个连接）"
+                                : "封禁记录已保存；未发现在线 Ae 连接，对方下次联网或打开 Ae 时核验");
                             loadUsers(searchInput == null ? "" : searchInput.getText().toString());
                         }
                     });
@@ -496,7 +500,10 @@ public final class MainActivity extends Activity {
                     try { body.put("banned_until", JSONObject.NULL); body.put("reason", ""); } catch (Exception ignored) {}
                     requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
                         if (result != null) {
-                            toast("已解除封禁");
+                            int delivered = result.optInt("notification_delivered", 0);
+                            toast(delivered > 0
+                                ? "已解禁，并已通知在线 Ae 设备（" + delivered + " 个连接）"
+                                : "解禁记录已保存；对方下次联网或打开 Ae 时核验");
                             loadUsers(searchInput == null ? "" : searchInput.getText().toString());
                         }
                     });
