@@ -323,7 +323,20 @@ async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: JSON_HEADERS });
   if (request.method === "GET" && url.pathname === "/health") {
-    return response({ ok: true, service: "Ae Cloud Account API", database: !!env.DB });
+    if (!env.DB) {
+      return response({ ok: false, service: "Ae Cloud Account API", database: false }, 503);
+    }
+    try {
+      const probe = await env.DB.prepare("SELECT 1 AS connected").first();
+      const connected = Number(probe && probe.connected) === 1;
+      return response(
+        { ok: connected, service: "Ae Cloud Account API", database: connected },
+        connected ? 200 : 503
+      );
+    } catch (error) {
+      console.error("health-database-error", error && error.message ? error.message : String(error));
+      return response({ ok: false, service: "Ae Cloud Account API", database: false }, 503);
+    }
   }
   if (!env.DB) return fail(503, "云端数据库尚未绑定");
   try {
