@@ -59,7 +59,8 @@ def main() -> None:
         "    pending_action: Option<Action>,\n"
         "    events: Option<Receiver<Result<Value, String>>>,\n"
         "    event_started: bool,\n"
-        "    notification_pending: bool,",
+        "    notification_pending: bool,
+    event_connected_once: bool,",
         "account event state fields",
     )
     source = replace_once(
@@ -71,7 +72,8 @@ def main() -> None:
         "            pending_action: None,\n"
         "            events: None,\n"
         "            event_started: false,\n"
-        "            notification_pending: false,",
+        "            notification_pending: false,
+            event_connected_once: false,",
         "account event state initialization",
     )
     source = replace_once(
@@ -164,8 +166,18 @@ def main() -> None:
             Some(Err(TryRecvError::Empty)) | None => None,
         };
         if let Some(Ok(event)) = received {
-            if event.get("type").and_then(Value::as_str) == Some("account_status_changed") {
-                self.notification_pending = true;
+            match event.get("type").and_then(Value::as_str) {
+                Some("account_status_changed") => self.notification_pending = true,
+                Some("account_session_connected") => {
+                    // The first socket is established immediately after the launch-time
+                    // verification; only a later reconnect needs a catch-up verification.
+                    if self.event_connected_once {
+                        self.notification_pending = true;
+                    } else {
+                        self.event_connected_once = true;
+                    }
+                }
+                _ => {}
             }
         }
         if self.notification_pending && self.pending.is_none() && self.token.is_some() {
