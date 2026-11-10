@@ -290,6 +290,7 @@ async function adminBan(request, env, id) {
   if (!existing) return fail(404, "账号不存在");
   const until = body.banned_until;
   let status;
+  let bannedUntil = null;
   if (until === null || until === undefined || until === "") {
     await env.DB.prepare("UPDATE accounts SET banned_until = NULL, ban_reason = '' WHERE id = ?").bind(id).run();
     status = "unbanned";
@@ -298,15 +299,16 @@ async function adminBan(request, env, id) {
     const reason = String(body.reason || "").trim();
     if (!Number.isFinite(timestamp) || timestamp <= Date.now()) return fail(422, "封禁时间必须晚于当前时间");
     if (!reason || reason.length > 200) return fail(422, "请填写封禁原因（最多200字）");
+    bannedUntil = new Date(timestamp).toISOString();
     await env.DB.prepare("UPDATE accounts SET banned_until = ?, ban_reason = ? WHERE id = ?")
-      .bind(new Date(timestamp).toISOString(), reason, id).run();
+      .bind(bannedUntil, reason, id).run();
     status = "banned";
   }
   // The database update is authoritative. Push one event to connected Ae clients;
   // each client then performs exactly one /v1/me verification.
   let notified = 0;
   try {
-    notified = await notifyAccountStatus(env, id, status, status === "banned" ? new Date(timestamp).toISOString() : null);
+    notified = await notifyAccountStatus(env, id, status, bannedUntil);
   } catch (error) {
     console.error("account-notification-error", error && error.message ? error.message : String(error));
   }
