@@ -55,6 +55,16 @@ Status: implementation specification; not a claim that cross-network peer transp
 - Android-required foreground-service/notification behavior is visible and user-controllable.
 - Both APKs install and update with stable signing; no release is marked complete until artifacts are actual APK files and the cross-network tests pass.
 
+## Main APK automatic node participation (user requirement, 2026-11-11)
+
+The EffectCraft main APK is itself the node client. There is no third node APK and no separate in-app node enrollment/registration screen. After installation and first launch, the app should create a per-install node identity locally and automatically attempt to join the node network. This node identity is distinct from the user's EffectCraft account registration/login.
+
+Do not present a separate "register this phone as a node" flow, do not ask the user to enter a node/server address, and do not require manual peer pairing for ordinary node participation. The network protocol must still authenticate devices cryptographically in the background (for example, ephemeral or provisioned device keys) and enforce authorization server-side; "no manual node registration" does not mean unauthenticated public relay access.
+
+Android system rules remain mandatory: use the required foreground-service notification and runtime permission prompts where the OS requires them. Do not hide node activity, bypass system permission dialogs, or restart a service after the user/system explicitly stops it. Once the user launches the app and required Android system conditions are satisfied, node startup and reconnect should be automatic.
+
+The standalone administrator APK remains the only separate management app and owns the global network ON/OFF control. OFF must stop node sessions and relayed traffic; ON permits eligible main-app nodes to reconnect automatically. Keep the existing account registration/login requirement separate from node enrollment: this change removes only the separate node-registration flow, not the account system.
+
 ## Operational constraints
 
 - Wi-Fi alone cannot connect private devices across unrelated routers. A public coordination/relay endpoint is required.
