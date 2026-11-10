@@ -21,7 +21,7 @@ pub extern "C" fn ec_alloc(bytes: i32) -> i32 {
     BUF.with(|cell| {
         let mut buffer = cell.borrow_mut();
         let words = (bytes.max(0) as usize).div_ceil(8);
-        if buffer.len() < words { buffer.resize(words, 0.0); }
+        if buffer.len() < words { buffer.resize(words, 0); }
         buffer.as_mut_ptr() as i32
     })
 }
@@ -345,8 +345,8 @@ pub unsafe extern "C" fn ec_render(
             for dy in -1..=1 {
                 for dx in -1..=1 {
                     if dx == 0 && dy == 0 { continue; }
-                    let nx = (xi + dx).clamp(0.0, w as isize - 1) as usize;
-                    let ny = (yi + dy).clamp(0.0, h as isize - 1) as usize;
+                    let nx = (xi + dx).clamp(0, w as isize - 1) as usize;
+                    let ny = (yi + dy).clamp(0, h as isize - 1) as usize;
                     sum += source_luma[ny * w + nx];
                     neighbors += 1.0;
                 }
