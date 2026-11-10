@@ -228,8 +228,9 @@ public final class MainActivity extends Activity {
             HttpURLConnection c = null;
             try {
                 URL url = new URL(server + path);
-                if (!isPrivateLanHost(url.getHost())) {
-                    throw new java.io.IOException("账号服务地址必须是 HTTPS workers.dev 地址");
+                if (!"https".equalsIgnoreCase(url.getProtocol()) ||
+                    url.getHost() == null || !url.getHost().endsWith(".workers.dev")) {
+                    throw new java.io.IOException("请填写完整的 HTTPS workers.dev 地址");
                 }
                 c = (HttpURLConnection) url.openConnection();
                 c.setRequestMethod(method);
