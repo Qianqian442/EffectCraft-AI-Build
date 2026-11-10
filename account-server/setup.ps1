@@ -22,6 +22,19 @@ try {
 if (-not $homeLanIp) {
     throw "没有找到已连接路由器的 IPv4 网络。请先连接家庭 Wi-Fi，再重新运行。"
 }
+$octets = @($homeLanIp.Split(".") | ForEach-Object { [int]$_ })
+if ($octets.Count -ne 4) {
+    throw "检测到的地址不是有效 IPv4 地址：$homeLanIp"
+}
+$a = $octets[0]
+$b = $octets[1]
+$isPrivateLan = ($a -eq 10) -or
+    ($a -eq 192 -and $b -eq 168) -or
+    ($a -eq 172 -and $b -ge 16 -and $b -le 31) -or
+    ($a -eq 100 -and $b -ge 64 -and $b -le 127)
+if (-not $isPrivateLan) {
+    throw "检测到的地址不是家庭/私有局域网 IPv4（$homeLanIp）。为避免暴露公网，请检查当前网络后重试。"
+}
 
 if (Test-Path $envPath) {
     $lines = @(Get-Content $envPath)
