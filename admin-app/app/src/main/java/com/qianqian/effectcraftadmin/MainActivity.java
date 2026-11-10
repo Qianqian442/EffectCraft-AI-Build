@@ -130,7 +130,7 @@ public final class MainActivity extends Activity {
         page.addView(text("正在通过 HTTPS 连接云端账号服务；不需要其他用户与管理设备处于同一 Wi-Fi。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
-            showConnecting("正在重新连接本机账号服务…");
+            showConnecting("正在重新连接云端账号服务…");
             loadUsers("");
         });
         page.addView(retry, new LinearLayout.LayoutParams(-1, dp(48)));
@@ -194,7 +194,7 @@ public final class MainActivity extends Activity {
                     loginButton.setEnabled(true);
                     loginButton.setText("登录管理后台");
                 }
-                if (loginStatus != null) loginStatus.setText("登录未完成，请检查服务器地址、Wi-Fi 和密码后重试。");
+                if (loginStatus != null) loginStatus.setText("登录未完成，请检查 HTTPS 服务器地址、网络和密码后重试。");
                 return;
             }
             try {
