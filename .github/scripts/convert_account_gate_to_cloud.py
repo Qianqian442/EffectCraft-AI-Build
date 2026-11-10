@@ -167,15 +167,20 @@ def main() -> None:
         };
         if let Some(Ok(event)) = received {
             match event.get("type").and_then(Value::as_str) {
-                Some("account_status_changed") => self.notification_pending = true,
-                Some("account_session_connected") => {
-                    // The first socket is established immediately after the launch-time
-                    // verification; only a later reconnect needs a catch-up verification.
-                    if self.event_connected_once {
+                Some("account_status_changed") => {
+                    let status = event.get("status").and_then(Value::as_str).unwrap_or("");
+                    if !(status == "banned" && self.mode == Mode::Banned) {
                         self.notification_pending = true;
-                    } else {
-                        self.event_connected_once = true;
                     }
+                },
+                Some("account_session_connected") => {
+                    // The first socket follows launch verification; if that check
+                    // found a ban, re-check once to catch an unban racing with connect.
+                    // Later reconnects always re-check once to recover missed events.
+                    if self.event_connected_once || self.mode == Mode::Banned {
+                        self.notification_pending = true;
+                    }
+                    self.event_connected_once = true;
                 }
                 _ => {}
             }
