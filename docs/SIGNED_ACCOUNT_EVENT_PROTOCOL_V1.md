@@ -7,7 +7,8 @@ This is a protocol specification for the no-hosted-server migration. It is not a
 - Identity keys: Ed25519 key pair per installation. Generate and retain the private key using Android Keystore-backed storage; export only the public key.
 - Admin authority: a separate Ed25519 public key is enrolled into clients through a trusted, out-of-band bootstrap. Never trust an admin key received only from an untrusted peer.
 - Event signatures: sign the UTF-8 bytes of RFC 8785 JSON Canonicalization Scheme output for the `signed` object. The outer `signature` field is excluded from the signed bytes.
-- Hash: SHA-256 of the canonical signed object. Event IDs are the lowercase hex digest.
+- Event ID: SHA-256 of the canonical identity tuple containing `event_type`, `issuer_key`, `sequence`, `subject_key`, and `payload` (excluding `event_id`, timestamps, and signature to avoid a circular hash). Event IDs are the lowercase hex digest.
+- Signature: ECDSA P-256 with SHA-256 over the canonical complete `signed` object, including the computed `event_id` but excluding the outer `signature` field. Android Keystore's secp256r1 key is used in the first Android implementation.
 - Transport encryption is not a substitute for event signatures. Peers authenticate each other before exchanging events.
 
 ## Envelope
@@ -31,7 +32,7 @@ This is a protocol specification for the no-hosted-server migration. It is not a
 }
 ```
 
-The example is illustrative only; implementations must compute the ID and signature and must not copy the placeholder values.
+The example is illustrative only; implementations must compute the ID and signature and must not copy the placeholder values. The admin Android app's first signing primitive uses an Android Keystore ECDSA P-256 authority key. Ed25519 may be considered for a later cross-platform protocol revision, but all peers in v1 must use the same algorithm.
 
 ## Event types and authority
 
