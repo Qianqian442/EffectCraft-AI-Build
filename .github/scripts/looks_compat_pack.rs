@@ -21,7 +21,7 @@ pub extern "C" fn ec_alloc(bytes: i32) -> i32 {
     BUF.with(|cell| {
         let mut buffer = cell.borrow_mut();
         let words = (bytes.max(0) as usize).div_ceil(8);
-        if buffer.len() < words { buffer.resize(words, 0); }
+        if buffer.len() < words { buffer.resize(words, 0.0); }
         buffer.as_mut_ptr() as i32
     })
 }
@@ -149,11 +149,11 @@ pub unsafe extern "C" fn ec_render(
     let preset = values[0].round().clamp(0.0, 10.0) as usize;
     let strength = values[1].clamp(0.0, 1.0) as f32;
     let exposure = values[2].clamp(-3.0, 3.0) as f32;
-    let contrast = values[3].clamp(0.5, 2) as f32;
+    let contrast = values[3].clamp(0.5, 2.0) as f32;
     let pivot = values[4].clamp(0.1, 0.9) as f32;
-    let black_point = values[5].clamp(0, 0.25) as f32;
-    let white_point = values[6].clamp(0.75, 1) as f32;
-    let gamma = values[7].clamp(0.5, 2) as f32;
+    let black_point = values[5].clamp(0.0, 0.25) as f32;
+    let white_point = values[6].clamp(0.75, 1.0) as f32;
+    let gamma = values[7].clamp(0.5, 2.0) as f32;
     let shadows = values[8].clamp(-1.0, 1.0) as f32;
     let midtones = values[9].clamp(-1.0, 1.0) as f32;
     let highlights = values[10].clamp(-1.0, 1.0) as f32;
@@ -170,15 +170,15 @@ pub unsafe extern "C" fn ec_render(
     let shadow_wheel_strength = values[30].clamp(0.0, 2.0) as f32;
     let midtone_wheel_strength = values[31].clamp(0.0, 2.0) as f32;
     let highlight_wheel_strength = values[32].clamp(0.0, 2.0) as f32;
-    let fade = values[33].clamp(0, 0.6) as f32;
+    let fade = values[33].clamp(0.0, 0.6) as f32;
     let grain = values[34].clamp(0.0, 1.0) as f32;
     let grain_size = values[35].clamp(1.0, 6.0) as f32;
     let vignette = values[36].clamp(0.0, 1.0) as f32;
     let vignette_midpoint = values[37].clamp(0.05, 0.9) as f32;
-    let vignette_feather = values[38].clamp(0.05, 1) as f32;
+    let vignette_feather = values[38].clamp(0.05, 1.0) as f32;
     let halation = values[39].clamp(0.0, 1.0) as f32;
     let bloom = values[40].clamp(0.0, 1.0) as f32;
-    let bloom_threshold = values[41].clamp(0.1, 1) as f32;
+    let bloom_threshold = values[41].clamp(0.1, 1.0) as f32;
     let dehaze = values[42].clamp(0.0, 1.0) as f32;
     let clarity = values[43].clamp(-1.0, 1.0) as f32;
     let sharpen = values[44].clamp(0.0, 1.0) as f32;
@@ -345,8 +345,8 @@ pub unsafe extern "C" fn ec_render(
             for dy in -1..=1 {
                 for dx in -1..=1 {
                     if dx == 0 && dy == 0 { continue; }
-                    let nx = (xi + dx).clamp(0, w as isize - 1) as usize;
-                    let ny = (yi + dy).clamp(0, h as isize - 1) as usize;
+                    let nx = (xi + dx).clamp(0.0, w as isize - 1) as usize;
+                    let ny = (yi + dy).clamp(0.0, h as isize - 1) as usize;
                     sum += source_luma[ny * w + nx];
                     neighbors += 1.0;
                 }
@@ -391,8 +391,8 @@ pub unsafe extern "C" fn ec_render(
                 let mut samples = 0.0_f32;
                 for dy in -1..=1 {
                     for dx in -1..=1 {
-                        let nx = (x as isize + dx).clamp(0, w as isize - 1) as usize;
-                        let ny = (y as isize + dy).clamp(0, h as isize - 1) as usize;
+                        let nx = (x as isize + dx).clamp(0.0, w as isize - 1) as usize;
+                        let ny = (y as isize + dy).clamp(0.0, h as isize - 1) as usize;
                         let n = ny * w + nx;
                         let l = luminance(graded[n]).max(0.0);
                         let mask = smoothstep(bloom_threshold, 1.0, l);
