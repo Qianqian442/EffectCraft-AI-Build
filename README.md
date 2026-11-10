@@ -4,8 +4,8 @@ Private, reproducible Android build workspace for **EffectCraft 0.21.1**.
 
 ## Repository layout
 
-- `.github/workflows/`: Android APK build and complete-source vendor workflows.
-- `.github/scripts/`: export dialog, project import/export, local AI, and Android WASM plug-in integration patches.
+- `.github/workflows/`: Android APK build, account-service deployment, and source-import workflows.
+- `.github/scripts/`: export dialog, project import/export, local AI, account integration, and Android WASM plug-in patches.
 - `.github/native/`: Android native video-worker build files.
 - `assets/ae-avatar.png`: supplied EffectCraft AI assistant avatar.
 - `vendor/effectcraft/`: upstream EffectCraft 0.21.1 source (populated by the vendor workflow).
@@ -37,6 +37,21 @@ The APK workflow downloads these pinned/identified model assets, verifies their 
 
 The Android workflow targets EffectCraft 0.21.1 and applies the patches in `.github/scripts/` before compiling the arm64 APK. A successful Actions run publishes one standalone `.apk` file in the GitHub Release. Do not install files downloaded from the Actions **Artifacts** area: GitHub wraps those downloads in ZIP archives. A queued or running workflow is not a completed APK build.
 
-## Android phone-hosted home-Wi-Fi account system
+## Shared accounts across different Wi-Fi networks
 
-The supported account host is the standalone Android account-admin APK. No PC, Docker host, cloud server, or public account server is required. Install it on one Android phone that stays connected to the home Wi-Fi. It runs the account API as a foreground service and stores accounts in an on-device SQLite database. Other EffectCraft phones on the same Wi-Fi connect to the host phone's displayed private IPv4 address. The listener binds only to the Wi-Fi interface and rejects peers outside that Wi-Fi subnet. See `admin-app/README.md` for setup and operating requirements.
+The account system uses **Cloudflare Workers + D1** as a hosted account endpoint and shared database. This avoids renting or maintaining a VPS and avoids requiring the administrator's phone to stay online as a server. Each EffectCraft phone can use its own Wi-Fi or mobile-data connection; all devices contact the same HTTPS account API, so registration, login, profile changes, bans, and unbans share one account state.
+
+This is **not direct Wi-Fi-to-Wi-Fi bridging**. Wi-Fi only connects a phone to its local router. Phones in different homes cannot reach one another using Wi-Fi alone because routers, NAT, and firewalls isolate private networks. A publicly reachable coordination point is required for cross-network account synchronization; here that point is the existing Cloudflare account, not a user-managed VPS.
+
+### Deployment and APK sequence
+
+The `Deploy Ae Cloud Account API` workflow applies the D1 schema, deploys the Worker, configures its runtime secrets, checks `/health`, saves the resulting Worker URL as the repository variable `AE_ACCOUNT_API_URL`, and then starts builds for both the EffectCraft main APK and the standalone account-admin APK.
+
+Required GitHub Actions repository secrets (never put their values in source code or chat):
+
+- `CLOUDFLARE_API_TOKEN`
+- `CLOUDFLARE_ACCOUNT_ID`
+- `JWT_SECRET` (at least 32 characters)
+- `ADMIN_PASSWORD` (at least 12 characters)
+
+Cloudflare Workers, D1, and Durable Objects have free-plan limits. This avoids VPS rental, but it is not a promise of unlimited or permanently free usage. Test the deployed endpoint on the intended networks before distributing the APKs.
