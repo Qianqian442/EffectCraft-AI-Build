@@ -29,14 +29,18 @@ def main() -> None:
         print("Startup attribution notice is already installed.")
         return
 
-    ui_anchor = """    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.draw(ui, frame);
-    }"""
-    ui_replacement = """    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
-        self.draw(ui, frame);
-        effectcraft_startup_attribution_notice(ui.ctx());
-    }"""
-    source = replace_once(source, ui_anchor, ui_replacement, "app UI startup notice call")
+    # Earlier Android patches can add logic around the eframe UI callback, so
+    # anchor to the stable draw call instead of requiring an exact whole-method body.
+    draw_call = "self.draw(ui, frame);"
+    if "effectcraft_startup_attribution_notice(ui.ctx());" not in source:
+        count = source.count(draw_call)
+        if count != 1:
+            raise SystemExit(f"app UI startup notice call: expected one draw call, found {count}")
+        source = source.replace(
+            draw_call,
+            draw_call + "\\n        effectcraft_startup_attribution_notice(ui.ctx());",
+            1,
+        )
 
     impl_anchor = "impl eframe::App for EffectcraftApp {"
     helper = r'''
