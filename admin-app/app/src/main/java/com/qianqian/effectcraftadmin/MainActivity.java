@@ -47,6 +47,8 @@ public final class MainActivity extends Activity {
     private EditText usernameInput;
     private EditText passwordInput;
     private EditText searchInput;
+    private Button loginButton;
+    private TextView loginStatus;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -64,6 +66,7 @@ public final class MainActivity extends Activity {
             startService(service);
         }
         if (!adminToken.isEmpty()) {
+            showConnecting("正在恢复管理员登录并连接本机账号服务…");
             loadUsers("");
         } else {
             showLogin();
@@ -133,6 +136,28 @@ public final class MainActivity extends Activity {
         setContentView(root);
     }
 
+    private void showConnecting(String message) {
+        LinearLayout page = column();
+        page.addView(text("Ae账号管理", 24, true), new LinearLayout.LayoutParams(-1, dp(56)));
+        TextView status = text(message, 15, false);
+        page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
+        page.addView(text("请保持本机连接家庭 Wi-Fi，并确认“EffectCraft 家庭账号服务”常驻通知仍在。", 12, false));
+        Button retry = button("重新连接");
+        retry.setOnClickListener(v -> {
+            showConnecting("正在重新连接本机账号服务…");
+            loadUsers("");
+        });
+        page.addView(retry, new LinearLayout.LayoutParams(-1, dp(48)));
+        Button logout = button("返回管理员登录");
+        logout.setOnClickListener(v -> {
+            adminToken = "";
+            getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
+            showLogin();
+        });
+        page.addView(logout, new LinearLayout.LayoutParams(-1, dp(48)));
+        setRoot(page);
+    }
+
     private void showLogin() {
         LinearLayout page = column();
         TextView title = text("EffectCraft 账号管理", 24, true);
@@ -154,9 +179,12 @@ public final class MainActivity extends Activity {
         page.addView(text("管理员密码", 13, true));
         passwordInput = field("输入安装服务器时设置的管理员密码", true);
         page.addView(passwordInput);
-        Button login = button("登录管理后台");
-        page.addView(login, new LinearLayout.LayoutParams(-1, dp(52)));
-        login.setOnClickListener(v -> doAdminLogin());
+        loginButton = button("登录管理后台");
+        page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
+        loginStatus = text("等待连接本机账号服务", 12, false);
+        loginStatus.setTextColor(Color.rgb(95, 103, 115));
+        page.addView(loginStatus, new LinearLayout.LayoutParams(-1, dp(36)));
+        loginButton.setOnClickListener(v -> doAdminLogin());
         page.addView(text("管理员密码只保存在家中服务器的配置文件中，不会写入普通用户账号资料。", 12, false));
         setRoot(page);
     }
@@ -164,20 +192,42 @@ public final class MainActivity extends Activity {
     private void doAdminLogin() {
         server = trimServer(serverInput.getText().toString());
         String user = usernameInput.getText().toString().trim();
-        String pass = passwordInput.getText().toString();
+        // The generated admin password contains no spaces. Ignore accidental
+        // leading/trailing whitespace added by mobile clipboard or IME input.
+        String pass = passwordInput.getText().toString().trim();
         if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) {
             toast("请填写服务器地址、管理员账号和密码");
             return;
         }
         JSONObject body = new JSONObject();
         try { body.put("username", user); body.put("password", pass); } catch (Exception ignored) {}
+        if (loginButton != null) {
+            loginButton.setEnabled(false);
+            loginButton.setText("正在验证…");
+        }
+        if (loginStatus != null) loginStatus.setText("正在连接本机 Wi-Fi 账号服务并验证密码…");
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
-            if (result == null) return;
+            if (result == null) {
+                if (loginButton != null) {
+                    loginButton.setEnabled(true);
+                    loginButton.setText("登录管理后台");
+                }
+                if (loginStatus != null) loginStatus.setText("登录未完成，请检查服务器地址、Wi-Fi 和密码后重试。");
+                return;
+            }
             try {
                 adminToken = result.getString("token");
                 getPreferences(MODE_PRIVATE).edit().putString("server", server).putString("admin_token", adminToken).apply();
+                showConnecting("密码验证成功，正在读取账号列表…");
                 loadUsers("");
-            } catch (Exception e) { toast("管理员登录返回数据不正确"); }
+            } catch (Exception e) {
+                toast("管理员登录返回数据不正确");
+                if (loginButton != null) {
+                    loginButton.setEnabled(true);
+                    loginButton.setText("登录管理后台");
+                }
+                if (loginStatus != null) loginStatus.setText("登录返回内容异常，请重试。");
+            }
         });
     }
 
@@ -264,7 +314,13 @@ public final class MainActivity extends Activity {
         String encoded;
         try { encoded = URLEncoder.encode(query, "UTF-8"); } catch (Exception e) { encoded = ""; }
         requestAsync("GET", "/v1/admin/users?q=" + encoded, null, true, result -> {
-            if (result == null) return;
+            if (result == null) {
+                // Do not leave the Activity blank or stuck on an expired token.
+                adminToken = "";
+                getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
+                showLogin();
+                return;
+            }
             showUsers(result.optJSONArray("users"));
         });
     }
