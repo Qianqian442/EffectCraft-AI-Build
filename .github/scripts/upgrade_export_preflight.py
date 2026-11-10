@@ -5,9 +5,9 @@ root = Path(os.environ["EFFECTCRAFT_DIR"])
 header_path = root / "crates/ui-egui/src/header.rs"
 header = header_path.read_text()
 
-draft_marker = """    let (mut format, mut fps, mut resolution, mut ai_interpolation, mut ai_upscale) = ui.ctx().data(|d| {
-        d.get_temp::<(String, f64, String, bool, bool)>(draft_id)
-            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string(), false, false))
+draft_marker = """    let (mut format, mut fps, mut resolution, mut bitrate_mbps, mut ai_interpolation, mut ai_upscale) = ui.ctx().data(|d| {
+        d.get_temp::<(String, f64, String, f64, bool, bool)>(draft_id)
+            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string(), 12.0, false, false))
     });
     let comp_name = app.session.active_comp_id()"""
 draft_replacement = """    let (mut format, mut fps, mut resolution, mut ai_interpolation, mut ai_upscale) = ui.ctx().data(|d| {
@@ -16,7 +16,7 @@ draft_replacement = """    let (mut format, mut fps, mut resolution, mut ai_inte
     });
     let preflight_error_id = open_id.with("preflight-error");
     let mut preflight_error = ui.ctx().data(|d| d.get_temp::<Option<String>>(preflight_error_id).flatten());
-    let previous_settings = (format.clone(), fps, resolution.clone(), ai_interpolation, ai_upscale);
+    let previous_settings = (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale);
     let comp_name = app.session.active_comp_id()"""
 if "let previous_settings = (format.clone(), fps, resolution.clone(), ai_interpolation, ai_upscale);" not in header:
     if draft_marker not in header:
@@ -60,7 +60,7 @@ if new_check not in header:
 cancel_old = """    if cancel {
         open = false;
     }"""
-cancel_new = """    if (format.clone(), fps, resolution.clone(), ai_interpolation, ai_upscale) != previous_settings {
+cancel_new = """    if (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale) != previous_settings {
         preflight_error = None;
     }
     if cancel {
@@ -72,7 +72,7 @@ if cancel_new not in header:
         raise SystemExit("Could not add export preflight warning reset")
     header = header.replace(cancel_old, cancel_new, 1)
 
-draft_store = 'd.insert_temp(draft_id, (format, fps, resolution, ai_interpolation, ai_upscale));'
+draft_store = 'd.insert_temp(draft_id, (format, fps, resolution, bitrate_mbps, ai_interpolation, ai_upscale));'
 draft_store_new = draft_store + '\n        d.insert_temp(preflight_error_id, preflight_error);'
 if draft_store_new not in header:
     if header.count(draft_store) != 1:
