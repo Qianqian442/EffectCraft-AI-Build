@@ -33,9 +33,31 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Normalize Cloudflare API token formatting
+        env:
+          RAW_CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          TOKEN="$(printf '%s' "$RAW_CLOUDFLARE_API_TOKEN" | tr -d '\r\n')"
+          TOKEN="${TOKEN#"${TOKEN%%[![:space:]]*}"}"
+          TOKEN="${TOKEN%"${TOKEN##*[![:space:]]}"}"
+          case "$TOKEN" in
+            Bearer\ *) TOKEN="${TOKEN#Bearer }" ;;
+            bearer\ *) TOKEN="${TOKEN#bearer }" ;;
+          esac
+          if [[ "$TOKEN" == \"*\" && "$TOKEN" == *\" ]]; then
+            TOKEN="${TOKEN#\"}"
+            TOKEN="${TOKEN%\"}"
+          fi
+          if [ -z "$TOKEN" ] || [[ "$TOKEN" == *[[:space:]]* ]]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is empty or still contains whitespace. Save the raw token only, without 'Bearer ' or quotes."
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "CLOUDFLARE_API_TOKEN=$TOKEN" >> "$GITHUB_ENV"
+
       - name: Apply account database schema
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
@@ -54,7 +76,6 @@ jobs:
       - name: Deploy Worker
         id: deploy_worker
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           set -euo pipefail
@@ -70,7 +91,6 @@ jobs:
 
       - name: Configure Worker runtime secrets
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
