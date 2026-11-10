@@ -13,10 +13,19 @@ $bytes = New-Object byte[] 48
 $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
 $rng.GetBytes($bytes)
 $secret = [Convert]::ToHexString($bytes)
+
+$salt = New-Object byte[] 16
+$rng.GetBytes($salt)
+$kdf = [System.Security.Cryptography.Rfc2898DeriveBytes]::new(
+    $adminPassword, $salt, 310000, [System.Security.Cryptography.HashAlgorithmName]::SHA256
+)
+$adminHash = $kdf.GetBytes(32)
+$saltB64 = [Convert]::ToBase64String($salt)
+$hashB64 = [Convert]::ToBase64String($adminHash)
 $content = @"
 JWT_SECRET=$secret
 ADMIN_USERNAME=admin
-ADMIN_PASSWORD=$adminPassword
+ADMIN_PASSWORD_HASH=pbkdf2-sha256:310000:$saltB64:$hashB64
 "@
 [System.IO.File]::WriteAllText($envPath, $content, [System.Text.UTF8Encoding]::new($false))
-Write-Host "已创建 .env。请不要把此文件上传或分享给他人。"
+Write-Host "已创建 .env。管理员密码以PBKDF2哈希保存；请不要把此文件上传或分享给他人。"
