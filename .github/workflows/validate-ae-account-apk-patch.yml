@@ -1,0 +1,50 @@
+name: Validate Ae Cloud Account APK Patch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/convert_account_gate_to_cloud.py'
+      - '.github/workflows/validate-ae-account-apk-patch.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out patch repository
+        uses: actions/checkout@v4
+
+      - name: Check out EffectCraft v0.21.1 source
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/effectcraft
+          ref: v0.21.1
+          path: effectcraft
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Rust formatting parser
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Generate and convert account gate
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+          AE_ACCOUNT_API_URL: https://ae-cloud-account-api.validation.workers.dev
+        run: |
+          python3 -m py_compile .github/scripts/add_home_lan_account_gate.py
+          python3 -m py_compile .github/scripts/convert_account_gate_to_cloud.py
+          python3 .github/scripts/add_home_lan_account_gate.py
+          python3 .github/scripts/convert_account_gate_to_cloud.py
+          rustfmt --edition 2024 --emit stdout "$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs" > /dev/null
+          cd "$EFFECTCRAFT_DIR"
+          cargo metadata --no-deps --format-version 1 > /dev/null
