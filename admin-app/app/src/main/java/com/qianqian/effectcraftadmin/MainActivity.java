@@ -64,10 +64,6 @@ public final class MainActivity extends Activity {
         server = savedServer.startsWith("https://") ? trimServer(savedServer) : trimServer(DEFAULT_SERVER);
         adminToken = savedServer.startsWith("https://")
             ? getPreferences(MODE_PRIVATE).getString("admin_token", "") : "";
-        if (Build.VERSION.SDK_INT >= 33 &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 8787);
-        }
         if (!adminToken.isEmpty()) {
             showConnecting("正在连接云端账号服务并恢复管理员登录…");
             loadUsers("");
