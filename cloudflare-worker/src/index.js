@@ -257,6 +257,18 @@ async function adminUser(request, env, id) {
   return response({ user: row });
 }
 
+async function revokeNodeAccount(env, accountId, reason = "account banned") {
+  const stub = await nodeNetworkStub(env);
+  const res = await stub.fetch("https://node-network.internal/revoke-node", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ node_id: accountId, reason })
+  });
+  if (!res.ok) throw new Error("节点会话撤销失败");
+  const result = await res.json();
+  return Number(result.revoked || 0);
+}
+
 async function notifyAccountStatus(env, accountId, status, bannedUntil = null) {
   const id = env.ACCOUNT_SESSIONS.idFromName(accountId);
   const stub = env.ACCOUNT_SESSIONS.get(id);
@@ -307,8 +319,18 @@ async function adminBan(request, env, id) {
       .bind(bannedUntil, reason, id).run();
     status = "banned";
   }
-  // The database update is authoritative. Push one event to connected Ae clients;
-  // each client then performs exactly one /v1/me verification.
+  // The database update is authoritative. A ban also revokes the account's
+  // live node-network socket immediately; reconnects are rejected by the
+  // active-account check in nodeNetworkEvents.
+  let revokedNodeSessions = 0;
+  if (status === "banned") {
+    try {
+      revokedNodeSessions = await revokeNodeAccount(env, id, "account banned");
+    } catch (error) {
+      console.error("node-revocation-error", error && error.message ? error.message : String(error));
+    }
+  }
+  // Push one event to connected Ae clients; each client then performs /v1/me.
   let notified = 0;
   try {
     notified = await notifyAccountStatus(env, id, status, bannedUntil);
@@ -318,7 +340,7 @@ async function adminBan(request, env, id) {
   const row = await env.DB.prepare(
     "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE id = ?"
   ).bind(id).first();
-  return response({ user: row, notification_delivered: notified });
+  return response({ user: row, notification_delivered: notified, revoked_node_sessions: revokedNodeSessions });
 }
 async function nodeNetworkStub(env) {
   if (!env.NODE_NETWORK) throw new HttpError(503, "节点网络服务尚未部署");
@@ -344,14 +366,24 @@ async function adminSetNetworkState(request, env) {
   });
 }
 
+async function requireActiveAccount(env, accountId) {
+  const row = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(accountId).first();
+  if (!row) throw new HttpError(401, "账号不存在，请重新登录");
+  const banned = await ensureNotBanned(env.DB, row);
+  if (banned) throw new HttpError(423, "账号已被管理员封禁", banned);
+  return row;
+}
+
 async function nodeNetworkState(request, env) {
-  await readToken(env, request, "user");
+  const claims = await readToken(env, request, "user");
+  await requireActiveAccount(env, claims.sub);
   const stub = await nodeNetworkStub(env);
   return stub.fetch("https://node-network.internal/state");
 }
 
 async function nodeNetworkEvents(request, env) {
   const claims = await readToken(env, request, "user");
+  await requireActiveAccount(env, claims.sub);
   if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
     return fail(426, "需要 WebSocket 连接");
   }
