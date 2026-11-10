@@ -53,7 +53,8 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-        server = getPreferences(MODE_PRIVATE).getString("server", server);
+        String wifiIp = LanAccountServer.getWifiIpv4();
+        server = wifiIp.isEmpty() ? "http://127.0.0.1:8787" : "http://" + wifiIp + ":8787";
         adminToken = getPreferences(MODE_PRIVATE).getString("admin_token", "");
         String firstAdminPassword = LanAccountServer.ensureAdminPassword(this);
         android.content.Intent service = new android.content.Intent(this, LanServerService.class);
@@ -141,7 +142,7 @@ public final class MainActivity extends Activity {
         page.addView(text(lanIp.isEmpty()
             ? "尚未检测到 Wi-Fi 地址：请先连接家中 Wi-Fi。"
             : "其他手机在同一 Wi-Fi 下填写：http://" + lanIp + ":8787", 13, true));
-        page.addView(text("本机管理员连接地址：http://127.0.0.1:8787", 12, false));
+        page.addView(text("本机管理员连接地址：" + server, 12, false));
         page.addView(text("服务器地址", 13, true));
         serverInput = field("http://192.168.x.x:8787", false);
         serverInput.setText(server);
