@@ -24,6 +24,8 @@ on:
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
+      - '.github/scripts/add_home_lan_account_gate.py'
+      - 'account-server/**'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
@@ -354,6 +356,13 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_chinese_group_puppet_keyframe_ui.py
+
+      - name: Add mandatory home-Wi-Fi account registration, login and ban gate
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_home_lan_account_gate.py
+          python3 build-assets/.github/scripts/add_home_lan_account_gate.py
 
       - name: Add independent connected Puppet pin rigs
         env:
