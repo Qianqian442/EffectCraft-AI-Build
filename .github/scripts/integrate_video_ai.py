@@ -465,14 +465,14 @@ if ui_new not in h:
     h = h.replace(ui_marker, ui_new, 1)
 
 params_old = """            let mut params = json!({"comp": comp.0, "format": format});
-            if fps > 0.0 {"""
+            if matches!(format.as_str(), "h264" | "hevc" | "av1" | "webm") {"""
 params_new = """            let mut params = json!({
                 "comp": comp.0,
                 "format": format,
                 "aiFrameInterpolation": ai_interpolation,
                 "aiUpscale": ai_upscale
             });
-            if fps > 0.0 {"""
+            if matches!(format.as_str(), "h264" | "hevc" | "av1" | "webm") {"""
 if params_new not in h:
     if params_old not in h:
         raise SystemExit("Could not pass AI options to renderQueue.add")
