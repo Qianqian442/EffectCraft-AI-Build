@@ -35,12 +35,12 @@ Workers, D1 and Durable Objects have separate usage limits. SQLite-backed Durabl
 
 The repository contains `.github/workflows/deploy-ae-cloud-account.yml`. Before running it, add these four repository **Actions secrets** at GitHub → repository → Settings → Secrets and variables → Actions → New repository secret:
 
-- `CLOUDFLARE_API_TOKEN`: Cloudflare API token. It needs permission to deploy/manage the Worker and set Worker secrets, and to execute D1 SQL. Cloudflare currently documents Workers product Admin when creating a new Worker; D1 Editor is needed for remote schema execution. Do not paste this token into chat.
+- `CLOUDFLARE_API_TOKEN`: create a custom token with Account → Workers → **Admin** (needed because the workflow creates the first Worker and applies its Durable Object migration) and Account → D1 → **Edit** (needed to execute the schema on your database). Restrict the resource selector to your Cloudflare account. The Admin scope is broader than a deploy-to-existing-Worker Editor role, but is required for initial creation; after the first successful deployment you can replace it with a narrower token if desired. Never paste this token into chat.
 - `CLOUDFLARE_ACCOUNT_ID`: the account ID shown in the Cloudflare dashboard URL.
 - `JWT_SECRET`: a randomly generated secret of at least 32 characters.
 - `ADMIN_PASSWORD`: your private administrator password of at least 12 characters.
 
-The workflow applies `schema.sql`, deploys the Worker and Durable Object migration, then sets `JWT_SECRET` and `ADMIN_PASSWORD` as Worker secrets. GitHub Actions masks secret values in logs. Keep all four values private.
+The workflow applies `schema.sql`, deploys the Worker and Durable Object migration, then sets `JWT_SECRET` and `ADMIN_PASSWORD` as Worker secrets. GitHub Actions masks secret values in logs. Keep all four values private. The Account ID for the already-created Cloudflare account is `6ed9bd81b9aef69ba61060f33510f014`; the D1 Database ID is already in `wrangler.jsonc` and should not be edited.
 
 After the run succeeds, open the deployment log to find the Worker `workers.dev` URL. It will look like:
 
