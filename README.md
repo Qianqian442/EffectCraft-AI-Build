@@ -37,29 +37,18 @@ The APK workflow downloads these pinned/identified model assets, verifies their 
 
 The Android workflow targets EffectCraft 0.21.1 and applies the patches in `.github/scripts/` before compiling the arm64 APK. A successful Actions run publishes one standalone `.apk` file in the GitHub Release. Do not install files downloaded from the Actions **Artifacts** area: GitHub wraps those downloads in ZIP archives. A queued or running workflow is not a completed APK build.
 
-## Shared accounts across different Wi-Fi networks
+## No-hosted-server account and node-network target
 
-The account system uses **Cloudflare Workers + D1** as a hosted account endpoint and shared database. This avoids renting or maintaining a VPS and avoids requiring the administrator's phone to stay online as a server. Each EffectCraft phone can use its own Wi-Fi or mobile-data connection; all devices contact the same HTTPS account API, so registration, login, profile changes, bans, and unbans share one account state.
+The requested product direction is **no Cloudflare Worker, no VPS, and no centrally hosted account server**. The main EffectCraft APK must retain registration/login and editing features; the separate admin APK owns ban/unban and the global node-network switch. The main APK must not show that global switch, and the admin APK must not become a node itself.
 
-This is **not direct Wi-Fi-to-Wi-Fi bridging**. Wi-Fi only connects a phone to its local router. Phones in different homes cannot reach one another using Wi-Fi alone because routers, NAT, and firewalls isolate private networks. A publicly reachable coordination point is required for cross-network account synchronization; here that point is the existing Cloudflare account, not a user-managed VPS.
+**Implementation status: not complete.** The current account-gate build patch still requires an HTTPS `.workers.dev` endpoint. The current node hub only tracks WebSocket presence and ping/pong, and Android NSD/mDNS discovery is limited to the same Wi-Fi. There is no completed signed account-event replication, anti-entropy synchronization, or cross-network peer transport. The existing cloud deployment workflow is legacy infrastructure and is not the requested no-server solution.
 
-### Deployment and APK sequence
+The no-server migration design is documented in:
+- `docs/NO_SERVER_ACCOUNT_NODE_MESH_PLAN.md`
+- `docs/SIGNED_ACCOUNT_EVENT_PROTOCOL_V1.md`
 
-The `Deploy Ae Cloud Account API` workflow applies the D1 schema, deploys the Worker, configures its runtime secrets, checks `/health`, saves the resulting Worker URL as the repository variable `AE_ACCOUNT_API_URL`, and then starts builds for both the EffectCraft main APK and the standalone account-admin APK.
+A no-server design has unavoidable limits: disconnected phones cannot receive an immediate ban, and direct peer connections cannot be guaranteed across every carrier NAT without a reachable bootstrap or relay service. Do not describe those capabilities as implemented until the protocol, Android transport, and acceptance tests are complete.
 
-Required GitHub Actions repository secrets (never put their values in source code or chat):
+### Build safety
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-- `JWT_SECRET` (at least 32 characters)
-- `ADMIN_PASSWORD` (at least 12 characters)
-
-Cloudflare Workers, D1, and Durable Objects have free-plan limits. This avoids VPS rental, but it is not a promise of unlimited or permanently free usage. Test the deployed endpoint on the intended networks before distributing the APKs.
-
-## Phone-to-phone P2P development status
-
-The standalone account-admin APK now contains an opt-in local node screen. Its first milestone starts the phone-hosted account listener, advertises a stable device identity fingerprint through Android NSD/mDNS, discovers other EffectCraft nodes on the same Wi-Fi, displays their private IPv4 addresses, and performs a local health check.
-
-This is **local discovery only**. It does not yet replicate accounts between phones or connect phones across different Wi-Fi networks. The next milestones are trusted peer pairing, signed account event replication, anti-entropy synchronization, and libp2p AutoNAT/DCUtR with volunteer phone relays for networks where direct hole punching fails.
-
-Do not delete the existing Cloudflare secrets, D1 database, or cloud-account build configuration while this migration is in progress. The main APK account client and the administrator client still use the existing account API until P2P replication is implemented and verified. The P2P admin-node page is experimental and must not be described as production cross-network account synchronization.
+Do not bypass the account-service build gate with a fake URL or a UI-only account stub. Do not remove existing editor, project import/export, plugin, or AI video features to force a build. Any editor-only APK must be clearly labelled as such and must not claim working shared registration, bans, or global cross-network node networking.
