@@ -97,6 +97,7 @@ pub(crate) struct AccountState {
     status: String,
     pending: Option<Receiver<Result<HttpResult, String>>>,
     pending_action: Option<Action>,
+    last_verified: Option<std::time::Instant>,
 }
 
 impl Default for AccountState {
@@ -126,6 +127,7 @@ impl Default for AccountState {
             status: String::new(),
             pending: None,
             pending_action: None,
+            last_verified: None,
         }
     }
 }
@@ -274,6 +276,7 @@ impl AccountState {
                     if let Some(user) = response.body.get("user").cloned().and_then(|v| serde_json::from_value::<User>(v).ok()) {
                         self.user = Some(user);
                         self.mode = Mode::Editor;
+                        self.last_verified = Some(std::time::Instant::now());
                         self.status.clear();
                         self.persist(config);
                     } else {
@@ -392,6 +395,12 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
     let config = config.as_deref();
     app.account.ensure_loaded(config);
     app.account.poll(config);
+    if app.account.mode == Mode::Editor
+        && app.account.pending.is_none()
+        && app.account.last_verified.map_or(true, |last| last.elapsed() > std::time::Duration::from_secs(60))
+    {
+        app.account.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+    }
 
     if app.account.mode == Mode::Editor {
         if app.ui.start_screen {
