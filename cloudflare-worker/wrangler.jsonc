@@ -12,6 +12,10 @@
       {
         "name": "ACCOUNT_SESSIONS",
         "class_name": "AccountSessionHub"
+      },
+      {
+        "name": "NODE_NETWORK",
+        "class_name": "NodeNetworkHub"
       }
     ]
   },
@@ -19,6 +23,10 @@
     {
       "tag": "v1",
       "new_sqlite_classes": ["AccountSessionHub"]
+    },
+    {
+      "tag": "v2",
+      "new_sqlite_classes": ["NodeNetworkHub"]
     }
   ],
   "d1_databases": [
