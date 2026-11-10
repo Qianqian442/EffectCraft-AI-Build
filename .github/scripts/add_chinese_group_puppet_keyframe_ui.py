@@ -295,6 +295,11 @@ fn project_row_long_press_id() -> egui::Id {
                 };
                 ctx.data_mut(|data| data.insert_temp(project_group_mode_id(), mode));
                 app.session.state.project_selection = vec![*id];
+                app.ui.status = if it.is_folder() {
+                    "已进入解除编组选项；点右上角“解除编组”或点“取消”。".into()
+                } else {
+                    "已进入编组选取：轻点其他素材加入，至少选择两个后点右上角“编组”。".into()
+                };
                 ctx.request_repaint();
                 held.triggered = true;
                 row_press = Some(held);
