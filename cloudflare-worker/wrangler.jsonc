@@ -7,6 +7,20 @@
   "observability": {
     "enabled": true
   },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "ACCOUNT_SESSIONS",
+        "class_name": "AccountSessionHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["AccountSessionHub"]
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
