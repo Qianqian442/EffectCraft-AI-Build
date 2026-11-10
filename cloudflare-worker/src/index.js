@@ -1,4 +1,5 @@
 import { AccountSessionHub } from "./account_session_hub.js";
+export { AccountSessionHub };
 
 const encoder = new TextEncoder();
 const JSON_HEADERS = {
