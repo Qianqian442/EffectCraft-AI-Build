@@ -213,8 +213,16 @@ final class LanAccountServer implements Runnable {
             int status = result.optInt("_status", 200);
             result.remove("_status");
             writeResponse(client, status, result);
-        } catch (Exception ignored) {
-            try { writeResponse(socket, 400, jsonError("请求无法处理")); } catch (Exception ignoredAgain) { }
+        } catch (SecurityException authError) {
+            // Return a real 401 so the Android admin UI can clear an expired
+            // token and present the login form instead of remaining blank.
+            String message = authError.getMessage();
+            try { writeResponse(socket, 401, jsonError(message == null ? "需要重新登录" : message)); }
+            catch (Exception ignoredAgain) { }
+        } catch (Exception requestError) {
+            String message = requestError.getMessage();
+            try { writeResponse(socket, 400, jsonError(message == null ? "请求无法处理，请检查输入后重试" : message)); }
+            catch (Exception ignoredAgain) { }
         }
     }
 
