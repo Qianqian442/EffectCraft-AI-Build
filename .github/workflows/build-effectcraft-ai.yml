@@ -644,7 +644,7 @@ jobs:
 
           rm -f output/*.apk output/*.tmp
           set -o pipefail
-          bash build.sh -effectcraft -appicon="$PWD/source/effectcraft/assets/ae-avatar.png" --noupdate 2>&1 | tee logs/effectcraft-build.log
+          bash build.sh -effectcraft -appname=Ae -appicon="$PWD/source/effectcraft/assets/ae-avatar.png" --noupdate 2>&1 | tee logs/effectcraft-build.log
 
       - name: Align and sign APK with V1 V2 V3, then verify persistent certificate
         if: success()
