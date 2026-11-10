@@ -75,10 +75,13 @@ cancel_old = """    if cancel {
     }"""
 cancel_new = """    if (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale) != previous_settings {
         preflight_error = None;
+        warning_open = false;
     }
     if cancel {
         open = false;
         preflight_error = None;
+        warning_open = false;
+        force_export = false;
     }"""
 if cancel_new not in header:
     if cancel_old not in header:
