@@ -2,6 +2,9 @@ package com.qianqian.effectcraftadmin;
 
 import android.app.Activity;
 import android.content.Intent;
+import android.content.pm.PackageManager;
+import android.Manifest;
+import android.os.Build;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
@@ -61,6 +64,15 @@ public final class MainActivity extends Activity {
         server = savedServer.startsWith("https://") ? trimServer(savedServer) : trimServer(DEFAULT_SERVER);
         adminToken = savedServer.startsWith("https://")
             ? getPreferences(MODE_PRIVATE).getString("admin_token", "") : "";
+        boolean nodeEnabled = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
+            .getBoolean("node_enabled", true);
+        getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).edit()
+            .putBoolean("node_enabled", nodeEnabled).apply();
+        if (nodeEnabled) startPhoneNode();
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS}, 8787);
+        }
         if (!adminToken.isEmpty()) {
             showConnecting("正在连接云端账号服务并恢复管理员登录…");
             loadUsers("");
@@ -69,6 +81,38 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void startPhoneNode() {
+        Intent intent = new Intent(this, LanServerService.class);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+            else startService(intent);
+        } catch (Exception e) {
+            Toast.makeText(this, "节点启动受系统限制：" + e.getMessage(), Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void addNodePanel(LinearLayout page) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(8), dp(12), dp(8));
+        panel.setBackground(rounded(Color.WHITE));
+        panel.addView(text("本机服务器节点", 16, true));
+        panel.addView(text("开启后，本机在后台提供轻量节点发现与健康检查服务。", 12, false));
+        Button toggle = button("");
+        boolean enabled = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).getBoolean("node_enabled", true);
+        toggle.setText(enabled ? "服务器节点：开启（点击关闭）" : "服务器节点：关闭（点击开启）");
+        panel.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
+        toggle.setOnClickListener(v -> {
+            boolean current = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).getBoolean("node_enabled", true);
+            boolean next = !current;
+            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).edit().putBoolean("node_enabled", next).apply();
+            if (next) { startPhoneNode(); toggle.setText("服务器节点：开启（点击关闭）"); Toast.makeText(this, "正在启动本机节点", Toast.LENGTH_SHORT).show(); }
+            else { stopService(new Intent(this, LanServerService.class)); toggle.setText("服务器节点：关闭（点击开启）"); Toast.makeText(this, "已关闭本机节点", Toast.LENGTH_SHORT).show(); }
+        });
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(10);
+        page.addView(panel, params);
+    }
     private int dp(float value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -155,6 +199,7 @@ public final class MainActivity extends Activity {
         Button peerNetwork = button("手机节点网络（P2P 实验）");
         page.addView(peerNetwork, new LinearLayout.LayoutParams(-1, dp(48)));
         peerNetwork.setOnClickListener(v -> startActivity(new Intent(this, PeerNetworkActivity.class)));
+        addNodePanel(page);
         page.addView(text("服务器地址", 13, true));
         serverInput = field("服务器地址由管理版自动配置", false);
         serverInput.setText(server);
@@ -314,6 +359,7 @@ public final class MainActivity extends Activity {
         top.addView(refresh);
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
+        addNodePanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
         Button search = button("搜索账号");
