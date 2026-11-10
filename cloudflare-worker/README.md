@@ -35,7 +35,7 @@ Workers, D1 and Durable Objects have separate usage limits. SQLite-backed Durabl
 
 The repository contains `.github/workflows/deploy-ae-cloud-account.yml`. Before running it, add these four repository **Actions secrets** at GitHub → repository → Settings → Secrets and variables → Actions → New repository secret:
 
-- `CLOUDFLARE_API_TOKEN`: create a custom token with Account → Workers → **Admin** (needed because the workflow creates the first Worker and applies its Durable Object migration) and Account → D1 → **Edit** (needed to execute the schema on your database). Restrict the resource selector to your Cloudflare account. The Admin scope is broader than a deploy-to-existing-Worker Editor role, but is required for initial creation; after the first successful deployment you can replace it with a narrower token if desired. Never paste this token into chat.
+- `CLOUDFLARE_API_TOKEN`: with the existing least-privilege setup, use Account → Workers Scripts → **Edit** and Account → D1 → **Edit**. First create an empty Worker named `ae-cloud-account-api` manually in the Cloudflare dashboard (Workers & Pages → Create application → Create Worker → Deploy). The current token can then update and deploy that existing Worker and apply the D1 schema. If you instead want GitHub Actions to create the first Worker automatically, the token needs product-level Workers **Admin**, which is broader. Restrict the resource selector to your Cloudflare account. Never paste this token into chat.
 - `CLOUDFLARE_ACCOUNT_ID`: the account ID shown in the Cloudflare dashboard URL.
 - `JWT_SECRET`: a randomly generated secret of at least 32 characters.
 - `ADMIN_PASSWORD`: your private administrator password of at least 12 characters.
