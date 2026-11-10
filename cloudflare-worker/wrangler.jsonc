@@ -3,7 +3,15 @@
   "name": "ae-cloud-account-api",
   "main": "src/index.js",
   "compatibility_date": "2026-11-10",
+  "workers_dev": true,
   "observability": {
     "enabled": true
-  }
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "ae-accounts",
+      "database_id": "ab3caacb-5699-4a67-a217-acd7a7417d3b"
+    }
+  ]
 }
