@@ -74,7 +74,7 @@ public final class MainActivity extends Activity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(10));
         panel.setBackground(rounded(Color.WHITE));
-        panel.addView(text("跨地区服务器节点总控制", 16, true));
+        panel.addView(text("全局节点网络控制", 16, true));
         TextView status = text("正在读取云端节点网络状态…", 13, false);
         panel.addView(status);
         TextView count = text("在线节点：读取中", 12, false);
