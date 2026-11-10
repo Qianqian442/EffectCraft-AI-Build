@@ -16,6 +16,10 @@ draft_replacement = """    let (mut format, mut fps, mut resolution, mut bitrate
     });
     let preflight_error_id = open_id.with("preflight-error");
     let mut preflight_error = ui.ctx().data(|d| d.get_temp::<Option<String>>(preflight_error_id).flatten());
+    let warning_id = open_id.with("preflight-warning-open");
+    let mut warning_open = ui.ctx().data(|d| d.get_temp::<bool>(warning_id).unwrap_or(false));
+    let force_export_id = open_id.with("force-export-once");
+    let mut force_export = ui.ctx().data(|d| d.get_temp::<bool>(force_export_id).unwrap_or(false));
     let previous_settings = (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale);
     let comp_name = app.session.active_comp_id()"""
 if "let previous_settings = (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale);" not in header:
@@ -46,12 +50,21 @@ old_check = """            let upscale_input_too_large = ai_upscale && (check_wi
 new_check = """            let (source_fps, duration_seconds) = app.session.active_comp()
                 .map(|active| (active.frame_rate.as_f64(), active.duration.seconds()))
                 .unwrap_or((30.0, 1.0));
-            if let Some(message) = effectcraft_export_device_preflight(
-                check_width, check_height, effective_fps, source_fps, duration_seconds,
-                format.as_str(), ai_interpolation, ai_upscale
-            ) {
-                preflight_error = Some(message);
-            } else {"""
+            let mut block_export = false;
+            if !force_export {
+                if let Some(message) = effectcraft_export_device_preflight(
+                    check_width, check_height, effective_fps, source_fps, duration_seconds,
+                    format.as_str(), ai_interpolation, ai_upscale
+                ) {
+                    preflight_error = Some(message);
+                    warning_open = true;
+                    block_export = true;
+                }
+            }
+            if !block_export {
+                preflight_error = None;
+                warning_open = false;
+                force_export = false;"""
 if new_check not in header:
     if old_check not in header:
         raise SystemExit("Could not replace the original export preflight with unified device checks")
@@ -73,12 +86,52 @@ if cancel_new not in header:
     header = header.replace(cancel_old, cancel_new, 1)
 
 draft_store = 'd.insert_temp(draft_id, (format, fps, resolution, bitrate_mbps, ai_interpolation, ai_upscale));'
-draft_store_new = draft_store + '\n        d.insert_temp(preflight_error_id, preflight_error);'
+draft_store_new = draft_store + '\n        d.insert_temp(preflight_error_id, preflight_error);\n        d.insert_temp(warning_id, warning_open);\n        d.insert_temp(force_export_id, force_export);'
 if draft_store_new not in header:
     if header.count(draft_store) != 1:
         raise SystemExit("Could not persist preflight dialog warning state")
     header = header.replace(draft_store, draft_store_new, 1)
 
+warning_ui = r"""
+    if warning_open {
+        let mut adjust_parameters = false;
+        let mut force_now = false;
+        egui::Window::new("导出提示")
+            .id(open_id.with("preflight-warning-window"))
+            .order(egui::Order::Foreground)
+            .movable(true)
+            .collapsible(false)
+            .resizable(false)
+            .default_width(300.0)
+            .default_pos(ui.ctx().content_rect().center() - vec2(150.0, 92.0))
+            .show(ui.ctx(), |ui| {
+                ui.label("参数过高，手机性能不足，请调整参数再试。");
+                if let Some(message) = preflight_error.as_deref() { ui.small(message); }
+                ui.small("强行导出可能导致导出失败、应用卡顿或闪退。");
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("调整参数").clicked() { adjust_parameters = true; }
+                    if ui.button("强行导出").clicked() { force_now = true; }
+                });
+            });
+        if adjust_parameters { warning_open = false; preflight_error = None; }
+        if force_now { warning_open = false; preflight_error = None; force_export = true; }
+    }
+"""
+submit_control = """submit_old = "    let mut submit = false;"
+submit_new = "    let mut submit = force_export;"
+if submit_new not in header:
+    if submit_old not in header:
+        raise SystemExit("Could not add one-shot force-export state")
+    header = header.replace(submit_old, submit_new, 1)
+
+store_anchor = """    ui.ctx().data_mut(|d| {
+        d.insert_temp(open_id, open);
+        d.insert_temp(draft_id, (format, fps, resolution, bitrate_mbps, ai_interpolation, ai_upscale));"""
+if "egui::Window::new(\"导出提示\")" not in header:
+    if header.count(store_anchor) != 1:
+        raise SystemExit("Could not find the export dialog state-save block for warning popup")
+    header = header.replace(store_anchor, warning_ui + "\n" + store_anchor, 1)
 helpers = r'''
 /// EFFECTCRAFT_ANDROID_EXPORT_DEVICE_PREFLIGHT_V2
 /// Multi-factor Android export preflight. Unknown OS readings do not falsely reject an export.
