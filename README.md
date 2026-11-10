@@ -55,3 +55,11 @@ Required GitHub Actions repository secrets (never put their values in source cod
 - `ADMIN_PASSWORD` (at least 12 characters)
 
 Cloudflare Workers, D1, and Durable Objects have free-plan limits. This avoids VPS rental, but it is not a promise of unlimited or permanently free usage. Test the deployed endpoint on the intended networks before distributing the APKs.
+
+## Phone-to-phone P2P development status
+
+The standalone account-admin APK now contains an opt-in local node screen. Its first milestone starts the phone-hosted account listener, advertises a stable device identity fingerprint through Android NSD/mDNS, discovers other EffectCraft nodes on the same Wi-Fi, displays their private IPv4 addresses, and performs a local health check.
+
+This is **local discovery only**. It does not yet replicate accounts between phones or connect phones across different Wi-Fi networks. The next milestones are trusted peer pairing, signed account event replication, anti-entropy synchronization, and libp2p AutoNAT/DCUtR with volunteer phone relays for networks where direct hole punching fails.
+
+Do not delete the existing Cloudflare secrets, D1 database, or cloud-account build configuration while this migration is in progress. The main APK account client and the administrator client still use the existing account API until P2P replication is implemented and verified. The P2P admin-node page is experimental and must not be described as production cross-network account synchronization.
