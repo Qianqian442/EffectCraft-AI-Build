@@ -391,8 +391,8 @@ pub unsafe extern "C" fn ec_render(
                 let mut samples = 0.0_f32;
                 for dy in -1..=1 {
                     for dx in -1..=1 {
-                        let nx = (x as isize + dx).clamp(0.0, w as isize - 1) as usize;
-                        let ny = (y as isize + dy).clamp(0.0, h as isize - 1) as usize;
+                        let nx = (x as isize + dx).clamp(0, w as isize - 1) as usize;
+                        let ny = (y as isize + dy).clamp(0, h as isize - 1) as usize;
                         let n = ny * w + nx;
                         let l = luminance(graded[n]).max(0.0);
                         let mask = smoothstep(bloom_threshold, 1.0, l);
