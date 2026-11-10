@@ -1,0 +1,15 @@
+services:
+  effectcraft-accounts:
+    build: .
+    container_name: effectcraft-home-accounts
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - effectcraft-account-data:/data
+    ports:
+      - "8787:8787"
+volumes:
+  effectcraft-account-data:
