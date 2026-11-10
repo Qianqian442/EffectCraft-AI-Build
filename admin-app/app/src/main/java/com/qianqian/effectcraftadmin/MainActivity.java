@@ -160,6 +160,16 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private boolean isPrivateLanHost(String host) throws Exception {
+        java.net.InetAddress[] addresses = java.net.InetAddress.getAllByName(host);
+        for (java.net.InetAddress address : addresses) {
+            if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private String trimServer(String value) {
         String s = value.trim();
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
@@ -175,6 +185,9 @@ public final class MainActivity extends Activity {
             HttpURLConnection c = null;
             try {
                 URL url = new URL(server + path);
+                if (!isPrivateLanHost(url.getHost())) {
+                    throw new java.io.IOException("只允许连接家庭 Wi-Fi 局域网服务器");
+                }
                 c = (HttpURLConnection) url.openConnection();
                 c.setRequestMethod(method);
                 c.setConnectTimeout(8000);
