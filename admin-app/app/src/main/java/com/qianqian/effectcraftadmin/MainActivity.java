@@ -40,7 +40,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private static final String DEFAULT_SERVER = "https://ae-cloud-account-api.YOUR_ACCOUNT_SUBDOMAIN.workers.dev";
+    private static final String DEFAULT_SERVER = BuildConfig.ACCOUNT_API_URL;
     private String server = DEFAULT_SERVER;
     private String adminToken = "";
     private LinearLayout root;
@@ -58,7 +58,7 @@ public final class MainActivity extends Activity {
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
         String savedServer = getPreferences(MODE_PRIVATE).getString("server", "");
-        server = savedServer.startsWith("https://") ? trimServer(savedServer) : DEFAULT_SERVER;
+        server = savedServer.startsWith("https://") ? trimServer(savedServer) : trimServer(DEFAULT_SERVER);
         adminToken = savedServer.startsWith("https://")
             ? getPreferences(MODE_PRIVATE).getString("admin_token", "") : "";
         if (!adminToken.isEmpty()) {
@@ -156,7 +156,7 @@ public final class MainActivity extends Activity {
         page.addView(peerNetwork, new LinearLayout.LayoutParams(-1, dp(48)));
         peerNetwork.setOnClickListener(v -> startActivity(new Intent(this, PeerNetworkActivity.class)));
         page.addView(text("服务器地址", 13, true));
-        serverInput = field("https://你的Worker地址.workers.dev", false);
+        serverInput = field("服务器地址由管理版自动配置", false);
         serverInput.setText(server);
         page.addView(serverInput);
         page.addView(text("管理员账号", 13, true));
