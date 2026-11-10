@@ -35,6 +35,14 @@ jobs:
         with:
           gradle-version: '8.9'
 
+      # Keep the Android debug certificate stable between builds so users can
+      # install updates without uninstalling the app or losing local accounts.
+      - name: Restore persistent Android debug signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: effectcraft-admin-debug-signing-v1-${{ github.repository_id }}
+
       - name: Build admin APK
         working-directory: admin-app
         run: |
