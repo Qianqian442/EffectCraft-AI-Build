@@ -355,12 +355,32 @@ public final class MainActivity extends Activity {
             info.addView(ban);
         }
         row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        Button banButton = button(banned ? "取消封禁" : "封禁");
-        row.addView(banButton);
+
+        // Keep both actions visible for every account. Reapplying a ban is allowed
+        // so the administrator can extend or change its expiry; unban is disabled
+        // only when the account is not currently banned.
+        LinearLayout actions = new LinearLayout(this);
+        actions.setOrientation(LinearLayout.HORIZONTAL);
+        actions.setGravity(Gravity.CENTER_VERTICAL);
+
+        Button banButton = button("封禁");
+        Button unbanButton = button("解禁");
+        unbanButton.setEnabled(banned);
+
+        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)
+        );
+        actionParams.leftMargin = dp(3);
+        actionParams.rightMargin = dp(3);
+        actions.addView(banButton, actionParams);
+        actions.addView(unbanButton, actionParams);
+        row.addView(actions, new LinearLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+
         row.setOnClickListener(v -> showUserDetails(user));
-        banButton.setOnClickListener(v -> {
-            if (banned) unban(id); else chooseBan(id);
-        });
+        banButton.setOnClickListener(v -> chooseBan(id));
+        unbanButton.setOnClickListener(v -> unban(id));
     }
 
     private void loadAvatar(ImageView view, String uri) {
