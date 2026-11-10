@@ -6,6 +6,11 @@ on:
     paths:
       - 'admin-app/**'
       - '.github/workflows/build-account-admin.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'admin-app/**'
+      - '.github/workflows/build-account-admin.yml'
   workflow_dispatch:
 
 permissions:
@@ -59,6 +64,7 @@ jobs:
           ls -lh EffectCraft-Account-Admin.apk
 
       - name: Publish downloadable APK release asset
+        if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: account-admin-${{ github.run_number }}
