@@ -15,6 +15,9 @@ export class AccountSessionHub {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.ctx.acceptWebSocket(server);
+      // The first connection follows the launch-time /v1/me check; later
+      // reconnects cause the client to re-check once in case an event was missed.
+      server.send(JSON.stringify({ type: "account_session_connected" }));
       return new Response(null, { status: 101, webSocket: client });
     }
 
