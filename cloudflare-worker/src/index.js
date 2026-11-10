@@ -41,24 +41,26 @@ function randomBytes(size) {
   return out;
 }
 
-async function passwordHash(password, salt = randomBytes(16)) {
-  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-  const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: 210000, hash: "SHA-256" },
-    key,
-    256
-  );
-  return "pbkdf2-sha256$210000$" + bytesToB64Url(salt) + "$" + bytesToB64Url(new Uint8Array(bits));
+async function passwordCryptoRequest(env, path, body) {
+  if (!env.ACCOUNT_SESSIONS) throw new Error("密码计算服务尚未绑定");
+  const id = env.ACCOUNT_SESSIONS.idFromName("__ae_password_crypto__");
+  const stub = env.ACCOUNT_SESSIONS.get(id);
+  const res = await stub.fetch("https://account-session.internal" + path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) throw new Error("密码计算服务暂时不可用");
+  return res.json();
 }
-async function verifyPassword(password, stored) {
-  try {
-    const parts = stored.split("$");
-    if (parts.length !== 4 || parts[0] !== "pbkdf2-sha256" || Number(parts[1]) !== 210000) return false;
-    const actual = await passwordHash(password, b64UrlToBytes(parts[2]));
-    return constantTimeEqual(encoder.encode(actual), encoder.encode(stored));
-  } catch (_) {
-    return false;
-  }
+async function passwordHash(env, password) {
+  const result = await passwordCryptoRequest(env, "/password/hash", { password });
+  if (!result.hash) throw new Error("密码哈希计算失败");
+  return result.hash;
+}
+async function verifyPassword(env, password, stored) {
+  const result = await passwordCryptoRequest(env, "/password/verify", { password, stored });
+  return result.valid === true;
 }
 async function signingKey(secret) {
   return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
@@ -153,7 +155,7 @@ function validateRegistration(body) {
 async function register(request, env) {
   const body = validateRegistration(await readJson(request));
   const id = crypto.randomUUID();
-  const hash = await passwordHash(body.password);
+  const hash = await passwordHash(env, body.password);
   const created = new Date().toISOString();
   try {
     await env.DB.prepare(
@@ -173,7 +175,7 @@ async function login(request, env) {
   const row = await env.DB.prepare(
     "SELECT * FROM accounts WHERE qq = ? OR lower(wechat) = lower(?) LIMIT 1"
   ).bind(identifier, identifier).first();
-  if (!row || !(await verifyPassword(password, row.password_hash))) return fail(401, "QQ号/微信号或密码错误");
+  if (!row || !(await verifyPassword(env, password, row.password_hash))) return fail(401, "QQ号/微信号或密码错误");
   const banned = await ensureNotBanned(env.DB, row);
   if (banned) return fail(423, "账号已被封禁", banned);
   return response(await authResult(env, row, "user", 30 * 24 * 60 * 60));
@@ -205,8 +207,8 @@ async function updateProfile(request, env) {
   const newPassword = String(body.new_password || "");
   if (newPassword) {
     if (newPassword.length < 8 || newPassword.length > 128) return fail(422, "新密码至少8位");
-    if (!(await verifyPassword(String(body.current_password || ""), row.password_hash))) return fail(401, "当前密码不正确");
-    newHash = await passwordHash(newPassword);
+    if (!(await verifyPassword(env, String(body.current_password || ""), row.password_hash))) return fail(401, "当前密码不正确");
+    newHash = await passwordHash(env, newPassword);
   }
   try {
     await env.DB.prepare(
