@@ -734,6 +734,9 @@ jobs:
             test -s "source/effectcraft/assets/sapphire-compat/ec_sapphire_${MODULE}.wasm"
           done
           test -s "source/effectcraft/assets/rsmb-compat/ec_rsmb_motion_blur.wasm"
+          test -s "source/effectcraft/assets/looks-compat/ec_looks_studio.wasm"
+          grep -Fq '"ec_looks_studio.wasm"' "$LAUNCHER_SRC"
+          grep -Fq 'const BUILTIN_EFFECTS_VERSION: &str = "2.0.0";' "$LAUNCHER_SRC"
           echo "Verified Android startup scanning for the original WASM plug-in folder and built-in Sapphire-compatible pack."
           SAPPHIRE_STRINGS="$(mktemp)"
           while IFS= read -r ENTRY; do
@@ -755,8 +758,20 @@ jobs:
             echo "Standalone RSMB-compatible WASM module is missing from APK." >&2
             exit 1
           }
+          for LOOKS_TOKEN in \
+            "org.effectcraft.looks.studio" \
+            "hsl_red_hue" \
+            "hsl_blue_sat" \
+            "curve_midtones" \
+            "bloom_threshold" \
+            "halation"; do
+            grep -Fq "$LOOKS_TOKEN" "$SAPPHIRE_STRINGS" || {
+              echo "Expanded Looks Studio control or module missing from APK: $LOOKS_TOKEN" >&2
+              exit 1
+            }
+          done
           rm -f "$SAPPHIRE_STRINGS"
-          echo "Verified six Sapphire-compatible modules plus the separately packaged RSMB-compatible module are embedded in the main APK."
+          echo "Verified six Sapphire-compatible modules, RSMB, and expanded Looks Studio 2.0 in the main APK."
           HEADER_SRC="source/effectcraft/crates/ui-egui/src/header.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
