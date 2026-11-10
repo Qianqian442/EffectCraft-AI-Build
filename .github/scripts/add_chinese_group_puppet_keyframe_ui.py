@@ -213,25 +213,53 @@ fn project_row_long_press_id() -> egui::Id {
     action_anchor = '    let mut actions: Vec<(String, serde_json::Value)> = vec![];\n'
     action_ui = r'''    let group_mode: Option<ProjectGroupMode> = ctx.data(|data| data.get_temp(project_group_mode_id()));
     if let Some(mode) = group_mode {
-        let label = if mode.ungroup.is_some() { "解除编组" } else { "编组" };
+        // Match Alight Motion's selection workflow: long-press an item, select more,
+        // then use the clearly visible Group action in the panel's upper-right corner.
+        let label = if mode.ungroup.is_some() {
+            "解除编组".to_string()
+        } else {
+            format!("编组（{}）", mode.selected.len())
+        };
         let enabled = mode.ungroup.is_some() || mode.selected.len() >= 2;
-        let button_rect = Rect::from_min_size(pos2(rect.max.x - 92.0, rect.min.y + 6.0), vec2(84.0, 26.0));
-        let response = ui.interact(
-            button_rect,
+        let y = rect.min.y + 6.0;
+        let group_rect = Rect::from_min_size(pos2(rect.max.x - 176.0, y), vec2(104.0, 28.0));
+        let group_response = ui.interact(
+            group_rect,
             egui::Id::new("effectcraft-project-group-action"),
             if enabled { Sense::click() } else { Sense::hover() },
         );
-        p.rect_filled(button_rect, 4.0, if enabled { t.accent } else { t.row });
-        p.rect_stroke(button_rect, 4.0, Stroke::new(1.0, if enabled { t.accent } else { t.separator }), egui::StrokeKind::Inside);
+        p.rect_filled(group_rect, 5.0, if enabled { t.accent } else { t.row });
+        p.rect_stroke(group_rect, 5.0, Stroke::new(1.0, if enabled { t.accent } else { t.separator }), egui::StrokeKind::Inside);
         p.text(
-            button_rect.center(),
+            group_rect.center(),
             Align2::CENTER_CENTER,
-            label,
+            &label,
             Tokens::semibold(12.0),
             if enabled { Color32::WHITE } else { t.text_dim },
         );
-        app.auto.add("project.groupAction", button_rect, label);
-        if response.clicked() && enabled {
+        app.auto.add("project.groupAction", group_rect, &label);
+
+        let cancel_rect = Rect::from_min_size(pos2(rect.max.x - 66.0, y), vec2(60.0, 28.0));
+        let cancel_response = ui.interact(
+            cancel_rect,
+            egui::Id::new("effectcraft-project-group-cancel"),
+            Sense::click(),
+        );
+        p.rect_filled(cancel_rect, 5.0, t.row);
+        p.rect_stroke(cancel_rect, 5.0, Stroke::new(1.0, t.separator), egui::StrokeKind::Inside);
+        p.text(
+            cancel_rect.center(),
+            Align2::CENTER_CENTER,
+            "取消",
+            Tokens::semibold(12.0),
+            t.text,
+        );
+        app.auto.add("project.groupCancel", cancel_rect, "取消编组选择");
+
+        if cancel_response.clicked() {
+            ctx.data_mut(|data| data.remove::<ProjectGroupMode>(project_group_mode_id()));
+        }
+        if group_response.clicked() && enabled {
             if let Some(folder) = mode.ungroup {
                 actions.push(("project.ungroup".into(), json!({"item": folder.0})));
             } else {
