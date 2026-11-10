@@ -1,3 +1,5 @@
+import { AccountSessionHub } from "./account_session_hub.js";
+
 const encoder = new TextEncoder();
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
@@ -250,12 +252,51 @@ async function adminUser(request, env, id) {
   if (!row) return fail(404, "账号不存在");
   return response({ user: row });
 }
+
+async function notifyAccountStatus(env, accountId, status) {
+  const id = env.ACCOUNT_SESSIONS.idFromName(accountId);
+  const stub = env.ACCOUNT_SESSIONS.get(id);
+  const res = await stub.fetch("https://account-session.internal/notify", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      type: "account_status_changed",
+      status,
+      changed_at: new Date().toISOString()
+    })
+  });
+  if (!res.ok) return 0;
+  const result = await res.json();
+  return Number(result.delivered || 0);
+}
+
+async function accountEvents(request, env) {
+  const claims = await readToken(env, request, "user");
+  if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
+    return fail(426, "需要 WebSocket 连接");
+  }
+  const headers = new Headers();
+  for (const name of ["upgrade", "connection", "sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions"]) {
+    const value = request.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  headers.set("x-ae-account-id", claims.sub);
+  const id = env.ACCOUNT_SESSIONS.idFromName(claims.sub);
+  return env.ACCOUNT_SESSIONS.get(id).fetch(
+    new Request("https://account-session.internal/connect", { method: "GET", headers })
+  );
+}
+
 async function adminBan(request, env, id) {
   await readToken(env, request, "admin");
   const body = await readJson(request);
+  const existing = await env.DB.prepare("SELECT id FROM accounts WHERE id = ?").bind(id).first();
+  if (!existing) return fail(404, "账号不存在");
   const until = body.banned_until;
+  let status;
   if (until === null || until === undefined || until === "") {
     await env.DB.prepare("UPDATE accounts SET banned_until = NULL, ban_reason = '' WHERE id = ?").bind(id).run();
+    status = "unbanned";
   } else {
     const timestamp = Date.parse(String(until));
     const reason = String(body.reason || "").trim();
@@ -263,8 +304,20 @@ async function adminBan(request, env, id) {
     if (!reason || reason.length > 200) return fail(422, "请填写封禁原因（最多200字）");
     await env.DB.prepare("UPDATE accounts SET banned_until = ?, ban_reason = ? WHERE id = ?")
       .bind(new Date(timestamp).toISOString(), reason, id).run();
+    status = "banned";
   }
-  return adminUser(request, env, id);
+  // The database update is authoritative. Push one event to connected Ae clients;
+  // each client then performs exactly one /v1/me verification.
+  let notified = 0;
+  try {
+    notified = await notifyAccountStatus(env, id, status);
+  } catch (error) {
+    console.error("account-notification-error", error && error.message ? error.message : String(error));
+  }
+  const row = await env.DB.prepare(
+    "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE id = ?"
+  ).bind(id).first();
+  return response({ user: row, notification_delivered: notified });
 }
 async function route(request, env) {
   const url = new URL(request.url);
@@ -274,6 +327,7 @@ async function route(request, env) {
   }
   if (!env.DB) return fail(503, "云端数据库尚未绑定");
   try {
+    if (request.method === "GET" && url.pathname === "/v1/events") return await accountEvents(request, env);
     if (request.method === "POST" && url.pathname === "/v1/register") return await register(request, env);
     if (request.method === "POST" && url.pathname === "/v1/login") return await login(request, env);
     if (request.method === "POST" && url.pathname === "/v1/admin/login") return await adminLogin(request, env);
