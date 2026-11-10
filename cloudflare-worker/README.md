@@ -25,6 +25,8 @@ This service provides the cloud account features used by the two Ae APKs: regist
 
 There is no 10-second or 5-minute account polling. A launch performs one verification. Normal editing and local AI/export do not make account API calls.
 
+PBKDF2-SHA256 password hashing (210,000 iterations) runs inside a Durable Object rather than the Workers Free 10 ms CPU budget. The original password is never stored; only a salted hash is stored in D1. Registration, login and password changes therefore also use a small number of Durable Object requests.
+
 ## Free-tier behavior
 
 Workers, D1 and Durable Objects have separate usage limits. SQLite-backed Durable Objects are available on Workers Free; hibernating WebSocket connections avoid keeping an idle Durable Object active. Free-tier overages can cause requests of the affected type to fail until the daily reset. There is no guarantee that Cloudflare's free tier will remain available forever, or that a `workers.dev` hostname is reachable from every ISP/VPN route. Test from the intended Chinese networks before distributing widely.
