@@ -281,7 +281,7 @@ public final class MainActivity extends Activity {
                         while ((n = stream.read(buffer)) > 0) data.write(buffer, 0, n);
                     }
                 }
-                JSONObject parsed = new JSONObject(data.toString(StandardCharsets.UTF_8));
+                JSONObject parsed = new JSONObject(new String(data.toByteArray(), StandardCharsets.UTF_8));
                 if (code >= 200 && code < 300) result = parsed;
                 else {
                     Object detail = parsed.opt("detail");
