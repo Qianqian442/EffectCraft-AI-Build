@@ -25,7 +25,6 @@ on:
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
-      - 'account-server/**'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
