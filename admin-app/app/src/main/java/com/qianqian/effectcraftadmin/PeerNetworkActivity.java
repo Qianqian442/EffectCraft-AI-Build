@@ -19,8 +19,10 @@ import android.widget.Toast;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import java.net.HttpURLConnection;
-import java.net.URL;
+import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
@@ -184,17 +186,31 @@ public final class PeerNetworkActivity extends Activity {
         button.setText("正在测试…");
         io.execute(() -> {
             String result;
-            HttpURLConnection connection = null;
+            Socket socket = null;
             try {
-                connection = (HttpURLConnection) new URL("http://" + address + "/health").openConnection();
-                connection.setConnectTimeout(3000);
-                connection.setReadTimeout(3000);
-                int code = connection.getResponseCode();
-                result = code == 200 ? "节点可访问" : "节点返回 HTTP " + code;
+                int split = address.lastIndexOf(':');
+                if (split <= 0) throw new IllegalArgumentException("节点地址格式不正确");
+                String host = address.substring(0, split);
+                int port = Integer.parseInt(address.substring(split + 1));
+                socket = new Socket();
+                socket.connect(new InetSocketAddress(host, port), 3000);
+                socket.setSoTimeout(3000);
+                OutputStream out = socket.getOutputStream();
+                out.write(("GET /health HTTP/1.1\\r\\nHost: " + address + "\\r\\nConnection: close\\r\\n\\r\\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                out.flush();
+                ByteArrayOutputStream response = new ByteArrayOutputStream();
+                byte[] buffer = new byte[1024];
+                int count;
+                while ((count = socket.getInputStream().read(buffer)) != -1) {
+                    response.write(buffer, 0, count);
+                    if (response.size() > 8192) break;
+                }
+                String firstLine = response.toString("UTF-8").split("\\r?\\n", 2)[0];
+                result = firstLine.contains(" 200 ") ? "节点可访问" : "节点响应：" + firstLine;
             } catch (Exception e) {
                 result = "暂时无法连接：" + e.getMessage();
             } finally {
-                if (connection != null) connection.disconnect();
+                if (socket != null) try { socket.close(); } catch (Exception ignored) { }
             }
             final String message = result;
             runOnUiThread(() -> {
