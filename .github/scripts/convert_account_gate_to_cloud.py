@@ -166,23 +166,15 @@ def main() -> None:
             Some(Err(TryRecvError::Empty)) | None => None,
         };
         if let Some(Ok(event)) = received {
-            match event.get("type").and_then(Value::as_str) {
-                Some("account_status_changed") => {
-                    let status = event.get("status").and_then(Value::as_str).unwrap_or("");
-                    if !(status == "banned" && self.mode == Mode::Banned) {
-                        self.notification_pending = true;
-                    }
-                },
-                Some("account_session_connected") => {
-                    // The first socket follows launch verification; if that check
-                    // found a ban, re-check once to catch an unban racing with connect.
-                    // Later reconnects always re-check once to recover missed events.
-                    if self.event_connected_once || self.mode == Mode::Banned {
-                        self.notification_pending = true;
-                    }
-                    self.event_connected_once = true;
+            if event.get("type").and_then(Value::as_str) == Some("account_status_changed") {
+                let status = event.get("status").and_then(Value::as_str).unwrap_or("");
+                // The Durable Object replays the last status after each connection.
+                // Verify only when the local launch/previous state differs.
+                let already_matches = (status == "banned" && self.mode == Mode::Banned)
+                    || (status == "unbanned" && self.mode == Mode::Editor);
+                if !already_matches && (status == "banned" || status == "unbanned") {
+                    self.notification_pending = true;
                 }
-                _ => {}
             }
         }
         if self.notification_pending && self.pending.is_none() && self.token.is_some() {
