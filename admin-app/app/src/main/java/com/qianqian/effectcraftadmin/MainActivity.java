@@ -205,6 +205,7 @@ public final class MainActivity extends Activity {
                     else error = detail == null ? ("HTTP " + code) : detail.toString();
                     if (code == 401 || code == 403) {
                         adminToken = "";
+                        error = "管理员登录已失效：" + error;
                         getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
                     }
                 }
@@ -290,11 +291,21 @@ public final class MainActivity extends Activity {
         rp.bottomMargin = dp(8);
         rows.addView(row, rp);
 
-        TextView avatar = text(name.isEmpty() ? "?" : name.substring(0, 1), 20, true);
-        avatar.setGravity(Gravity.CENTER);
-        avatar.setTextColor(Color.WHITE);
-        avatar.setBackground(rounded(Color.rgb(66, 105, 180)));
-        row.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        String avatarUrl = user.optString("avatar_url", "");
+        if (!avatarUrl.isEmpty()) {
+            ImageView avatar = new ImageView(this);
+            avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
+            avatar.setBackground(rounded(Color.rgb(66, 105, 180)));
+            avatar.setClipToOutline(true);
+            row.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+            loadAvatar(avatar, avatarUrl);
+        } else {
+            TextView avatar = text(name.isEmpty() ? "?" : name.substring(0, 1), 20, true);
+            avatar.setGravity(Gravity.CENTER);
+            avatar.setTextColor(Color.WHITE);
+            avatar.setBackground(rounded(Color.rgb(66, 105, 180)));
+            row.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+        }
 
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
@@ -315,6 +326,26 @@ public final class MainActivity extends Activity {
         row.setOnClickListener(v -> showUserDetails(user));
         banButton.setOnClickListener(v -> {
             if (banned) unban(id); else chooseBan(id);
+        });
+    }
+
+    private void loadAvatar(ImageView view, String uri) {
+        io.execute(() -> {
+            HttpURLConnection c = null;
+            try {
+                c = (HttpURLConnection) new URL(uri).openConnection();
+                c.setConnectTimeout(5000);
+                c.setReadTimeout(5000);
+                c.setInstanceFollowRedirects(true);
+                try (InputStream in = c.getInputStream()) {
+                    Bitmap bitmap = BitmapFactory.decodeStream(in);
+                    if (bitmap != null) runOnUiThread(() -> view.setImageBitmap(bitmap));
+                }
+            } catch (Exception ignored) {
+                // Keep the colored placeholder when the optional avatar cannot be loaded.
+            } finally {
+                if (c != null) c.disconnect();
+            }
         });
     }
 
