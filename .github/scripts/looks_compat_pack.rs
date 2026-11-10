@@ -289,7 +289,7 @@ pub unsafe extern "C" fn ec_render(
 
         let mut hsl = rgb_to_hsl(rgb);
         hsl[0] = (hsl[0] + hue_shift).rem_euclid(360.0);
-        hsl[1] = (hsl[1] + vibrance * (1.0 - hsl[1]) * 0.65).clamp(0.0, 1.0);
+        hsl[1] = if vibrance >= 0.0 { hsl[1] + vibrance * (1.0 - hsl[1]) * 0.65 } else { hsl[1] * (1.0 + vibrance * 0.65) }.clamp(0.0, 1.0);
 
         let w_red = hue_weight(hsl[0], 0.0);
         hsl[0] += hsl_red_hue * w_red;
