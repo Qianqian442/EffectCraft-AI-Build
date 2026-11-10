@@ -5,7 +5,6 @@
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:label="Ae账号管理"
-        android:usesCleartextTraffic="true"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
             android:name=".MainActivity"
