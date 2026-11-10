@@ -1,5 +1,6 @@
 import { AccountSessionHub } from "./account_session_hub.js";
-export { AccountSessionHub };
+import { NodeNetworkHub } from "./node_network_hub.js";
+export { AccountSessionHub, NodeNetworkHub };
 
 const encoder = new TextEncoder();
 const JSON_HEADERS = {
@@ -319,6 +320,57 @@ async function adminBan(request, env, id) {
   ).bind(id).first();
   return response({ user: row, notification_delivered: notified });
 }
+async function nodeNetworkStub(env) {
+  if (!env.NODE_NETWORK) throw new HttpError(503, "节点网络服务尚未部署");
+  const id = env.NODE_NETWORK.idFromName("global-effectcraft-node-network");
+  return env.NODE_NETWORK.get(id);
+}
+
+async function adminNetworkState(request, env) {
+  await readToken(env, request, "admin");
+  const stub = await nodeNetworkStub(env);
+  return stub.fetch("https://node-network.internal/state");
+}
+
+async function adminSetNetworkState(request, env) {
+  const claims = await readToken(env, request, "admin");
+  const body = await readJson(request);
+  if (typeof body.enabled !== "boolean") return fail(422, "enabled 必须是布尔值");
+  const stub = await nodeNetworkStub(env);
+  return stub.fetch("https://node-network.internal/set-state", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled: body.enabled, changed_by: claims.sub })
+  });
+}
+
+async function nodeNetworkState(request, env) {
+  await readToken(env, request, "user");
+  const stub = await nodeNetworkStub(env);
+  return stub.fetch("https://node-network.internal/state");
+}
+
+async function nodeNetworkEvents(request, env) {
+  const claims = await readToken(env, request, "user");
+  if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
+    return fail(426, "需要 WebSocket 连接");
+  }
+  const stub = await nodeNetworkStub(env);
+  const target = new URL(request.url);
+  target.pathname = "/connect";
+  target.search = "";
+  target.searchParams.set("node_id", claims.sub);
+  // Preserve the incoming WebSocket upgrade while adding the identity that
+  // was verified from the bearer token above.
+  return stub.fetch(new Request(target.toString(), request));
+}
+
+async function adminNetworkNodes(request, env) {
+  await readToken(env, request, "admin");
+  const stub = await nodeNetworkStub(env);
+  return stub.fetch("https://node-network.internal/nodes");
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: JSON_HEADERS });
@@ -341,6 +393,11 @@ async function route(request, env) {
   if (!env.DB) return fail(503, "云端数据库尚未绑定");
   try {
     if (request.method === "GET" && url.pathname === "/v1/events") return await accountEvents(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/nodes/network") return await nodeNetworkState(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/nodes/events") return await nodeNetworkEvents(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/admin/network") return await adminNetworkState(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/admin/network") return await adminSetNetworkState(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/admin/network/nodes") return await adminNetworkNodes(request, env);
     if (request.method === "POST" && url.pathname === "/v1/register") return await register(request, env);
     if (request.method === "POST" && url.pathname === "/v1/login") return await login(request, env);
     if (request.method === "POST" && url.pathname === "/v1/admin/login") return await adminLogin(request, env);
