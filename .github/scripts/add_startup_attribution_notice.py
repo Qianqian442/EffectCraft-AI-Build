@@ -38,7 +38,7 @@ def main() -> None:
             raise SystemExit(f"app UI startup notice call: expected one draw call, found {count}")
         source = source.replace(
             draw_call,
-            draw_call + "\\n        effectcraft_startup_attribution_notice(ui.ctx());",
+            draw_call + "\n        effectcraft_startup_attribution_notice(ui.ctx());",
             1,
         )
 
