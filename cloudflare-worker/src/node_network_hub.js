@@ -33,6 +33,28 @@ export class NodeNetworkHub {
       return Response.json({ enabled: (await this.ctx.storage.get("network_state"))?.enabled !== false, nodes });
     }
 
+    if (url.pathname === "/revoke-node" && request.method === "POST") {
+      const body = await request.json().catch(() => null);
+      const nodeId = String(body?.node_id || "");
+      if (!/^[a-f0-9-]{16,80}$/i.test(nodeId)) {
+        return Response.json({ error: "invalid node identity" }, { status: 400 });
+      }
+      const reason = String(body?.reason || "node access revoked").slice(0, 120);
+      let revoked = 0;
+      for (const socket of this.ctx.getWebSockets()) {
+        const attachment = socket.deserializeAttachment() || {};
+        if (attachment.nodeId !== nodeId) continue;
+        try {
+          socket.send(JSON.stringify({ type: "node_access_revoked", reason }));
+        } catch (_) {}
+        try {
+          socket.close(4003, "account access revoked");
+          revoked++;
+        } catch (_) {}
+      }
+      return Response.json({ revoked });
+    }
+
     if (url.pathname === "/set-state" && request.method === "POST") {
       const body = await request.json().catch(() => null);
       if (!body || typeof body.enabled !== "boolean" || !body.changed_by) {

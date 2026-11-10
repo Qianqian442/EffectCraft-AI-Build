@@ -59,6 +59,7 @@ def main() -> None:
         "    pending_action: Option<Action>,\n"
         "    events: Option<Receiver<Result<Value, String>>>,\n"
         "    event_started: bool,\n"
+        "    node_event_started: bool,\n"
         "    notification_pending: Option<String>,",
         "account event state fields",
     )
@@ -71,6 +72,7 @@ def main() -> None:
         "            pending_action: None,\n"
         "            events: None,\n"
         "            event_started: false,\n"
+        "            node_event_started: false,\n"
         "            notification_pending: None,",
         "account event state initialization",
     )
@@ -150,6 +152,61 @@ def main() -> None:
                     Err(error) => {
                         let _ = tx.send(Err(format!("实时通知连接失败：{error}")));
                     }
+                }
+                std::thread::sleep(Duration::from_secs(reconnect_delay));
+                reconnect_delay = (reconnect_delay * 2).min(600);
+            }
+        });
+    }
+
+    fn start_node_events(&mut self) {
+        if self.node_event_started {
+            return;
+        }
+        let Some(token) = self.token.clone() else { return; };
+        let base = self.server_url.trim_end_matches('/')
+            .replacen("https://", "wss://", 1);
+        let ws_url = format!("{base}/v1/nodes/events");
+        self.node_event_started = true;
+        std::thread::spawn(move || {
+            let mut reconnect_delay = 3u64;
+            loop {
+                let mut request = match ws_url.clone().into_client_request() {
+                    Ok(request) => request,
+                    Err(_) => {
+                        std::thread::sleep(Duration::from_secs(reconnect_delay));
+                        reconnect_delay = (reconnect_delay * 2).min(600);
+                        continue;
+                    }
+                };
+                let authorization = match HeaderValue::from_str(&format!("Bearer {token}")) {
+                    Ok(value) => value,
+                    Err(_) => return,
+                };
+                request.headers_mut().insert("Authorization", authorization);
+                match tungstenite::connect(request) {
+                    Ok((mut socket, _)) => {
+                        reconnect_delay = 3;
+                        loop {
+                            // The hub treats this authenticated connection as this
+                            // account's online phone node. Ping/pong keeps presence
+                            // alive without forwarding arbitrary peer payloads.
+                            if socket.send(Message::Text("ping".into())).is_err() {
+                                break;
+                            }
+                            match socket.read() {
+                                Ok(Message::Close(_)) => break,
+                                Ok(Message::Text(_)) | Ok(Message::Pong(_)) => {
+                                    std::thread::sleep(Duration::from_secs(25));
+                                }
+                                Ok(_) => {
+                                    std::thread::sleep(Duration::from_secs(25));
+                                }
+                                Err(_) => break,
+                            }
+                        }
+                    }
+                    Err(_) => {}
                 }
                 std::thread::sleep(Duration::from_secs(reconnect_delay));
                 reconnect_delay = (reconnect_delay * 2).min(600);
@@ -249,6 +306,9 @@ def main() -> None:
         "    app.account.poll(config);\n"
         "    if matches!(app.account.mode, Mode::Editor | Mode::Banned) {\n"
         "        app.account.start_events();\n"
+        "        if app.account.mode == Mode::Editor {\n"
+        "            app.account.start_node_events();\n"
+        "        }\n"
         "        app.account.poll_events(config);\n"
         "    }",
         "remove 10-second polling and listen for events",

@@ -2,6 +2,12 @@ name: Validate Ae Cloud Account APK Patch
 
 on:
   push:
+    branches: [main, 'feature/automatic-phone-node-main-apk']
+    paths:
+      - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/convert_account_gate_to_cloud.py'
+      - '.github/workflows/validate-ae-account-apk-patch.yml'
+  pull_request:
     branches: [main]
     paths:
       - '.github/scripts/add_home_lan_account_gate.py'
