@@ -337,16 +337,16 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
     stream.set_write_timeout(Some(Duration::from_secs(8))).map_err(|e| e.to_string())?;
     let body_bytes = if body.is_null() { Vec::new() } else { serde_json::to_vec(&body).map_err(|e| e.to_string())? };
     let mut request = format!(
-        "{method} {path} HTTP/1.1\\r\\nHost: {authority}\\r\\nAccept: application/json\\r\\nConnection: close\\r\\n"
+        "{method} {path} HTTP/1.1\r\nHost: {authority}\r\nAccept: application/json\r\nConnection: close\r\n"
     );
     if !body_bytes.is_empty() {
-        request.push_str("Content-Type: application/json\\r\\n");
-        request.push_str(&format!("Content-Length: {}\\r\\n", body_bytes.len()));
+        request.push_str("Content-Type: application/json\r\n");
+        request.push_str(&format!("Content-Length: {}\r\n", body_bytes.len()));
     }
     if let Some(token) = token {
-        request.push_str(&format!("Authorization: Bearer {token}\\r\\n"));
+        request.push_str(&format!("Authorization: Bearer {token}\r\n"));
     }
-    request.push_str("\\r\\n");
+    request.push_str("\r\n");
     stream.write_all(request.as_bytes()).map_err(|e| e.to_string())?;
     if !body_bytes.is_empty() {
         stream.write_all(&body_bytes).map_err(|e| e.to_string())?;
@@ -354,7 +354,7 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
     let mut bytes = Vec::new();
     stream.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     let text = String::from_utf8_lossy(&bytes);
-    let (headers, response_body) = text.split_once("\\r\\n\\r\\n").ok_or_else(|| "服务器响应不完整".to_string())?;
+    let (headers, response_body) = text.split_once("\r\n\r\n").ok_or_else(|| "服务器响应不完整".to_string())?;
     let status = headers.lines().next().and_then(|line| line.split_whitespace().nth(1))
         .and_then(|code| code.parse::<u16>().ok()).ok_or_else(|| "服务器响应状态码无效".to_string())?;
     let value = serde_json::from_str::<Value>(response_body).unwrap_or_else(|_| json!({"detail": "服务器返回了无法识别的数据"}));
@@ -586,11 +586,11 @@ def main() -> None:
     account_path.write_text(ACCOUNT_RS, encoding="utf-8")
 
     source = lib.read_text(encoding="utf-8")
-    source = replace_once(source, "mod app;\\n", "mod account;\\nmod app;\\n", "account module declaration")
+    source = replace_once(source, "mod app;\n", "mod account;\nmod app;\n", "account module declaration")
     source = replace_once(
         source,
-        "    pub(crate) updates_rt: updates_ui::Runtime,\\n",
-        "    pub(crate) updates_rt: updates_ui::Runtime,\\n    pub(crate) account: account::AccountState,\\n",
+        "    pub(crate) updates_rt: updates_ui::Runtime,\n",
+        "    pub(crate) updates_rt: updates_ui::Runtime,\n    pub(crate) account: account::AccountState,\n",
         "account state field",
     )
     lib.write_text(source, encoding="utf-8")
@@ -598,14 +598,14 @@ def main() -> None:
     source = app.read_text(encoding="utf-8")
     source = replace_once(
         source,
-        "            updates_rt: updates_ui::Runtime::default(),\\n",
-        "            updates_rt: updates_ui::Runtime::default(),\\n            account: super::account::AccountState::default(),\\n",
+        "            updates_rt: updates_ui::Runtime::default(),\n",
+        "            updates_rt: updates_ui::Runtime::default(),\n            account: super::account::AccountState::default(),\n",
         "account state initialization",
     )
     source = replace_once(
         source,
-        "    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {\\n        self.draw(ui, frame);\\n    }",
-        "    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {\\n        self.draw(ui, frame);\\n        super::account::show(self, ui.ctx());\\n    }",
+        "    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {\n        self.draw(ui, frame);\n    }",
+        "    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {\n        self.draw(ui, frame);\n        super::account::show(self, ui.ctx());\n    }",
         "account UI overlay call",
     )
     app.write_text(source, encoding="utf-8")
