@@ -391,16 +391,20 @@ def patch_timeline_keyframe_button(root: Path) -> None:
     // receives the key at the current composition time. No other layer can be modified.
     let project_item = (app.session.state.project_selection.len() == 1).then(|| app.session.state.project_selection[0]);
     let selected_layer = project_item.and_then(|item| {
-        // Prefer the one explicitly selected matching layer; otherwise auto-target only when the
-        // asset appears exactly once in the active composition.
+        // A layer that is explicitly selected wins, but it must belong to this project item
+        // and be unlocked. With only a Project-panel selection, target the sole unlocked
+        // matching layer automatically so the user does not have to tap the timeline row.
         let selected_match = match app.session.state.selected_layers.as_slice() {
-            [layer] => g.tl.comp.layer(*layer).filter(|layer| layer.source.item() == Some(item)).map(|layer| layer.id),
+            [layer] => g.tl.comp.layer(*layer)
+                .filter(|layer| layer.source.item() == Some(item) && !layer.switches.locked)
+                .map(|layer| layer.id),
             _ => None,
         };
         selected_match.or_else(|| {
-            let mut matches = g.tl.comp.layers.iter().filter(|layer| layer.source.item() == Some(item));
-            let first = matches.next()?;
-            if matches.next().is_none() { Some(first.id) } else { None }
+            let movable: Vec<_> = g.tl.comp.layers.iter()
+                .filter(|layer| layer.source.item() == Some(item) && !layer.switches.locked)
+                .collect();
+            if let [layer] = movable.as_slice() { Some(layer.id) } else { None }
         })
     });
     // EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V2
@@ -411,9 +415,9 @@ def patch_timeline_keyframe_button(root: Path) -> None:
         vec2(112.0, keyframe_height),
     );
     let keyframe_hint = if keyframe_enabled {
-        "添加关键帧（仅作用于当前单个素材）"
+        "添加关键帧（左侧已选素材对应的可移动图层）"
     } else {
-        "先在左侧项目面板选中一个素材，再在时间轴中选中它对应的图层"
+        "先在左侧选中一个素材，并确保合成中有唯一对应的未锁定图层；多个实例时请点选目标图层"
     };
     // A high-contrast, wide touch target is always visible in the timeline footer.
     // It remains tappable when disabled so the required single-item selection is explained.
@@ -494,7 +498,7 @@ fn android_layer_keyframe_marks(g: &Rw, rc: &RowCtx<'_>, bar: Rect) {
         return;
     }
     let painter = g.gp.clone().with_clip_rect(visible);
-    let marker_color = Color32::from_rgb(255, 214, 86);
+    let marker_color = Color32::WHITE;
     for time in times {
         let comp_time = rc.layer.comp_time(Tick(time)).seconds();
         let x = g.tl.tm.x(comp_time);
@@ -529,6 +533,34 @@ fn android_layer_keyframe_marks(g: &Rw, rc: &RowCtx<'_>, bar: Rect) {
     path.write_text(source, encoding="utf-8")
 
 
+
+def patch_native_keyframe_color(root: Path) -> None:
+    """Make the original property-row keyframe glyphs white, not theme/label coloured."""
+    path = root / "crates/ui-egui/src/panels/timeline.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_WHITE_KEYFRAMES_V1"
+    if marker in source:
+        return
+    old = """    // Labelled keys take their label colour (brighter when selected).
+    let kcol = match effectcraft_engine::color::Label::ALL.get(k.label as usize).filter(|_| k.label > 0) {
+        Some(l) => {
+            let c = t.label(*l);
+            if ks { c } else { c.gamma_multiply(0.75) }
+        }
+        None if ks => t.keyframe_selected,
+        None => t.keyframe,
+    };
+    // Muted keys stay visible and editable but no longer drive the value.
+    let kcol = if k.muted { kcol.gamma_multiply(0.35) } else { kcol };
+"""
+    new = """    // EFFECTCRAFT_ANDROID_WHITE_KEYFRAMES_V1
+    // All timeline keyframe markers use solid white for a consistent, easy-to-see appearance.
+    let kcol = Color32::WHITE;
+"""
+    source = replace_once(source, old, new, "White native timeline keyframe markers")
+    path.write_text(source, encoding="utf-8")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -539,6 +571,7 @@ def main() -> None:
     patch_project_panel(root)
     patch_timeline_keyframe_button(root)
     patch_layer_keyframe_markers(root)
+    patch_native_keyframe_color(root)
     print("Default interface language set to Simplified Chinese.")
     print("Added one-tap access to the original native Puppet Position Pin tool.")
     print("Added long-press project grouping and folder ungrouping.")
