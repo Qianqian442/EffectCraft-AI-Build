@@ -1,0 +1,68 @@
+name: Build EffectCraft Account Admin APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'admin-app/**'
+      - '.github/workflows/build-account-admin.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: effectcraft-account-admin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-admin:
+    name: Build standalone account manager APK
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build admin APK
+        working-directory: admin-app
+        run: |
+          gradle --no-daemon :app:assembleDebug
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          cp app/build/outputs/apk/debug/app-debug.apk ../EffectCraft-Account-Admin.apk
+
+      - name: Verify APK package integrity
+        run: |
+          unzip -t EffectCraft-Account-Admin.apk
+          file EffectCraft-Account-Admin.apk
+          ls -lh EffectCraft-Account-Admin.apk
+
+      - name: Publish downloadable APK release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: account-admin-${{ github.run_number }}
+          name: EffectCraft Account Admin APK ${{ github.run_number }}
+          draft: false
+          prerelease: true
+          files: EffectCraft-Account-Admin.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload backup build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Account-Admin-APK
+          path: EffectCraft-Account-Admin.apk
+          if-no-files-found: error
+          retention-days: 30
