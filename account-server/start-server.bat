@@ -1,8 +1,10 @@
 @echo off
 cd /d "%~dp0"
-if not exist ".env" (
-  powershell -NoProfile -ExecutionPolicy Bypass -File ".\setup.ps1"
-  if errorlevel 1 pause & exit /b 1
+powershell -NoProfile -ExecutionPolicy Bypass -File ".\setup.ps1"
+if errorlevel 1 (
+  echo 家庭局域网配置失败。请先连接家庭 Wi-Fi，再重试。
+  pause
+  exit /b 1
 )
 docker compose up -d --build
 if errorlevel 1 (
