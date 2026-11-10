@@ -137,7 +137,7 @@ def current_user(claims: dict[str, Any] = Depends(bearer_claims)) -> sqlite3.Row
     if row is None:
         raise HTTPException(401, "账号不存在")
     enforce_unbanned(row)
-    return row
+    return account_by_id(row["id"])
 
 
 def current_admin(claims: dict[str, Any] = Depends(bearer_claims)) -> dict[str, Any]:
