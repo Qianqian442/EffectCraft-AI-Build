@@ -254,7 +254,7 @@ async function adminUser(request, env, id) {
   return response({ user: row });
 }
 
-async function notifyAccountStatus(env, accountId, status) {
+async function notifyAccountStatus(env, accountId, status, bannedUntil = null) {
   const id = env.ACCOUNT_SESSIONS.idFromName(accountId);
   const stub = env.ACCOUNT_SESSIONS.get(id);
   const res = await stub.fetch("https://account-session.internal/notify", {
@@ -263,6 +263,7 @@ async function notifyAccountStatus(env, accountId, status) {
     body: JSON.stringify({
       type: "account_status_changed",
       status,
+      banned_until: bannedUntil,
       changed_at: new Date().toISOString()
     })
   });
@@ -305,7 +306,7 @@ async function adminBan(request, env, id) {
   // each client then performs exactly one /v1/me verification.
   let notified = 0;
   try {
-    notified = await notifyAccountStatus(env, id, status);
+    notified = await notifyAccountStatus(env, id, status, status === "banned" ? new Date(timestamp).toISOString() : null);
   } catch (error) {
     console.error("account-notification-error", error && error.message ? error.message : String(error));
   }
