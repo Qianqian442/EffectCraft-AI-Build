@@ -275,6 +275,7 @@ def login(body: LoginBody, request: Request) -> dict[str, Any]:
         with db() as con:
             con.execute("UPDATE accounts SET password_hash=? WHERE id=?", (password_hasher.hash(body.password), row["id"]))
     enforce_unbanned(row)
+    row = account_by_id(row["id"])
     return {"token": make_token(row["id"], "user", timedelta(days=TOKEN_TTL_DAYS)), "user": public_user(row)}
 
 
