@@ -96,6 +96,70 @@ def main() -> None:
         raise SystemExit("Alight Motion / NodeVideo import implementation was not installed")
     if "mod am_nv;" not in cmd_registry.read_text(encoding="utf-8"):
         raise SystemExit("Alight Motion / NodeVideo import command module is not registered")
+
+    # The unified "Import Project" button dispatches file.importProject. When its
+    # selected file is an AEP/AEPX, make the same dry-run / loss-consent dialog guard
+    # run as the dedicated file.importAep menu item. Keep the pending command as
+    # file.importAep so "Import Anyway" cannot fall back through the generic importer.
+    aep_losses = root / "crates/ui-egui/src/panels/aep_losses.rs"
+    old_guard = """pub fn guard(app: &mut EffectcraftApp, id: &str, params: &Value) -> Result<bool, String> {
+    if id != "file.importAep" || params.get("allowLosses") == Some(&Value::Bool(true)) || params.get("dryRun") == Some(&Value::Bool(true)) {
+        return Ok(false);
+    }
+    let mut dry = params.as_object().cloned().unwrap_or_default();
+    dry.insert("dryRun".into(), Value::Bool(true));
+    let r = app.session.execute(id, Value::Object(dry)).map_err(|e| e.to_string())?;
+    let report = r.get("report").cloned().unwrap_or(Value::Null);
+    if report["losses"].as_array().is_none_or(|l| l.is_empty()) {
+        return Ok(false);
+    }
+    app.dialog_state.aep_losses.command = Some((id.to_string(), params.clone(), report));
+    app.dialog = Some(Dialog::AepLosses);
+    Ok(true)
+}"""
+    new_guard = """pub fn guard(app: &mut EffectcraftApp, id: &str, params: &Value) -> Result<bool, String> {
+    let command = if id == "file.importAep" {
+        Some("file.importAep")
+    } else if id == "file.importProject"
+        && params.get("path").and_then(Value::as_str).is_some_and(|path| {
+            let lower = path.to_ascii_lowercase();
+            lower.ends_with(".aep") || lower.ends_with(".aepx")
+        })
+    {
+        Some("file.importAep")
+    } else {
+        None
+    };
+    let Some(command) = command else { return Ok(false) };
+    if params.get("allowLosses") == Some(&Value::Bool(true)) || params.get("dryRun") == Some(&Value::Bool(true)) {
+        return Ok(false);
+    }
+    let mut dry = params.as_object().cloned().unwrap_or_default();
+    dry.insert("dryRun".into(), Value::Bool(true));
+    let r = app.session.execute(command, Value::Object(dry)).map_err(|e| e.to_string())?;
+    let report = r.get("report").cloned().unwrap_or(Value::Null);
+    if report["losses"].as_array().is_none_or(|l| l.is_empty()) {
+        return Ok(false);
+    }
+    app.dialog_state.aep_losses.command = Some((command.to_string(), params.clone(), report));
+    app.dialog = Some(Dialog::AepLosses);
+    Ok(true)
+}"""
+    replace_once(aep_losses, old_guard, new_guard, "route unified AEP import through loss confirmation")
+    aep_test = """    #[test]
+    fn unified_import_project_routes_aep_through_loss_guard() {
+        let mut app = EffectcraftApp::new(effectcraft_engine::Session::default());
+        let result = guard(&mut app, "file.importProject", &json!({"path": "/no/such/file.aep"}));
+        assert!(result.is_err(), "AEP selection must run the AEP dry-run instead of bypassing it");
+        assert!(app.dialog.is_none());
+    }
+
+"""
+    test_marker = "    #[test]\n    fn agents_and_consented_calls_are_not_asked() {"
+    replace_once(aep_losses, test_marker, aep_test + test_marker, "AEP route dry-run regression test")
+    if "id == \"file.importProject\"" not in aep_losses.read_text(encoding="utf-8"):
+        raise SystemExit("The unified AEP import is not guarded against silent loss")
+    print("Unified Import Project AEP/AEPX picks now use the same dry-run and user loss-confirmation dialog.")
     print("Installed Alight Motion XML and NodeVideo .nv / ZIP project import.")
     print("The existing EffectCraft Project import control now routes .aep/.aepx, .nv/.zip and AM XML; the dedicated AE menu stays available.")
     print("Unsupported effects, 3D conversions and missing media are reported to the user.")
