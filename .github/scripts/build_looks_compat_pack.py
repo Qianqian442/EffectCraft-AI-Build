@@ -64,7 +64,7 @@ def main() -> None:
     subprocess.run(command, check=True)
 
     data = target.read_bytes()
-    if len(data) < 1024 or data[:8] != b"\\x00asm\\x01\\x00\\x00\\x00":
+    if len(data) < 1024 or data[:8] != b"\x00asm\x01\x00\x00\x00":
         raise SystemExit(f"Invalid or unexpectedly small Looks WASM module: {target}")
     for token in (EFFECT_ID, "HSL", "曲线", "色彩分级", "胶片光晕", "高光泛光"):
         if token.encode("utf-8") not in data:
@@ -86,7 +86,7 @@ def main() -> None:
         }],
     }
     (output / "bundle.json").write_text(
-        json.dumps(bundle, ensure_ascii=False, indent=2) + "\\n", encoding="utf-8"
+        json.dumps(bundle, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     print(
         f"Built Looks Studio {manifest['version']} with "
