@@ -2,7 +2,7 @@ name: Build EffectCraft AI Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, design/no-server-node-mesh]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
@@ -989,6 +989,7 @@ jobs:
           retention-days: 30
 
   publish:
+    if: github.ref == 'refs/heads/main'
     name: Publish APK download (no device install test)
     needs: build
     runs-on: ubuntu-latest
