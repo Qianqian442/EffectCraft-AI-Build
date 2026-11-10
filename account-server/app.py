@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import hmac
+import ipaddress
 import json
 import os
 import re
@@ -17,6 +18,7 @@ from typing import Any
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 DATA_DIR = Path(os.environ.get("DATA_DIR", "/data"))
@@ -30,6 +32,32 @@ TOKEN_TTL_DAYS = 30
 ADMIN_TOKEN_TTL_HOURS = 8
 password_hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
 app = FastAPI(title="EffectCraft Home Account Server", version="1.0.0")
+
+
+def is_home_lan_source(host: str | None) -> bool:
+    """Allow only private, loopback, or link-local client addresses."""
+    if not host:
+        return False
+    try:
+        address = ipaddress.ip_address(host.split("%", 1)[0])
+        if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+            address = address.ipv4_mapped
+        return address.is_private or address.is_loopback or address.is_link_local
+    except ValueError:
+        return False
+
+
+@app.middleware("http")
+async def enforce_home_lan_only(request: Request, call_next):
+    # Do not trust X-Forwarded-For: this server is not designed to sit behind
+    # a public reverse proxy. Check the TCP peer address seen by the API.
+    peer = request.client.host if request.client else None
+    if not is_home_lan_source(peer):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": "EffectCraft账号服务器只允许家庭局域网设备访问"},
+        )
+    return await call_next(request)
 rate_lock = __import__("threading").Lock()
 rate_buckets: dict[str, list[float]] = {}
 
