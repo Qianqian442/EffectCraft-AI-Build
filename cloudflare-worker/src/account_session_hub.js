@@ -15,9 +15,19 @@ export class AccountSessionHub {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.ctx.acceptWebSocket(server);
-      // The first connection follows the launch-time /v1/me check; later
-      // reconnects cause the client to re-check once in case an event was missed.
+      // Every connection/reconnection is announced. A still-active ban is also
+      // replayed so a launch race cannot miss a ban written just before connect.
       server.send(JSON.stringify({ type: "account_session_connected" }));
+      const activeBan = await this.ctx.storage.get("active_ban");
+      if (activeBan && Date.parse(activeBan.banned_until) > Date.now()) {
+        server.send(JSON.stringify({
+          type: "account_status_changed",
+          status: "banned",
+          banned_until: activeBan.banned_until
+        }));
+      } else if (activeBan) {
+        await this.ctx.storage.delete("active_ban");
+      }
       return new Response(null, { status: 101, webSocket: client });
     }
 
@@ -26,6 +36,11 @@ export class AccountSessionHub {
       if (!event || event.type !== "account_status_changed" ||
           !["banned", "unbanned"].includes(event.status)) {
         return Response.json({ error: "invalid event" }, { status: 400 });
+      }
+      if (event.status === "banned" && typeof event.banned_until === "string") {
+        await this.ctx.storage.put("active_ban", { banned_until: event.banned_until });
+      } else {
+        await this.ctx.storage.delete("active_ban");
       }
       const payload = JSON.stringify(event);
       let delivered = 0;
