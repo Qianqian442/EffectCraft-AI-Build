@@ -16,7 +16,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
-use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
 
@@ -133,18 +132,18 @@ impl Default for AccountState {
 }
 
 impl AccountState {
-    fn account_file(config: Option<&Path>) -> Option<PathBuf> {
-        config.map(|dir| dir.join("effectcraft-home-account.json"))
+    fn account_file(config: Option<&dyn effectcraft_engine::config::ConfigStore>) -> Option<&'static str> {
+        config.map(|_| "effectcraft-home-account.json")
     }
 
-    fn ensure_loaded(&mut self, config: Option<&Path>) {
+    fn ensure_loaded(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         if self.loaded {
             return;
         }
         self.loaded = true;
-        if let Some(path) = Self::account_file(config) {
-            if let Ok(data) = std::fs::read(&path) {
-                if let Ok(saved) = serde_json::from_slice::<SavedAccount>(&data) {
+        if let Some(name) = Self::account_file(config) {
+            if let Some(data) = config.and_then(|store| store.read(name)) {
+                if let Ok(saved) = serde_json::from_str::<SavedAccount>(&data) {
                     if saved.server_url.starts_with("http://") {
                         self.server_url = saved.server_url;
                     }
@@ -162,26 +161,23 @@ impl AccountState {
         }
     }
 
-    fn persist(&self, config: Option<&Path>) {
-        let (Some(path), Some(token)) = (Self::account_file(config), self.token.as_ref()) else {
+    fn persist(&self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        let (Some(store), Some(token)) = (config, self.token.as_ref()) else {
             return;
         };
-        if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
         let saved = SavedAccount { server_url: self.server_url.clone(), token: token.clone() };
-        if let Ok(bytes) = serde_json::to_vec(&saved) {
-            let _ = std::fs::write(path, bytes);
+        if let Ok(data) = serde_json::to_string(&saved) {
+            let _ = store.write("effectcraft-home-account.json", &data);
         }
     }
 
-    fn remove_saved(&self, config: Option<&Path>) {
-        if let Some(path) = Self::account_file(config) {
-            let _ = std::fs::remove_file(path);
+    fn remove_saved(&self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        if let Some(store) = config {
+            let _ = store.remove("effectcraft-home-account.json");
         }
     }
 
-    fn send(&mut self, action: Action, method: &str, path: &str, body: Value, config: Option<&Path>) {
+    fn send(&mut self, action: Action, method: &str, path: &str, body: Value, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         let url = self.server_url.trim().trim_end_matches('/').to_string();
         let method = method.to_string();
         let path = path.to_string();
@@ -196,7 +192,7 @@ impl AccountState {
         let _ = config;
     }
 
-    fn submit_login(&mut self, config: Option<&Path>) {
+    fn submit_login(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         self.send(
             Action::Login,
             "POST",
@@ -206,7 +202,7 @@ impl AccountState {
         );
     }
 
-    fn submit_register(&mut self, config: Option<&Path>) {
+    fn submit_register(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         self.send(
             Action::Register,
             "POST",
@@ -222,7 +218,7 @@ impl AccountState {
         );
     }
 
-    fn submit_profile(&mut self, config: Option<&Path>) {
+    fn submit_profile(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         self.send(
             Action::Profile,
             "POST",
@@ -239,7 +235,7 @@ impl AccountState {
         );
     }
 
-    fn poll(&mut self, config: Option<&Path>) {
+    fn poll(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         let received = match self.pending.as_ref().map(|rx| rx.try_recv()) {
             Some(Ok(result)) => Some(result),
             Some(Err(TryRecvError::Disconnected)) => Some(Err("账号网络请求已中断".to_string())),
@@ -314,7 +310,7 @@ impl AccountState {
         }
     }
 
-    fn retry(&mut self, config: Option<&Path>) {
+    fn retry(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         self.status.clear();
         if self.token.is_some() {
             self.mode = Mode::Checking;
