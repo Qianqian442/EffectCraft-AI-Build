@@ -276,16 +276,10 @@ async function accountEvents(request, env) {
   if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
     return fail(426, "需要 WebSocket 连接");
   }
-  const headers = new Headers();
-  for (const name of ["upgrade", "connection", "sec-websocket-key", "sec-websocket-version", "sec-websocket-protocol", "sec-websocket-extensions"]) {
-    const value = request.headers.get(name);
-    if (value) headers.set(name, value);
-  }
-  headers.set("x-ae-account-id", claims.sub);
   const id = env.ACCOUNT_SESSIONS.idFromName(claims.sub);
-  return env.ACCOUNT_SESSIONS.get(id).fetch(
-    new Request("https://account-session.internal/connect", { method: "GET", headers })
-  );
+  // Forward the original Upgrade request intact; constructing a new Request can
+  // drop platform-specific WebSocket upgrade metadata.
+  return env.ACCOUNT_SESSIONS.get(id).fetch(request);
 }
 
 async function adminBan(request, env, id) {
