@@ -10,6 +10,7 @@ services:
     volumes:
       - effectcraft-account-data:/data
     ports:
-      - "8787:8787"
+      # Bind only to the detected home-LAN IPv4 address; default to loopback if unset.
+      - "${HOME_LAN_IP:-127.0.0.1}:8787:8787"
 volumes:
   effectcraft-account-data:
