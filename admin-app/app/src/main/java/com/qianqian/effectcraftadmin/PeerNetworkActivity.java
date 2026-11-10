@@ -87,6 +87,8 @@ public final class PeerNetworkActivity extends Activity {
         Button stop = button("停止本机节点");
         content.addView(stop, new LinearLayout.LayoutParams(-1, dp(48)));
         stop.setOnClickListener(v -> {
+            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).edit()
+                .putBoolean("node_enabled", false).apply();
             stopService(new Intent(this, LanServerService.class));
             Toast.makeText(this, "已请求停止本机节点", Toast.LENGTH_SHORT).show();
             refreshPage();
@@ -118,6 +120,8 @@ public final class PeerNetworkActivity extends Activity {
     }
 
     private void startNode() {
+        getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).edit()
+            .putBoolean("node_enabled", true).apply();
         Intent intent = new Intent(this, LanServerService.class);
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
