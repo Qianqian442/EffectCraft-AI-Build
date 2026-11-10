@@ -37,11 +37,6 @@ The APK workflow downloads these pinned/identified model assets, verifies their 
 
 The Android workflow targets EffectCraft 0.21.1 and applies the patches in `.github/scripts/` before compiling the arm64 APK. A successful Actions run publishes one standalone `.apk` file in the GitHub Release. Do not install files downloaded from the Actions **Artifacts** area: GitHub wraps those downloads in ZIP archives. A queued or running workflow is not a completed APK build.
 
-## Home-Wi-Fi account system
+## Android phone-hosted home-Wi-Fi account system
 
-The account system is split from the editor:
-- `account-server/`: self-hosted account API and SQLite database for a home PC. Follow its Chinese README and run `start-server.bat` on the PC that stays on at home.
-- `admin-app/`: independent Android administrator APK project. Its workflow publishes a separate APK release asset.
-- `.github/scripts/add_home_lan_account_gate.py`: integrates registration/login, home-server status checks, the home-screen profile editor and account-ban lock into the main Android build.
-
-The mobile app defaults to `http://192.168.1.100:8787` as a placeholder. Replace it in the first-launch account screen with the actual Wi-Fi IPv4 address of the home PC. This design is LAN-only: do not configure router port forwarding. The main APK requires the home server to be reachable at startup and rechecks account status while it stays open; an unavailable server keeps the editor locked.
+The supported account host is the standalone Android account-admin APK. No PC, Docker host, cloud server, or public account server is required. Install it on one Android phone that stays connected to the home Wi-Fi. It runs the account API as a foreground service and stores accounts in an on-device SQLite database. Other EffectCraft phones on the same Wi-Fi connect to the host phone's displayed private IPv4 address. The listener binds only to the Wi-Fi interface and rejects peers outside that Wi-Fi subnet. See `admin-app/README.md` for setup and operating requirements.
