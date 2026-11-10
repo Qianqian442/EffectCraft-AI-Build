@@ -66,8 +66,10 @@ export class NodeNetworkHub {
         changed_by: String(body.changed_by).slice(0, 80)
       };
       await this.ctx.storage.put("network_state", state);
+      const sockets = this.ctx.getWebSockets();
+      const disconnected = state.enabled ? 0 : sockets.length;
       const payload = JSON.stringify({ type: "network_state", ...state });
-      for (const socket of this.ctx.getWebSockets()) {
+      for (const socket of sockets) {
         try {
           socket.send(payload);
           if (!state.enabled) socket.close(4001, "network disabled by administrator");
@@ -75,7 +77,9 @@ export class NodeNetworkHub {
           try { socket.close(1011, "network state update failed"); } catch (_) {}
         }
       }
-      return Response.json({ network: state, disconnected: state.enabled ? 0 : this.ctx.getWebSockets().length });
+      // Count the sessions selected for shutdown before closing them. The
+      // runtime may remove closed sockets from getWebSockets() immediately.
+      return Response.json({ network: state, disconnected });
     }
 
     if (url.pathname === "/connect" && request.method === "GET") {
