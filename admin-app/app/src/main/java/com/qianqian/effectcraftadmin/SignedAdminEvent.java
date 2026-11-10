@@ -44,7 +44,7 @@ final class SignedAdminEvent {
                 || "mesh.state".equals(eventType))) {
             throw new IllegalArgumentException("Unsupported administrator event type");
         }
-        if (payload == null) throw new IllegalArgumentException("payload is required");
+        validatePayload(eventType, payload);
 
         KeyStore store = loadKeyStore();
         if (!store.containsAlias(KEY_ALIAS)) {
@@ -104,8 +104,10 @@ final class SignedAdminEvent {
         try {
             if (envelope == null || envelope.optInt("version", -1) != 1) return false;
             JSONObject signed = envelope.optJSONObject("signed");
-            if (signed == null || !"".equals(signed.optString("subject_key", "")) &&
-                    !signed.has("subject_key")) return false;
+            if (signed == null || !signed.has("subject_key")) return false;
+            JSONObject payload = signed.optJSONObject("payload");
+            if (payload == null) return false;
+            validatePayload(signed.optString("event_type", ""), payload);
             String type = signed.optString("event_type", "");
             if (!("account.ban".equals(type) || "account.unban".equals(type)
                     || "mesh.state".equals(type))) return false;
@@ -145,6 +147,28 @@ final class SignedAdminEvent {
             throw new IllegalStateException("Administrator signing key has not been created");
         }
         return b64Url(store.getCertificate(KEY_ALIAS).getPublicKey().getEncoded());
+    }
+
+
+    private static void validatePayload(String eventType, JSONObject payload) {
+        if (payload == null) throw new IllegalArgumentException("payload is required");
+        if ("account.ban".equals(eventType)) {
+            if (payload.optString("reason", "").trim().isEmpty()
+                    || !payload.has("expires_at")) {
+                throw new IllegalArgumentException("ban requires a reason and expires_at");
+            }
+        } else if ("account.unban".equals(eventType)) {
+            String target = payload.optString("ban_event_id", "");
+            if (!target.matches("[a-f0-9]{64}")) {
+                throw new IllegalArgumentException("unban must reference a ban event");
+            }
+        } else if ("mesh.state".equals(eventType)) {
+            if (!payload.has("enabled") || !(payload.opt("enabled") instanceof Boolean)) {
+                throw new IllegalArgumentException("mesh.state requires an enabled boolean");
+            }
+        } else {
+            throw new IllegalArgumentException("Unsupported administrator event type");
+        }
     }
 
     private static KeyStore loadKeyStore() throws Exception {
@@ -187,13 +211,10 @@ final class SignedAdminEvent {
             out.append(']');
         } else if (value instanceof String) {
             out.append(JSONObject.quote((String) value));
-        } else if (value instanceof Number || value instanceof Boolean) {
-            out.append(JSONObject.numberToString(value instanceof Number
-                ? (Number) value : Integer.valueOf((Boolean) value ? 1 : 0)));
-            if (value instanceof Boolean) {
-                int start = out.length() - 1;
-                out.replace(start, out.length(), (Boolean) value ? "true" : "false");
-            }
+        } else if (value instanceof Boolean) {
+            out.append((Boolean) value ? "true" : "false");
+        } else if (value instanceof Number) {
+            out.append(JSONObject.numberToString((Number) value));
         } else {
             throw new IllegalArgumentException("Unsupported JSON value");
         }
