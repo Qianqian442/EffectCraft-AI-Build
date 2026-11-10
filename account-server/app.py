@@ -311,7 +311,7 @@ def update_profile(body: ProfileBody, row: sqlite3.Row = Depends(current_user)) 
 @app.post("/v1/admin/login")
 def admin_login(body: AdminLoginBody, request: Request) -> dict[str, Any]:
     rate_limit(request, "admin-login", 5)
-    if not (secrets.compare_digest(body.username, ADMIN_USERNAME) and secrets.compare_digest(body.password, ADMIN_PASSWORD)):
+    if not (secrets.compare_digest(body.username.encode("utf-8"), ADMIN_USERNAME.encode("utf-8")) and secrets.compare_digest(body.password.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8"))):
         raise HTTPException(401, "管理员账号或密码错误")
     token = make_token(ADMIN_USERNAME, "admin", timedelta(hours=ADMIN_TOKEN_TTL_HOURS))
     return {"token": token, "expires_in": ADMIN_TOKEN_TTL_HOURS * 3600}
