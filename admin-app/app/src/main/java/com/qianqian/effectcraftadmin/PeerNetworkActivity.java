@@ -196,7 +196,7 @@ public final class PeerNetworkActivity extends Activity {
                 socket.connect(new InetSocketAddress(host, port), 3000);
                 socket.setSoTimeout(3000);
                 OutputStream out = socket.getOutputStream();
-                out.write(("GET /health HTTP/1.1\\r\\nHost: " + address + "\\r\\nConnection: close\\r\\n\\r\\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));
+                out.write(("GET /health HTTP/1.1\r\nHost: " + address + "\r\nConnection: close\r\n\r\n").getBytes(java.nio.charset.StandardCharsets.US_ASCII));
                 out.flush();
                 ByteArrayOutputStream response = new ByteArrayOutputStream();
                 byte[] buffer = new byte[1024];
