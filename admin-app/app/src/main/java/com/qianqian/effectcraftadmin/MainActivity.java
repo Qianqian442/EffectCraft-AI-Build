@@ -39,7 +39,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private String server = "http://192.168.1.100:8787";
+    private String server = "http://127.0.0.1:8787";
     private String adminToken = "";
     private LinearLayout root;
     private LinearLayout rows;
@@ -55,10 +55,25 @@ public final class MainActivity extends Activity {
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
         server = getPreferences(MODE_PRIVATE).getString("server", server);
         adminToken = getPreferences(MODE_PRIVATE).getString("admin_token", "");
+        String firstAdminPassword = LanAccountServer.ensureAdminPassword(this);
+        android.content.Intent service = new android.content.Intent(this, LanServerService.class);
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            startForegroundService(service);
+        } else {
+            startService(service);
+        }
         if (!adminToken.isEmpty()) {
             loadUsers("");
         } else {
             showLogin();
+        }
+        if (firstAdminPassword != null) {
+            new AlertDialog.Builder(this)
+                .setTitle("首次启动：管理员密码")
+                .setMessage("请先保存这次显示的管理员密码。关闭后不会再次显示。\\n\\n管理员账号：admin\\n管理员密码：" + firstAdminPassword + "\\n\\n账号服务只在本机连接家庭 Wi-Fi 时运行。")
+                .setCancelable(false)
+                .setPositiveButton("我已保存", (dialog, which) -> { })
+                .show();
         }
     }
 
@@ -121,7 +136,12 @@ public final class MainActivity extends Activity {
         LinearLayout page = column();
         TextView title = text("EffectCraft 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
-        page.addView(text("仅连接家中的 Wi-Fi 账号服务器", 14, false));
+        page.addView(text("本机作为账号主机运行，无需电脑。", 14, false));
+        String lanIp = LanAccountServer.getWifiIpv4();
+        page.addView(text(lanIp.isEmpty()
+            ? "尚未检测到 Wi-Fi 地址：请先连接家中 Wi-Fi。"
+            : "其他手机在同一 Wi-Fi 下填写：http://" + lanIp + ":8787", 13, true));
+        page.addView(text("本机管理员连接地址：http://127.0.0.1:8787", 12, false));
         page.addView(text("服务器地址", 13, true));
         serverInput = field("http://192.168.x.x:8787", false);
         serverInput.setText(server);
