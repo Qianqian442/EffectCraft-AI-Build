@@ -59,7 +59,7 @@ def main() -> None:
         "    pending_action: Option<Action>,\n"
         "    events: Option<Receiver<Result<Value, String>>>,\n"
         "    event_started: bool,\n"
-        "    notification_pending: bool,
+        "    notification_pending: Option<String>,
     event_connected_once: bool,",
         "account event state fields",
     )
@@ -72,7 +72,7 @@ def main() -> None:
         "            pending_action: None,\n"
         "            events: None,\n"
         "            event_started: false,\n"
-        "            notification_pending: false,
+        "            notification_pending: None,
             event_connected_once: false,",
         "account event state initialization",
     )
@@ -173,14 +173,19 @@ def main() -> None:
                 let already_matches = (status == "banned" && self.mode == Mode::Banned)
                     || (status == "unbanned" && self.mode == Mode::Editor);
                 if !already_matches && (status == "banned" || status == "unbanned") {
-                    self.notification_pending = true;
+                    self.notification_pending = Some(status.to_string());
                 }
             }
         }
-        if self.notification_pending && self.pending.is_none() && self.token.is_some() {
-            self.notification_pending = false;
-            self.mode = Mode::Checking;
-            self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+        if self.pending.is_none() && self.token.is_some() {
+            if let Some(status) = self.notification_pending.take() {
+                let already_matches = (status == "banned" && self.mode == Mode::Banned)
+                    || (status == "unbanned" && self.mode == Mode::Editor);
+                if !already_matches {
+                    self.mode = Mode::Checking;
+                    self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+                }
+            }
         }
     }
 '''
