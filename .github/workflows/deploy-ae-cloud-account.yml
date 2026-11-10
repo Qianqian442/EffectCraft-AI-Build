@@ -42,15 +42,20 @@ jobs:
           TOKEN="${TOKEN#"${TOKEN%%[![:space:]]*}"}"
           TOKEN="${TOKEN%"${TOKEN##*[![:space:]]}"}"
           case "$TOKEN" in
+            Authorization:\ Bearer\ *) TOKEN="${TOKEN#Authorization: Bearer }" ;;
+            authorization:\ bearer\ *) TOKEN="${TOKEN#authorization: bearer }" ;;
             Bearer\ *) TOKEN="${TOKEN#Bearer }" ;;
             bearer\ *) TOKEN="${TOKEN#bearer }" ;;
           esac
           if [[ "$TOKEN" == \"*\" && "$TOKEN" == *\" ]]; then
             TOKEN="${TOKEN#\"}"
             TOKEN="${TOKEN%\"}"
+          elif [[ "$TOKEN" == \'*\' && "$TOKEN" == *\' ]]; then
+            TOKEN="${TOKEN#\'}"
+            TOKEN="${TOKEN%\'}"
           fi
-          if [ -z "$TOKEN" ] || [[ "$TOKEN" == *[[:space:]]* ]]; then
-            echo "::error::CLOUDFLARE_API_TOKEN is empty or still contains whitespace. Save the raw token only, without 'Bearer ' or quotes."
+          if [ -z "$TOKEN" ] || [[ "$TOKEN" == *[[:space:]]* ]] || [[ ! "$TOKEN" =~ ^[A-Za-z0-9._~+/=-]+$ ]]; then
+            echo "::error::CLOUDFLARE_API_TOKEN is not in raw API-token format. Save only the token characters, without Authorization/Bearer text or surrounding quotes."
             exit 1
           fi
           echo "::add-mask::$TOKEN"
