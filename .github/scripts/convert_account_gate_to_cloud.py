@@ -59,8 +59,7 @@ def main() -> None:
         "    pending_action: Option<Action>,\n"
         "    events: Option<Receiver<Result<Value, String>>>,\n"
         "    event_started: bool,\n"
-        "    notification_pending: Option<String>,
-    event_connected_once: bool,",
+        "    notification_pending: Option<String>,",
         "account event state fields",
     )
     source = replace_once(
@@ -72,8 +71,7 @@ def main() -> None:
         "            pending_action: None,\n"
         "            events: None,\n"
         "            event_started: false,\n"
-        "            notification_pending: None,
-            event_connected_once: false,",
+        "            notification_pending: None,",
         "account event state initialization",
     )
     source = replace_once(
