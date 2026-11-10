@@ -39,7 +39,8 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private String server = "http://127.0.0.1:8787";
+    private static final String DEFAULT_SERVER = "https://ae-cloud-account-api.YOUR_ACCOUNT_SUBDOMAIN.workers.dev";
+    private String server = DEFAULT_SERVER;
     private String adminToken = "";
     private LinearLayout root;
     private LinearLayout rows;
@@ -55,29 +56,14 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-        String wifiIp = LanAccountServer.getWifiIpv4();
-        server = wifiIp.isEmpty() ? "http://127.0.0.1:8787" : "http://" + wifiIp + ":8787";
-        adminToken = getPreferences(MODE_PRIVATE).getString("admin_token", "");
-        String firstAdminPassword = LanAccountServer.ensureAdminPassword(this);
-        android.content.Intent service = new android.content.Intent(this, LanServerService.class);
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            startForegroundService(service);
-        } else {
-            startService(service);
-        }
+        String savedServer = getPreferences(MODE_PRIVATE).getString("server", "");
+        server = savedServer.startsWith("https://") ? trimServer(savedServer) : DEFAULT_SERVER;
+        adminToken = server.equals(DEFAULT_SERVER) ? "" : getPreferences(MODE_PRIVATE).getString("admin_token", "");
         if (!adminToken.isEmpty()) {
-            showConnecting("正在恢复管理员登录并连接本机账号服务…");
+            showConnecting("正在连接云端账号服务并恢复管理员登录…");
             loadUsers("");
         } else {
             showLogin();
-        }
-        if (firstAdminPassword != null) {
-            new AlertDialog.Builder(this)
-                .setTitle("首次启动：管理员密码")
-                .setMessage("请先保存这次显示的管理员密码。关闭后不会再次显示。\\n\\n管理员账号：admin\\n管理员密码：" + firstAdminPassword + "\\n\\n账号服务只在本机连接家庭 Wi-Fi 时运行。")
-                .setCancelable(false)
-                .setPositiveButton("我已保存", (dialog, which) -> { })
-                .show();
         }
     }
 
@@ -141,7 +127,7 @@ public final class MainActivity extends Activity {
         page.addView(text("Ae账号管理", 24, true), new LinearLayout.LayoutParams(-1, dp(56)));
         TextView status = text(message, 15, false);
         page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
-        page.addView(text("请保持本机连接家庭 Wi-Fi，并确认“EffectCraft 家庭账号服务”常驻通知仍在。", 12, false));
+        page.addView(text("正在通过 HTTPS 连接云端账号服务；不需要其他用户与管理设备处于同一 Wi-Fi。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
             showConnecting("正在重新连接本机账号服务…");
@@ -162,14 +148,10 @@ public final class MainActivity extends Activity {
         LinearLayout page = column();
         TextView title = text("EffectCraft 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
-        page.addView(text("本机作为账号主机运行，无需电脑。", 14, false));
-        String lanIp = LanAccountServer.getWifiIpv4();
-        page.addView(text(lanIp.isEmpty()
-            ? "尚未检测到 Wi-Fi 地址：请先连接家中 Wi-Fi。"
-            : "其他手机在同一 Wi-Fi 下填写：http://" + lanIp + ":8787", 13, true));
-        page.addView(text("本机管理员连接地址：" + server, 12, false));
+        page.addView(text("云端账号管理：不同地区、不同网络的用户可以注册和登录。", 14, false));
+        page.addView(text("管理设备只需能访问 Cloudflare HTTPS 服务，不需要保持开机供其他用户连接。", 13, false));
         page.addView(text("服务器地址", 13, true));
-        serverInput = field("http://192.168.x.x:8787", false);
+        serverInput = field("https://你的Worker地址.workers.dev", false);
         serverInput.setText(server);
         page.addView(serverInput);
         page.addView(text("管理员账号", 13, true));
@@ -177,15 +159,15 @@ public final class MainActivity extends Activity {
         usernameInput.setText("admin");
         page.addView(usernameInput);
         page.addView(text("管理员密码", 13, true));
-        passwordInput = field("输入安装服务器时设置的管理员密码", true);
+        passwordInput = field("输入云端管理员密码", true);
         page.addView(passwordInput);
         loginButton = button("登录管理后台");
         page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
-        loginStatus = text("等待连接本机账号服务", 12, false);
+        loginStatus = text("请输入云端 Worker HTTPS 地址和管理员密码", 12, false);
         loginStatus.setTextColor(Color.rgb(95, 103, 115));
         page.addView(loginStatus, new LinearLayout.LayoutParams(-1, dp(36)));
         loginButton.setOnClickListener(v -> doAdminLogin());
-        page.addView(text("管理员密码只保存在家中服务器的配置文件中，不会写入普通用户账号资料。", 12, false));
+        page.addView(text("管理员账号固定为 admin。管理员密码由云端 Worker 的 ADMIN_PASSWORD 密钥设置。", 12, false));
         setRoot(page);
     }
 
@@ -205,7 +187,7 @@ public final class MainActivity extends Activity {
             loginButton.setEnabled(false);
             loginButton.setText("正在验证…");
         }
-        if (loginStatus != null) loginStatus.setText("正在连接本机 Wi-Fi 账号服务并验证密码…");
+        if (loginStatus != null) loginStatus.setText("正在连接云端 HTTPS 服务并验证管理员密码…");
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
             if (result == null) {
                 if (loginButton != null) {
@@ -231,16 +213,6 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private boolean isPrivateLanHost(String host) throws Exception {
-        java.net.InetAddress[] addresses = java.net.InetAddress.getAllByName(host);
-        for (java.net.InetAddress address : addresses) {
-            if (address.isLoopbackAddress() || address.isSiteLocalAddress() || address.isLinkLocalAddress()) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     private String trimServer(String value) {
         String s = value.trim();
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
@@ -257,7 +229,7 @@ public final class MainActivity extends Activity {
             try {
                 URL url = new URL(server + path);
                 if (!isPrivateLanHost(url.getHost())) {
-                    throw new java.io.IOException("只允许连接家庭 Wi-Fi 局域网服务器");
+                    throw new java.io.IOException("账号服务地址必须是 HTTPS workers.dev 地址");
                 }
                 c = (HttpURLConnection) url.openConnection();
                 c.setRequestMethod(method);
@@ -516,7 +488,7 @@ public final class MainActivity extends Activity {
 
     private void unban(String id) {
         new AlertDialog.Builder(this).setTitle("取消封禁")
-                .setMessage("确定取消该账号的封禁吗？取消后，该账号下次验证时即可恢复使用。")
+                .setMessage("确定取消该账号的封禁吗？在线用户收到通知并验证后即可恢复；离线用户下次打开 Ae 时恢复。")
                 .setNegativeButton("取消", null)
                 .setPositiveButton("确认取消封禁", (dialog, which) -> {
                     JSONObject body = new JSONObject();
