@@ -397,7 +397,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
     app.account.poll(config);
     if app.account.mode == Mode::Editor
         && app.account.pending.is_none()
-        && app.account.last_verified.map_or(true, |last| last.elapsed() > std::time::Duration::from_secs(60))
+        && app.account.last_verified.map_or(true, |last| last.elapsed() > std::time::Duration::from_secs(10))
     {
         app.account.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
     }
@@ -447,8 +447,6 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     ui.label("新密码");
                     ui.add(egui::TextEdit::singleline(&mut app.account.new_password).password(true));
                     ui.separator();
-                    ui.label("家庭服务器地址");
-                    ui.text_edit_singleline(&mut app.account.server_url);
                     ui.horizontal(|ui| {
                         let busy = app.account.pending.is_some();
                         if ui.add_enabled(!busy, egui::Button::new("保存资料")).clicked() {
@@ -536,8 +534,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         Mode::Unavailable => centered_window(ctx, "无法验证账号", vec2(400.0, 300.0), |ui| {
             ui.label("家中的账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");
             ui.label("请确认手机和服务器电脑连接同一个家庭 Wi-Fi，且服务器电脑保持开机。");
-            ui.label("服务器地址");
-            ui.text_edit_singleline(&mut app.account.server_url);
+            ui.label(format!("服务器地址：{}", app.account.server_url));
             if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新连接")).clicked() {
                 app.account.retry(config);
             }
