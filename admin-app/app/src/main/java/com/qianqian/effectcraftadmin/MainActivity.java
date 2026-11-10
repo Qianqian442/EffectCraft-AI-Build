@@ -113,6 +113,83 @@ public final class MainActivity extends Activity {
         params.bottomMargin = dp(10);
         page.addView(panel, params);
     }
+    /** Server-authoritative global node switch; never trust a local preference for this control. */
+    private void addGlobalNodePanel(LinearLayout page) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(10), dp(12), dp(10));
+        panel.setBackground(rounded(Color.WHITE));
+        panel.addView(text("跨地区服务器节点总控制", 16, true));
+        TextView status = text("正在读取云端节点网络状态…", 13, false);
+        panel.addView(status);
+        TextView count = text("在线节点：读取中", 12, false);
+        panel.addView(count);
+        Button toggle = button("读取中…");
+        toggle.setEnabled(false);
+        panel.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
+        TextView note = text("关闭后由云端拒绝新的节点会话并断开现有会话；开启后允许节点重新连接。", 11, false);
+        note.setTextColor(Color.rgb(95, 103, 115));
+        panel.addView(note);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(10);
+        page.addView(panel, params);
+
+        final boolean[] enabled = new boolean[]{true};
+        requestAsync("GET", "/v1/admin/network", null, true, result -> {
+            if (result == null) {
+                status.setText("云端总开关暂不可用：请先部署最新账号服务");
+                toggle.setText("重新读取状态");
+                toggle.setEnabled(true);
+                toggle.setOnClickListener(v -> addGlobalNodePanel((LinearLayout) panel.getParent()));
+                return;
+            }
+            JSONObject network = result.optJSONObject("network");
+            if (network == null) {
+                status.setText("云端返回的节点状态格式不正确");
+                return;
+            }
+            enabled[0] = network.optBoolean("enabled", false);
+            status.setText(enabled[0] ? "状态：已开启 · 允许跨地区节点连接" : "状态：已关闭 · 节点连接已被云端阻止");
+            toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
+            toggle.setEnabled(true);
+            requestAsync("GET", "/v1/admin/network/nodes", null, true, nodesResult -> {
+                if (nodesResult != null) {
+                    JSONArray nodes = nodesResult.optJSONArray("nodes");
+                    count.setText("在线节点会话：" + (nodes == null ? 0 : nodes.length()));
+                } else {
+                    count.setText("在线节点会话：暂时无法读取");
+                }
+            });
+            toggle.setOnClickListener(v -> {
+                boolean next = !enabled[0];
+                toggle.setEnabled(false);
+                toggle.setText(next ? "正在开启…" : "正在关闭…");
+                JSONObject body = new JSONObject();
+                try { body.put("enabled", next); } catch (Exception ignored) {}
+                requestAsync("POST", "/v1/admin/network", body, true, changed -> {
+                    if (changed == null) {
+                        toggle.setEnabled(true);
+                        toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
+                        status.setText("操作未确认；云端状态可能未改变，请重新读取");
+                        return;
+                    }
+                    JSONObject updated = changed.optJSONObject("network");
+                    if (updated == null) {
+                        toggle.setEnabled(true);
+                        status.setText("服务器返回状态异常，请重新读取");
+                        return;
+                    }
+                    enabled[0] = updated.optBoolean("enabled", false);
+                    status.setText(enabled[0] ? "状态：已开启 · 允许节点重新连接" : "状态：已关闭 · 云端已阻止节点会话");
+                    toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
+                    toggle.setEnabled(true);
+                    count.setText(enabled[0] ? "节点正在尝试重新连接" : "在线节点会话已要求断开");
+                    toast(enabled[0] ? "已开启跨地区节点网络" : "已关闭跨地区节点网络");
+                });
+            });
+        });
+    }
+
     private int dp(float value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -199,7 +276,6 @@ public final class MainActivity extends Activity {
         Button peerNetwork = button("手机节点网络（P2P 实验）");
         page.addView(peerNetwork, new LinearLayout.LayoutParams(-1, dp(48)));
         peerNetwork.setOnClickListener(v -> startActivity(new Intent(this, PeerNetworkActivity.class)));
-        addNodePanel(page);
         page.addView(text("服务器地址", 13, true));
         serverInput = field("服务器地址由管理版自动配置", false);
         serverInput.setText(server);
@@ -359,7 +435,7 @@ public final class MainActivity extends Activity {
         top.addView(refresh);
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
-        addNodePanel(page);
+        addGlobalNodePanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
         Button search = button("搜索账号");
