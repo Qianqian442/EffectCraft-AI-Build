@@ -10,15 +10,15 @@ draft_marker = """    let (mut format, mut fps, mut resolution, mut bitrate_mbps
             .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string(), 12.0, false, false))
     });
     let comp_name = app.session.active_comp_id()"""
-draft_replacement = """    let (mut format, mut fps, mut resolution, mut ai_interpolation, mut ai_upscale) = ui.ctx().data(|d| {
-        d.get_temp::<(String, f64, String, bool, bool)>(draft_id)
-            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string(), false, false))
+draft_replacement = """    let (mut format, mut fps, mut resolution, mut bitrate_mbps, mut ai_interpolation, mut ai_upscale) = ui.ctx().data(|d| {
+        d.get_temp::<(String, f64, String, f64, bool, bool)>(draft_id)
+            .unwrap_or_else(|| ("h264".to_string(), 0.0, "1080".to_string(), 12.0, false, false))
     });
     let preflight_error_id = open_id.with("preflight-error");
     let mut preflight_error = ui.ctx().data(|d| d.get_temp::<Option<String>>(preflight_error_id).flatten());
     let previous_settings = (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale);
     let comp_name = app.session.active_comp_id()"""
-if "let previous_settings = (format.clone(), fps, resolution.clone(), ai_interpolation, ai_upscale);" not in header:
+if "let previous_settings = (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale);" not in header:
     if draft_marker not in header:
         raise SystemExit("Could not find AI export dialog state for device preflight")
     header = header.replace(draft_marker, draft_replacement, 1)
