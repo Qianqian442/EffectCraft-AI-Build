@@ -60,7 +60,7 @@ jobs:
           set -euo pipefail
           LOG_FILE="$RUNNER_TEMP/ae-worker-deploy.log"
           npx --yes wrangler@4 deploy 2>&1 | tee "$LOG_FILE"
-          WORKER_URL="$(grep -Eo 'https://ae-cloud-account-api\\.[A-Za-z0-9-]+\\.workers\.dev' "$LOG_FILE" | tail -n 1 || true)"
+          WORKER_URL="$(grep -Eo 'https://ae-cloud-account-api\.[A-Za-z0-9-]+\.workers\.dev' "$LOG_FILE" | tail -n 1 || true)"
           if [ -z "$WORKER_URL" ]; then
             echo "::error::Deployment output did not include the workers.dev URL. Check Cloudflare token permissions and whether workers.dev is enabled."
             exit 1
