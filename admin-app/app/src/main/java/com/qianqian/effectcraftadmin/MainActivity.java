@@ -287,7 +287,7 @@ public final class MainActivity extends Activity {
                     Object detail = parsed.opt("detail");
                     if (detail instanceof JSONObject) error = ((JSONObject) detail).optString("message", detail.toString());
                     else error = detail == null ? ("HTTP " + code) : detail.toString();
-                    if (code == 401 || code == 403) {
+                    if ((code == 401 || code == 403) && auth) {
                         adminToken = "";
                         error = "管理员登录已失效：" + error;
                         getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
