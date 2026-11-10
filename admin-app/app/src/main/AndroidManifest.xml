@@ -21,6 +21,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity
+            android:name=".PeerNetworkActivity"
+            android:exported="false" />
         <service
             android:name=".LanServerService"
             android:exported="false"
