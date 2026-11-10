@@ -15,18 +15,15 @@ export class AccountSessionHub {
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.ctx.acceptWebSocket(server);
-      // Every connection/reconnection is announced. A still-active ban is also
-      // replayed so a launch race cannot miss a ban written just before connect.
-      server.send(JSON.stringify({ type: "account_session_connected" }));
-      const activeBan = await this.ctx.storage.get("active_ban");
-      if (activeBan && Date.parse(activeBan.banned_until) > Date.now()) {
+      // Replay the most recent status on every new connection. The client
+      // compares it with its just-verified state and only calls /v1/me if different.
+      const lastStatus = await this.ctx.storage.get("last_status");
+      if (lastStatus && ["banned", "unbanned"].includes(lastStatus.status)) {
         server.send(JSON.stringify({
           type: "account_status_changed",
-          status: "banned",
-          banned_until: activeBan.banned_until
+          status: lastStatus.status,
+          banned_until: lastStatus.banned_until || null
         }));
-      } else if (activeBan) {
-        await this.ctx.storage.delete("active_ban");
       }
       return new Response(null, { status: 101, webSocket: client });
     }
@@ -37,11 +34,10 @@ export class AccountSessionHub {
           !["banned", "unbanned"].includes(event.status)) {
         return Response.json({ error: "invalid event" }, { status: 400 });
       }
-      if (event.status === "banned" && typeof event.banned_until === "string") {
-        await this.ctx.storage.put("active_ban", { banned_until: event.banned_until });
-      } else {
-        await this.ctx.storage.delete("active_ban");
-      }
+      await this.ctx.storage.put("last_status", {
+        status: event.status,
+        banned_until: event.status === "banned" ? event.banned_until : null
+      });
       const payload = JSON.stringify(event);
       let delivered = 0;
       for (const socket of this.ctx.getWebSockets()) {
