@@ -355,7 +355,7 @@ public final class MainActivity extends Activity {
             info.addView(ban);
         }
         row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        Button banButton = button(banned ? "解除" : "封禁");
+        Button banButton = button(banned ? "取消封禁" : "封禁");
         row.addView(banButton);
         row.setOnClickListener(v -> showUserDetails(user));
         banButton.setOnClickListener(v -> {
@@ -439,10 +439,10 @@ public final class MainActivity extends Activity {
     }
 
     private void unban(String id) {
-        new AlertDialog.Builder(this).setTitle("解除封禁")
-                .setMessage("确定解除该账号封禁吗？")
+        new AlertDialog.Builder(this).setTitle("取消封禁")
+                .setMessage("确定取消该账号的封禁吗？取消后，该账号下次验证时即可恢复使用。")
                 .setNegativeButton("取消", null)
-                .setPositiveButton("解除", (dialog, which) -> {
+                .setPositiveButton("确认取消封禁", (dialog, which) -> {
                     JSONObject body = new JSONObject();
                     try { body.put("banned_until", JSONObject.NULL); body.put("reason", ""); } catch (Exception ignored) {}
                     requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
