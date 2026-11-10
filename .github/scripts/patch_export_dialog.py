@@ -232,7 +232,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     if submit {
         if let Some(comp) = app.session.active_comp_id() {
             // Never auto-start old queued jobs together with this new export.
-            let has_existing_queued = app.session.project.render_queue.iter().any(|item| item.is_queued());
+            let previous_queued_ids: Vec<u64> = app.session.project.render_queue.iter().filter(|item| item.is_queued()).map(|item| item.id).collect();
             let mut params = json!({"comp": comp.0, "format": format});
             if matches!(format.as_str(), "h264" | "hevc" | "av1" | "webm") {
                 // The engine expects bitrate in kbit/s. WebM VP9 uses its explicit bitrate mode.
@@ -278,39 +278,44 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                                 ) {
                                     Ok(_) => {
                                         open = false;
-                                        if has_existing_queued {
-                                            app.show_panel(crate::dock::PanelKind::RenderQueue);
-                                            app.ui.status = "视频已加入导出队列。检测到已有排队任务，为避免误导出其他项目，请检查队列后再点击“渲染”。".into();
-                                        } else {
-                                            ctx.data_mut(|data| {
-                                                data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
-                                                data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), vec![item_id]);
-                                                data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
-                                            });
-                                            match crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false})) {
-                                                Ok(result) => {
-                                                    let started_ids: Vec<u64> = result.get("items")
-                                                        .and_then(|items| items.as_array())
-                                                        .map(|items| items.iter()
-                                                            .filter_map(|item| item.get("id").and_then(|id| id.as_u64()))
-                                                            .collect())
-                                                        .unwrap_or_default();
-                                                    let ids = if started_ids.is_empty() { vec![item_id] } else { started_ids };
-                                                    ctx.data_mut(|data| {
-                                                        data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), ids);
-                                                    });
-                                                }
-                                                Err(error) => {
-                                                    let _ = crate::menus::invoke(
-                                                        app, &ctx, "renderQueue.setRender",
-                                                        json!({"item": item_id, "render": false}),
-                                                    );
-                                                    app.ui.status = error.clone();
-                                                    ctx.data_mut(|data| {
-                                                        data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
-                                                    });
-                                                }
+                                        // Temporarily unqueue older jobs so this button exports only the item just created.
+                                        for queued_id in &previous_queued_ids {
+                                            let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
+                                                json!({"item": queued_id, "render": false}));
+                                        }
+                                        ctx.data_mut(|data| {
+                                            data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
+                                            data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), vec![item_id]);
+                                            data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
+                                        });
+                                        match crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false})) {
+                                            Ok(result) => {
+                                                let started_ids: Vec<u64> = result.get("items")
+                                                    .and_then(|items| items.as_array())
+                                                    .map(|items| items.iter()
+                                                        .filter_map(|item| item.get("id").and_then(|id| id.as_u64()))
+                                                        .collect())
+                                                    .unwrap_or_default();
+                                                let ids = if started_ids.is_empty() { vec![item_id] } else { started_ids };
+                                                ctx.data_mut(|data| {
+                                                    data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), ids);
+                                                });
                                             }
+                                            Err(error) => {
+                                                let _ = crate::menus::invoke(
+                                                    app, &ctx, "renderQueue.setRender",
+                                                    json!({"item": item_id, "render": false}),
+                                                );
+                                                app.ui.status = error.clone();
+                                                ctx.data_mut(|data| {
+                                                    data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
+                                                });
+                                            }
+                                        }
+                                        // Restore older queued jobs after the current export has started.
+                                        for queued_id in &previous_queued_ids {
+                                            let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
+                                                json!({"item": queued_id, "render": true}));
                                         }
                                     }
                                     Err(error) => {
