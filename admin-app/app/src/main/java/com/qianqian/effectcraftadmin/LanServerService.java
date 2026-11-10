@@ -15,7 +15,7 @@ import android.os.IBinder;
 public final class LanServerService extends Service {
     private static final String CHANNEL_ID = "effectcraft_p2p_node";
     private static final int NOTIFICATION_ID = 8787;
-    private LanAccountServer server;
+    private PeerHealthServer server;
     private LanPeerDiscovery discovery;
     private Thread worker;
 
@@ -25,13 +25,13 @@ public final class LanServerService extends Service {
         Notification notification = new Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
             .setContentTitle("EffectCraft 手机节点")
-            .setContentText("正在启动本机节点并发现同一 Wi-Fi 的其他节点")
+            .setContentText("正在启动网络节点并发现附近设备")
             .setOngoing(true)
             .build();
         startForeground(NOTIFICATION_ID, notification);
 
-        server = new LanAccountServer(getApplicationContext());
-        worker = new Thread(server, "EffectCraft-P2P-Account-Node");
+        server = new PeerHealthServer();
+        worker = new Thread(server, "EffectCraft-P2P-Lightweight-Node");
         worker.setDaemon(true);
         worker.start();
 
@@ -43,14 +43,14 @@ public final class LanServerService extends Service {
     }
 
     private void updateNotification() {
-        String ip = LanAccountServer.getWifiIpv4();
+        String ip = PeerHealthServer.getWifiIpv4();
         int count = LanPeerDiscovery.getSavedPeers(this).length();
         String status = ip.isEmpty()
             ? "等待连接 Wi-Fi · 附近节点 " + count + " 台"
             : ip + ":" + LanPeerDiscovery.PORT + " · 附近节点 " + count + " 台";
         Notification notification = new Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-            .setContentTitle("EffectCraft 手机节点运行中")
+            .setContentTitle("EffectCraft 网络节点运行中")
             .setContentText(status)
             .setOngoing(true)
             .build();
@@ -63,7 +63,7 @@ public final class LanServerService extends Service {
             NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, "EffectCraft 手机节点", NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("当用户主动启用节点时，保持本机局域网节点运行");
+            channel.setDescription("保持用户主动启用的轻量网络节点运行");
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
         }
