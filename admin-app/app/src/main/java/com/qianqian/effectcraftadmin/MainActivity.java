@@ -339,6 +339,19 @@ public final class MainActivity extends Activity {
         page.invalidate();
     }
 
+    private void updateVisibleUser(JSONObject user) {
+        if (user == null || rows == null) return;
+        String id = user.optString("id");
+        for (int i = 0; i < rows.getChildCount(); i++) {
+            View child = rows.getChildAt(i);
+            if (id.equals(child.getTag())) {
+                rows.removeViewAt(i);
+                break;
+            }
+        }
+        addUserRow(user);
+    }
+
     private void addUserRow(JSONObject user) {
         String id = user.optString("id");
         String name = user.optString("name", "未命名");
@@ -351,6 +364,7 @@ public final class MainActivity extends Activity {
         row.setGravity(Gravity.CENTER_VERTICAL);
         row.setPadding(dp(10), dp(9), dp(8), dp(9));
         row.setBackground(rounded(Color.WHITE));
+        row.setTag(id);
         LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT);
         rp.bottomMargin = dp(8);
         rows.addView(row, rp);
@@ -485,7 +499,7 @@ public final class MainActivity extends Activity {
                             toast(delivered > 0
                                 ? "已封禁，并已通知在线 Ae 设备（" + delivered + " 个连接）"
                                 : "封禁记录已保存；未发现在线 Ae 连接，对方下次联网或打开 Ae 时核验");
-                            loadUsers(searchInput == null ? "" : searchInput.getText().toString());
+                            updateVisibleUser(result.optJSONObject("user"));
                         }
                     });
                 }).show();
@@ -504,7 +518,7 @@ public final class MainActivity extends Activity {
                             toast(delivered > 0
                                 ? "已解禁，并已通知在线 Ae 设备（" + delivered + " 个连接）"
                                 : "解禁记录已保存；对方下次联网或打开 Ae 时核验");
-                            loadUsers(searchInput == null ? "" : searchInput.getText().toString());
+                            updateVisibleUser(result.optJSONObject("user"));
                         }
                     });
                 }).show();
