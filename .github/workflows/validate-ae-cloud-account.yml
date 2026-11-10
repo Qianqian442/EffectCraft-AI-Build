@@ -1,0 +1,28 @@
+name: Validate Ae Cloud Account Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cloudflare-worker/**'
+      - '.github/workflows/validate-ae-cloud-account.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Bundle Worker and validate Wrangler bindings
+        working-directory: cloudflare-worker
+        run: npx --yes wrangler@4 deploy --dry-run --outdir /tmp/ae-cloud-account-dry-run
