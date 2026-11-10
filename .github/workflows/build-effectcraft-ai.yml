@@ -51,7 +51,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  validate-patches:
+    name: Validate Android build patch scripts
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile patch scripts
+        run: |
+          python3 -m py_compile \
+            .github/scripts/patch_export_dialog.py \
+            .github/scripts/upgrade_export_preflight.py \
+            .github/scripts/integrate_video_ai.py \
+            .github/scripts/add_android_gallery_export.py
+
   build:
+    needs: validate-patches
     if: ${{ vars.AE_ACCOUNT_API_URL != '' }}
     name: Build EffectCraft 0.21.1 with AI helper
     runs-on: ubuntu-22.04
