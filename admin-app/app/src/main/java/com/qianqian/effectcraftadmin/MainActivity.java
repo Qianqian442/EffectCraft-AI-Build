@@ -1,6 +1,7 @@
 package com.qianqian.effectcraftadmin;
 
 import android.app.Activity;
+import android.content.Intent;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
@@ -151,6 +152,9 @@ public final class MainActivity extends Activity {
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
         page.addView(text("云端账号管理：不同地区、不同网络的用户可以注册和登录。", 14, false));
         page.addView(text("管理设备只需能访问 Cloudflare HTTPS 服务，不需要保持开机供其他用户连接。", 13, false));
+        Button peerNetwork = button("手机节点网络（P2P 实验）");
+        page.addView(peerNetwork, new LinearLayout.LayoutParams(-1, dp(48)));
+        peerNetwork.setOnClickListener(v -> startActivity(new Intent(this, PeerNetworkActivity.class)));
         page.addView(text("服务器地址", 13, true));
         serverInput = field("https://你的Worker地址.workers.dev", false);
         serverInput.setText(server);
