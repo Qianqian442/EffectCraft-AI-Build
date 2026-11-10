@@ -8,16 +8,13 @@ export class AccountSessionHub {
 
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === "/connect") {
+    if (url.pathname === "/v1/events") {
       if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
         return new Response("WebSocket upgrade required", { status: 426 });
       }
-      const accountId = request.headers.get("x-ae-account-id");
-      if (!accountId) return new Response("Unauthorized", { status: 401 });
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.ctx.acceptWebSocket(server);
-      server.serializeAttachment({ accountId });
       return new Response(null, { status: 101, webSocket: client });
     }
 
