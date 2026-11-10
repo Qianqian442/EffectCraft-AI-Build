@@ -335,6 +335,13 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
     let port: u16 = port.parse().map_err(|_| "服务器端口不正确".to_string())?;
     let address = (host, port).to_socket_addrs().map_err(|e| e.to_string())?
         .next().ok_or_else(|| "无法解析服务器地址".to_string())?;
+    let is_home_lan = match address.ip() {
+        std::net::IpAddr::V4(ip) => ip.is_private() || ip.is_loopback() || ip.is_link_local(),
+        std::net::IpAddr::V6(ip) => ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local(),
+    };
+    if !is_home_lan {
+        return Err("账号服务器地址必须是家庭局域网 IP，不能使用公网地址".to_string());
+    }
     let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(7)).map_err(|e| e.to_string())?;
     stream.set_read_timeout(Some(Duration::from_secs(8))).map_err(|e| e.to_string())?;
     stream.set_write_timeout(Some(Duration::from_secs(8))).map_err(|e| e.to_string())?;
