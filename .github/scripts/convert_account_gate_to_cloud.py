@@ -84,8 +84,7 @@ def main() -> None:
         "                    if !saved.token.is_empty() {\n"
         "                        self.token = Some(saved.token);\n"
         "                    }",
-        '                    if saved.server_url.starts_with("https://") {\n'
-        "                        self.server_url = saved.server_url;\n"
+        '                    if saved.server_url == self.server_url {\n'
         "                        if !saved.token.is_empty() {\n"
         "                            self.token = Some(saved.token);\n"
         "                        }\n"
