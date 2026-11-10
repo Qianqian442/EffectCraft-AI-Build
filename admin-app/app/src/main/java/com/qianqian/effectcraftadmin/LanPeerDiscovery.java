@@ -1,6 +1,8 @@
 package com.qianqian.effectcraftadmin;
 
 import android.content.Context;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
 import android.net.nsd.NsdManager;
 import android.net.nsd.NsdServiceInfo;
 import android.net.wifi.WifiManager;
@@ -9,6 +11,10 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.net.Inet4Address;
+import java.security.KeyPairGenerator;
+import java.security.KeyStore;
+import java.security.MessageDigest;
+import java.security.spec.ECGenParameterSpec;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
@@ -32,6 +38,7 @@ final class LanPeerDiscovery {
     private final Context context;
     private final NsdManager nsd;
     private final String nodeId;
+    private final String publicKeyText;
     private final Map<String, JSONObject> peers = new LinkedHashMap<>();
     private WifiManager.MulticastLock multicastLock;
     private NsdManager.RegistrationListener registrationListener;
@@ -41,14 +48,39 @@ final class LanPeerDiscovery {
     LanPeerDiscovery(Context context) {
         this.context = context.getApplicationContext();
         this.nsd = (NsdManager) this.context.getSystemService(Context.NSD_SERVICE);
-        String saved = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .getString(KEY_NODE_ID, "");
-        if (saved == null || saved.length() < 16) {
-            saved = UUID.randomUUID().toString();
-            this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-                .edit().putString(KEY_NODE_ID, saved).apply();
+        String saved;
+        String publicText = "";
+        try {
+            KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+            keyStore.load(null);
+            String alias = "effectcraft-peer-identity-v1";
+            if (!keyStore.containsAlias(alias)) {
+                KeyPairGenerator generator = KeyPairGenerator.getInstance(
+                    KeyProperties.KEY_ALGORITHM_EC, "AndroidKeyStore"
+                );
+                KeyGenParameterSpec spec = new KeyGenParameterSpec.Builder(
+                    alias, KeyProperties.PURPOSE_SIGN | KeyProperties.PURPOSE_VERIFY
+                ).setAlgorithmParameterSpec(new ECGenParameterSpec("secp256r1"))
+                    .setDigests(KeyProperties.DIGEST_SHA256).build();
+                generator.initialize(spec);
+                generator.generateKeyPair();
+                keyStore.load(null);
+            }
+            byte[] encodedPublicKey = keyStore.getCertificate(alias).getPublicKey().getEncoded();
+            publicText = android.util.Base64.encodeToString(
+                encodedPublicKey, android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP | android.util.Base64.NO_PADDING
+            );
+            byte[] fingerprint = MessageDigest.getInstance("SHA-256").digest(encodedPublicKey);
+            saved = toHex(fingerprint).substring(0, 32);
+        } catch (Exception identityError) {
+            saved = this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+                .getString(KEY_NODE_ID, "");
+            if (saved == null || saved.length() < 16) saved = UUID.randomUUID().toString();
         }
         this.nodeId = saved;
+        this.publicKeyText = publicText;
+        this.context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_NODE_ID, saved).apply();
     }
 
     static String getNodeId(Context context) {
@@ -113,6 +145,7 @@ final class LanPeerDiscovery {
         try {
             local.setAttribute("node", nodeId);
             local.setAttribute("protocol", "1");
+            if (!publicKeyText.isEmpty()) local.setAttribute("pub", publicKeyText);
         } catch (IllegalArgumentException ignored) { }
 
         registrationListener = new NsdManager.RegistrationListener() {
@@ -167,9 +200,13 @@ final class LanPeerDiscovery {
         if (remoteNode == null || remoteNode.isEmpty()) remoteNode = info.getServiceName();
         if (nodeId.equals(remoteNode)) return;
 
+        String publicKey = decode(info.getAttributes() == null ? null : info.getAttributes().get("pub"));
+        String fingerprint = publicKey.isEmpty() ? "" : fingerprintOfPublicKey(publicKey);
         JSONObject peer = new JSONObject();
         try {
             peer.put("node_id", remoteNode);
+            peer.put("public_key", publicKey);
+            peer.put("fingerprint", fingerprint);
             peer.put("service", info.getServiceName());
             peer.put("address", remoteIp);
             peer.put("port", info.getPort());
@@ -178,6 +215,21 @@ final class LanPeerDiscovery {
             peers.put(remoteNode, peer);
             saveSnapshot();
         } catch (Exception ignored) { }
+    }
+
+    private static String fingerprintOfPublicKey(String encoded) {
+        try {
+            byte[] key = android.util.Base64.decode(
+                encoded, android.util.Base64.URL_SAFE | android.util.Base64.NO_WRAP | android.util.Base64.NO_PADDING
+            );
+            return toHex(MessageDigest.getInstance("SHA-256").digest(key)).substring(0, 32);
+        } catch (Exception ignored) { return ""; }
+    }
+
+    private static String toHex(byte[] bytes) {
+        StringBuilder out = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) out.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
+        return out.toString();
     }
 
     private static String decode(byte[] bytes) {
