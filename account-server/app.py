@@ -25,6 +25,7 @@ DB_PATH = DATA_DIR / "effectcraft-accounts.sqlite3"
 JWT_SECRET = os.environ.get("JWT_SECRET", "")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
 TOKEN_TTL_DAYS = 30
 ADMIN_TOKEN_TTL_HOURS = 8
 password_hasher = PasswordHasher(time_cost=3, memory_cost=65536, parallelism=2)
@@ -59,8 +60,10 @@ def db() -> sqlite3.Connection:
 def startup() -> None:
     if len(JWT_SECRET) < 32:
         raise RuntimeError("JWT_SECRET must be at least 32 characters. Run setup.ps1 first.")
-    if len(ADMIN_PASSWORD) < 12 or ADMIN_PASSWORD.lower() in {"changeme", "password123456"}:
-        raise RuntimeError("Set a unique ADMIN_PASSWORD of at least 12 characters in account-server/.env.")
+    if not ADMIN_PASSWORD_HASH and (len(ADMIN_PASSWORD) < 12 or ADMIN_PASSWORD.lower() in {"changeme", "password123456"}):
+        raise RuntimeError("Set a unique administrator password (or PBKDF2 hash) in account-server/.env.")
+    if ADMIN_PASSWORD_HASH and not ADMIN_PASSWORD_HASH.startswith("pbkdf2-sha256:"):
+        raise RuntimeError("ADMIN_PASSWORD_HASH must use the supported pbkdf2-sha256 format.")
     with db() as con:
         con.execute("PRAGMA journal_mode=WAL")
         con.execute("""
@@ -138,6 +141,24 @@ def current_user(claims: dict[str, Any] = Depends(bearer_claims)) -> sqlite3.Row
         raise HTTPException(401, "账号不存在")
     enforce_unbanned(row)
     return account_by_id(row["id"])
+
+
+def verify_admin_password(candidate: str) -> bool:
+    if ADMIN_PASSWORD_HASH:
+        try:
+            algorithm, rounds_text, salt_text, digest_text = ADMIN_PASSWORD_HASH.split(":", 3)
+            if algorithm != "pbkdf2-sha256":
+                return False
+            rounds = int(rounds_text)
+            salt = base64.b64decode(salt_text, validate=True)
+            expected = base64.b64decode(digest_text, validate=True)
+            if rounds < 200000 or len(salt) < 16 or len(expected) < 32:
+                return False
+            actual = hashlib.pbkdf2_hmac("sha256", candidate.encode("utf-8"), salt, rounds, dklen=len(expected))
+            return hmac.compare_digest(actual, expected)
+        except Exception:
+            return False
+    return hmac.compare_digest(candidate.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8"))
 
 
 def current_admin(claims: dict[str, Any] = Depends(bearer_claims)) -> dict[str, Any]:
@@ -311,7 +332,7 @@ def update_profile(body: ProfileBody, row: sqlite3.Row = Depends(current_user)) 
 @app.post("/v1/admin/login")
 def admin_login(body: AdminLoginBody, request: Request) -> dict[str, Any]:
     rate_limit(request, "admin-login", 5)
-    if not (secrets.compare_digest(body.username.encode("utf-8"), ADMIN_USERNAME.encode("utf-8")) and secrets.compare_digest(body.password.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8"))):
+    if not (hmac.compare_digest(body.username.encode("utf-8"), ADMIN_USERNAME.encode("utf-8")) and verify_admin_password(body.password)):
         raise HTTPException(401, "管理员账号或密码错误")
     token = make_token(ADMIN_USERNAME, "admin", timedelta(hours=ADMIN_TOKEN_TTL_HOURS))
     return {"token": token, "expires_in": ADMIN_TOKEN_TTL_HOURS * 3600}
