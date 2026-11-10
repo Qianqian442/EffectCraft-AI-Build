@@ -149,6 +149,25 @@ final class AdminEventStore extends SQLiteOpenHelper {
         return result;
     }
 
+    /** Highest gap-free sequence; a later event never hides a missing predecessor. */
+    synchronized long contiguousSequence(String issuerKey) {
+        if (issuerKey == null || issuerKey.isEmpty()) return 0L;
+        Cursor cursor = getReadableDatabase().query(TABLE, new String[]{"issuer_sequence"},
+            "issuer_key=?", new String[]{issuerKey}, null, null, "issuer_sequence ASC");
+        long expected = 1L;
+        try {
+            while (cursor.moveToNext()) {
+                long found = cursor.getLong(0);
+                if (found < expected) continue;
+                if (found != expected) break;
+                expected++;
+            }
+            return expected - 1L;
+        } finally {
+            cursor.close();
+        }
+    }
+
     synchronized long highestSequence(String issuerKey) {
         if (issuerKey == null || issuerKey.isEmpty()) return 0L;
         Cursor cursor = getReadableDatabase().rawQuery(
