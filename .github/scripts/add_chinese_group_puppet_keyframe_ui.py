@@ -558,6 +558,18 @@ def patch_native_keyframe_color(root: Path) -> None:
     let kcol = Color32::WHITE;
 """
     source = replace_once(source, old, new, "White native timeline keyframe markers")
+    source = replace_once(
+        source,
+        "fn key_paint(g: &Rw, rc: &RowCtx<'_>, k: &effectcraft_engine::keyframe::Keyframe, x: f32, ks: bool) -> Rect {",
+        "fn key_paint(g: &Rw, rc: &RowCtx<'_>, k: &effectcraft_engine::keyframe::Keyframe, x: f32, _ks: bool) -> Rect {",
+        "Remove unused selected-state parameter after setting every keyframe white",
+    )
+    source = replace_once(
+        source,
+        "    let t = g.tl.t;\n    let gp = g.gp.clone();",
+        "    let gp = g.gp.clone();",
+        "Remove unused timeline theme binding after setting keyframes white",
+    )
     path.write_text(source, encoding="utf-8")
 
 
