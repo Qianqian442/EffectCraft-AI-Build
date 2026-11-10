@@ -191,26 +191,26 @@ def main() -> None:
         return Err("账号服务必须使用 HTTPS 云端地址".to_string());
     }
     let endpoint = format!("{}{}", url.trim_end_matches('/'), path);
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .timeout_global(Some(Duration::from_secs(15)))
+        .build()
+        .into();
     let mut request = if method == "GET" {
-        ureq::get(&endpoint)
+        agent.get(&endpoint)
     } else {
-        ureq::post(&endpoint)
+        agent.post(&endpoint)
     };
     request = request.header("Accept", "application/json");
     if let Some(token) = token {
         request = request.header("Authorization", &format!("Bearer {token}"));
     }
-    let result = if body.is_null() {
+    let mut response = if body.is_null() {
         request.call()
     } else {
         let bytes = serde_json::to_vec(&body).map_err(|error| error.to_string())?;
         request.header("Content-Type", "application/json").send(bytes.as_slice())
-    };
-    let mut response = match result {
-        Ok(response) => response,
-        Err(ureq::Error::StatusCode(_, response)) => response,
-        Err(error) => return Err(format!("云端请求失败：{error}")),
-    };
+    }.map_err(|error| format!("云端请求失败：{error}"))?;
     let status = response.status().as_u16();
     let body_text = response.body_mut().read_to_string().map_err(|error| error.to_string())?;
     let value = serde_json::from_str::<Value>(&body_text)
