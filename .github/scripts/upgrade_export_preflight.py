@@ -118,7 +118,7 @@ warning_ui = r"""
         if force_now { warning_open = false; preflight_error = None; force_export = true; }
     }
 """
-submit_control = """submit_old = "    let mut submit = false;"
+submit_old = "    let mut submit = false;"
 submit_new = "    let mut submit = force_export;"
 if submit_new not in header:
     if submit_old not in header:
