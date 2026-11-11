@@ -68,7 +68,7 @@ jobs:
             .github/scripts/patch_export_dialog.py \
             .github/scripts/upgrade_export_preflight.py \
             .github/scripts/integrate_video_ai.py \
-            .github/scripts/add_android_gallery_export.py
+            .github/scripts/add_android_gallery_export.py \
             .github/scripts/add_libp2p_node_layer.py
 
   build:
