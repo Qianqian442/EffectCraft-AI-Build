@@ -106,7 +106,7 @@ fn archive_desktop_native_file(s: &mut Session, native_path: &str) -> Result<Val
     }))
 }
 
-/// Inspect a desktop plug-in ZIP/ZXP and install only formats EffectCraft can safely host. and install only formats EffectCraft can safely host.
+/// Inspect a desktop plug-in ZIP/ZXP and install only formats EffectCraft can safely host.
 /// Native .aex/.dll/.ofx binaries are preserved for analysis but are never executed.
 fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result<Value> {
     const CMD: &str = "effect.plugins.load";
