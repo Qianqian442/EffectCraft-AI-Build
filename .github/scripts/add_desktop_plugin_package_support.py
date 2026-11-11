@@ -26,7 +26,87 @@ def patch_effect_loader(root: Path) -> None:
 
     helper = r'''
 // EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_PACKAGE_IMPORT_V1
-/// Inspect a desktop plug-in ZIP and install only formats EffectCraft can safely host.
+/// Preserve one original desktop native plug-in file exactly as supplied.
+/// This is an import/archive operation only, not a claim that the binary executes on Android.
+fn archive_desktop_native_file(s: &mut Session, native_path: &str) -> Result<Value> {
+    const CMD: &str = "effect.plugins.load";
+    const MAX_NATIVE_BYTES: u64 = 64 * 1024 * 1024;
+    let source = Path::new(native_path);
+    let extension = source.extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+    if !["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str()) {
+        return Err(bad(CMD, "不支持的原生插件文件扩展名"));
+    }
+    let metadata = std::fs::metadata(source)
+        .map_err(|error| bad(CMD, format!("无法读取原插件属性：{error}")))?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_NATIVE_BYTES {
+        return Err(bad(CMD, "原插件必须是非空普通文件且不超过 64 MB"));
+    }
+    let file_name = source.file_name().and_then(|v| v.to_str())
+        .ok_or_else(|| bad(CMD, "原插件文件名无效"))?;
+    if file_name.len() > 180 || !super::scripts::is_bare_name(file_name)
+        || (cfg!(windows) && super::scripts::windows_unsafe_name(file_name)) {
+        return Err(bad(CMD, "原插件文件名不安全"));
+    }
+    let bytes = std::fs::read(source)
+        .map_err(|error| bad(CMD, format!("读取原插件失败：{error}")))?;
+    let format = if bytes.starts_with(b"MZ") { "PE/Windows DLL" }
+        else if bytes.starts_with(b"\\x7fELF") { "ELF" }
+        else if bytes.starts_with(&[0xcf, 0xfa, 0xed, 0xfe]) || bytes.starts_with(&[0xfe, 0xed, 0xfa, 0xcf]) { "Mach-O" }
+        else { "unknown/native data" };
+    let architecture = if format == "PE/Windows DLL" && bytes.len() >= 0x40 {
+        let offset = u32::from_le_bytes([bytes[0x3c], bytes[0x3d], bytes[0x3e], bytes[0x3f]]) as usize;
+        if bytes.get(offset..offset.saturating_add(6)).is_some_and(|h| h.starts_with(b"PE\\0\\0")) {
+            match u16::from_le_bytes([bytes[offset + 4], bytes[offset + 5]]) {
+                0x8664 => "x86_64",
+                0x014c => "x86",
+                0xaa64 => "ARM64",
+                _ => "unknown PE machine",
+            }
+        } else { "unknown PE machine" }
+    } else if format == "ELF" && bytes.len() >= 20 {
+        match u16::from_le_bytes([bytes[18], bytes[19]]) {
+            62 => "x86_64",
+            183 => "AArch64",
+            3 => "x86",
+            40 => "ARM",
+            _ => "unknown ELF machine",
+        }
+    } else if format == "Mach-O" { "Apple Mach-O" } else { "unknown" };
+
+    let cfg = s.config.clone()
+        .ok_or_else(|| bad(CMD, "当前会话没有可写的插件目录"))?;
+    let root = cfg.dir()
+        .ok_or_else(|| bad(CMD, "当前存储环境没有可访问的插件目录"))?;
+    let originals_dir = root.join("Plug-ins").join("Desktop-Originals");
+    std::fs::create_dir_all(&originals_dir)
+        .map_err(|error| bad(CMD, format!("无法创建原插件存档目录：{error}")))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let saved_name = format!("desktop_{stamp}_{file_name}");
+    let saved_path = originals_dir.join(&saved_name);
+    std::fs::write(&saved_path, &bytes)
+        .map_err(|error| bad(CMD, format!("无法原样保存原插件：{error}")))?;
+    s.toast(format!("已原样保存原插件 {file_name}；尚未在 Android 中加载或运行"));
+    Ok(json!({
+        "installed": [],
+        "panels": [],
+        "loaded": [],
+        "errors": [],
+        "desktop_native_requires_port": [{
+            "source": file_name,
+            "saved": saved_path.to_string_lossy(),
+            "bytes": bytes.len(),
+            "format": format,
+            "architecture": architecture,
+            "status": "saved_unported"
+        }],
+        "desktop_native_compatibility_matches": []
+    }))
+}
+
+/// Inspect a desktop plug-in ZIP/ZXP and install only formats EffectCraft can safely host. and install only formats EffectCraft can safely host.
 /// Native .aex/.dll/.ofx binaries are preserved for analysis but are never executed.
 fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result<Value> {
     const CMD: &str = "effect.plugins.load";
@@ -284,7 +364,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         }
     }
 
-    let compatibility_match_count = native_mappings.len();
+    let compatibility_match_count = 0usize;
     let compatibility_summary = native_mappings.iter().map(|item| {
         format!(
             "{} → {}：{}",
@@ -310,7 +390,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。若文件名匹配已内置兼容效果，报告会列出替代效果；替代效果不是原厂插件。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。不会按文件名匹配或换成近似替代效果。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
@@ -348,16 +428,33 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
 
     anchor = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
-    replacement = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
-    if let Some(path) = str_p(p, "path")
-        && Path::new(path).extension().is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
-    {
-        return install_desktop_plugin_archive(s, path);
+    replacement = '''    if let Some(path) = str_p(p, "path") {
+        let extension = Path::new(path).extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+        if extension == "zip" || extension == "zxp" {
+            return install_desktop_plugin_archive(s, path);
+        }
+        if ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str()) {
+            return archive_desktop_native_file(s, path);
+        }
     }
+    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
     source = replace_once(source, anchor, replacement, "ZIP route to desktop package installer")
     path.write_text(source, encoding="utf-8")
     print("Added safe desktop ZIP inspection, WASM/JSX bundle installation, JS script import and native-binary staging.")
+
+
+def patch_picker(root: Path) -> None:
+    path = root / "crates/ui-egui/src/menus/frontend.rs"
+    source = path.read_text(encoding="utf-8")
+    old = 'Ask::Open(&["wasm", "wat", "zip"])'
+    new = 'Ask::Open(&["wasm", "wat", "zip", "zxp", "aex", "dll", "ofx", "so", "dylib", "prm", "8bf"])'
+    if new not in source:
+        if old not in source:
+            raise SystemExit("Could not find the plugin picker extension list.")
+        source = source.replace(old, new, 1)
+        path.write_text(source, encoding="utf-8")
+    print("Plugin file picker accepts WASM/WAT, ZIP/ZXP and individual native plugin files.")
 
 
 def patch_toolbar(root: Path) -> None:
@@ -423,7 +520,7 @@ def main() -> None:
         raise SystemExit("EFFECTCRAFT_DIR must point to the checked-out EffectCraft source")
     patch_effect_loader(root)
     patch_toolbar(root)
-    print("Desktop plug-in ZIPs now install compatible WASM modules and JSX panels, import JS scripts, archive portable resources, and preserve native binaries for later porting.")
+    print("Desktop plug-in files and ZIP/ZXP containers are inspected; supported WASM/JSX/JS components load normally, native originals are kept without filename-based substitutes.")
     print("No desktop native binary is executed by the Android app.")
 
 
