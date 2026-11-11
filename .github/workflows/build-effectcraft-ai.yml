@@ -386,11 +386,11 @@ jobs:
       - name: Require public HTTPS account API and disable LAN fallback
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+          AE_ACCOUNT_API_URL: https://ae-cloud-account-api.q1939023856.workers.dev
         run: |
           set -euo pipefail
           if [ -z "${AE_ACCOUNT_API_URL:-}" ]; then
-            echo "::error::Repository variable AE_ACCOUNT_API_URL is required. LAN account fallback is disabled."
+            echo "::error::Public account API URL is missing. LAN account fallback is disabled."
             exit 1
           fi
           python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
