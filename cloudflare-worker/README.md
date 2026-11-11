@@ -17,6 +17,7 @@ This service provides the cloud account features used by the two Ae APKs: regist
 - `GET /v1/admin/users?q=`
 - `GET /v1/admin/users/{id}`
 - `POST /v1/admin/users/{id}/ban`
+- `DELETE /v1/admin/users/{id}` (only after permanent ban; releases the name, QQ and WeChat identifiers)
 
 ## Ban/unban behavior
 
@@ -62,3 +63,12 @@ Do not distribute the previous LAN-only builds. Build and validate both cloud-co
 ## Cross-network node relay status
 
 The Worker now accepts bounded, authenticated opaque relay envelopes between currently connected account nodes. It enforces the global network switch, sender identity from the validated account session, recipient routing, message age, duplicate message IDs, payload size and a per-connection rate limit. It does not store media or video files. The APK-side end-to-end key agreement, recipient trust/pairing, ciphertext generation/decryption, signature verification and real cross-carrier device-to-device acceptance tests are still required before this can be called a production-secure peer network. The relay is not yet deployed from this implementation branch.
+
+
+## Registration identifier rules
+
+- Account names are unique case-insensitively after trimming whitespace.
+- QQ numbers are unique; WeChat IDs are unique case-insensitively.
+- Registration and profile changes reject identifiers already owned by another account.
+- Permanent ban uses the reserved timestamp `9999-12-31T23:59:59Z`. Only an account with that exact permanent-ban marker can be deleted by an administrator.
+- Deletion revokes live node sessions, notifies connected clients where possible, and then removes the account row so its name, QQ number, and WeChat ID can be registered again.
