@@ -727,6 +727,23 @@ def main() -> None:
         manifest = manifest.replace(target_header, target_header + rfd_dependency, 1)
         manifest_path.write_text(manifest, encoding="utf-8")
 
+    # Keep Cargo locked builds deterministic: rfd already exists in the upstream lockfile,
+    # but the generated ui-egui package must declare the new dependency there as well.
+    lock_path = root / "Cargo.lock"
+    lock = lock_path.read_text(encoding="utf-8")
+    package_start = lock.find('name = "effectcraft-ui-egui"\n')
+    if package_start < 0:
+        raise SystemExit("Could not find effectcraft-ui-egui in Cargo.lock")
+    package_end = lock.find("\\n]", package_start)
+    if package_end < 0:
+        raise SystemExit("Could not find the end of effectcraft-ui-egui Cargo.lock entry")
+    package_block = lock[package_start:package_end]
+    if '"rfd",' not in package_block:
+        if ' "rayon",' not in package_block:
+            raise SystemExit("Could not find the dependency insertion point in Cargo.lock")
+        lock = lock[:package_start] + package_block.replace(' "rayon",', ' "rayon",\\n "rfd",', 1) + lock[package_end:]
+        lock_path.write_text(lock, encoding="utf-8")
+
     source = lib.read_text(encoding="utf-8")
     source = replace_once(source, "mod app;\n", "mod account;\nmod app;\n", "account module declaration")
     source = replace_once(
