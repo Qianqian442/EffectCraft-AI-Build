@@ -79,21 +79,29 @@ def main() -> None:
         "            notification_pending: None,",
         "account event state initialization",
     )
-    source = replace_once(
-        source,
-        '                    if saved.server_url == self.server_url {\n'
-        "                        self.node_opt_in = saved.node_opt_in;\n"
-        "                        if !saved.token.is_empty() {\n"
-        "                            self.token = Some(saved.token);\n"
-        "                        }\n"
-        "                    }",
-        '                    if saved.server_url == self.server_url {\n'
-        "                        if !saved.token.is_empty() {\n"
-        "                            self.token = Some(saved.token);\n"
-        "                        }\n"
-        "                    }",
-        "discard old LAN token and restore cloud token only",
+    # The LAN gate persists an HTTP URL and node_opt_in. Never restore a
+    # legacy LAN endpoint or its bearer token after switching to the cloud API.
+    legacy_saved = (
+        '                    if saved.server_url.starts_with("http://") {\\n'
+        "                        self.server_url = saved.server_url;\\n"
+        "                    }\\n"
+        "                    self.node_opt_in = saved.node_opt_in;\\n"
+        "                    if !saved.token.is_empty() {\\n"
+        "                        self.token = Some(saved.token);\\n"
+        "                    }"
     )
+    cloud_saved = (
+        "                    if saved.server_url == self.server_url {\\n"
+        "                        if !saved.token.is_empty() {\\n"
+        "                            self.token = Some(saved.token);\\n"
+        "                        }\\n"
+        "                    }"
+    )
+    if legacy_saved in source:
+        source = source.replace(legacy_saved, cloud_saved, 1)
+    elif cloud_saved not in source:
+        raise SystemExit("saved account migration: neither legacy nor cloud-safe block found")
+
     source = source.replace(
         'self.status = "正在连接家中的账号服务器…".to_string();',
         'self.status = "正在连接云端账号服务器…".to_string();',
