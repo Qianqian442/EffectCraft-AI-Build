@@ -154,6 +154,55 @@ fn wasm_plugin_registers_and_renders() {
     assert!(load_err(load_wasm(gain_module("org.test.gain", "").as_bytes(), "again.wat")).contains("already registered"));
 }
 
+fn typed_v2_module() -> String {
+    let manifest = r#"{
+      "api": 2,
+      "id": "org.test.typed-v2",
+      "name": "Typed Property API v2",
+      "category": "Test Plug-ins",
+      "version": "2.0",
+      "params": [
+        {"id":"position3","name":"Position 3D","type":"property","ui":{"kind":"Point3"},"default":{"t":"Vec3","v":[1.0,2.0,3.0]}},
+        {"id":"sourceLayer","name":"Source Layer","type":"property","ui":{"kind":"Layer"},"default":{"t":"Layer","v":null}}
+      ]
+    }"#;
+    let len = manifest.len();
+    let escaped = manifest.replace('\\', "\\\\").replace('"', "\\\"");
+    format!(
+        r#"(module
+          (memory (export "memory") 2)
+          (data (i32.const 16) "{escaped}")
+          (func (export "ec_api_version") (result i32) i32.const 2)
+          (func (export "ec_manifest_ptr") (result i32) i32.const 16)
+          (func (export "ec_manifest_len") (result i32) i32.const {len})
+          (func (export "ec_alloc") (param $n i32) (result i32) i32.const 65536)
+          (func (export "ec_render_v2")
+            (param $px i32) (param $w i32) (param $h i32)
+            (param $params i32) (param $np i32)
+            (param $values i32) (param $values_len i32)
+            (param $time f64) (param $scale f64)
+            (result i32)
+            local.get $values_len
+            i32.eqz
+            if (result i32) i32.const 1 else i32.const 0 end)
+        )"#
+    )
+}
+
+#[test]
+fn typed_property_api_v2_loads_native_effectcraft_controls() {
+    let module = typed_v2_module();
+    let spec = load_wasm(module.as_bytes(), "typed-v2.wat").unwrap();
+    assert_eq!(spec.id, "org.test.typed-v2");
+    assert_eq!(spec.params.len(), 2);
+    assert!(matches!(spec.params[0].ui, effectcraft_project::ParamUi::Point3));
+    assert!(matches!(spec.params[1].ui, effectcraft_project::ParamUi::Layer));
+
+    // Exercise ec_render_v2. It returns an error when the serialized, typed value map is empty.
+    let image = render(spec, 0.5, false);
+    assert_eq!(image.get(0, 0), [0.8, 0.6, 0.2, 1.0]);
+}
+
 #[test]
 fn wasm_plugins_are_sandboxed() {
     // A runaway loop runs out of fuel: the frame comes back unchanged instead of hanging.
