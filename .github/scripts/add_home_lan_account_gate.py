@@ -136,6 +136,10 @@ impl Default for AccountState {
 }
 
 impl AccountState {
+    pub(crate) fn allows_startup_notice(&self) -> bool {
+        self.mode == Mode::Editor
+    }
+
     fn account_file(config: Option<&dyn effectcraft_engine::config::ConfigStore>) -> Option<&'static str> {
         config.map(|_| "effectcraft-home-account.json")
     }
