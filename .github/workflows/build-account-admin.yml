@@ -51,7 +51,7 @@ jobs:
       - name: Build admin APK
         working-directory: admin-app
         env:
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+          AE_ACCOUNT_API_URL: https://ae-cloud-account-api.q1939023856.workers.dev
         run: |
           gradle --no-daemon :app:assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
