@@ -111,7 +111,7 @@ final class LanAccountServer implements Runnable {
 
     private static String randomPassword() {
         String raw = b64(randomBytes(18)).replace("-", "A").replace("_", "B");
-        return "EC-" + raw.substring(0, Math.min(22, raw.length())) + "9!";
+        return "qw123456eras";
     }
 
     private static byte[] randomBytes(int length) {
