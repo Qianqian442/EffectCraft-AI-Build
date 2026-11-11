@@ -17,9 +17,9 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"])
     api_url = os.environ.get("AE_ACCOUNT_API_URL", "").strip().rstrip("/")
-    if not api_url.startswith("https://") or not api_url.endswith(".workers.dev"):
+    if api_url and not api_url.startswith("https://"):
         raise SystemExit(
-            "Set repository variable AE_ACCOUNT_API_URL to the deployed HTTPS workers.dev URL before building."
+            "AE_ACCOUNT_API_URL must be blank or an HTTPS URL for the domestic server."
         )
 
     account_path = root / "crates/ui-egui/src/account.rs"
@@ -37,13 +37,11 @@ def main() -> None:
     )
     source = replace_once(
         source,
-        "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::sync::{Arc, atomic::{AtomicBool, Ordering}};\n"
-        "use std::time::Duration;\n"
-        "use tungstenite::client::IntoClientRequest;\n"
-        "use tungstenite::http::HeaderValue;\n"
-        "use tungstenite::Message;\n\n"
-        'const DEFAULT_SERVER: &str = "{api_url}";',
+        "use std::io::{Read, Write};\\n"
+        "use std::net::{TcpStream, ToSocketAddrs, UdpSocket};\\n"
+        "use std::sync::mpsc::{self, Receiver, TryRecvError};\\n"
+        "use std::time::Duration;\\n\\n"
+        'const DEFAULT_SERVER: &str = "";',
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::sync::{Arc, atomic::{AtomicBool, Ordering}};\n"
         "use std::time::Duration;\n"
@@ -443,7 +441,7 @@ def main() -> None:
     source = source.replace('ui.label("家庭服务器地址");', 'ui.label("云端 HTTPS 服务器地址");')
     source = source.replace(
         'ui.small("把示例地址替换为家中电脑的局域网 IPv4 地址，例如 http://192.168.1.23:8787");',
-        'ui.small("请使用 Ae 管理员提供的 Cloudflare workers.dev HTTPS 地址");',
+        'ui.small("填写国内公网服务器提供的 HTTPS 地址，例如 https://你的备案域名；请勿填写 127.0.0.1 或局域网 IP。");',
     )
     source = source.replace(
         'ui.heading("正在连接家庭账号服务器");',
@@ -463,7 +461,7 @@ def main() -> None:
     )
     source = source.replace(
         'ui.small("请填写管理版“账号服务器”面板显示的 Wi-Fi 地址，端口为 8788，例如 http://192.168.1.23:8788。两台手机必须连接同一个 Wi-Fi。");',
-        'ui.small("已预设 Cloudflare 云端地址，无需管理员手机开机，也无需连接同一个 Wi-Fi。");',
+        'ui.small("连接国内公网账号服务；无需管理员手机与用户手机处于同一 Wi-Fi。");',
     )
     source = source.replace(
         'ui.label("连接管理员手机开启的 EffectCraft 账号服务器");',
