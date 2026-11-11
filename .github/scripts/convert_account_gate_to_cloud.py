@@ -373,21 +373,25 @@ def main() -> None:
         .timeout_global(Some(Duration::from_secs(15)))
         .build()
         .into();
-    let mut request = if method == "GET" {
-        agent.get(&endpoint)
-    } else {
-        agent.post(&endpoint)
-    };
-    request = request.header("Accept", "application/json");
-    if let Some(token) = token {
-        request = request.header("Authorization", &format!("Bearer {token}"));
-    }
-    let mut response = if body.is_null() {
+    let response_result = if method == "GET" {
+        let mut request = agent.get(&endpoint).header("Accept", "application/json");
+        if let Some(token) = token {
+            request = request.header("Authorization", &format!("Bearer {token}"));
+        }
         request.call()
     } else {
-        let bytes = serde_json::to_vec(&body).map_err(|error| error.to_string())?;
-        request.header("Content-Type", "application/json").send(bytes.as_slice())
-    }.map_err(|error| format!("云端请求失败：{error}"))?;
+        let bytes = if body.is_null() { Vec::new() } else {
+            serde_json::to_vec(&body).map_err(|error| error.to_string())?
+        };
+        let mut request = agent.post(&endpoint).header("Accept", "application/json");
+        if let Some(token) = token {
+            request = request.header("Authorization", &format!("Bearer {token}"));
+        }
+        request.header("Content-Type", "application/json")
+            .send(bytes.as_slice())
+    };
+    let mut response = response_result
+        .map_err(|error| format!("云端请求失败：{error}"))?;
     let status = response.status().as_u16();
     let body_text = response.body_mut().read_to_string().map_err(|error| error.to_string())?;
     let value = serde_json::from_str::<Value>(&body_text)
