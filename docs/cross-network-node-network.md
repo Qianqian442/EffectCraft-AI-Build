@@ -1,6 +1,6 @@
 # Cross-network phone node network
 
-Status: implementation specification; not a claim that cross-network peer transport is already working.
+Status: staged implementation. Authenticated node presence and a bounded opaque relay endpoint are implemented in the Worker source and pass Wrangler dry-run validation. APK-side end-to-end encryption/trust, actual message exchange, deployment and cross-network device tests remain outstanding.
 
 ## Product behavior
 
@@ -15,7 +15,7 @@ Status: implementation specification; not a claim that cross-network peer transp
 1. **Control plane:** the existing Cloudflare Worker authenticates users/admins and stores authoritative account state in D1.
 2. **Presence and signaling:** authenticated node sessions connect outbound over TLS WebSocket to the Worker. This works behind ordinary home routers and carrier NAT because phones initiate the connection.
 3. **Peer transport:** attempt a mutually authenticated direct peer connection where supported. Direct connectivity is an optimization, not a requirement.
-4. **Relay fallback:** when NAT/firewall policy prevents direct connectivity, relay only signed, size-limited peer messages through a public relay endpoint. Never assume mDNS or private IPv4 addresses are routable across the public internet.
+4. **Relay fallback:** when NAT/firewall policy prevents direct connectivity, the Worker can route bounded, age-checked opaque envelopes between authenticated live node sessions. The current Worker does not inspect application payload contents; APK-side encryption, key agreement, recipient trust and signature verification are still pending. Never assume mDNS or private IPv4 addresses are routable across the public internet.
 5. **Android lifecycle:** run only after explicit opt-in, use a foreground service and visible notification while active, reconnect with bounded exponential backoff, and respect user/system stop controls and battery restrictions.
 
 ## Global switch semantics
@@ -71,3 +71,10 @@ The standalone administrator APK remains the only separate management app and ow
 - Cloudflare Workers/D1/DO free plans have quotas and are not guaranteed unlimited or permanent. Relay bandwidth and connection limits must be measured before broad distribution.
 - Do not place Cloudflare tokens, JWT secrets, admin passwords, signing keys, or private peer keys in source, APK assets, issue comments, or chat.
 - Do not claim nationwide availability until the intended Chinese carrier/network routes have been tested. Some networks may block or impair particular public endpoints.
+
+
+## Current implementation checkpoint (2026-11-11)
+
+- Worker-side authenticated node presence already exists; main APK account sessions automatically attempt `/v1/nodes/events` after account verification.
+- Worker-side relay envelope routing was added on `implementation/p2p-full-replacement`; Wrangler dry-run validation passed on run `42961309379`.
+- Relay is not yet deployed to production. The current APK client maintains node presence but does not yet implement complete end-to-end encrypted peer message exchange. Do not describe the network as fully interconnected until two phones on genuinely different networks exchange a test message and the administrator OFF/ON switch is verified.
