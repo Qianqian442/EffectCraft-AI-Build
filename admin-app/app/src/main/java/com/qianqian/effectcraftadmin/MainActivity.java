@@ -45,7 +45,6 @@ public final class MainActivity extends Activity {
     private static final String PERMANENT_BAN_UNTIL = "9999-12-31T23:59:59Z";
     private String server = DEFAULT_SERVER;
     private String adminToken = "";
-    private LanAccountServer localAccounts;
     private LinearLayout root;
     private LinearLayout rows;
     private EditText serverInput;
@@ -65,7 +64,7 @@ public final class MainActivity extends Activity {
         adminToken = savedServer.startsWith("https://")
             ? getPreferences(MODE_PRIVATE).getString("admin_token", "") : "";
         if (!adminToken.isEmpty()) {
-            showConnecting("管理员身份已保存，正在读取管理员手机本地账号库…");
+            showConnecting("管理员身份已保存，正在读取云端账号库…");
             loadUsers("");
         } else {
             showLogin();
@@ -75,59 +74,6 @@ public final class MainActivity extends Activity {
     /** Server-authoritative global node switch; never trust a local preference for this control. */
 
     /** Independent local account-server switch; does not control the P2P network switch below. */
-    private void addAccountServerPanel(LinearLayout page) {
-        LinearLayout panel = new LinearLayout(this);
-        panel.setOrientation(LinearLayout.VERTICAL);
-        panel.setPadding(dp(12), dp(10), dp(12), dp(10));
-        panel.setBackground(rounded(Color.WHITE));
-        panel.addView(text("管理员手机账号服务器", 16, true));
-        TextView status = text("", 13, false);
-        panel.addView(status);
-        Button toggle = button("读取状态…");
-        panel.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
-        TextView note = text("当前账号服务仅监听本机 Wi-Fi，主 APK 需连接管理员手机的局域网地址；跨地区安全中继尚未接通。请勿在不可信 Wi-Fi 上传输真实账号密码。", 11, false);
-        note.setTextColor(Color.rgb(160, 85, 35));
-        panel.addView(note);
-        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
-        params.bottomMargin = dp(10);
-        page.addView(panel, params);
-        refreshAccountServerPanel(status, toggle);
-        toggle.setOnClickListener(v -> {
-            boolean running = getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
-                .getBoolean("requested", false);
-            Intent intent = new Intent(this, AccountServerService.class);
-            try {
-                if (running) {
-                    stopService(intent);
-                    getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
-                        .edit().putBoolean("requested", false).apply();
-                } else {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
-                    else startService(intent);
-                    getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
-                        .edit().putBoolean("requested", true).apply();
-                }
-            } catch (Exception e) {
-                toast("账号服务器操作失败：" + e.getMessage());
-            }
-            status.postDelayed(() -> refreshAccountServerPanel(status, toggle), 700);
-        });
-    }
-
-    private void refreshAccountServerPanel(TextView status, Button toggle) {
-        boolean requested = getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
-            .getBoolean("requested", false);
-        boolean process = getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
-            .getBoolean("service_process", false);
-        String ip = LanAccountServer.getActiveBoundIp();
-        String bound = !ip.isEmpty() ? ip + ":" + LanAccountServer.PORT : "尚未监听";
-        status.setText("服务开关：" + (requested ? "开启" : "关闭") +
-            " · 服务进程：" + (process && !ip.isEmpty() ? "运行并监听" : "未监听") +
-            "\n本机监听地址：" + bound +
-            "\n跨地区可达性：尚未验证");
-        toggle.setText(requested ? "关闭账号服务器" : "开启账号服务器");
-    }
-
     private void addGlobalNodePanel(LinearLayout page) {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -198,23 +144,7 @@ public final class MainActivity extends Activity {
                     toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
                     toggle.setEnabled(true);
                     count.setText(enabled[0] ? "节点正在尝试重新连接" : "在线节点会话已要求断开");
-                    // Also control this admin phone's own P2P worker service.
-                    Intent nodeIntent = new Intent(MainActivity.this, LanServerService.class);
-                    try {
-                        if (enabled[0]) {
-                            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
-                                .edit().putBoolean("node_enabled", true).apply();
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(nodeIntent);
-                            else startService(nodeIntent);
-                        } else {
-                            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
-                                .edit().putBoolean("node_enabled", false).apply();
-                            stopService(nodeIntent);
-                        }
-                    } catch (Exception serviceError) {
-                        status.setText(status.getText() + "；本机节点服务启动/停止异常：" + serviceError.getMessage());
-                    }
-                    toast(enabled[0] ? "已开启 P2P 总开关并启动本机节点" : "已关闭 P2P 总开关并停止本机节点");
+                    toast(enabled[0] ? "已开启公网节点网络，允许主 APK 节点重新连接" : "已关闭公网节点网络，云端已阻止节点会话");
                 });
             });
         });
@@ -280,7 +210,7 @@ public final class MainActivity extends Activity {
         page.addView(text("Ae账号管理", 24, true), new LinearLayout.LayoutParams(-1, dp(56)));
         TextView status = text(message, 15, false);
         page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
-        page.addView(text("管理员身份已验证；正在读取管理员手机本地 SQLite 账号数据库。", 12, false));
+        page.addView(text("管理员身份已验证；正在读取云端 D1 账号数据库。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
             showConnecting("正在重新读取管理员手机本地账号数据库…");
@@ -301,9 +231,8 @@ public final class MainActivity extends Activity {
         LinearLayout page = column();
         TextView title = text("EffectCraft 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
-        addAccountServerPanel(page);
-        page.addView(text("账号资料以管理员手机本地 SQLite 数据库为准；主 APK 在此注册的账号会显示在下方列表。", 12, false));
-        page.addView(text("管理员登录用于验证管理身份；账号列表、封禁、解禁和删除直接操作本机同一份账号数据库。", 14, false));
+        page.addView(text("主 APK 和管理版共用云端 D1 账号数据库；不同地区注册的账号会显示在这里。", 12, false));
+        page.addView(text("管理员登录后可查看云端全部账号，并执行封禁、解禁和永久封禁后的删除操作。", 14, false));
         page.addView(text("主 APK 用户端自动加入节点网络；本管理版只负责账号管理、封禁解禁和全局节点开关。", 13, false));
         page.addView(text("服务器地址", 13, true));
         serverInput = field("服务器地址由管理版自动配置", false);
@@ -355,7 +284,7 @@ public final class MainActivity extends Activity {
             try {
                 adminToken = result.getString("token");
                 getPreferences(MODE_PRIVATE).edit().putString("server", server).putString("admin_token", adminToken).apply();
-                showConnecting("管理员身份验证成功，正在读取本机账号数据库…");
+                showConnecting("管理员身份验证成功，正在读取云端账号数据库…");
                 loadUsers("");
             } catch (Exception e) {
                 toast("管理员登录返回数据不正确");
@@ -438,31 +367,14 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private interface LocalAdminAction { JSONObject run(LanAccountServer server) throws Exception; }
-
-    private void runLocalAdminAction(LocalAdminAction action, JsonCallback callback) {
-        io.execute(() -> {
-            JSONObject result = null;
-            String error = null;
-            try {
-                if (localAccounts == null) localAccounts = new LanAccountServer(getApplicationContext());
-                result = action.run(localAccounts);
-            } catch (Exception e) {
-                error = "本机账号数据库操作失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
-            }
-            JSONObject finalResult = result;
-            String finalError = error;
-            runOnUiThread(() -> {
-                if (finalError != null) toast(finalError);
-                if (callback != null) callback.done(finalResult);
-            });
-        });
-    }
-
     private void loadUsers(String query) {
-        runLocalAdminAction(server -> server.listUsersForAdmin(query), result -> {
+        String encoded;
+        try { encoded = URLEncoder.encode(query == null ? "" : query, "UTF-8"); }
+        catch (Exception e) { encoded = ""; }
+        requestAsync("GET", "/v1/admin/users?q=" + encoded, null, true, result -> {
             if (result == null) {
-                showLogin();
+                if (adminToken.isEmpty()) showLogin();
+                else toast("云端账号列表读取失败，请检查网络后刷新");
                 return;
             }
             showUsers(result.optJSONArray("users"));
@@ -480,7 +392,6 @@ public final class MainActivity extends Activity {
         top.addView(refresh);
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
-        addAccountServerPanel(page);
         addGlobalNodePanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
@@ -674,7 +585,7 @@ public final class MainActivity extends Activity {
                         body.put("banned_until", Instant.ofEpochMilli(until.getTimeInMillis()).toString());
                         body.put("reason", why);
                     } catch (Exception ignored) {}
-                    runLocalAdminAction(server -> server.banUserForAdmin(id, body), result -> {
+                    requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
                         if (result != null) {
                             toast("封禁记录已保存；账号下次请求账号状态时将被拒绝");
                             updateVisibleUser(result.optJSONObject("user"));
@@ -700,7 +611,7 @@ public final class MainActivity extends Activity {
                         body.put("banned_until", PERMANENT_BAN_UNTIL);
                         body.put("reason", why);
                     } catch (Exception ignored) {}
-                    runLocalAdminAction(server -> server.banUserForAdmin(id, body), result -> {
+                    requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
                         if (result != null) {
                             toast("账号已永久封禁；如需释放注册信息，请打开账号详情并选择删除账号");
                             updateVisibleUser(result.optJSONObject("user"));
@@ -715,7 +626,7 @@ public final class MainActivity extends Activity {
                 .setMessage("确定删除账号“" + user.optString("name") + "”吗？删除后该账号将无法恢复，原名字、QQ号和微信号会释放，之后可以重新注册。")
                 .setNegativeButton("取消", null)
                 .setPositiveButton("确认删除并释放资料", (dialog, which) -> {
-                    runLocalAdminAction(server -> server.deleteUserForAdmin(id), result -> {
+                    requestAsync("DELETE", "/v1/admin/users/" + id, null, true, result -> {
                         if (result != null && result.optBoolean("deleted", false)) {
                             toast("账号已从本机数据库删除，名字、QQ号和微信号已释放，可以重新注册");
                             loadUsers(searchInput == null ? "" : searchInput.getText().toString());
@@ -731,7 +642,7 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("确认取消封禁", (dialog, which) -> {
                     JSONObject body = new JSONObject();
                     try { body.put("banned_until", JSONObject.NULL); body.put("reason", ""); } catch (Exception ignored) {}
-                    runLocalAdminAction(server -> server.banUserForAdmin(id, body), result -> {
+                    requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
                         if (result != null) {
                             toast("已解禁；账号状态已在本机数据库更新");
                             updateVisibleUser(result.optJSONObject("user"));
