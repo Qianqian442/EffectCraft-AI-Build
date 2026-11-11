@@ -94,20 +94,7 @@ jobs:
           # The install/launch check does not depend on animations being disabled.
           disable-animations: false
           script: |
-            set -eu
-            APK="release/EffectCraft-Account-Admin.apk"
-            test -s "$APK"
-            adb install -r "$APK"
-            adb shell pm path com.qianqian.effectcraftadmin
-            adb shell am force-stop com.qianqian.effectcraftadmin || true
-            adb shell monkey -p com.qianqian.effectcraftadmin -c android.intent.category.LAUNCHER 1
-            sleep 10
-            if ! adb shell pidof com.qianqian.effectcraftadmin >/dev/null 2>&1; then
-              adb logcat -d -t 3000 | grep -E "FATAL EXCEPTION|Fatal signal|AndroidRuntime|crash" | tail -100 || true
-              echo "Admin APK did not remain running after launch on the emulator." >&2
-              exit 1
-            fi
-            echo "Admin APK installed and remained running on the Android emulator."
+            bash -euo pipefail -c 'APK="$(find release -type f -name "*.apk" -print -quit)"; test -n "$APK" && test -s "$APK"; adb install -r "$APK"; adb shell pm path com.qianqian.effectcraftadmin; adb shell am force-stop com.qianqian.effectcraftadmin || true; adb shell monkey -p com.qianqian.effectcraftadmin -c android.intent.category.LAUNCHER 1; sleep 10; if ! adb shell pidof com.qianqian.effectcraftadmin >/dev/null 2>&1; then adb logcat -d -t 3000 | grep -E "FATAL EXCEPTION|Fatal signal|AndroidRuntime|crash" | tail -100 || true; echo "Admin APK did not remain running after launch on the emulator." >&2; exit 1; fi; echo "Admin APK installed and remained running on the Android emulator."'
 
   publish-admin:
     name: Publish admin APK after install test
