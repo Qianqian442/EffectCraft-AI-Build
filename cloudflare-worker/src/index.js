@@ -105,11 +105,13 @@ async function readToken(env, request, requiredRole) {
 }
 class AuthError extends Error {}
 
+const NO_QQ_PREFIX = "__effectcraft_no_qq__:";
+const NO_WECHAT_PREFIX = "__effectcraft_no_wechat__:";
 function publicUser(row) {
   return {
     id: row.id,
-    qq: row.qq,
-    wechat: row.wechat,
+    qq: String(row.qq || "").startsWith(NO_QQ_PREFIX) ? "" : row.qq,
+    wechat: String(row.wechat || "").startsWith(NO_WECHAT_PREFIX) ? "" : row.wechat,
     name: row.name,
     avatar_url: row.avatar_url || "",
     created_at: row.created_at,
@@ -134,13 +136,20 @@ async function authResult(env, row, role, seconds) {
   };
 }
 async function readJson(request) {
-  const length = Number(request.headers.get("content-length") || "0");
-  if (length > 65536) throw new HttpError(413, "请求内容过大");
   try {
-    return await request.json();
-  } catch (_) {
+    const bytes = await request.arrayBuffer();
+    if (bytes.byteLength > 3100000) throw new HttpError(413, "请求内容过大");
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
     throw new HttpError(400, "请求数据格式不正确");
   }
+}
+function validateAvatar(avatar) {
+  if (!avatar) return;
+  if (/^https?:\/\/\S+$/i.test(avatar)) return;
+  if (/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/i.test(avatar) && avatar.length <= 2900000) return;
+  throw new HttpError(422, "头像必须是 PNG/JPG/WebP 图片或有效 HTTPS 地址，图片不能超过2MB");
 }
 class HttpError extends Error {
   constructor(status, message, extra = {}) {
@@ -155,11 +164,12 @@ function validateRegistration(body) {
   const name = String(body.name || "").trim();
   const password = String(body.password || "");
   const avatar = String(body.avatar_url || "").trim();
-  if (!/^[1-9][0-9]{4,11}$/.test(qq)) throw new HttpError(422, "QQ号应填写5至12位数字");
-  if (!/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat)) throw new HttpError(422, "微信号格式不正确");
+  if (!qq && !wechat) throw new HttpError(422, "QQ号和微信号至少填写一项");
+  if (qq && !/^[1-9][0-9]{4,11}$/.test(qq)) throw new HttpError(422, "QQ号应填写5至12位数字");
+  if (wechat && !/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat)) throw new HttpError(422, "微信号格式不正确");
   if (!name || name.length > 40) throw new HttpError(422, "姓名不能为空且不能超过40字");
   if (password.length < 8 || password.length > 128) throw new HttpError(422, "密码至少8位");
-  if (avatar && !/^https?:\/\/\S+$/i.test(avatar)) throw new HttpError(422, "头像地址格式不正确");
+  validateAvatar(avatar);
   return { qq, wechat, name, password, avatar };
 }
 async function register(request, env) {
@@ -174,7 +184,7 @@ async function register(request, env) {
   try {
     await env.DB.prepare(
       "INSERT INTO accounts (id, qq, wechat, name, password_hash, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-    ).bind(id, body.qq, body.wechat, body.name, hash, body.avatar, created).run();
+    ).bind(id, body.qq || (NO_QQ_PREFIX + id), body.wechat || (NO_WECHAT_PREFIX + id), body.name, hash, body.avatar, created).run();
   } catch (_) {
     return fail(409, "名字、QQ号或微信号已被注册");
   }
@@ -213,10 +223,11 @@ async function updateProfile(request, env) {
   const wechat = String(body.wechat || "").trim();
   const name = String(body.name || "").trim();
   const avatar = String(body.avatar_url || "").trim();
-  if (!/^[1-9][0-9]{4,11}$/.test(qq) || !/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat) || !name || name.length > 40) {
-    return fail(422, "QQ号、微信号或姓名格式不正确");
+  if ((!qq && !wechat) || (qq && !/^[1-9][0-9]{4,11}$/.test(qq)) ||
+      (wechat && !/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat)) || !name || name.length > 40) {
+    return fail(422, "QQ号和微信号至少填写一项，且格式必须正确");
   }
-  if (avatar && !/^https?:\/\/\S+$/i.test(avatar)) return fail(422, "头像地址格式不正确");
+  try { validateAvatar(avatar); } catch (error) { return fail(422, error.message); }
   const nameOwner = await env.DB.prepare(
     "SELECT id FROM accounts WHERE lower(trim(name)) = lower(trim(?)) AND id <> ? LIMIT 1"
   ).bind(name, claims.sub).first();
@@ -231,7 +242,7 @@ async function updateProfile(request, env) {
   try {
     await env.DB.prepare(
       "UPDATE accounts SET qq = ?, wechat = ?, name = ?, avatar_url = ?, password_hash = ? WHERE id = ?"
-    ).bind(qq, wechat, name, avatar, newHash, claims.sub).run();
+    ).bind(qq || (NO_QQ_PREFIX + claims.sub), wechat || (NO_WECHAT_PREFIX + claims.sub), name, avatar, newHash, claims.sub).run();
   } catch (_) {
     return fail(409, "名字、QQ号或微信号已被其他账号使用");
   }
@@ -336,7 +347,11 @@ async function adminUsers(request, env, url) {
       "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts ORDER BY created_at DESC LIMIT 500"
     ).all();
   }
-  return response({ users: result.results || [] });
+  return response({ users: (result.results || []).map((row) => ({
+    ...row,
+    qq: String(row.qq || "").startsWith(NO_QQ_PREFIX) ? "" : row.qq,
+    wechat: String(row.wechat || "").startsWith(NO_WECHAT_PREFIX) ? "" : row.wechat
+  })) });
 }
 async function adminDeleteUser(request, env, id) {
   await readToken(env, request, "admin");
