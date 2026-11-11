@@ -63,18 +63,6 @@ jobs:
           file EffectCraft-Account-Admin.apk
           ls -lh EffectCraft-Account-Admin.apk
 
-      - name: Publish downloadable APK release asset
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: account-admin-${{ github.run_number }}
-          name: EffectCraft Account Admin APK ${{ github.run_number }}
-          draft: false
-          prerelease: true
-          files: EffectCraft-Account-Admin.apk
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Upload backup build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -82,3 +70,63 @@ jobs:
           path: EffectCraft-Account-Admin.apk
           if-no-files-found: error
           retention-days: 30
+
+  install-test:
+    name: Install and launch admin APK on Android emulator
+    needs: build-admin
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Download built admin APK
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-Account-Admin-APK
+          path: release
+      - name: Install and launch on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
+          disable-animations: true
+          script: |
+            set -euo pipefail
+            APK="release/EffectCraft-Account-Admin.apk"
+            test -s "$APK"
+            adb install -r "$APK"
+            adb shell pm path com.qianqian.effectcraftadmin
+            adb shell am force-stop com.qianqian.effectcraftadmin || true
+            adb shell monkey -p com.qianqian.effectcraftadmin -c android.intent.category.LAUNCHER 1
+            sleep 10
+            if ! adb shell pidof com.qianqian.effectcraftadmin >/dev/null 2>&1; then
+              adb logcat -d -t 3000 | grep -E "FATAL EXCEPTION|Fatal signal|AndroidRuntime|crash" | tail -100 || true
+              echo "Admin APK did not remain running after launch on the emulator." >&2
+              exit 1
+            fi
+            echo "Admin APK installed and remained running on the Android emulator."
+
+  publish-admin:
+    name: Publish admin APK after install test
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: install-test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download tested admin APK
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-Account-Admin-APK
+          path: release
+      - name: Publish downloadable APK release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: account-admin-${{ github.run_number }}
+          name: EffectCraft Account Admin APK ${{ github.run_number }}
+          draft: false
+          prerelease: true
+          files: release/EffectCraft-Account-Admin.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
