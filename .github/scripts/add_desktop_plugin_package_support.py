@@ -598,7 +598,7 @@ def patch_picker(root: Path) -> None:
             raise SystemExit("Could not find the plugin picker extension list.")
         source = source.replace(old, new, 1)
     folder_command = '"effect.plugins.load" if params.get("folder").is_none() =>'
-    folder_alias = '"effect.plugins.loadFolder" => ("folder", Ask::Folder),\\n        ' + folder_command
+    folder_alias = '"effect.plugins.loadFolder" => ("folder", Ask::Folder),\n        ' + folder_command
     if '"effect.plugins.loadFolder" => ("folder", Ask::Folder)' not in source:
         if source.count(folder_command) != 1:
             raise SystemExit("Could not find the plugin picker mapping for folder import.")
