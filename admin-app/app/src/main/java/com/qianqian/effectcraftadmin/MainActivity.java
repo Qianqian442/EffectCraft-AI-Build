@@ -66,10 +66,11 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        // Start the administrator phone's authoritative local account API.
-        Intent accountServerIntent = new Intent(this, AccountServerService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(accountServerIntent);
-        else startService(accountServerIntent);
+        if (getPreferences(MODE_PRIVATE).getBoolean("account_server_enabled", true)) {
+            Intent accountServerIntent = new Intent(this, AccountServerService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(accountServerIntent);
+            else startService(accountServerIntent);
+        }
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
@@ -82,6 +83,48 @@ public final class MainActivity extends Activity {
     /** Server-authoritative global node switch; never trust a local preference for this control. */
 
     /** Independent local account-server switch; does not control the P2P network switch below. */
+    private void addLocalAccountServerPanel(LinearLayout page) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(10), dp(12), dp(10));
+        panel.setBackground(rounded(Color.WHITE));
+        panel.addView(text("管理员手机主服务器", 16, true));
+        TextView status = text("", 13, false);
+        panel.addView(status);
+        Button toggle = button("");
+        panel.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
+        Runnable refresh = () -> {
+            boolean enabled = getPreferences(MODE_PRIVATE).getBoolean("account_server_enabled", true);
+            String ip = LanAccountServer.getWifiIpv4();
+            status.setText(enabled
+                ? (ip.isEmpty() ? "账号服务已启用 · 等待 Wi-Fi 连接" : "账号服务已启用 · " + ip + ":8788")
+                : "账号服务已关闭 · 主 APK 暂时无法注册、登录和验证");
+            toggle.setText(enabled ? "关闭账号主服务器" : "开启账号主服务器");
+        };
+        refresh.run();
+        toggle.setOnClickListener(v -> {
+            boolean enabled = getPreferences(MODE_PRIVATE).getBoolean("account_server_enabled", true);
+            boolean next = !enabled;
+            getPreferences(MODE_PRIVATE).edit().putBoolean("account_server_enabled", next).apply();
+            Intent intent = new Intent(this, AccountServerService.class);
+            if (next) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+                else startService(intent);
+                toast("正在启动管理员手机账号服务器");
+            } else {
+                stopService(intent);
+                toast("账号主服务器已关闭");
+            }
+            refresh.run();
+        });
+        TextView note = text("账号服务器开关独立于节点互联开关。关闭后，用户端无法注册、登录和验证。", 11, false);
+        note.setTextColor(Color.rgb(95, 103, 115));
+        panel.addView(note);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(10);
+        page.addView(panel, params);
+    }
+
     private void addGlobalNodePanel(LinearLayout page) {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -478,7 +521,7 @@ public final class MainActivity extends Activity {
         top.addView(refresh);
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
-        addGlobalNodePanel(page);
+        addLocalAccountServerPanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
         Button search = button("搜索账号");
