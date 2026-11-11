@@ -143,33 +143,25 @@ public final class MainActivity extends Activity {
         Button toggle = button("");
         panel.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
         Runnable refresh = () -> {
-            boolean enabled = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
-                .getBoolean("node_enabled", false);
-            boolean running = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
-                .getBoolean("node_running", false);
+            boolean enabled = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).getBoolean("node_enabled", false);
+            boolean running = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).getBoolean("node_running", false);
             int peers = LanPeerDiscovery.getSavedPeers(this).length();
-            status.setText(enabled
-                ? (running ? "状态：已开启 · 本机节点正在运行" : "状态：已开启 · 正在等待节点服务启动")
-                : "状态：已关闭 · 本机节点已停止");
+            status.setText(enabled ? (running ? "状态：已开启 · 本机节点正在运行" : "状态：已开启 · 正在等待节点服务启动") : "状态：已关闭 · 本机节点已停止");
             count.setText("已发现附近节点：" + peers + " 台（当前仅支持同一 Wi-Fi）");
             toggle.setText(enabled ? "关闭节点互联网络" : "开启节点互联网络");
         };
         refresh.run();
         toggle.setOnClickListener(v -> {
-            boolean enabled = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
-                .getBoolean("node_enabled", false);
+            boolean enabled = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).getBoolean("node_enabled", false);
             boolean next = !enabled;
-            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).edit()
-                .putBoolean("node_enabled", next).apply();
+            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).edit().putBoolean("node_enabled", next).apply();
             Intent intent = new Intent(this, LanServerService.class);
             if (next) {
                 try {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
                     else startService(intent);
                     toast("节点网络已开启，正在尝试发现附近节点");
-                } catch (Exception e) {
-                    toast("节点服务启动失败：" + e.getMessage());
-                }
+                } catch (Exception e) { toast("节点服务启动失败：" + e.getMessage()); }
             } else {
                 stopService(intent);
                 toast("节点网络已关闭");
@@ -182,6 +174,56 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = dp(10);
         page.addView(panel, params);
+    }
+
+    private int dp(float value) {
+        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
+    }
+
+    private TextView text(String value, int size, boolean bold) {
+        TextView v = new TextView(this);
+        v.setText(value);
+        v.setTextSize(size);
+        v.setTextColor(Color.rgb(30, 35, 45));
+        if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        v.setGravity(Gravity.CENTER_VERTICAL);
+        return v;
+    }
+
+    private GradientDrawable rounded(int color) {
+        GradientDrawable d = new GradientDrawable();
+        d.setColor(color);
+        d.setCornerRadius(dp(12));
+        return d;
+    }
+
+    private LinearLayout column() {
+        LinearLayout l = new LinearLayout(this);
+        l.setOrientation(LinearLayout.VERTICAL);
+        l.setPadding(dp(18), dp(18), dp(18), dp(18));
+        l.setBackgroundColor(Color.rgb(245, 247, 250));
+        return l;
+    }
+
+    private EditText field(String hint, boolean password) {
+        EditText e = new EditText(this);
+        e.setSingleLine(true);
+        e.setTextSize(15);
+        e.setHint(hint);
+        e.setPadding(dp(13), 0, dp(13), 0);
+        e.setBackground(rounded(Color.WHITE));
+        e.setInputType(password ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_CLASS_TEXT);
+        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50));
+        p.bottomMargin = dp(10);
+        return e;
+    }
+
+    private Button button(String label) {
+        Button b = new Button(this);
+        b.setText(label);
+        b.setAllCaps(false);
+        b.setTextSize(14);
+        return b;
     }
 
     private void setRoot(LinearLayout content) {
