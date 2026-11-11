@@ -385,7 +385,8 @@ jobs:
           python3 build-assets/.github/scripts/add_home_lan_account_gate.py
 
       - name: Keep account validation on the administrator phone
-        run: grep -Fq 'const DEFAULT_SERVER: &str = "";' build-assets/.github/scripts/add_home_lan_account_gate.py
+        run: |
+          grep -Fq 'const DEFAULT_SERVER: &str = "";' build-assets/.github/scripts/add_home_lan_account_gate.py
 
       - name: Add native rust-libp2p node transport
         env:
