@@ -32,7 +32,14 @@ export class NodeNetworkHub {
     }
     if (url.pathname === "/peers" && request.method === "GET") {
       const requester = url.searchParams.get("node_id") || "";
-      const peers = this.ctx.getWebSockets().map((socket) => {
+      const activeSockets = this.ctx.getWebSockets();
+      const requesterIsNode = activeSockets.some((socket) =>
+        (socket.deserializeAttachment() || {}).nodeId === requester
+      );
+      if (!requester || !requesterIsNode) {
+        return Response.json({ error: "node presence required" }, { status: 403 });
+      }
+      const peers = activeSockets.map((socket) => {
         const a = socket.deserializeAttachment() || {};
         return {
           node_id: a.nodeId || "unknown",
@@ -139,7 +146,6 @@ export class NodeNetworkHub {
         });
         for (const target of this.ctx.getWebSockets()) {
           if (target === socket) continue;
-          const recipient = target.deserializeAttachment() || {};
           try { target.send(announcement); } catch (_) {}
         }
         return;
