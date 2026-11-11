@@ -6,6 +6,8 @@ Status: selected target architecture; implementation is not complete. Do not pub
 
 The selected design removes the fixed account server and the build-time `AE_ACCOUNT_API_URL` variable. Phones communicate directly with other participating phones. Slower discovery, login synchronization, and ban propagation are acceptable; silently falling back to a central account server is not.
 
+After the required first-run consent, ordinary users do not get an in-app node list, node pause/stop switch, or node-management screen. Discovery, connection attempts, and synchronization run automatically in the background within Android's permission and background-execution rules. All product-level global node-network administration (enable/disable, node policy, and administrative actions) is centralized in the separate Admin APK. This does not bypass Android system permissions, notifications, battery controls, or the user's ability to revoke OS permissions/uninstall the app.
+
 ## Identity and registration
 
 - Each installation creates a cryptographic device key pair using Android Keystore where supported.
@@ -29,7 +31,7 @@ The selected design removes the fixed account server and the build-time `AE_ACCO
 - For internet peers, use authenticated peer invitations and a bounded peer table; attempt direct connections with retries and exponential backoff.
 - Use signed gossip/synchronization messages and request missing event ranges by sequence/hash.
 - Persist verified records locally and replicate to multiple reachable peers. Never trust an unsigned profile, node-presence, ban, or unban message.
-- A phone may act as a relay only after explicit opt-in. The admin APK is an administrator console, not a worker node.
+- Participating phones may relay only within the scope disclosed and accepted during initial node-network consent. The Admin APK is an administrator console, not a worker node.
 - No fixed account endpoint, Cloudflare Worker, central database, or GitHub variable is part of the runtime account protocol.
 
 ## Important network limitation
@@ -49,9 +51,10 @@ Pure phone-to-phone internet connectivity cannot guarantee that any two phones c
 
 - Encrypt peer sessions and authenticate both endpoints.
 - Share only account/event metadata needed for synchronization; do not send project media or AI model weights as part of account sync.
-- Worker participation and relay participation require explicit opt-in, visible status, and pause/stop controls.
-- The global node-network enable/disable control remains in the admin APK only. Disabling it stops mesh participation; enabling it resumes discovery/reconnection.
-- The admin APK must not become a worker node.
+- First-run consent must clearly disclose automatic peer discovery, background network use, and any relay/compute work the device may perform. Do not hide this disclosure or imply the feature is inactive.
+- Ordinary users have no in-app node list, pause/stop switch, or node-management page. Do not add a per-user in-app exit control as part of this product design; Android system permission and app controls remain authoritative and must not be bypassed.
+- The global node-network enable/disable control remains in the Admin APK only. Disabling it stops mesh participation; enabling it resumes discovery/reconnection across participating devices.
+- The Admin APK must not become a worker node.
 
 ## Build requirements
 
