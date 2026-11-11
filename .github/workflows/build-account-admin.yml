@@ -94,7 +94,7 @@ jobs:
           # The install/launch check does not depend on animations being disabled.
           disable-animations: false
           script: |
-            set -euo pipefail
+            set -eu
             APK="release/EffectCraft-Account-Admin.apk"
             test -s "$APK"
             adb install -r "$APK"
