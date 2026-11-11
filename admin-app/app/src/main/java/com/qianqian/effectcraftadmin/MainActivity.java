@@ -374,9 +374,9 @@ public final class MainActivity extends Activity {
             HttpURLConnection c = null;
             try {
                 URL url = new URL(server + path);
-                if (!"https".equalsIgnoreCase(url.getProtocol()) ||
-                    url.getHost() == null || !url.getHost().endsWith(".workers.dev")) {
-                    throw new java.io.IOException("请填写完整的 HTTPS workers.dev 地址");
+                if (!"http".equalsIgnoreCase(url.getProtocol()) ||
+                    !("127.0.0.1".equals(url.getHost()) || "localhost".equalsIgnoreCase(url.getHost()))) {
+                    throw new java.io.IOException("管理版仅连接管理员手机本机账号服务器");
                 }
                 c = (HttpURLConnection) url.openConnection();
                 c.setRequestMethod(method);
@@ -429,14 +429,21 @@ public final class MainActivity extends Activity {
         });
     }
 
-    private void loadUsers(String query) {
+    private void loadUsers(String query) { loadUsers(query, 0); }
+
+    private void loadUsers(String query, int attempt) {
         String encoded;
         try { encoded = URLEncoder.encode(query == null ? "" : query, "UTF-8"); }
         catch (Exception e) { encoded = ""; }
         requestAsync("GET", "/v1/admin/users?q=" + encoded, null, true, result -> {
             if (result == null) {
-                if (adminToken.isEmpty()) showLogin();
-                else toast("本机账号列表读取失败，请确认管理员手机服务器正在运行。");
+                if (adminToken.isEmpty()) { showLogin(); return; }
+                if (attempt < 4) {
+                    toast("本机账号服务器正在启动，正在重试连接（" + (attempt + 1) + "/4）");
+                    new android.os.Handler(getMainLooper()).postDelayed(() -> loadUsers(query, attempt + 1), 1500);
+                } else {
+                    toast("本机账号列表读取失败，请确认服务器开关已开启且手机网络正常。");
+                }
                 return;
             }
             showUsers(result.optJSONArray("users"));
