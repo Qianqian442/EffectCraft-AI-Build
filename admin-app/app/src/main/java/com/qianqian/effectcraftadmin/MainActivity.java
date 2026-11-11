@@ -1,6 +1,8 @@
 package com.qianqian.effectcraftadmin;
 
 import android.app.Activity;
+import android.content.Intent;
+import android.os.Build;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
@@ -69,6 +71,61 @@ public final class MainActivity extends Activity {
     }
 
     /** Server-authoritative global node switch; never trust a local preference for this control. */
+
+    /** Independent local account-server switch; does not control the P2P network switch below. */
+    private void addAccountServerPanel(LinearLayout page) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(10), dp(12), dp(10));
+        panel.setBackground(rounded(Color.WHITE));
+        panel.addView(text("管理员手机账号服务器", 16, true));
+        TextView status = text("", 13, false);
+        panel.addView(status);
+        Button toggle = button("读取状态…");
+        panel.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
+        TextView note = text("此阶段服务仅监听本机 Wi-Fi，尚未完成跨网络 TLS/安全中继和主 APK 客户端接入。请勿在不可信 Wi-Fi 上传输真实账号密码。", 11, false);
+        note.setTextColor(Color.rgb(160, 85, 35));
+        panel.addView(note);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(10);
+        page.addView(panel, params);
+        refreshAccountServerPanel(status, toggle);
+        toggle.setOnClickListener(v -> {
+            boolean running = getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
+                .getBoolean("requested", false);
+            Intent intent = new Intent(this, AccountServerService.class);
+            try {
+                if (running) {
+                    stopService(intent);
+                    getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
+                        .edit().putBoolean("requested", false).apply();
+                } else {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+                    else startService(intent);
+                    getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
+                        .edit().putBoolean("requested", true).apply();
+                }
+            } catch (Exception e) {
+                toast("账号服务器操作失败：" + e.getMessage());
+            }
+            status.postDelayed(() -> refreshAccountServerPanel(status, toggle), 700);
+        });
+    }
+
+    private void refreshAccountServerPanel(TextView status, Button toggle) {
+        boolean requested = getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
+            .getBoolean("requested", false);
+        boolean process = getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
+            .getBoolean("service_process", false);
+        String ip = LanAccountServer.getWifiIpv4();
+        String bound = requested && process && !ip.isEmpty() ? ip + ":" + LanAccountServer.PORT : "尚未监听";
+        status.setText("服务开关：" + (requested ? "开启" : "关闭") +
+            " · 服务进程：" + (process ? "运行中" : "未运行") +
+            "\n本机监听地址：" + bound +
+            "\n跨地区可达性：尚未验证");
+        toggle.setText(requested ? "关闭账号服务器" : "开启账号服务器");
+    }
+
     private void addGlobalNodePanel(LinearLayout page) {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
@@ -388,6 +445,7 @@ public final class MainActivity extends Activity {
         top.addView(refresh);
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
+        addAccountServerPanel(page);
         addGlobalNodePanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
