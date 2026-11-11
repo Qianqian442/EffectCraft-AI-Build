@@ -62,6 +62,8 @@ def main() -> None:
         "    event_started: bool,\n"
         "    node_event_started: bool,\n"
         "    node_event_control: Option<Arc<AtomicBool>>,\n"
+        "    node_event_rx: Option<Receiver<Value>>,\n"
+        "    node_peers: usize,\n"
         "    notification_pending: Option<String>,",
         "account event state fields",
     )
@@ -76,6 +78,8 @@ def main() -> None:
         "            event_started: false,\n"
         "            node_event_started: false,\n"
         "            node_event_control: None,\n"
+        "            node_event_rx: None,\n"
+        "            node_peers: 0,\n"
         "            notification_pending: None,",
         "account event state initialization",
     )
@@ -177,9 +181,15 @@ def main() -> None:
         let base = self.server_url.trim_end_matches('/')
             .replacen("https://", "wss://", 1);
         let ws_url = format!("{base}/v1/nodes/events");
+        let (event_tx, event_rx) = mpsc::channel();
+        self.node_event_rx = Some(event_rx);
         self.node_event_started = true;
         let active = Arc::new(AtomicBool::new(true));
         self.node_event_control = Some(active.clone());
+        // This per-session libp2p identity is used for peer discovery only.
+        // The account identity remains the authenticated node_id.
+        let peer_key = libp2p::identity::Keypair::generate_ed25519();
+        let peer_id = peer_key.public().to_peer_id().to_string();
         std::thread::spawn(move || {
             let mut reconnect_delay = 3u64;
             while active.load(Ordering::Relaxed) {
@@ -187,7 +197,7 @@ def main() -> None:
                     Ok(request) => request,
                     Err(_) => {
                         std::thread::sleep(Duration::from_secs(reconnect_delay));
-                        reconnect_delay = (reconnect_delay * 2).min(600);
+                        reconnect_delay = (reconnect_delay * 2).min(30);
                         continue;
                     }
                 };
@@ -199,10 +209,16 @@ def main() -> None:
                 match tungstenite::connect(request) {
                     Ok((mut socket, _)) => {
                         reconnect_delay = 3;
+                        let hello = json!({
+                            "type": "hello",
+                            "v": 1,
+                            "peer_id": peer_id,
+                            "addresses": []
+                        });
+                        if socket.send(Message::Text(hello.to_string().into())).is_err() {
+                            continue;
+                        }
                         loop {
-                            // The hub treats this authenticated connection as this
-                            // account's online phone node. Ping/pong keeps presence
-                            // alive without forwarding arbitrary peer payloads.
                             if !active.load(Ordering::Relaxed) {
                                 let _ = socket.close(None);
                                 break;
@@ -211,13 +227,14 @@ def main() -> None:
                                 break;
                             }
                             match socket.read() {
+                                Ok(Message::Text(message)) => {
+                                    if let Ok(value) = serde_json::from_str::<Value>(message.as_str()) {
+                                        let _ = event_tx.send(value);
+                                    }
+                                    std::thread::sleep(Duration::from_secs(25));
+                                }
                                 Ok(Message::Close(_)) => break,
-                                Ok(Message::Text(_)) | Ok(Message::Pong(_)) => {
-                                    std::thread::sleep(Duration::from_secs(25));
-                                }
-                                Ok(_) => {
-                                    std::thread::sleep(Duration::from_secs(25));
-                                }
+                                Ok(_) => std::thread::sleep(Duration::from_secs(25)),
                                 Err(_) => break,
                             }
                         }
@@ -226,12 +243,29 @@ def main() -> None:
                 }
                 if !active.load(Ordering::Relaxed) { break; }
                 std::thread::sleep(Duration::from_secs(reconnect_delay));
-                reconnect_delay = (reconnect_delay * 2).min(600);
+                reconnect_delay = (reconnect_delay * 2).min(30);
             }
         });
     }
 
     fn poll_events(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        loop {
+            let next = match self.node_event_rx.as_ref().map(|rx| rx.try_recv()) {
+                Some(Ok(event)) => Some(event),
+                Some(Err(TryRecvError::Disconnected)) | Some(Err(TryRecvError::Empty)) | None => None,
+            };
+            let Some(event) = next else { break; };
+            match event.get("type").and_then(Value::as_str).unwrap_or("") {
+                "peer_list" => {
+                    self.node_peers = event.get("peers").and_then(Value::as_array).map_or(0, |peers| peers.len());
+                }
+                "peer_online" => self.node_peers = self.node_peers.saturating_add(1),
+                "peer_offline" => self.node_peers = self.node_peers.saturating_sub(1),
+                "node_access_revoked" => self.node_peers = 0,
+                "network_state" if event.get("enabled") == Some(&Value::Bool(false)) => self.node_peers = 0,
+                _ => {}
+            }
+        }
         let received = match self.events.as_ref().map(|rx| rx.try_recv()) {
             Some(Ok(result)) => Some(result),
             Some(Err(TryRecvError::Disconnected)) => Some(Err("实时通知连接已结束".to_string())),
@@ -323,13 +357,17 @@ def main() -> None:
         "    app.account.poll(config);\n"
         "    if matches!(app.account.mode, Mode::Editor | Mode::Banned) {\n"
         "        app.account.start_events();\n"
-        "        if app.account.mode == Mode::Editor && app.account.node_opt_in {\n"
-        "            app.account.start_node_events();\n"
-        "        } else if let Some(active) = app.account.node_event_control.as_ref() {\n"
-        "            active.store(false, Ordering::Relaxed);\n"
-        "            app.account.node_event_started = false;\n"
-        "        }\n"
         "        app.account.poll_events(config);\n"
+        "    }\n"
+        "    if app.account.mode == Mode::Editor && app.account.node_opt_in {\n"
+        "        app.account.start_node_events();\n"
+        "    } else {\n"
+        "        if let Some(active) = app.account.node_event_control.as_ref() {\n"
+        "            active.store(false, Ordering::Relaxed);\n"
+        "        }\n"
+        "        app.account.node_event_started = false;\n"
+        "        app.account.node_event_rx = None;\n"
+        "        app.account.node_peers = 0;\n"
         "    }",
         "remove 10-second polling and listen for events",
     )
@@ -368,7 +406,7 @@ def main() -> None:
     )
     source = source.replace(
         'ui.small("开启后本机将通过加密连接参与节点在线互联；不会自动共享账号密码或媒体文件。关闭后停止本机节点连接。");',
-        'ui.small("开启后本机尝试保持跨地区节点在线连接；关闭后停止本机节点连接。节点间加密配对和媒体转发仍需后续版本完成。");',
+        'ui.small("开启后本机上线并发现其他自愿加入的手机节点；关闭或退出账号后会断开。跨节点任务和媒体传输仍在后续接入。");\n                    ui.label(format!("当前发现在线节点：{}", app.account.node_peers));',
     )
     if "管理员手机账号服务器地址" in source or "必须连接同一个 Wi-Fi" in source:
         raise SystemExit("LAN-only account UI text remains after cloud conversion.")
