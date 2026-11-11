@@ -428,6 +428,20 @@ final class LanAccountServer implements Runnable {
         JSONObject out = new JSONObject(); out.put("user", findUser(id)); return out;
     }
 
+    // In-process administrator access uses this same SQLite database as /v1/register.
+    // MainActivity calls these only after the administrator has authenticated.
+    JSONObject listUsersForAdmin(String query) throws Exception {
+        return listUsers(query == null ? "" : query.toLowerCase(Locale.ROOT));
+    }
+
+    JSONObject banUserForAdmin(String id, JSONObject body) throws Exception {
+        return banUser(id, body);
+    }
+
+    JSONObject deleteUserForAdmin(String id) throws Exception {
+        return deleteUser(id);
+    }
+
     private JSONObject listUsers(String query) throws Exception {
         JSONArray users = new JSONArray();
         Cursor c;
