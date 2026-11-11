@@ -151,7 +151,7 @@ public final class MainActivity extends Activity {
             boolean running = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).getBoolean("node_running", false);
             int peers = LanPeerDiscovery.getSavedPeers(this).length();
             status.setText(enabled ? (running ? "状态：已开启 · 本机节点正在运行" : "状态：已开启 · 正在等待节点服务启动") : "状态：已关闭 · 本机节点已停止");
-            count.setText("已发现附近节点：" + peers + " 台（当前仅支持同一 Wi-Fi）");
+            count.setText("已发现附近节点：" + peers + " 台（当前为局域网发现，跨地区连接待接入）");
             toggle.setText(enabled ? "关闭节点互联网络" : "开启节点互联网络");
         };
         refresh.run();
@@ -172,7 +172,7 @@ public final class MainActivity extends Activity {
             }
             refresh.run();
         });
-        TextView note = text("此开关独立于账号服务器开关。当前已实现同一 Wi-Fi 的节点广播与发现；跨地区公网穿透和远程统一控制尚未完成。", 11, false);
+        TextView note = text("此开关独立于账号服务器开关。当前只有局域网节点发现；中国境内跨地区公网连接尚未接入，不能视为已互通。", 11, false);
         note.setTextColor(Color.rgb(95, 103, 115));
         panel.addView(note);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
@@ -272,7 +272,7 @@ public final class MainActivity extends Activity {
         page.addView(passwordInput);
         loginButton = button("登录本机管理员");
         page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
-        loginStatus = text("首次登录后保存本机登录凭据；账号服务器在管理员手机后台运行。", 12, false);
+        loginStatus = text("首次输入管理员密码后绑定本机安全设备；以后自动验证。更换手机需重新授权。", 12, false);
         loginStatus.setTextColor(Color.rgb(95, 103, 115));
         page.addView(loginStatus, new LinearLayout.LayoutParams(-1, dp(36)));
         loginButton.setOnClickListener(v -> doAdminLogin());
