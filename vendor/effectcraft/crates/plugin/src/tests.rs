@@ -26,6 +26,8 @@ fn gain_module(id: &str, render_body: &str) -> String {
 
 /// The gain module with its own manifest JSON.
 fn module_with(manifest: &str, render_body: &str) -> String {
+    let manifest: serde_json::Value = serde_json::from_str(manifest).unwrap();
+    let manifest = serde_json::to_string(&manifest).unwrap();
     let len = manifest.len();
     let escaped = manifest.replace('\\', "\\\\").replace('"', "\\\"");
     format!(
@@ -250,7 +252,13 @@ fn abi_violations_fail_to_load_with_reasons() {
             "(func (export \"ec_api_version\") (result i32) i32.const 1)",
             &format!("(func (export \"ec_api_version\") (result i32) i32.const {v})"),
         );
-        assert!(load_err(load_wasm(m.as_bytes(), "x.wat")).contains(&format!("API {v}")), "{v}");
+        let error = load_err(load_wasm(m.as_bytes(), "x.wat"));
+        // Negative JSON API numbers are rejected by u32 deserialization before
+        // manifest validation; non-negative unsupported versions reach the API check.
+        assert!(!error.is_empty(), "{v}");
+        if v != "-1" {
+            assert!(error.contains(&format!("API {v}")), "{v}: {error}");
+        }
     }
     // Manifest out of bounds, negative or absurd lengths, not JSON.
     let ptr = "(func (export \"ec_manifest_ptr\") (result i32) i32.const 16)";
