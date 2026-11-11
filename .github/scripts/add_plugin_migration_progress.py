@@ -55,12 +55,18 @@ struct ScanReport {
     total_bytes: u64,
 }
 
-/// Called when the existing effect.plugins.load picker returns a ZIP. Only desktop
-/// archives containing native plug-in binaries are diverted into the migration dialog.
+/// Intercept native AE binaries selected directly, or native binaries in ZIP/ZXP bundles.
 pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool {
-    if !Path::new(path).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip")) {
-        return false;
+    let source = Path::new(path);
+    let extension = source.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let native_extensions = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"];
+    if native_extensions.contains(&extension.as_str()) && source.is_file() {
+        let Ok(meta) = std::fs::metadata(source) else { return false };
+        if meta.len() == 0 || meta.len() > MAX_ENTRY_BYTES { return false; }
+        app.plugin_import = Some(ImportState::Confirm { path: path.to_string(), native_count: 1 });
+        return true;
     }
+    if extension != "zip" && extension != "zxp" { return false; }
     let Ok(file) = File::open(path) else { return false };
     let Ok(mut archive) = ZipArchive::new(file) else { return false };
     let mut native_count = 0usize;
@@ -95,8 +101,30 @@ fn spawn_scan(path: String) -> ImportState {
 /// Read and validate the actual ZIP entries off the UI thread. The progress value measures
 /// uncompressed bytes scanned, not elapsed time or a cosmetic timer.
 fn scan_archive(path: &str, progress: &AtomicUsize) -> Result<ScanReport, String> {
+    let source = Path::new(path);
+    let extension = source.extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let native_extensions = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"];
+    if native_extensions.contains(&extension.as_str()) && source.is_file() {
+        let mut file = File::open(source).map_err(|error| format!("无法读取原插件：{error}"))?;
+        let total_bytes = file.metadata().map_err(|error| error.to_string())?.len();
+        if total_bytes == 0 || total_bytes > MAX_ENTRY_BYTES {
+            return Err("原生插件为空或超过 64 MB 安全上限".into());
+        }
+        let mut buffer = [0u8; 64 * 1024];
+        let mut completed = 0u64;
+        loop {
+            let count = file.read(&mut buffer).map_err(|error| format!("扫描原插件失败：{error}"))?;
+            if count == 0 { break; }
+            completed = completed.saturating_add(count as u64);
+            let value = ((completed.saturating_mul(SCAN_PROGRESS_MAX as u64) / total_bytes).min(SCAN_PROGRESS_MAX as u64)) as usize;
+            progress.store(value, Ordering::Release);
+        }
+        progress.store(SCAN_PROGRESS_MAX, Ordering::Release);
+        let name = source.file_name().map(|v| v.to_string_lossy().into_owned()).unwrap_or_else(|| "native-plugin".into());
+        return Ok(ScanReport { file_count: 1, native_count: 1, native_names: vec![name], total_bytes: completed });
+    }
     let file = File::open(path).map_err(|error| format!("无法读取插件压缩包：{error}"))?;
-    let mut archive = ZipArchive::new(file).map_err(|error| format!("插件 ZIP 无效或已损坏：{error}"))?;
+    let mut archive = ZipArchive::new(file).map_err(|error| format!("插件 ZIP/ZXP 无效或已损坏：{error}"))?;
     if archive.len() > MAX_ENTRIES {
         return Err(format!("压缩包包含 {} 个条目，超过安全上限 {MAX_ENTRIES}", archive.len()));
     }
@@ -170,7 +198,7 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
     let panels = value_count(value, "panels");
     let scripts = value_count(value, "desktop_scripts");
     let assets = value_count(value, "desktop_assets");
-    let compatibility_matches = value_count(value, "desktop_native_compatibility_matches");
+    let native_originals = value_count(value, "desktop_native_requires_port");
     let errors = value_count(value, "errors");
     let skipped = value_count(value, "desktop_skipped");
     let installed = wasm + wat + panels + scripts;
@@ -205,10 +233,8 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
             scan.native_count
         ));
     }
-    if compatibility_matches > 0 {
-        lines.push(format!(
-            "另找到 {compatibility_matches} 个按文件名匹配的内置兼容重实现。它们不是原厂插件，也不代表原插件的全部参数和算法已还原。"
-        ));
+    if native_originals > 0 {
+        lines.push(format!("原版电脑版插件文件已原样保存：{native_originals} 个；尚未在 Android 中运行。"));
     }
     if errors > 0 {
         lines.push(format!("有 {errors} 项兼容模块安装错误，请查看插件导入报告。"));
@@ -222,7 +248,7 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
 
     if scan.native_count > 0 {
         if installed == 0 {
-            lines.insert(1, "本次没有安装可运行的移植模块；只有原生文件归档或近似替代项，不能称为移植成功。".into());
+            lines.insert(1, "本次没有安装可运行的移植模块；本次只保留原版二进制文件，没有运行原插件，不能称为移植成功。".into());
             ("原生插件尚未移植".into(), lines.join("\n"), false)
         } else {
             lines.push("本次完成的只是其中可运行的 WASM/脚本模块；电脑版原生插件仍需逐个移植和验证。".into());
@@ -268,7 +294,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.heading("检测到需要移植的电脑版插件");
                         ui.label(format!("发现 {native_count} 个 .aex / .dll / .ofx 等原生插件文件。"));
                         ui.add_space(4.0);
-                        ui.label("点击开始后会扫描压缩包、检查安全性，并安装 EffectCraft 能兼容的模块或替代效果。无法兼容的原生插件会保留原件，不会伪装成已移植。 ");
+                        ui.label("点击开始后会扫描原插件或插件包。不会按文件名换成替代效果；原生插件只有真正通过 Android 宿主加载及渲染，才会算移植成功。 ");
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
                             if ui.button("取消").clicked() { cancel = true; }
@@ -297,9 +323,9 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     .default_width(330.0)
                     .default_pos(pos2(screen.center().x - 165.0, screen.center().y - 75.0))
                     .show(ctx, |ui| {
-                        ui.label("正在扫描插件文件并检查可移植内容…");
+                        ui.label("正在扫描原插件文件并验证可导入内容…");
                         ui.add(egui::ProgressBar::new(fraction).text(format!("{percent}%")));
-                        ui.small("进度根据实际读取和解压的文件数据更新；完成扫描后会安装兼容模块。");
+                        ui.small("进度根据实际读取和解压的文件数据更新；完成扫描后会验证原插件能否被现有宿主实际加载；不满足条件会保留原件并标记未移植。");
                     });
                 ctx.request_repaint_after(Duration::from_millis(100));
                 if let Some(result) = received { action = Some(Action::Scanned(path.clone(), result)); }
@@ -315,7 +341,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     .default_width(330.0)
                     .default_pos(pos2(screen.center().x - 165.0, screen.center().y - 75.0))
                     .show(ctx, |ui| {
-                        ui.label("兼容模块安装与注册完成。");
+                        ui.label("可加载的插件模块已验证完成。");
                         ui.add(egui::ProgressBar::new(1.0).text("100%"));
                     });
                 if since.elapsed() >= Duration::from_millis(180) {
