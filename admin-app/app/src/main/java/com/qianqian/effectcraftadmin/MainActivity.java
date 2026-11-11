@@ -45,6 +45,7 @@ public final class MainActivity extends Activity {
     private static final String PERMANENT_BAN_UNTIL = "9999-12-31T23:59:59Z";
     private String server = DEFAULT_SERVER;
     private String adminToken = "";
+    private LanAccountServer localAccounts;
     private LinearLayout root;
     private LinearLayout rows;
     private EditText serverInput;
@@ -64,7 +65,7 @@ public final class MainActivity extends Activity {
         adminToken = savedServer.startsWith("https://")
             ? getPreferences(MODE_PRIVATE).getString("admin_token", "") : "";
         if (!adminToken.isEmpty()) {
-            showConnecting("正在连接云端账号服务并恢复管理员登录…");
+            showConnecting("管理员身份已保存，正在读取管理员手机本地账号库…");
             loadUsers("");
         } else {
             showLogin();
@@ -301,9 +302,8 @@ public final class MainActivity extends Activity {
         TextView title = text("EffectCraft 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
         addAccountServerPanel(page);
-        page.addView(text("下方云端账号后台为旧版兼容入口；管理员手机本地账号服务器可独立启停。", 12, false));
-        page.addView(text("云端账号管理：不同地区、不同网络的用户可以注册和登录。", 14, false));
-        page.addView(text("管理设备只需能访问 Cloudflare HTTPS 服务，不需要保持开机供其他用户连接。", 13, false));
+        page.addView(text("账号资料以管理员手机本地 SQLite 数据库为准；主 APK 在此注册的账号会显示在下方列表。", 12, false));
+        page.addView(text("管理员登录用于验证管理身份；账号列表、封禁、解禁和删除直接操作本机同一份账号数据库。", 14, false));
         page.addView(text("主 APK 用户端自动加入节点网络；本管理版只负责账号管理、封禁解禁和全局节点开关。", 13, false));
         page.addView(text("服务器地址", 13, true));
         serverInput = field("服务器地址由管理版自动配置", false);
@@ -342,7 +342,7 @@ public final class MainActivity extends Activity {
             loginButton.setEnabled(false);
             loginButton.setText("正在验证…");
         }
-        if (loginStatus != null) loginStatus.setText("正在连接云端 HTTPS 服务并验证管理员密码…");
+        if (loginStatus != null) loginStatus.setText("正在验证管理员身份…");
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
             if (result == null) {
                 if (loginButton != null) {
@@ -355,7 +355,7 @@ public final class MainActivity extends Activity {
             try {
                 adminToken = result.getString("token");
                 getPreferences(MODE_PRIVATE).edit().putString("server", server).putString("admin_token", adminToken).apply();
-                showConnecting("密码验证成功，正在读取账号列表…");
+                showConnecting("管理员身份验证成功，正在读取本机账号数据库…");
                 loadUsers("");
             } catch (Exception e) {
                 toast("管理员登录返回数据不正确");
@@ -438,14 +438,30 @@ public final class MainActivity extends Activity {
         });
     }
 
+    private interface LocalAdminAction { JSONObject run(LanAccountServer server) throws Exception; }
+
+    private void runLocalAdminAction(LocalAdminAction action, JsonCallback callback) {
+        io.execute(() -> {
+            JSONObject result = null;
+            String error = null;
+            try {
+                if (localAccounts == null) localAccounts = new LanAccountServer(getApplicationContext());
+                result = action.run(localAccounts);
+            } catch (Exception e) {
+                error = "本机账号数据库操作失败：" + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
+            }
+            JSONObject finalResult = result;
+            String finalError = error;
+            runOnUiThread(() -> {
+                if (finalError != null) toast(finalError);
+                if (callback != null) callback.done(finalResult);
+            });
+        });
+    }
+
     private void loadUsers(String query) {
-        String encoded;
-        try { encoded = URLEncoder.encode(query, "UTF-8"); } catch (Exception e) { encoded = ""; }
-        requestAsync("GET", "/v1/admin/users?q=" + encoded, null, true, result -> {
+        runLocalAdminAction(server -> server.listUsersForAdmin(query), result -> {
             if (result == null) {
-                // Do not leave the Activity blank or stuck on an expired token.
-                adminToken = "";
-                getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
                 showLogin();
                 return;
             }
@@ -658,12 +674,9 @@ public final class MainActivity extends Activity {
                         body.put("banned_until", Instant.ofEpochMilli(until.getTimeInMillis()).toString());
                         body.put("reason", why);
                     } catch (Exception ignored) {}
-                    requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
+                    runLocalAdminAction(server -> server.banUserForAdmin(id, body), result -> {
                         if (result != null) {
-                            int delivered = result.optInt("notification_delivered", 0);
-                            toast(delivered > 0
-                                ? "已封禁，并已通知在线 Ae 设备（" + delivered + " 个连接）"
-                                : "封禁记录已保存；未发现在线 Ae 连接，对方下次联网或打开 Ae 时核验");
+                            toast("封禁记录已保存；账号下次请求账号状态时将被拒绝");
                             updateVisibleUser(result.optJSONObject("user"));
                         }
                     });
@@ -687,7 +700,7 @@ public final class MainActivity extends Activity {
                         body.put("banned_until", PERMANENT_BAN_UNTIL);
                         body.put("reason", why);
                     } catch (Exception ignored) {}
-                    requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
+                    runLocalAdminAction(server -> server.banUserForAdmin(id, body), result -> {
                         if (result != null) {
                             toast("账号已永久封禁；如需释放注册信息，请打开账号详情并选择删除账号");
                             updateVisibleUser(result.optJSONObject("user"));
@@ -702,9 +715,9 @@ public final class MainActivity extends Activity {
                 .setMessage("确定删除账号“" + user.optString("name") + "”吗？删除后该账号将无法恢复，原名字、QQ号和微信号会释放，之后可以重新注册。")
                 .setNegativeButton("取消", null)
                 .setPositiveButton("确认删除并释放资料", (dialog, which) -> {
-                    requestAsync("DELETE", "/v1/admin/users/" + id, null, true, result -> {
+                    runLocalAdminAction(server -> server.deleteUserForAdmin(id), result -> {
                         if (result != null && result.optBoolean("deleted", false)) {
-                            toast("账号已删除，名字、QQ号和微信号已释放，可以重新注册");
+                            toast("账号已从本机数据库删除，名字、QQ号和微信号已释放，可以重新注册");
                             loadUsers(searchInput == null ? "" : searchInput.getText().toString());
                         }
                     });
@@ -718,12 +731,9 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("确认取消封禁", (dialog, which) -> {
                     JSONObject body = new JSONObject();
                     try { body.put("banned_until", JSONObject.NULL); body.put("reason", ""); } catch (Exception ignored) {}
-                    requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
+                    runLocalAdminAction(server -> server.banUserForAdmin(id, body), result -> {
                         if (result != null) {
-                            int delivered = result.optInt("notification_delivered", 0);
-                            toast(delivered > 0
-                                ? "已解禁，并已通知在线 Ae 设备（" + delivered + " 个连接）"
-                                : "解禁记录已保存；对方下次联网或打开 Ae 时核验");
+                            toast("已解禁；账号状态已在本机数据库更新");
                             updateVisibleUser(result.optJSONObject("user"));
                         }
                     });
