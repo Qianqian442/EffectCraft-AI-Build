@@ -90,7 +90,9 @@ jobs:
           arch: x86_64
           profile: pixel_6
           emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
-          disable-animations: true
+          # Avoid an intermittent ADB/framework-service disconnect during runner setup.
+          # The install/launch check does not depend on animations being disabled.
+          disable-animations: false
           script: |
             set -euo pipefail
             APK="release/EffectCraft-Account-Admin.apk"
