@@ -106,8 +106,139 @@ fn archive_desktop_native_file(s: &mut Session, native_path: &str) -> Result<Val
     }))
 }
 
+/// Preserve a complete desktop plug-in folder/bundle, including its resources.
+/// Only native originals are reported; no filename-based replacement is attempted.
+fn archive_desktop_plugin_folder(s: &mut Session, folder_path: &str) -> Result<Option<Value>> {
+    const CMD: &str = "effect.plugins.load";
+    const MAX_ENTRIES: usize = 512;
+    const MAX_FILE_BYTES: u64 = 64 * 1024 * 1024;
+    const MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
+    let source = Path::new(folder_path);
+    if !source.is_dir() {
+        return Ok(None);
+    }
+    let root = source.canonicalize()
+        .map_err(|error| bad(CMD, format!("无法解析插件目录：{error}")))?;
+    let mut stack = vec![root.clone()];
+    let mut files: Vec<PathBuf> = Vec::new();
+    let mut total_bytes = 0_u64;
+    while let Some(directory) = stack.pop() {
+        let entries = std::fs::read_dir(&directory)
+            .map_err(|error| bad(CMD, format!("无法读取插件目录：{error}")))?;
+        for entry in entries {
+            let entry = entry.map_err(|error| bad(CMD, format!("读取插件目录条目失败：{error}")))?;
+            let file_type = entry.file_type()
+                .map_err(|error| bad(CMD, format!("读取插件文件类型失败：{error}")))?;
+            if file_type.is_symlink() {
+                continue;
+            }
+            let item_path = entry.path();
+            if file_type.is_dir() {
+                stack.push(item_path);
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+            if files.len() >= MAX_ENTRIES {
+                return Err(bad(CMD, "插件目录文件数量超过 512 个安全上限"));
+            }
+            let metadata = entry.metadata()
+                .map_err(|error| bad(CMD, format!("读取插件文件属性失败：{error}")))?;
+            if metadata.len() > MAX_FILE_BYTES {
+                return Err(bad(CMD, format!("文件超过 64 MB 安全上限：{}", item_path.display())));
+            }
+            total_bytes = total_bytes.saturating_add(metadata.len());
+            if total_bytes > MAX_TOTAL_BYTES {
+                return Err(bad(CMD, "插件目录总大小超过 256 MB 安全上限"));
+            }
+            files.push(item_path);
+        }
+    }
+    files.sort();
+
+    let native_extensions = ["aex", "dll", "ofx", "so", "dylib", "prm", "8bf"];
+    let bundle_name = root.file_name().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let mut native: Vec<Value> = Vec::new();
+    for file in &files {
+        let relative = file.strip_prefix(&root)
+            .map_err(|_| bad(CMD, "插件目录出现越界路径"))?;
+        if relative.components().any(|component| !matches!(component, Component::Normal(_))) {
+            return Err(bad(CMD, "插件目录中包含不安全的相对路径"));
+        }
+        let relative_text = relative.to_string_lossy().replace('\\', "/");
+        let extension = relative.extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+        let in_macos_bundle_executable = (bundle_name.ends_with(".plugin") || relative_text.to_ascii_lowercase().contains(".plugin/"))
+            && relative_text.to_ascii_lowercase().contains("contents/macos/");
+        let is_native = native_extensions.contains(&extension.as_str())
+            || extension == "bundle"
+            || in_macos_bundle_executable;
+        if is_native {
+            let metadata = std::fs::metadata(file)
+                .map_err(|error| bad(CMD, format!("无法读取原插件属性：{error}")))?;
+            let format = if extension == "aex" || extension == "dll" || extension == "prm" || extension == "8bf" {
+                "desktop native binary"
+            } else if extension == "ofx" || extension == "so" || extension == "dylib" || in_macos_bundle_executable {
+                "native shared library"
+            } else { "native plugin data" };
+            native.push(json!({
+                "source": relative_text,
+                "bytes": metadata.len(),
+                "format": format,
+                "status": "saved_unported"
+            }));
+        }
+    }
+    if native.is_empty() {
+        return Ok(None);
+    }
+
+    let cfg = s.config.clone()
+        .ok_or_else(|| bad(CMD, "当前会话没有可写的插件目录"))?;
+    let settings = cfg.dir()
+        .ok_or_else(|| bad(CMD, "当前存储环境没有可访问的插件目录"))?;
+    let originals_root = settings.join("Plug-ins").join("Desktop-Originals");
+    std::fs::create_dir_all(&originals_root)
+        .map_err(|error| bad(CMD, format!("无法创建原插件存档目录：{error}")))?;
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let saved_root = originals_root.join(format!("desktop_bundle_{stamp}"));
+    std::fs::create_dir_all(&saved_root)
+        .map_err(|error| bad(CMD, format!("无法创建原插件包目录：{error}")))?;
+    for file in &files {
+        let relative = file.strip_prefix(&root)
+            .map_err(|_| bad(CMD, "插件目录出现越界路径"))?;
+        let destination = saved_root.join(relative);
+        if let Some(parent) = destination.parent() {
+            std::fs::create_dir_all(parent)
+                .map_err(|error| bad(CMD, format!("无法创建插件资源目录：{error}")))?;
+        }
+        std::fs::copy(file, &destination)
+            .map_err(|error| bad(CMD, format!("原样复制插件资源失败：{error}")))?;
+    }
+    for item in &mut native {
+        if let Some(object) = item.as_object_mut() {
+            object.insert("saved_package".into(), json!(saved_root.to_string_lossy()));
+        }
+    }
+    s.toast(format!("已原样保存插件目录结构（{} 个文件，{} 个原生模块）；尚未在 Android 中加载或运行",
+        files.len(), native.len()));
+    Ok(Some(json!({
+        "installed": [],
+        "panels": [],
+        "loaded": [],
+        "errors": [],
+        "desktop_native_requires_port": native,
+        "desktop_native_compatibility_matches": [],
+        "desktop_package_directory": saved_root.to_string_lossy(),
+        "desktop_package_files": files.len(),
+        "desktop_package_bytes": total_bytes
+    })))
+}
+
 /// Inspect a desktop plug-in ZIP/ZXP and install only formats EffectCraft can safely host.
-/// Native .aex/.dll/.ofx binaries are preserved for analysis but are never executed.
 fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result<Value> {
     const CMD: &str = "effect.plugins.load";
     const MAX_ENTRIES: usize = 512;
@@ -416,7 +547,13 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     anchor = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
     replacement = '''    if let Some(path) = str_p(p, "path") {
-        let extension = Path::new(path).extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+        let source = Path::new(path);
+        if source.is_dir() {
+            if let Some(result) = archive_desktop_plugin_folder(s, path)? {
+                return Ok(result);
+            }
+        }
+        let extension = source.extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
         if extension == "zip" || extension == "zxp" {
             return install_desktop_plugin_archive(s, path);
         }
@@ -424,9 +561,29 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             return archive_desktop_native_file(s, path);
         }
     }
+    if let Some(folder) = str_p(p, "folder") {
+        if let Some(result) = archive_desktop_plugin_folder(s, folder)? {
+            return Ok(result);
+        }
+    }
     let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
     source = replace_once(source, anchor, replacement, "ZIP route to desktop package installer")
+    # Add a folder-picker alias that reuses the same loader with a `folder` argument.
+    command_anchor = '''            "effect.plugins.load",
+            "Load Effect Plug-in...",'''
+    command_replacement = '''            "effect.plugins.loadFolder",
+            "Load Desktop Plug-in Folder...",
+            [],
+            None,
+            "{folder (complete AE .plugin bundle or directory containing desktop plug-in files)}",
+            super::always,
+            plugins_load
+        ),
+        cmd!(
+            "effect.plugins.load",
+            "Load Effect Plug-in...",'''
+    source = replace_once(source, command_anchor, command_replacement, "desktop plug-in folder command")
     path.write_text(source, encoding="utf-8")
     print("Added safe desktop ZIP inspection, WASM/JSX bundle installation, JS script import and native-binary staging.")
 
