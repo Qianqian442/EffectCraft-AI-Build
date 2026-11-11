@@ -195,8 +195,8 @@ fn typed_property_api_v2_loads_native_effectcraft_controls() {
     let spec = load_wasm(module.as_bytes(), "typed-v2.wat").unwrap();
     assert_eq!(spec.id, "org.test.typed-v2");
     assert_eq!(spec.params.len(), 2);
-    assert!(matches!(spec.params[0].ui, effectcraft_project::ParamUi::Point3));
-    assert!(matches!(spec.params[1].ui, effectcraft_project::ParamUi::Layer));
+    assert!(matches!(&spec.params[0].ui, effectcraft_project::ParamUi::Point3));
+    assert!(matches!(&spec.params[1].ui, effectcraft_project::ParamUi::Layer));
 
     // Exercise ec_render_v2. It returns an error when the serialized, typed value map is empty.
     let image = render(spec, 0.5, false);
