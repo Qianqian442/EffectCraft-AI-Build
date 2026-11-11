@@ -1,57 +1,28 @@
 # EffectCraft AI Build
 
-Private, reproducible Android build workspace for **EffectCraft 0.21.1**.
+Private, reproducible Android build workspace for EffectCraft 0.21.1.
 
-## Repository layout
+## APK outputs
 
-- `.github/workflows/`: Android APK build, account-service deployment, and source-import workflows.
-- `.github/scripts/`: export dialog, project import/export, local AI, account integration, and Android WASM plug-in patches.
-- `.github/native/`: Android native video-worker build files.
-- `assets/ae-avatar.png`: supplied EffectCraft AI assistant avatar.
-- `vendor/effectcraft/`: upstream EffectCraft 0.21.1 source (populated by the vendor workflow).
-- `vendor/android-builder/`: upstream Android builder v0.5.0 source (populated by the vendor workflow).
-- `vendor/native-deps/rife/`: pinned RIFE ncnn Vulkan source and initialized submodules.
-- `vendor/native-deps/realesrgan/`: pinned Real-ESRGAN ncnn Vulkan source and initialized submodules.
+- Main EffectCraft APK.
+- Separate EffectCraft Admin APK.
 
-## Complete source import
+The admin phone is the authoritative account server when its owner enables the server switch in the Admin APK. The Admin APK is both the management console and the optional server host; it is not a worker node. Main APK clients connect to that admin-hosted service for registration, login, account/profile sync, and ban-status checks. The server can be stopped at any time from the Admin APK.
 
-The workflow **Vendor complete EffectCraft source tree** imports these upstream revisions into the repository itself:
+## Admin-phone server mode (selected architecture)
 
-- EffectCraft: `storytold/effectcraft@v0.21.1`
-- Android builder: `MostafaXS1/artcraft-android@v0.5.0`
-- RIFE ncnn Vulkan: `nihui/rife-ncnn-vulkan@a7532fc3f9f8f008cd6eecd6f2ffe2a9698e0cf7`
-- Real-ESRGAN ncnn Vulkan: `xinntao/Real-ESRGAN-ncnn-vulkan@37026f49824c5cf84062e7c6a5dd71445dcf610f`
+- Switch ON: the admin phone starts the account service, opens its authenticated API, and publishes/maintains its reachable endpoint. Main APK clients connect to it.
+- Switch OFF: the service stops accepting new requests and stops account synchronization. Existing local projects and editor functions remain usable; online account operations are unavailable until the admin server is enabled again.
+- Admin phone offline / app force-stopped / Android suspends it: clients cannot reach the authoritative account service. The service does not magically remain available.
+- Cross-network access: phones on different carriers are commonly behind CGNAT. A phone-hosted server may not accept inbound connections directly. The implementation must test direct reachability and, where required, use an explicitly configured secure reverse tunnel/relay. A relay is transport only; it must not become a second account database or silently replace the admin phone as authority.
+- No false online state: Admin APK status must reflect a real listener and a real external reachability/health check, not merely the switch value.
 
-Source import is started by changes to `SOURCE_VENDOR.lock` or manually from GitHub Actions. The vendor workflow commits the checked-out upstream files under `vendor/`; it preserves source and license files and removes only Git metadata.
+This is a phone-hosted client/server account architecture, not a fully decentralized P2P account mesh. The user has chosen the admin phone as the central authority with a manual ON/OFF control. Do not describe it as serverless or as every phone holding an authoritative replicated account database.
 
-## AI model assets
+## Preserved Main APK features
 
-Large model weights are intentionally not stored in Git:
-- DeepSeek R1 Distill Qwen 1.5B IQ4_XS GGUF
-- RIFE 4.6 model files
-- Real-ESRGAN x4 model files
+The main APK remains EffectCraft 0.21.1. Do not remove editor features, project import/export, WASM plug-ins, desktop-AE plug-in inspection/import, RIFE frame interpolation, or Real-ESRGAN quality enhancement to make account networking compile. The DeepSeek local model remains a separate optional importable plugin/resource and is not bundled into the main APK.
 
-The APK workflow downloads these pinned/identified model assets, verifies their sizes, and packages them into the APK. This keeps the source repository manageable while retaining a reproducible model-fetch step.
+## Build and verification
 
-## Android build
-
-The Android workflow targets EffectCraft 0.21.1 and applies the patches in `.github/scripts/` before compiling the arm64 APK. A successful Actions run publishes one standalone `.apk` file in the GitHub Release. Do not install files downloaded from the Actions **Artifacts** area: GitHub wraps those downloads in ZIP archives. A queued or running workflow is not a completed APK build.
-
-## Account server scope and device-to-device compute
-
-The Cloudflare HTTPS account service remains enabled only for functions that require shared authority and synchronization:
-- registration, login, and account verification;
-- administrator account lookup, ban/unban, ban reasons and expiry;
-- live account-status notifications and node-network control/presence.
-
-The main EffectCraft APK keeps the editor and its existing local functions. AI frame interpolation (RIFE), AI quality enhancement (Real-ESRGAN), project import/export, WASM plug-ins, and desktop-AE plug-in inspection/import must not be made dependent on the account server or removed to make the build pass. The DeepSeek local model remains an optional separate plug-in and is not bundled into the main APK.
-
-The separate admin APK remains the only place for administrator controls. The main APK does not expose the global node-network switch. The admin APK is not a worker node.
-
-The account client is built against the repository variable `AE_ACCOUNT_API_URL`, which must be the deployed HTTPS Cloudflare Worker URL ending in `.workers.dev`. The main APK build intentionally fails if this variable is missing or invalid; it must not silently fall back to the temporary home-Wi-Fi server. The admin APK receives the same URL at build time.
-
-Device-to-device compute is a separate capability from the account server: the server must not be used to render users' video or host their AI models. Distributed phone compute is not yet considered complete until task scheduling, opt-in worker participation, result validation, retry, and cross-network transport are implemented and tested. Do not claim that hundreds of phones are already pooled into one compute cluster.
-
-### Build safety
-
-Do not bypass account-service validation with a fake URL or a UI-only account stub. Do not remove existing editor, project import/export, plug-in, or AI video features to force a build. A successful APK compilation is not proof of phone installation or end-to-end account functionality.
+A queued/running workflow is not a completed APK build. A successful compilation is not proof of installation or cross-network operation. Verify APK integrity, signing, installation compatibility, admin server start/stop, external reachability, registration/login, account sync, and ban/unban behavior separately. Never claim a test passed unless it was actually run.
