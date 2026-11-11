@@ -383,13 +383,17 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_home_lan_account_gate.py
           python3 build-assets/.github/scripts/add_home_lan_account_gate.py
 
-      - name: Convert account gate to cloud HTTPS and live ban/unban notifications
+      - name: Use cloud HTTPS account API when configured; otherwise keep admin-phone LAN API
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
         run: |
-          python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
-          python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
+          if [ -n "${AE_ACCOUNT_API_URL:-}" ]; then
+            python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
+            python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
+          else
+            echo "AE_ACCOUNT_API_URL is not configured; retaining the admin-phone LAN account API on port 8788."
+          fi
 
 
       - name: Add independent connected Puppet pin rigs
