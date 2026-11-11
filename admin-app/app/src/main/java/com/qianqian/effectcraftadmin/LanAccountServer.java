@@ -23,6 +23,10 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
+import java.security.KeyFactory;
+import java.security.PublicKey;
+import java.security.Signature;
+import java.security.spec.X509EncodedKeySpec;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.Base64;
@@ -56,6 +60,8 @@ final class LanAccountServer implements Runnable {
     private final Context context;
     private final AccountDb db;
     private final ExecutorService clients = Executors.newFixedThreadPool(8);
+    private final java.util.concurrent.ConcurrentHashMap<String, Challenge> adminChallenges = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final long ADMIN_CHALLENGE_TTL_MS = 90_000L;
     private volatile boolean running = true;
     private volatile ServerSocket listener;
     private volatile String boundIp = "";
@@ -316,6 +322,9 @@ final class LanAccountServer implements Runnable {
         if (method.equals("POST") && path.equals("/v1/register")) return register(body);
         if (method.equals("POST") && path.equals("/v1/login")) return login(body);
         if (method.equals("POST") && path.equals("/v1/admin/login")) return adminLogin(body);
+        if (method.equals("POST") && path.equals("/v1/admin/device/enroll")) return enrollAdminDevice(headers, body);
+        if (method.equals("POST") && path.equals("/v1/admin/device/challenge")) return createAdminDeviceChallenge(body);
+        if (method.equals("POST") && path.equals("/v1/admin/device/login")) return loginAdminDevice(body);
         if (method.equals("GET") && path.equals("/v1/me")) {
             JSONObject claims = authorize(headers, "user");
             JSONObject user = findUser(claims.getString("sub"));
@@ -400,6 +409,72 @@ final class LanAccountServer implements Runnable {
         out.put("expires_in", 8L * 60 * 60);
         return out;
     }
+    private static final class Challenge {
+        final String value;
+        final long createdAt;
+        Challenge(String value) { this.value = value; this.createdAt = System.currentTimeMillis(); }
+    }
+
+    private JSONObject enrollAdminDevice(java.util.Map<String, String> headers, JSONObject body) throws Exception {
+        authorize(headers, "admin");
+        String deviceId = body.optString("device_id", "");
+        String publicKey = body.optString("public_key", "");
+        if (!deviceId.matches("[A-Za-z0-9-]{16,64}") || publicKey.length() < 80 || publicKey.length() > 2048) {
+            return error(422, "管理员设备信息格式不正确", "", "");
+        }
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("admin_device_id", deviceId)
+            .putString("admin_device_public_key", publicKey)
+            .apply();
+        adminChallenges.remove(deviceId);
+        JSONObject out = new JSONObject();
+        out.put("authorized", true);
+        out.put("device_id", deviceId);
+        return out;
+    }
+
+    private JSONObject createAdminDeviceChallenge(JSONObject body) throws Exception {
+        String deviceId = body.optString("device_id", "");
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (deviceId.isEmpty() || !deviceId.equals(prefs.getString("admin_device_id", "")) ||
+            prefs.getString("admin_device_public_key", "").isEmpty()) {
+            return error(403, "这台手机尚未获管理员授权，请使用管理员密码重新绑定", "", "");
+        }
+        String challenge = b64(randomBytes(32));
+        adminChallenges.put(deviceId, new Challenge(challenge));
+        JSONObject out = new JSONObject();
+        out.put("challenge", challenge);
+        out.put("expires_in", ADMIN_CHALLENGE_TTL_MS / 1000);
+        return out;
+    }
+
+    private JSONObject loginAdminDevice(JSONObject body) throws Exception {
+        String deviceId = body.optString("device_id", "");
+        String suppliedChallenge = body.optString("challenge", "");
+        String suppliedSignature = body.optString("signature", "");
+        Challenge challenge = adminChallenges.remove(deviceId);
+        if (challenge == null || System.currentTimeMillis() - challenge.createdAt > ADMIN_CHALLENGE_TTL_MS ||
+            !MessageDigest.isEqual(challenge.value.getBytes(StandardCharsets.UTF_8), suppliedChallenge.getBytes(StandardCharsets.UTF_8))) {
+            return error(401, "设备验证挑战已过期，请重新验证", "", "");
+        }
+        SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        if (!deviceId.equals(prefs.getString("admin_device_id", ""))) {
+            return error(403, "管理员设备授权已变更", "", "");
+        }
+        byte[] encoded = Base64.getUrlDecoder().decode(prefs.getString("admin_device_public_key", ""));
+        PublicKey publicKey = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(encoded));
+        Signature verifier = Signature.getInstance("SHA256withRSA");
+        verifier.initVerify(publicKey);
+        verifier.update(Base64.getUrlDecoder().decode(suppliedChallenge));
+        byte[] signature = Base64.getUrlDecoder().decode(suppliedSignature);
+        if (!verifier.verify(signature)) return error(401, "管理员手机设备签名验证失败", "", "");
+        JSONObject out = new JSONObject();
+        out.put("token", token("admin", "admin", 8L * 60 * 60));
+        out.put("expires_in", 8L * 60 * 60);
+        out.put("device_id", deviceId);
+        return out;
+    }
+
 
     private JSONObject updateProfile(java.util.Map<String, String> headers, JSONObject body) throws Exception {
         JSONObject claims = authorize(headers, "user");
