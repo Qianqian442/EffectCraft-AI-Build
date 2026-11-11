@@ -696,7 +696,7 @@ jobs:
                   tomllib.loads(raw)
               except tomllib.TOMLDecodeError as error:
                   lines = raw.splitlines()
-                   match = re.search(r"at line (\d+), column (\d+)", str(error))
+                  match = re.search(r"at line (\d+), column (\d+)", str(error))
                   line = int(match.group(1)) if match else 1
                   print(f"Invalid TOML in {path}: {error}")
                   for number in range(max(1, line - 3), min(len(lines), line + 3) + 1):
