@@ -2,7 +2,7 @@ name: Validate EffectCraft node network Worker
 
 on:
   push:
-    branches: [implementation/p2p-full-replacement]
+    branches: [implementation/p2p-full-replacement, implementation/admin-phone-main-server]
     paths:
       - 'cloudflare-worker/src/**'
       - '.github/workflows/validate-node-network.yml'
