@@ -42,6 +42,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private static final String DEFAULT_SERVER = BuildConfig.ACCOUNT_API_URL;
+    private static final String PERMANENT_BAN_UNTIL = "9999-12-31T23:59:59Z";
     private String server = DEFAULT_SERVER;
     private String adminToken = "";
     private LinearLayout root;
@@ -514,6 +515,7 @@ public final class MainActivity extends Activity {
         String wechat = user.optString("wechat", "");
         String until = user.optString("banned_until", "");
         boolean banned = !until.isEmpty() && !until.equals("null");
+        boolean permanent = PERMANENT_BAN_UNTIL.equals(until);
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -549,7 +551,7 @@ public final class MainActivity extends Activity {
         info.addView(label);
         info.addView(ids);
         if (banned) {
-            TextView ban = text("封禁至 " + until, 10, true);
+            TextView ban = text(permanent ? "永久封禁" : "封禁至 " + until, 10, true);
             ban.setTextColor(Color.rgb(180, 58, 58));
             info.addView(ban);
         }
@@ -563,8 +565,10 @@ public final class MainActivity extends Activity {
         actions.setGravity(Gravity.CENTER_VERTICAL);
 
         Button banButton = button("封禁");
+        Button permanentButton = button("永久封禁");
         Button unbanButton = button("解禁");
         unbanButton.setEnabled(banned);
+        permanentButton.setEnabled(!permanent);
 
         LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)
@@ -572,6 +576,7 @@ public final class MainActivity extends Activity {
         actionParams.leftMargin = dp(3);
         actionParams.rightMargin = dp(3);
         actions.addView(banButton, actionParams);
+        actions.addView(permanentButton, actionParams);
         actions.addView(unbanButton, actionParams);
         row.addView(actions, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -579,6 +584,7 @@ public final class MainActivity extends Activity {
 
         row.setOnClickListener(v -> showUserDetails(user));
         banButton.setOnClickListener(v -> chooseBan(id));
+        permanentButton.setOnClickListener(v -> permanentlyBan(id));
         unbanButton.setOnClickListener(v -> unban(id));
     }
 
@@ -610,9 +616,13 @@ public final class MainActivity extends Activity {
                 "\n头像地址：" + user.optString("avatar_url") +
                 "\n封禁截止：" + user.optString("banned_until") +
                 "\n封禁原因：" + user.optString("ban_reason");
-        new AlertDialog.Builder(this).setTitle("账号个人信息")
+        AlertDialog.Builder dialog = new AlertDialog.Builder(this).setTitle("账号个人信息")
                 .setMessage(message)
-                .setPositiveButton("OK", null).show();
+                .setPositiveButton("OK", null);
+        if (PERMANENT_BAN_UNTIL.equals(user.optString("banned_until", ""))) {
+            dialog.setNeutralButton("删除账号", (d, which) -> confirmDeleteAccount(user));
+        }
+        dialog.show();
     }
 
     private void chooseBan(String id) {
@@ -655,6 +665,47 @@ public final class MainActivity extends Activity {
                                 ? "已封禁，并已通知在线 Ae 设备（" + delivered + " 个连接）"
                                 : "封禁记录已保存；未发现在线 Ae 连接，对方下次联网或打开 Ae 时核验");
                             updateVisibleUser(result.optJSONObject("user"));
+                        }
+                    });
+                }).show();
+    }
+
+    private void permanentlyBan(String id) {
+        EditText reason = new EditText(this);
+        reason.setHint("填写永久封禁原因（必填）");
+        reason.setMinLines(2);
+        reason.setGravity(Gravity.TOP);
+        new AlertDialog.Builder(this).setTitle("永久封禁账号")
+                .setMessage("永久封禁后，该账号无法登录。只有管理员之后手动删除账号，名字、QQ号和微信号才会释放。")
+                .setView(reason)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认永久封禁", (dialog, which) -> {
+                    String why = reason.getText().toString().trim();
+                    if (why.isEmpty()) { toast("请填写永久封禁原因"); return; }
+                    JSONObject body = new JSONObject();
+                    try {
+                        body.put("banned_until", PERMANENT_BAN_UNTIL);
+                        body.put("reason", why);
+                    } catch (Exception ignored) {}
+                    requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
+                        if (result != null) {
+                            toast("账号已永久封禁；如需释放注册信息，请打开账号详情并选择删除账号");
+                            updateVisibleUser(result.optJSONObject("user"));
+                        }
+                    });
+                }).show();
+    }
+
+    private void confirmDeleteAccount(JSONObject user) {
+        String id = user.optString("id");
+        new AlertDialog.Builder(this).setTitle("永久删除账号")
+                .setMessage("确定删除账号“" + user.optString("name") + "”吗？删除后该账号将无法恢复，原名字、QQ号和微信号会释放，之后可以重新注册。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认删除并释放资料", (dialog, which) -> {
+                    requestAsync("DELETE", "/v1/admin/users/" + id, null, true, result -> {
+                        if (result != null && result.optBoolean("deleted", false)) {
+                            toast("账号已删除，名字、QQ号和微信号已释放，可以重新注册");
+                            loadUsers(searchInput == null ? "" : searchInput.getText().toString());
                         }
                     });
                 }).show();
