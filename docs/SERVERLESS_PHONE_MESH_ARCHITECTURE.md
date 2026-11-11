@@ -34,6 +34,22 @@ The user does not operate or maintain a rented VPS, cloud database, Docker host,
 - Respect captive portals, hotspot client isolation, VPN restrictions, Android background limits, battery settings, and user permission revocation. Never bypass network-owner policy.
 - The VPN is for account control-plane traffic only. Node P2P transport remains separate and must not be coupled to account VPN availability unless explicitly required by a security policy.
 
+## On-demand VPN session lifecycle (required)
+
+The Main APK must not keep the account VPN tunnel continuously connected.
+
+1. On every cold app launch, before enabling protected editor/AE functions, start a short-lived account-check VPN session.
+2. Authenticate the Main APK device and query the Admin phone for the current account status, ban flag, ban reason/expiry, and account/session validity. The response must be authenticated and bound to the current launch nonce to prevent replay.
+3. If the account is active and the response is valid, persist only a short-lived signed status receipt with a strict expiry, then immediately stop the account VPN session. Do not keep a background tunnel alive.
+4. If the account is banned, block protected EffectCraft/AE functions and show the administrator-provided reason and expiry. Do not allow a local bypass.
+5. If the Admin phone/VPN is unreachable, the response is stale, authentication fails, or the check times out, the app must not claim the account is unbanned. Keep protected functions locked and show retry/offline status. Do not silently fall back to LAN, public HTTP, or Cloudflare.
+6. When the user later opens a function that actually requires account service (registration/login, profile change/deletion, account refresh), establish the VPN session just for that operation, complete the authenticated request, and disconnect immediately afterward.
+7. If a protected operation spans multiple API requests, keep the tunnel only for that bounded operation and close it on success, failure, cancellation, or timeout.
+8. On Android, VPN startup is subject to the platform VPN permission/consent and background execution rules. The first setup may require explicit user approval; do not silently bypass Android's VPN consent UI.
+9. The Admin APK account listener remains available only while its account-service switch is ON. The Main APK's global node network is separate and must not be switched on/off by account VPN connect/disconnect.
+
+This is an on-demand, short-session account VPN policy, not an always-on VPN policy. The launch-time status receipt is short-lived; it is not a permanent offline authorization.
+
 ## Independent node network
 
 - Main APK devices may join the node P2P network according to the agreed first-run disclosure/consent and Android system controls.
