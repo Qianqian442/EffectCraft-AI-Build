@@ -67,6 +67,8 @@ struct SavedAccount {
     #[serde(default)]
     user: Option<User>,
     #[serde(default)]
+    local_account: bool,
+    #[serde(default)]
     node_opt_in: bool,
 }
 
@@ -82,6 +84,7 @@ pub(crate) struct AccountState {
     token: Option<String>,
     node_opt_in: bool,
     user: Option<User>,
+    local_account: bool,
     login_mode_register: bool,
     login_identifier: String,
     qq: String,
@@ -113,6 +116,7 @@ impl Default for AccountState {
             token: None,
             node_opt_in: false,
             user: None,
+            local_account: false,
             login_mode_register: false,
             login_identifier: String::new(),
             qq: String::new(),
@@ -159,6 +163,7 @@ impl AccountState {
                     }
                     self.node_opt_in = saved.node_opt_in;
                     self.user = saved.user;
+                    self.local_account = saved.local_account;
                     if !saved.token.is_empty() {
                         self.token = Some(saved.token);
                     }
@@ -169,6 +174,9 @@ impl AccountState {
             // Open the editor from the locally cached session first; verify bans in the background.
             self.mode = if self.user.is_some() { Mode::Editor } else { Mode::Checking };
             self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+        } else if self.local_account && self.user.is_some() {
+            self.mode = Mode::Editor;
+            self.status = "本地账号模式：无需连接管理版即可剪辑；连接后可再绑定管理员账号。".to_string();
         } else {
             self.mode = Mode::Auth;
         }
@@ -180,6 +188,7 @@ impl AccountState {
             server_url: self.server_url.clone(),
             token: self.token.clone().unwrap_or_default(),
             user: self.user.clone(),
+            local_account: self.local_account,
             node_opt_in: self.node_opt_in,
         };
         if let Ok(data) = serde_json::to_string(&saved) {
@@ -268,21 +277,12 @@ impl AccountState {
             banned_until: None,
             ban_reason: String::new(),
         });
+        self.local_account = true;
+        self.token = None;
+        self.password.clear();
+        self.mode = Mode::Editor;
+        self.status = "本地注册成功！资料已保存在本机，无需连接管理版即可使用剪辑功能。以后可在联网时绑定管理员账号。".to_string();
         self.persist(config);
-        self.status = "注册资料已先保存在本机，正在尝试同步账号服务器…".to_string();
-        self.send(
-            Action::Register,
-            "POST",
-            "/v1/register",
-            json!({
-                "qq": self.qq.trim(),
-                "wechat": self.wechat.trim(),
-                "name": self.name.trim(),
-                "password": self.password,
-                "avatar_url": self.avatar_url.trim()
-            }),
-            config,
-        );
     }
 
     fn submit_profile(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
@@ -356,6 +356,7 @@ impl AccountState {
                     } else {
                         self.token = Some(token);
                         self.user = user;
+                        self.local_account = false;
                         self.mode = Mode::Editor;
                         self.password.clear();
                         self.last_verified = Some(std::time::Instant::now());
@@ -384,6 +385,8 @@ impl AccountState {
         if self.token.is_some() {
             self.mode = Mode::Checking;
             self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+        } else if self.local_account && self.user.is_some() {
+            self.mode = Mode::Editor;
         } else {
             self.mode = Mode::Auth;
         }
