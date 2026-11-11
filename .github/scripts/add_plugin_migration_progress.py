@@ -159,52 +159,81 @@ fn value_count(value: &Value, key: &str) -> usize {
 }
 
 fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
-    let wasm = value_count(value, "loaded");
-    let wat = value.get("wat_result").map_or(0, |item| value_count(item, "loaded"));
+    let wasm_modules = value.get("loaded").and_then(Value::as_array).cloned().unwrap_or_default();
+    let wat_modules = value.get("wat_result")
+        .and_then(|item| item.get("loaded"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let wasm = wasm_modules.len();
+    let wat = wat_modules.len();
     let panels = value_count(value, "panels");
     let scripts = value_count(value, "desktop_scripts");
     let assets = value_count(value, "desktop_assets");
-    let matched = value_count(value, "desktop_native_compatibility_matches");
-    let native_unmatched = scan.native_count.saturating_sub(matched);
+    let compatibility_matches = value_count(value, "desktop_native_compatibility_matches");
     let errors = value_count(value, "errors");
     let skipped = value_count(value, "desktop_skipped");
     let installed = wasm + wat + panels + scripts;
-    let success = installed > 0 || matched > 0;
+    let editable_parameters = wasm_modules.iter().chain(wat_modules.iter())
+        .filter_map(|module| module.get("params").and_then(Value::as_u64))
+        .sum::<u64>();
 
-    let mut lines = vec![format!("已扫描 {} 个文件，共 {:.1} MB。", scan.file_count, scan.total_bytes as f64 / (1024.0 * 1024.0))];
-    lines.push(format!("可用模块：WASM {wasm} 个、WAT {wat} 个、AE 面板 {panels} 个、脚本 {scripts} 个。"));
-    if assets > 0 { lines.push(format!("另行保存素材/源码 {assets} 个。")); }
-    if matched > 0 {
-        lines.push(format!("匹配到 {matched} 个内置兼容效果。它们是兼容重实现/近似效果，不是原厂 AE 插件。"));
-    }
-    let has_rsmb_compatibility = value
-        .get("desktop_native_compatibility_matches")
-        .and_then(Value::as_array)
-        .is_some_and(|matches| matches.iter().any(|item| {
-            item.get("effect_id").and_then(Value::as_str)
-                == Some("org.effectcraft.compat.rsmb-motion-blur")
-        }));
-    if has_rsmb_compatibility {
-        lines.push("RSMB 已匹配到“RSMB 风格方向模糊（非原版）”。它已加入效果列表，但不会自动添加到图层；请先把该效果添加到当前图层，再在右侧控件调整方向角度、模糊距离和效果强度。".into());
-    }
-    if native_unmatched > 0 {
-        lines.push(format!("还有 {native_unmatched} 个电脑版原生插件无法自动移植；原件已归档，不会在 Android 上执行。"));
-        if !scan.native_names.is_empty() {
-            lines.push(format!("检测到的原生文件：{}。", scan.native_names.join("、")));
+    let mut lines = vec![format!(
+        "已扫描 {} 个文件，共 {:.1} MB。",
+        scan.file_count, scan.total_bytes as f64 / (1024.0 * 1024.0)
+    )];
+    lines.push(format!(
+        "已加载可运行模块：WASM {wasm} 个、WAT {wat} 个；已安装 JSX 面板 {panels} 个、JS 脚本 {scripts} 个。"
+    ));
+    if installed > 0 {
+        lines.push(format!(
+            "这些模块实际声明了 {editable_parameters} 项可编辑参数；参数数量来自已加载模块的完整清单，不是按几个固定滑块估算。"
+        ));
+        for module in wasm_modules.iter().chain(wat_modules.iter()) {
+            let name = module.get("name").and_then(Value::as_str).unwrap_or("未命名模块");
+            let id = module.get("id").and_then(Value::as_str).unwrap_or("未知 ID");
+            let count = module.get("params").and_then(Value::as_u64).unwrap_or(0);
+            lines.push(format!("模块：{name}（{id}），参数 {count} 项。"));
         }
     }
-    if errors > 0 { lines.push(format!("有 {errors} 项兼容模块安装错误，请查看插件导入报告。")); }
-    if skipped > 0 { lines.push(format!("有 {skipped} 个不支持或超限文件已跳过。")); }
+    if assets > 0 {
+        lines.push(format!("另行保存素材/源码 {assets} 个。"));
+    }
+    if scan.native_count > 0 {
+        lines.push(format!(
+            "检测到 {} 个电脑版原生插件文件（.aex/.dll/.ofx 等）；当前 Android 构建中，按原厂二进制运行的数量为 0。原件已归档，但归档不算移植成功。",
+            scan.native_count
+        ));
+    }
+    if compatibility_matches > 0 {
+        lines.push(format!(
+            "另找到 {compatibility_matches} 个按文件名匹配的内置兼容重实现。它们不是原厂插件，也不代表原插件的全部参数和算法已还原。"
+        ));
+    }
+    if errors > 0 {
+        lines.push(format!("有 {errors} 项兼容模块安装错误，请查看插件导入报告。"));
+    }
+    if skipped > 0 {
+        lines.push(format!("有 {skipped} 个不支持或超限文件已跳过。"));
+    }
     if let Some(report) = value.get("compatibility_report").and_then(Value::as_str) {
         lines.push(format!("详细报告：{report}"));
     }
-    if !success {
-        lines.insert(1, "没有安装任何可运行的兼容插件；仅保存原始文件不算移植成功。".into());
-        ("移植失败".into(), lines.join("\n"), false)
-    } else if native_unmatched > 0 || errors > 0 || skipped > 0 {
-        ("移植部分完成".into(), lines.join("\n"), true)
+
+    if scan.native_count > 0 {
+        if installed == 0 {
+            lines.insert(1, "本次没有安装可运行的移植模块；只有原生文件归档或近似替代项，不能称为移植成功。".into());
+            ("原生插件尚未移植".into(), lines.join("\n"), false)
+        } else {
+            lines.push("本次完成的只是其中可运行的 WASM/脚本模块；电脑版原生插件仍需逐个移植和验证。".into());
+            ("部分完成：原生插件仍待移植".into(), lines.join("\n"), true)
+        }
+    } else if installed > 0 && errors == 0 && skipped == 0 {
+        ("兼容模块导入完成".into(), lines.join("\n"), true)
+    } else if installed > 0 {
+        ("兼容模块部分完成".into(), lines.join("\n"), true)
     } else {
-        ("移植成功".into(), lines.join("\n"), true)
+        ("移植失败".into(), lines.join("\n"), false)
     }
 }
 
