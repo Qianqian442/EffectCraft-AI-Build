@@ -23,7 +23,7 @@ Official project: https://github.com/libp2p/rust-libp2p
 - libp2p carries peer-to-peer sessions and task traffic. A peer must never be able to override account status or issue an unsigned ban/unban command.
 - The administrator APK remains the control plane. Its global node switch disables new peer authorizations and causes clients to close/revoke their node sessions; it is independent of account API availability.
 - The administrator phone is not the sole relay or sole network server.
-- A public bootstrap/relay service is a required infrastructure dependency for peers behind carrier-grade NAT. A Cloudflare Worker URL is an account API URL, not automatically a libp2p relay address. Do not claim cross-network P2P works until a real relay endpoint is deployed and tested.
+- A public libp2p Circuit Relay v2 endpoint is required for DCUtR coordination and fallback for peers behind carrier-grade NAT. A Cloudflare Worker account URL is not a libp2p relay multiaddress. The existing Cloudflare Durable Object also contains an application-level opaque-ciphertext WebSocket forwarding path; the current Android client only sends presence heartbeats and does not yet send peer payloads through it. This Worker path can become a no-extra-VPS fallback only after device key agreement, message authentication, replay protection, pairing/trust approval and bidirectional payload tests are implemented. Do not claim cross-network P2P works until a relay path is fully integrated and tested.
 
 ## Android requirements
 
