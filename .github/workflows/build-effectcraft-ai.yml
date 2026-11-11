@@ -565,6 +565,26 @@ jobs:
           echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
           cargo ndk -V
 
+      - name: Validate rust-libp2p Android ARM64 dependency compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          SMOKE="$RUNNER_TEMP/libp2p-android-smoke"
+          mkdir -p "$SMOKE/src"
+          cat > "$SMOKE/Cargo.toml" <<'EOF'
+          [package]
+          name = "effectcraft-libp2p-android-smoke"
+          version = "0.1.0"
+          edition = "2024"
+
+          [dependencies]
+          libp2p = { version = "=0.57.1", default-features = false, features = ["tokio", "tcp", "quic", "dns", "noise", "yamux", "relay", "dcutr", "autonat", "identify", "macros", "ed25519"] }
+          tokio = { version = "1", features = ["rt", "time", "net"] }
+          EOF
+          printf 'fn main() {}\n' > "$SMOKE/src/main.rs"
+          cargo check --manifest-path "$SMOKE/Cargo.toml" --target aarch64-linux-android
+          echo "rust-libp2p dependency graph compiles for Android ARM64."
+
       - name: Install GLSL compiler for Real-ESRGAN Vulkan shaders
         run: |
           sudo apt-get update
