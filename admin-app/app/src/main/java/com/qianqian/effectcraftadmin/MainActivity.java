@@ -80,9 +80,13 @@ public final class MainActivity extends Activity {
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
         server = DEFAULT_SERVER;
-        adminToken = getPreferences(MODE_PRIVATE).getString("admin_token", "");
-        if (!adminToken.isEmpty()) { showConnecting("正在读取管理员手机本地账号数据库…"); loadUsers(""); }
-        else { showLogin(); }
+        adminToken = "";
+        if (hasAdminDeviceKey()) {
+            showConnecting("正在验证管理员手机设备身份…");
+            autoDeviceLogin();
+        } else {
+            showLogin();
+        }
     }
 
     /** Server-authoritative global node switch; never trust a local preference for this control. */
@@ -367,7 +371,7 @@ public final class MainActivity extends Activity {
                         getPreferences(MODE_PRIVATE).edit()
                             .putString("server", server)
                             .putString("admin_token", adminToken).apply();
-                        showConnecting("本机授权验证成功，正在读取云端账号库…");
+                        showConnecting("管理员手机设备验证成功，正在读取本地账号库…");
                         loadUsers("");
                     });
                 } catch (Exception e) {
@@ -397,10 +401,25 @@ public final class MainActivity extends Activity {
                 return;
             }
             adminToken = result.optString("token");
-            getPreferences(MODE_PRIVATE).edit().putString("admin_token", adminToken).apply();
             passwordInput.setText("");
-            showConnecting("管理员身份验证成功，正在读取本地账号…");
-            loadUsers("");
+            try {
+                KeyPair pair = ensureAdminDeviceKey();
+                JSONObject enrollment = new JSONObject();
+                enrollment.put("device_id", deviceId());
+                enrollment.put("public_key", publicKeyEncoded(pair));
+                requestAsync("POST", "/v1/admin/device/enroll", enrollment, true, enrolled -> {
+                    if (enrolled == null || !enrolled.optBoolean("authorized", false)) {
+                        adminToken = "";
+                        loginStatus.setText("管理员密码正确，但本机设备授权失败，请重试。");
+                        return;
+                    }
+                    showConnecting("管理员手机设备已授权，正在进行安全验证…");
+                    autoDeviceLogin();
+                });
+            } catch (Exception e) {
+                adminToken = "";
+                loginStatus.setText("本机安全设备授权失败：" + e.getMessage());
+            }
         });
     }
     private String trimServer(String value) {
