@@ -29,8 +29,8 @@ def main() -> None:
 
     source = replace_once(
         source,
-        "//! Home-Wi-Fi-only account gate. The account API is intentionally fail-closed:\n"
-        "//! when a saved account cannot be checked against the home server, the editor stays locked.",
+        "//! Admin-phone LAN account gate. The account API is intentionally fail-closed:\n"
+        "//! when a saved account cannot be checked against the admin phone, the editor stays locked.",
         "//! Cloud account gate. The account API is intentionally fail-closed:\n"
         "//! when a saved account cannot be checked against the cloud server, the editor stays locked.",
         "module documentation",
@@ -41,7 +41,7 @@ def main() -> None:
         "use std::net::{TcpStream, ToSocketAddrs};\n"
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::time::Duration;\n\n"
-        'const DEFAULT_SERVER: &str = "http://192.168.1.100:8787";',
+        'const DEFAULT_SERVER: &str = "http://192.168.1.100:8788";',
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::sync::{Arc, atomic::{AtomicBool, Ordering}};\n"
         "use std::time::Duration;\n"
