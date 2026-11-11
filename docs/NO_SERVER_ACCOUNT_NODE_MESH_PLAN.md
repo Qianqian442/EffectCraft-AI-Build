@@ -1,45 +1,55 @@
-# No-server account and node-mesh implementation plan
+# Account service and distributed phone-compute scope
 
-Status: design baseline only. This document does not claim that peer-to-peer account sync, global bans, or cross-network relay are implemented.
+Status: implementation scope clarification. This document does not claim that distributed phone rendering is already implemented.
 
-## Product constraints
+## Account and administrator functions
 
-- Keep exactly two Android packages: the EffectCraft main app and the separate admin app.
-- The main app must not expose the global node-network switch. It joins the mesh automatically when networking is enabled.
-- The admin app owns the global mesh enable/disable control and account ban/unban controls. The admin app itself is not a mesh node.
-- Do not remove editor, project import/export, WASM plugin, desktop-AE-plugin inspection/migration, AI frame interpolation, or AI quality enhancement features to make a build pass.
-- Do not bundle the local DeepSeek model in the main APK; keep the separate model/plugin path.
-- No Cloudflare Worker, VPS, or other centrally hosted account server is acceptable for the requested no-server mode.
+Keep the existing HTTPS Cloudflare Worker account service for functions that need shared state and administrator authority:
+1. Registration, login, and account verification.
+2. Account profile lookup and shared account state.
+3. Administrator ban/unban, mandatory ban reason, and expiry.
+4. Live ban/unban notifications and re-verification before enabling the editor.
+5. Administrator-controlled global node-network enable/disable and node presence.
 
-## Verified current gaps
+The main APK must not display the global network switch. The separate admin APK owns that control and must not act as a worker node.
 
-- The existing account-gate conversion script requires an HTTPS `.workers.dev` endpoint. It cannot currently operate in a serverless peer-only mode.
-- The current node hub tracks WebSocket presence and ping/pong; it explicitly rejects peer payload relay.
-- The documented Android discovery path is LAN/mDNS discovery and health checks, not cross-network peer transport.
-- There is no implemented signed account-event replication, anti-entropy synchronization, or mobile NAT traversal in the current codebase.
+The Worker URL is supplied through the GitHub repository variable `AE_ACCOUNT_API_URL`. It must be an HTTPS `.workers.dev` URL. Both APK workflows must use the same configured endpoint. Builds must fail clearly if the variable is missing; no fake URL, home-Wi-Fi fallback, or UI-only account stub is acceptable.
 
-## Required protocol before enabling no-server mode
+## Local EffectCraft functions
 
-1. **Device identity**: generate a per-install public/private key pair in Android Keystore; never export the private key. Define recovery and reinstall behavior explicitly.
-2. **Admin authority**: pin the admin public key in a deliberate enrollment flow. Admin actions (ban, unban, network state changes) must be signed and carry monotonically increasing sequence numbers.
-3. **Account events**: represent registration, credential changes, ban, and unban as signed immutable events. Passwords and reusable credentials must never be replicated in plaintext.
-4. **Replication**: exchange signed event batches with authenticated peers; verify signatures, authority, sequence numbers, expiry, and conflict rules before applying. Add anti-entropy so temporarily disconnected peers can converge.
-5. **Ban enforcement**: apply a verified ban on receipt and re-check before enabling editing. An offline device cannot learn a new ban until it reconnects; do not claim instantaneous offline revocation.
-6. **Peer discovery and transport**: retain LAN discovery, then add an explicit peer introduction mechanism and a tested NAT traversal strategy. Direct connections will not work on every carrier NAT. A relay or reachable bootstrap endpoint would be infrastructure and would violate the strict no-server requirement.
-7. **Global registration semantics**: define how two isolated partitions prevent duplicate usernames and conflicting registrations. Without a reachable authority or consensus quorum, global uniqueness cannot be guaranteed while partitions are offline.
-8. **Admin network switch**: publish a signed global enabled/disabled event. On disabled, clients stop peer sessions; on enabled, they retry discovery and peer connections. This setting belongs only in the admin app.
+These functions remain in the main APK and must not depend on the account server for their actual processing:
+- Existing editor and timeline functions.
+- AI frame interpolation (RIFE).
+- AI quality enhancement (Real-ESRGAN).
+- Project import/export and supported preset ZIP import.
+- WASM plug-ins and supported desktop-AE plug-in inspection/migration.
+- Export to the phone gallery.
 
-## Acceptance tests required before an APK is called complete
+The optional DeepSeek model/plugin remains separate and is not bundled into the main APK. Do not remove existing functions to force a build.
 
-- Two Android devices on the same Wi-Fi discover and authenticate each other.
-- Two devices on different networks establish a peer session without a centrally hosted relay, or the UI clearly reports that the current network cannot establish a direct path.
-- A signed ban and unban replicate to connected peers and survive app restart.
-- An offline peer applies the latest signed ban when it next synchronizes; tests must not imply that an offline peer receives an immediate update.
-- Conflicting account events and stale/replayed admin events are rejected deterministically.
-- Admin app never advertises itself as a node and its global switch is the only UI control for global mesh state.
-- Main and admin APKs pass APK signature, manifest, ABI, and ZIP-alignment checks.
-- Existing editor and import/export regression tests pass; no feature is removed to satisfy account/network tests.
+## Distributed phone compute (separate from account server)
 
-## Build gate policy
+The long-term goal is to let consenting main-APK devices contribute spare compute to independent EffectCraft tasks. The account Worker is not a video-rendering server and must not receive users' video frames or model weights as a substitute for local processing.
 
-Do not bypass the current account-service build gate by supplying a fake URL or by compiling a UI-only account stub. Until the peer protocol and its tests exist, label any APK as a base/editor-only build and do not represent it as containing working global registration, bans, or cross-network node networking.
+Before enabling distributed work, implement and test:
+1. Explicit opt-in worker participation, visible status, and user pause/stop controls.
+2. Capability negotiation (CPU/GPU, memory, codec support, thermal state, battery, and network).
+3. Task scheduler, bounded work leases, chunking, and retries.
+4. Correct frame overlap/context for temporal algorithms such as RIFE.
+5. Result integrity checks and deterministic merge on the initiating device.
+6. Privacy-preserving transport and authenticated peer sessions.
+7. Resource limits, charging/Wi-Fi preferences, and pause-on-overheat/low-battery behavior.
+8. Cross-network transport tests. Direct P2P is not guaranteed on every carrier NAT; any relay/bootstrap dependency must be disclosed.
+
+Do not silently consume another user's phone resources. A device is a worker only after its owner has opted in. A few hundred phones also cannot be joined as a full mesh; use a bounded overlay/task topology.
+
+## Acceptance gates
+
+- Both APKs use the same configured HTTPS account endpoint.
+- Registration/login and editor access checks work against the deployed Worker.
+- Admin ban/unban and reason/expiry persist and notify online clients; offline clients re-check on next connection.
+- Global node switch is visible only in the admin APK.
+- Admin APK does not advertise itself as a worker node.
+- Main APK retains RIFE, Real-ESRGAN, editor, project import/export, plug-ins, and export.
+- APK signature, manifest, ABI, alignment, and package-integrity checks pass.
+- Distributed compute is not marked complete until multi-device task execution, result verification, failure recovery, and network tests pass.
