@@ -363,14 +363,6 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         }
     }
 
-    let compatibility_summary = native_mappings.iter().map(|item| {
-        format!(
-            "{} → {}：{}",
-            item["source"].as_str().unwrap_or(""),
-            item["effect_name"].as_str().unwrap_or("兼容效果"),
-            item["note"].as_str().unwrap_or("")
-        )
-    }).collect::<Vec<_>>().join("\n");
     let mut install_result = json!({
         "installed": installed_wasm,
         "panels": installed_panels,
@@ -388,7 +380,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。不会按文件名匹配或换成近似替代效果。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n文件名匹配替代：已禁用\n\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。不会按文件名匹配或换成近似替代效果。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
