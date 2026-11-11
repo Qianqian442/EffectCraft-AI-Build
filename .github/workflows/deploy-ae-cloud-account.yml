@@ -2,7 +2,7 @@ name: Deploy Ae Cloud Account API
 
 on:
   push:
-    branches: [main, implementation/p2p-full-replacement]
+    branches: [main, implementation/p2p-full-replacement, implementation/admin-phone-main-server]
     paths:
       - '.github/workflows/deploy-ae-cloud-account.yml'
       - 'cloudflare-worker/**'
