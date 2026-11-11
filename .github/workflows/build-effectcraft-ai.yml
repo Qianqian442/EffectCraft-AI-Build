@@ -29,7 +29,6 @@ on:
       - '.github/scripts/add_libp2p_node_layer.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
-      - '.github/scripts/add_unified_puppet_keyframes.py'
       - '.github/scripts/add_startup_attribution_notice.py'
       - '.github/scripts/add_chroma_key_effect.py'
       - '.github/scripts/add_bottom_left_media_import.py'
@@ -72,7 +71,6 @@ jobs:
             .github/scripts/add_android_gallery_export.py \
             .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/add_libp2p_node_layer.py \
-            .github/scripts/add_unified_puppet_keyframes.py
 
   build:
     needs: validate-patches
@@ -403,13 +401,6 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_puppet_pin_links.py
-
-      - name: Integrate Puppet Position into the unified native keyframe Timeline
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/add_unified_puppet_keyframes.py
-          python3 build-assets/.github/scripts/add_unified_puppet_keyframes.py
 
       - name: Add draggable curve presets to the Android Timeline
         env:
