@@ -7,30 +7,36 @@ Private, reproducible Android build workspace for EffectCraft 0.21.1.
 - Main EffectCraft APK.
 - Separate EffectCraft Admin APK.
 
-## Two coexisting network systems
+## Network architecture
 
-Both systems are part of the selected design. They are separate services with independent controls in the Admin APK; neither replaces the other.
+Two independent network systems are part of the selected design. Neither replaces the other.
 
-### A. Admin-phone account server
+### A. Cloud account and administration
 
-The admin phone is the authoritative account server when enabled. It stores the authoritative account database and handles registration, login, profile updates, account status, ban/unban, reasons and expiry. Main APK clients use this service for account operations. The Admin APK has a dedicated **Account Server ON/OFF** switch. OFF stops the account API but does not delete data; account operations are unavailable until it is turned on again. The admin phone being offline, force-stopped, or suspended makes the account service unavailable.
+The Cloudflare Worker account API is authoritative for registration, login, profile, account status, ban/unban, administrator permissions and the global node-network switch. Both APKs use the configured HTTPS Worker endpoint. The Worker deployment and health checks must pass before account features are described as live.
 
-Cross-network inbound access to a phone may be blocked by NAT/CGNAT. The implementation must test reachability and may require an explicitly configured secure relay/reverse tunnel. Such a relay only transports encrypted traffic; the admin phone remains the account authority and the relay must not host a second account database.
+The administrator APK manages accounts and the global node-network switch. The administrator phone is not the only account server or only network relay.
 
-### B. P2P phone-node network
+### B. Cross-network mobile P2P
 
-Phones in different locations form a peer network for node discovery, peer-to-peer communication, and distributed compute tasks such as eligible frame/image processing. The Admin APK has a separate **P2P Node Network ON/OFF** global control. This switch controls peer networking and task participation independently of the account server switch. Main APK devices do not show node-management controls or connection-status UI.
+The selected peer networking engine is the official Rust libp2p implementation. The target stack is encrypted Peer IDs/sessions, Identify, AutoNAT, Circuit Relay v2, DCUtR hole punching, QUIC and TCP fallback.
 
-P2P is not the authoritative account database. Account identity and final account/ban decisions remain governed by the admin-phone account server. P2P peers must authenticate each other, encrypt sessions, verify signed task/control messages, and never accept an unsigned ban/unban instruction. Direct connections can fail behind CGNAT; hole punching and user-operated relays improve reachability but cannot guarantee every pair connects. Android background restrictions may pause nodes.
+Phones on different networks may connect directly when NAT/firewall conditions permit. If direct connectivity fails, they need an available public relay. Carrier-grade NAT and Android background restrictions mean that no P2P library can guarantee every phone pair is directly reachable.
+
+A Cloudflare Worker account URL is not itself a libp2p relay endpoint. A public bootstrap/relay endpoint must be deployed and tested before cross-network P2P is considered operational. See [P2P implementation plan](docs/P2P_NETWORK_IMPLEMENTATION.md).
 
 ### Independent switch behavior
 
-- Account Server ON, P2P ON: account services and peer network both operate.
-- Account Server ON, P2P OFF: account services operate; peer discovery and distributed tasks stop.
-- Account Server OFF, P2P ON: peer network can operate for peer communication/eligible tasks; online account operations are unavailable and must not be faked.
-- Both OFF: both network services stop; local editor and local project work remain available.
+- Account API available, P2P ON: account services and authorized peer networking operate.
+- Account API available, P2P OFF: account services operate; peer discovery and task participation stop.
+- Account API unavailable, P2P ON: online account operations and fresh node authorization are unavailable; do not fake successful authentication.
+- Both unavailable/OFF: local editor and local project work remain available.
 
-The Admin APK status panel must report real service state, external reachability, last successful account request/sync, and verified peer connectivity separately. Never infer online status from a switch alone.
+The Admin APK must report actual service and peer status separately. Never infer online status from a switch alone.
+
+## Android node participation and privacy
+
+Main APK devices must explicitly opt in before acting as network nodes. Explain battery, mobile-data and resource use. Use a foreground service with a persistent notification while active relaying or task processing is running. Logout, ban, opt-out or global OFF must stop task acceptance and close/revoke peer sessions.
 
 ## Preserved Main APK features
 
@@ -38,4 +44,4 @@ The main APK remains EffectCraft 0.21.1. Do not remove editor features, project 
 
 ## Build and verification
 
-A queued/running workflow is not a completed APK build. A successful compilation is not proof of installation or cross-network operation. Verify APK integrity, signing, installation compatibility, both independent switches, admin server start/stop, external reachability, registration/login, account sync, ban/unban, peer discovery, cross-network transport, and task result validation separately. Never claim a test passed unless it was actually run.
+A queued/running workflow is not a completed APK build. A successful compilation is not proof of installation or cross-network operation. Verify APK integrity, signing, installation compatibility, account registration/login, admin ban/unban, both independent switches, peer discovery, encrypted cross-network transport, relay fallback and bidirectional test-payload transfer separately. Never claim a test passed unless it was actually run.
