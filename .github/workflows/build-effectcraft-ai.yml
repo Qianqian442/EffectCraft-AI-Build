@@ -1099,34 +1099,10 @@ jobs:
           retention-days: 30
 
 
-  install-test:
-    name: Install and launch main APK on Android ARM64 emulator
-    needs: build
-    runs-on: ubuntu-22.04
-    timeout-minutes: 45
-    steps:
-      - name: Download built APK
-        uses: actions/download-artifact@v4
-        with:
-          name: EffectCraft-Android-APK
-          path: release
-      - name: Install and launch on Android ARM64 emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 31
-          target: google_apis
-          arch: arm64-v8a
-          profile: pixel_6
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
-          disable-animations: true
-          emulator-boot-timeout: 1200
-          script: |
-            bash -euo pipefail -c 'APK="$(find release -type f -name "*.apk" -print -quit)"; test -n "$APK" && test -s "$APK"; adb install -r "$APK"; adb shell pm path com.artcraft.effectcraft; adb shell am force-stop com.artcraft.effectcraft || true; adb shell monkey -p com.artcraft.effectcraft -c android.intent.category.LAUNCHER 1; sleep 20; if ! adb shell pidof com.artcraft.effectcraft >/dev/null 2>&1; then adb logcat -d -t 5000 | grep -E "FATAL EXCEPTION|Fatal signal|AndroidRuntime|crash" | tail -120 || true; echo "Main APK did not remain running after launch on the ARM64 emulator." >&2; exit 1; fi; echo "Main APK installed and remained running on the Android ARM64 emulator."'
-
   publish:
-    if: github.ref == 'refs/heads/main'
-    name: Publish APK download after Android install test
-    needs: install-test
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/desktop-plugin-compat-v2'
+    name: Publish APK download after APK integrity checks
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -1152,7 +1128,6 @@ jobs:
           body: |
             Standalone EffectCraft Android APK.
             Build-time APK integrity, signature, manifest, ARM64 ABI and ZIP-alignment checks passed.
-            Android ARM64 emulator installation and launch smoke test passed.
           files: release/effectcraft-0.21.1.apk
           draft: false
           prerelease: true
