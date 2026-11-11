@@ -47,6 +47,7 @@ import javax.crypto.spec.SecretKeySpec;
 final class LanAccountServer implements Runnable {
     static final int PORT = 8788;
     private static final String PREFS = "effectcraft_lan_server";
+    private static volatile String activeBoundIp = "";
     private static final int PBKDF2_ROUNDS = 310000;
     private static final int MAX_BODY = 1024 * 1024;
     private static final Pattern QQ = Pattern.compile("[1-9][0-9]{4,11}");
@@ -132,6 +133,7 @@ final class LanAccountServer implements Runnable {
             String currentIp = getWifiIpv4();
             if (currentIp.isEmpty()) {
                 boundIp = "";
+                activeBoundIp = "";
                 sleepQuietly(2500);
                 continue;
             }
@@ -141,6 +143,7 @@ final class LanAccountServer implements Runnable {
                 server.setSoTimeout(2500);
                 listener = server;
                 boundIp = currentIp;
+                activeBoundIp = currentIp;
                 while (running && currentIp.equals(getWifiIpv4())) {
                     try {
                         Socket socket = server.accept();
@@ -155,6 +158,7 @@ final class LanAccountServer implements Runnable {
             } finally {
                 listener = null;
                 boundIp = "";
+                activeBoundIp = "";
             }
         }
         clients.shutdownNow();
@@ -171,6 +175,8 @@ final class LanAccountServer implements Runnable {
     String getBoundIp() {
         return boundIp;
     }
+
+    static String getActiveBoundIp() { return activeBoundIp; }
 
     private static void sleepQuietly(long millis) {
         try { Thread.sleep(millis); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
