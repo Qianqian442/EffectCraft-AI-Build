@@ -386,13 +386,9 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_home_lan_account_gate.py
           python3 build-assets/.github/scripts/add_home_lan_account_gate.py
 
-      - name: Switch account gate to domestic public HTTPS service
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          AE_ACCOUNT_API_URL: ""
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
-          python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
+      # Keep the account gate on the manager-phone endpoint. Do not run the
+      # legacy public-cloud conversion: this project is moving away from hosted
+      # account infrastructure and must not silently depend on a foreign service.
 
       - name: Add native rust-libp2p node transport
         env:
