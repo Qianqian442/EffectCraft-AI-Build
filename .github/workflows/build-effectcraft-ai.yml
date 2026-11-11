@@ -2,7 +2,7 @@ name: Build EffectCraft AI Android APK
 
 on:
   push:
-    branches: [main, design/no-server-node-mesh, implementation/p2p-full-replacement, implementation/admin-phone-main-server]
+    branches: [main, design/no-server-node-mesh, implementation/p2p-full-replacement, implementation/admin-phone-main-server, desktop-plugin-compat-v2]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
@@ -42,6 +42,9 @@ on:
       - '.github/scripts/looks_compat_pack.rs'
       - '.github/scripts/build_looks_compat_pack.py'
       - 'vendor/effectcraft/crates/ui-egui/src/panels/timeline.rs'
+      - 'vendor/effectcraft/crates/plugin/src/lib.rs'
+      - 'vendor/effectcraft/crates/plugin/src/wasm.rs'
+      - 'vendor/effectcraft/crates/effects/src/plugin.rs'
   workflow_dispatch:
 
 permissions:
@@ -363,6 +366,15 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_plugin_migration_progress.py
           python3 build-assets/.github/scripts/add_plugin_migration_progress.py
 
+      - name: Install typed EffectCraft plug-in property API v2 without replacing existing plug-ins
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          cp build-assets/vendor/effectcraft/crates/effects/src/plugin.rs "$EFFECTCRAFT_DIR/crates/effects/src/plugin.rs"
+          cp build-assets/vendor/effectcraft/crates/plugin/src/wasm.rs "$EFFECTCRAFT_DIR/crates/plugin/src/wasm.rs"
+          cp build-assets/vendor/effectcraft/crates/plugin/src/lib.rs "$EFFECTCRAFT_DIR/crates/plugin/src/lib.rs"
+          echo "Installed API v2 typed-property bridge; API v1 plug-ins remain supported."
+          
       - name: Route AE projects through the original Import Project control
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
