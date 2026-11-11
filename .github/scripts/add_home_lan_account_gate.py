@@ -734,14 +734,14 @@ def main() -> None:
     package_start = lock.find('name = "effectcraft-ui-egui"\n')
     if package_start < 0:
         raise SystemExit("Could not find effectcraft-ui-egui in Cargo.lock")
-    package_end = lock.find("\\n\\n[[package]]", package_start)
+    package_end = lock.find("\n\n[[package]]", package_start)
     if package_end < 0:
         package_end = len(lock)
     package_block = lock[package_start:package_end]
     if '"rfd",' not in package_block:
         if ' "rayon",' not in package_block:
             raise SystemExit("Could not find the dependency insertion point in Cargo.lock")
-        lock = lock[:package_start] + package_block.replace(' "rayon",', ' "rayon",\\n "rfd",', 1) + lock[package_end:]
+        lock = lock[:package_start] + package_block.replace(' "rayon",', ' "rayon",\n "rfd",', 1) + lock[package_end:]
         lock_path.write_text(lock, encoding="utf-8")
 
     source = lib.read_text(encoding="utf-8")
