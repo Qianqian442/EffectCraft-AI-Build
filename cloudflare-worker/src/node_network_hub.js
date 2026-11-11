@@ -122,8 +122,9 @@ export class NodeNetworkHub {
           try { socket.send(JSON.stringify({ type: "error", code: "invalid_peer_announcement" })); } catch (_) {}
           return;
         }
-        if (a.peerId && a.peerId !== peerId) {
-          try { socket.send(JSON.stringify({ type: "error", code: "peer_identity_changed" })); } catch (_) {}
+        if (a.peerId) {
+          const code = a.peerId === peerId ? "peer_already_announced" : "peer_identity_changed";
+          try { socket.send(JSON.stringify({ type: "error", code })); } catch (_) {}
           return;
         }
         a.peerId = peerId;
@@ -146,6 +147,8 @@ export class NodeNetworkHub {
         });
         for (const target of this.ctx.getWebSockets()) {
           if (target === socket) continue;
+          const recipient = target.deserializeAttachment() || {};
+          if (!recipient.peerId) continue;
           try { target.send(announcement); } catch (_) {}
         }
         return;
