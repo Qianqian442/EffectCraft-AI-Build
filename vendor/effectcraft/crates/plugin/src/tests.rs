@@ -168,6 +168,8 @@ fn typed_v2_module() -> String {
         {"id":"sourceLayer","name":"Source Layer","type":"property","ui":{"kind":"Layer"},"default":{"t":"Layer","v":null}}
       ]
     }"#;
+    let manifest: serde_json::Value = serde_json::from_str(manifest).unwrap();
+    let manifest = serde_json::to_string(&manifest).unwrap();
     let len = manifest.len();
     let escaped = manifest.replace('\\', "\\\\").replace('"', "\\\"");
     format!(
