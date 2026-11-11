@@ -14,6 +14,8 @@ public final class AccountServerService extends Service {
     private static final int NOTIFICATION_ID = 8788;
     private LanAccountServer server;
     private Thread worker;
+    private AccountDiscoveryServer discovery;
+    private Thread discoveryWorker;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -28,6 +30,10 @@ public final class AccountServerService extends Service {
         worker = new Thread(server, "EffectCraft-Account-Server");
         worker.setDaemon(true);
         worker.start();
+        discovery = new AccountDiscoveryServer();
+        discoveryWorker = new Thread(discovery, "EffectCraft-Account-Discovery");
+        discoveryWorker.setDaemon(true);
+        discoveryWorker.start();
         getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
             .edit().putBoolean("requested", true).putBoolean("service_process", true).apply();
     }
@@ -48,6 +54,7 @@ public final class AccountServerService extends Service {
 
     @Override public void onDestroy() {
         if (server != null) server.stopServer();
+        if (discovery != null) discovery.stopServer();
         getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
             .edit().putBoolean("requested", false).putBoolean("service_process", false).apply();
         NotificationManager manager = getSystemService(NotificationManager.class);
