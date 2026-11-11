@@ -9,6 +9,10 @@ This service provides the cloud account features used by the two Ae APKs: regist
 - `GET /v1/me`
 - `POST /v1/profile`
 - `GET /v1/events` (authenticated WebSocket)
+- `GET /v1/nodes/network` (authenticated node-network state)
+- `GET /v1/nodes/events` (authenticated cross-network WebSocket node session)
+- `GET /v1/admin/network` and `POST /v1/admin/network` (administrator global switch)
+- `GET /v1/admin/network/nodes` (online node sessions)
 - `POST /v1/admin/login`
 - `GET /v1/admin/users?q=`
 - `GET /v1/admin/users/{id}`
@@ -53,3 +57,8 @@ Check that `https://...workers.dev/health` returns `{"ok":true,"service":"Ae Clo
 After the actual Worker URL is known, set the repository Actions **variable** (not a secret) `AE_ACCOUNT_API_URL` to the exact base URL, for example `https://ae-cloud-account-api.<your-workers-dev-subdomain>.workers.dev`. The main APK workflow checks for this variable and only then runs the cloud-account conversion step. The admin APK accepts the same HTTPS URL in its server address field.
 
 Do not distribute the previous LAN-only builds. Build and validate both cloud-connected APKs first.
+
+
+## Cross-network node relay status
+
+The Worker now accepts bounded, authenticated opaque relay envelopes between currently connected account nodes. It enforces the global network switch, sender identity from the validated account session, recipient routing, message age, duplicate message IDs, payload size and a per-connection rate limit. It does not store media or video files. The APK-side end-to-end key agreement, recipient trust/pairing, ciphertext generation/decryption, signature verification and real cross-carrier device-to-device acceptance tests are still required before this can be called a production-secure peer network. The relay is not yet deployed from this implementation branch.
