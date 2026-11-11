@@ -78,3 +78,14 @@ The standalone administrator APK remains the only separate management app and ow
 - Worker-side authenticated node presence already exists; main APK account sessions automatically attempt `/v1/nodes/events` after account verification.
 - Worker-side relay envelope routing was added on `implementation/p2p-full-replacement`; Wrangler dry-run validation passed on run `42961309379`.
 - Relay is not yet deployed to production. The current APK client maintains node presence but does not yet implement complete end-to-end encrypted peer message exchange. Do not describe the network as fully interconnected until two phones on genuinely different networks exchange a test message and the administrator OFF/ON switch is verified.
+
+
+## Public Wi-Fi requirement (confirmed 2026-11-11)
+
+Public Wi-Fi is a supported Internet uplink for node-to-node connectivity. Two phones on unrelated public hotspots must be able to attempt discovery and exchange data without sharing an SSID/subnet or entering IP addresses. Local mDNS/UDP broadcast is only an optional same-LAN optimization.
+
+The implementation must use outbound authenticated signaling, attempt encrypted direct connectivity/NAT traversal, and fall back to an available encrypted relay when the hotspot isolates clients or blocks inbound/UDP traffic. A captive portal must be completed by the user; the app must not bypass it. Public Wi-Fi alone does not guarantee peer reachability because hotspots commonly use NAT/CGNAT and filtering.
+
+The administrator-phone account database remains private and must not be exposed by removing the same-subnet account API guard. Cross-network account operations require a separately designed authenticated encrypted tunnel/service. Account-server and node-network switches remain independent.
+
+**Current status:** this is a confirmed requirement, not a completed feature. Current local account discovery and peer health checks are LAN-only; complete public-Wi-Fi signaling, end-to-end encrypted payload exchange, relay fallback and two-real-device tests remain outstanding.
