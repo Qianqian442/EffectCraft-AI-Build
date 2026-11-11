@@ -7,7 +7,7 @@ const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
   "cache-control": "no-store",
   "access-control-allow-origin": "*",
-  "access-control-allow-methods": "GET,POST,OPTIONS",
+  "access-control-allow-methods": "GET,POST,DELETE,OPTIONS",
   "access-control-allow-headers": "Authorization,Content-Type",
 };
 
@@ -155,6 +155,10 @@ function validateRegistration(body) {
 }
 async function register(request, env) {
   const body = validateRegistration(await readJson(request));
+  const nameTaken = await env.DB.prepare(
+    "SELECT id FROM accounts WHERE lower(trim(name)) = lower(trim(?)) LIMIT 1"
+  ).bind(body.name).first();
+  if (nameTaken) return fail(409, "该名字已被注册，每个名字只能注册一个账号");
   const id = crypto.randomUUID();
   const hash = await passwordHash(env, body.password);
   const created = new Date().toISOString();
@@ -163,7 +167,7 @@ async function register(request, env) {
       "INSERT INTO accounts (id, qq, wechat, name, password_hash, avatar_url, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
     ).bind(id, body.qq, body.wechat, body.name, hash, body.avatar, created).run();
   } catch (_) {
-    return fail(409, "QQ号或微信号已注册");
+    return fail(409, "名字、QQ号或微信号已被注册");
   }
   const row = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(id).first();
   return response(await authResult(env, row, "user", 30 * 24 * 60 * 60), 201);
@@ -204,6 +208,10 @@ async function updateProfile(request, env) {
     return fail(422, "QQ号、微信号或姓名格式不正确");
   }
   if (avatar && !/^https?:\/\/\S+$/i.test(avatar)) return fail(422, "头像地址格式不正确");
+  const nameOwner = await env.DB.prepare(
+    "SELECT id FROM accounts WHERE lower(trim(name)) = lower(trim(?)) AND id <> ? LIMIT 1"
+  ).bind(name, claims.sub).first();
+  if (nameOwner) return fail(409, "该名字已被其他账号使用");
   let newHash = row.password_hash;
   const newPassword = String(body.new_password || "");
   if (newPassword) {
@@ -216,7 +224,7 @@ async function updateProfile(request, env) {
       "UPDATE accounts SET qq = ?, wechat = ?, name = ?, avatar_url = ?, password_hash = ? WHERE id = ?"
     ).bind(qq, wechat, name, avatar, newHash, claims.sub).run();
   } catch (_) {
-    return fail(409, "QQ号或微信号已被其他账号使用");
+    return fail(409, "名字、QQ号或微信号已被其他账号使用");
   }
   const updated = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(claims.sub).first();
   return response({ user: publicUser(updated) });
@@ -247,6 +255,20 @@ async function adminUsers(request, env, url) {
     ).all();
   }
   return response({ users: result.results || [] });
+}
+async function adminDeleteUser(request, env, id) {
+  await readToken(env, request, "admin");
+  const row = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(id).first();
+  if (!row) return fail(404, "账号不存在");
+  if (row.banned_until !== "9999-12-31T23:59:59Z") {
+    return fail(409, "只能删除已永久封禁的账号；请先执行永久封禁");
+  }
+  try { await revokeNodeAccount(env, id, "permanently banned account deleted"); }
+  catch (error) { console.error("node-revocation-error", error && error.message ? error.message : String(error)); }
+  try { await notifyAccountStatus(env, id, "deleted", row.banned_until); }
+  catch (error) { console.error("account-notification-error", error && error.message ? error.message : String(error)); }
+  await env.DB.prepare("DELETE FROM accounts WHERE id = ?").bind(id).run();
+  return response({ deleted: true, id, released: { name: row.name, qq: row.qq, wechat: row.wechat } });
 }
 async function adminUser(request, env, id) {
   await readToken(env, request, "admin");
@@ -439,6 +461,8 @@ async function route(request, env) {
     const match = url.pathname.match(/^\/v1\/admin\/users\/([^/]+)(?:\/(ban))?$/);
     if (match && request.method === "GET" && !match[2]) return await adminUser(request, env, decodeURIComponent(match[1]));
     if (match && request.method === "POST" && match[2] === "ban") return await adminBan(request, env, decodeURIComponent(match[1]));
+    const deleteMatch = url.pathname.match(/^\/v1\/admin\/users\/([^/]+)$/);
+    if (deleteMatch && request.method === "DELETE") return await adminDeleteUser(request, env, decodeURIComponent(deleteMatch[1]));
     return fail(404, "未找到请求接口");
   } catch (error) {
     if (error instanceof AuthError) return fail(401, error.message);
