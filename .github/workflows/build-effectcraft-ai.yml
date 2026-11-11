@@ -386,7 +386,7 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_home_lan_account_gate.py
           python3 build-assets/.github/scripts/add_home_lan_account_gate.py
 
-      - name: Switch account gate to public cross-network Cloudflare service
+      - name: Switch account gate to domestic public HTTPS service
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           AE_ACCOUNT_API_URL: ""
