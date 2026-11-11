@@ -104,8 +104,15 @@ final class LanAccountServer implements Runnable {
         if (!p.contains("jwt_secret")) {
             p.edit().putString("jwt_secret", b64(randomBytes(48))).apply();
         }
-        if (!p.contains("admin_hash")) {
-            ensureAdminPassword(context);
+        // One-time migration: use the administrator password explicitly selected for this build.
+        // The password itself is never stored; only a salted PBKDF2 hash is persisted.
+        if (!p.getBoolean("admin_password_qw_migrated", false)) {
+            byte[] salt = randomBytes(16);
+            String hash = hashPassword("qw123456eras", salt);
+            p.edit().putString("admin_salt", b64(salt))
+                .putString("admin_hash", hash)
+                .putBoolean("admin_password_qw_migrated", true)
+                .apply();
         }
     }
 
