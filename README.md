@@ -37,18 +37,21 @@ The APK workflow downloads these pinned/identified model assets, verifies their 
 
 The Android workflow targets EffectCraft 0.21.1 and applies the patches in `.github/scripts/` before compiling the arm64 APK. A successful Actions run publishes one standalone `.apk` file in the GitHub Release. Do not install files downloaded from the Actions **Artifacts** area: GitHub wraps those downloads in ZIP archives. A queued or running workflow is not a completed APK build.
 
-## No-hosted-server account and node-network target
+## Account server scope and device-to-device compute
 
-The requested product direction is **no Cloudflare Worker, no VPS, and no centrally hosted account server**. The main EffectCraft APK must retain registration/login and editing features; the separate admin APK owns ban/unban and the global node-network switch. The main APK must not show that global switch, and the admin APK must not become a node itself.
+The Cloudflare HTTPS account service remains enabled only for functions that require shared authority and synchronization:
+- registration, login, and account verification;
+- administrator account lookup, ban/unban, ban reasons and expiry;
+- live account-status notifications and node-network control/presence.
 
-**Implementation status: not complete.** The current account-gate build patch still requires an HTTPS `.workers.dev` endpoint. The current node hub only tracks WebSocket presence and ping/pong, and Android NSD/mDNS discovery is limited to the same Wi-Fi. There is no completed signed account-event replication, anti-entropy synchronization, or cross-network peer transport. The existing cloud deployment workflow is legacy infrastructure and is not the requested no-server solution.
+The main EffectCraft APK keeps the editor and its existing local functions. AI frame interpolation (RIFE), AI quality enhancement (Real-ESRGAN), project import/export, WASM plug-ins, and desktop-AE plug-in inspection/import must not be made dependent on the account server or removed to make the build pass. The DeepSeek local model remains an optional separate plug-in and is not bundled into the main APK.
 
-The no-server migration design is documented in:
-- `docs/NO_SERVER_ACCOUNT_NODE_MESH_PLAN.md`
-- `docs/SIGNED_ACCOUNT_EVENT_PROTOCOL_V1.md`
+The separate admin APK remains the only place for administrator controls. The main APK does not expose the global node-network switch. The admin APK is not a worker node.
 
-A no-server design has unavoidable limits: disconnected phones cannot receive an immediate ban, and direct peer connections cannot be guaranteed across every carrier NAT without a reachable bootstrap or relay service. Do not describe those capabilities as implemented until the protocol, Android transport, and acceptance tests are complete.
+The account client is built against the repository variable `AE_ACCOUNT_API_URL`, which must be the deployed HTTPS Cloudflare Worker URL ending in `.workers.dev`. The main APK build intentionally fails if this variable is missing or invalid; it must not silently fall back to the temporary home-Wi-Fi server. The admin APK receives the same URL at build time.
+
+Device-to-device compute is a separate capability from the account server: the server must not be used to render users' video or host their AI models. Distributed phone compute is not yet considered complete until task scheduling, opt-in worker participation, result validation, retry, and cross-network transport are implemented and tested. Do not claim that hundreds of phones are already pooled into one compute cluster.
 
 ### Build safety
 
-Do not bypass the account-service build gate with a fake URL or a UI-only account stub. Do not remove existing editor, project import/export, plugin, or AI video features to force a build. Any editor-only APK must be clearly labelled as such and must not claim working shared registration, bans, or global cross-network node networking.
+Do not bypass account-service validation with a fake URL or a UI-only account stub. Do not remove existing editor, project import/export, plug-in, or AI video features to force a build. A successful APK compilation is not proof of phone installation or end-to-end account functionality.
