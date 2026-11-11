@@ -415,29 +415,18 @@ def main() -> None:
         raise SystemExit("LAN/10-second account code remains after cloud conversion.")
     account_path.write_text(source, encoding="utf-8")
 
-    workspace_manifest = root / "Cargo.toml"
-    workspace = workspace_manifest.read_text(encoding="utf-8")
-    if 'tungstenite = { version = "0.30"' not in workspace:
-        workspace = replace_once(
-            workspace,
-            'serde_json = { version = "1", features = ["float_roundtrip"] }\n',
-            'serde_json = { version = "1", features = ["float_roundtrip"] }\n'
-            'ureq = "3.5"\n'
-            'tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }\n',
-            "workspace HTTPS/WebSocket dependencies",
-        )
-        workspace_manifest.write_text(workspace, encoding="utf-8")
-
     ui_manifest = root / "crates/ui-egui/Cargo.toml"
     ui = ui_manifest.read_text(encoding="utf-8")
-    if 'tungstenite = { workspace = true }' not in ui:
+    native_marker = "[target.'cfg(not(target_arch = \"wasm32\"))'.dependencies]\n"
+    native_deps = '''ureq = { version = "3.5" }
+tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+'''
+    if "tungstenite = { version = \"0.30\"" not in ui:
         ui = replace_once(
             ui,
-            'image = { workspace = true }\n',
-            'image = { workspace = true }\n'
-            'ureq = { workspace = true }\n'
-            'tungstenite = { workspace = true }\n',
-            "UI HTTPS/WebSocket dependencies",
+            native_marker,
+            native_marker + native_deps,
+            "native HTTPS/WebSocket dependencies",
         )
         ui_manifest.write_text(ui, encoding="utf-8")
 
