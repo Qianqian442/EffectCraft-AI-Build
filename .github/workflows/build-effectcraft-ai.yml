@@ -2,7 +2,7 @@ name: Build EffectCraft AI Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, design/no-server-node-mesh]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
@@ -71,7 +71,6 @@ jobs:
 
   build:
     needs: validate-patches
-    if: ${{ vars.AE_ACCOUNT_API_URL != '' }}
     name: Build EffectCraft 0.21.1 with AI helper
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -384,13 +383,14 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_home_lan_account_gate.py
           python3 build-assets/.github/scripts/add_home_lan_account_gate.py
 
-      - name: Convert account gate to cloud HTTPS and real-time ban notifications
+      - name: Convert account gate to cloud HTTPS and live ban/unban notifications
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
         run: |
           python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
           python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
+
 
       - name: Add independent connected Puppet pin rigs
         env:
@@ -994,6 +994,7 @@ jobs:
           retention-days: 30
 
   publish:
+    if: github.ref == 'refs/heads/main'
     name: Publish APK download (no device install test)
     needs: build
     runs-on: ubuntu-latest
