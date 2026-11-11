@@ -26,6 +26,7 @@ on:
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
+      - '.github/scripts/add_libp2p_node_layer.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
@@ -68,6 +69,7 @@ jobs:
             .github/scripts/upgrade_export_preflight.py \
             .github/scripts/integrate_video_ai.py \
             .github/scripts/add_android_gallery_export.py
+            .github/scripts/add_libp2p_node_layer.py
 
   build:
     needs: validate-patches
@@ -396,6 +398,12 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
           python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
 
+      - name: Add native rust-libp2p node transport
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_libp2p_node_layer.py
+          python3 build-assets/.github/scripts/add_libp2p_node_layer.py
 
       - name: Add independent connected Puppet pin rigs
         env:
@@ -641,6 +649,27 @@ jobs:
           sudo rm -rf "$ANDROID_HOME/system-images" "$ANDROID_HOME/emulator"
           echo "Disk usage after cleanup:"
           df -h "$GITHUB_WORKSPACE"
+
+      - name: Validate patched Rust workspace manifests
+        working-directory: artcraft/source/effectcraft
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import pathlib, tomllib
+          paths = [pathlib.Path("Cargo.toml"), pathlib.Path("crates/ui-egui/Cargo.toml"), pathlib.Path("crates/engine/Cargo.toml")]
+          for path in paths:
+              raw = path.read_text(encoding="utf-8")
+              try:
+                  tomllib.loads(raw)
+              except tomllib.TOMLDecodeError as error:
+                  lines = raw.splitlines()
+                  line = getattr(error, "lineno", 1)
+                  print(f"Invalid TOML in {path}: {error}")
+                  for number in range(max(1, line - 3), min(len(lines), line + 3) + 1):
+                      print(f"{number}: {lines[number - 1]}")
+                  raise
+              print(f"Valid TOML: {path}")
+          PY
 
       - name: Build EffectCraft APK
         id: build_apk
