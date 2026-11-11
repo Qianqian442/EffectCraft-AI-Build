@@ -196,7 +196,23 @@ public final class MainActivity extends Activity {
                     toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
                     toggle.setEnabled(true);
                     count.setText(enabled[0] ? "节点正在尝试重新连接" : "在线节点会话已要求断开");
-                    toast(enabled[0] ? "已开启跨地区节点网络" : "已关闭跨地区节点网络");
+                    // Also control this admin phone's own P2P worker service.
+                    Intent nodeIntent = new Intent(MainActivity.this, LanServerService.class);
+                    try {
+                        if (enabled[0]) {
+                            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
+                                .edit().putBoolean("node_enabled", true).apply();
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(nodeIntent);
+                            else startService(nodeIntent);
+                        } else {
+                            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
+                                .edit().putBoolean("node_enabled", false).apply();
+                            stopService(nodeIntent);
+                        }
+                    } catch (Exception serviceError) {
+                        status.setText(status.getText() + "；本机节点服务启动/停止异常：" + serviceError.getMessage());
+                    }
+                    toast(enabled[0] ? "已开启 P2P 总开关并启动本机节点" : "已关闭 P2P 总开关并停止本机节点");
                 });
             });
         });
