@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Convert the generated account gate to HTTPS + push-only ban/unban events."""
+"""Convert the generated account gate to the domestic HTTPS API + push-only ban/unban events."""
 from __future__ import annotations
 
 import os
@@ -24,23 +24,23 @@ def main() -> None:
 
     account_path = root / "crates/ui-egui/src/account.rs"
     if not account_path.is_file():
-        raise SystemExit("Run add_home_lan_account_gate.py before this cloud-account patch.")
+        raise SystemExit("Run add_home_lan_account_gate.py before this domestic-account patch.")
     source = account_path.read_text(encoding="utf-8")
 
     source = replace_once(
         source,
         "//! Admin-phone LAN account gate. The account API is intentionally fail-closed:\n"
         "//! when a saved account cannot be checked against the admin phone, the editor stays locked.",
-        "//! Cloud account gate. The account API is intentionally fail-closed:\n"
-        "//! when a saved account cannot be checked against the cloud server, the editor stays locked.",
+        "//! Domestic public account gate. The account API is intentionally fail-closed:\n"
+        "//! when a saved account cannot be checked against the domestic public server, the editor stays locked.",
         "module documentation",
     )
     source = replace_once(
         source,
-        "use std::io::{Read, Write};\\n"
-        "use std::net::{TcpStream, ToSocketAddrs, UdpSocket};\\n"
-        "use std::sync::mpsc::{self, Receiver, TryRecvError};\\n"
-        "use std::time::Duration;\\n\\n"
+        "use std::io::{Read, Write};\n"
+        "use std::net::{TcpStream, ToSocketAddrs, UdpSocket};\n"
+        "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
+        "use std::time::Duration;\n\n"
         'const DEFAULT_SERVER: &str = "";',
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::sync::{Arc, atomic::{AtomicBool, Ordering}};\n"
@@ -49,7 +49,7 @@ def main() -> None:
         "use tungstenite::http::HeaderValue;\n"
         "use tungstenite::Message;\n\n"
         f'const DEFAULT_SERVER: &str = "{api_url}";',
-        "cloud client imports and API URL",
+        "domestic HTTPS client imports and API URL",
     )
     source = replace_once(
         source,
@@ -493,7 +493,7 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
         )
         ui_manifest.write_text(ui, encoding="utf-8")
 
-    print("Cloud account gate installed: one startup verification; live ban/unban events; no periodic polling.")
+    print("Domestic public account gate installed: one startup verification; live ban/unban events; no periodic polling.")
 
 
 if __name__ == "__main__":
