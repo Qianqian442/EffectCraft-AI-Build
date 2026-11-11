@@ -435,36 +435,36 @@ def main() -> None:
         "remove 10-second polling and listen for events",
     )
     source = source.replace(
-        'ui.label("仅连接家中的 Wi-Fi 账号服务器");',
+        'ui.label("连接国内公网账号服务，支持跨地区和不同运营商网络");',
         'ui.label("连接云端账号服务器，支持不同地区和网络");',
     )
-    source = source.replace('ui.label("家庭服务器地址");', 'ui.label("云端 HTTPS 服务器地址");')
+    source = source.replace('ui.label("国内公网 HTTPS 服务器地址");', 'ui.label("国内公网 HTTPS 服务器地址");')
     source = source.replace(
         'ui.small("把示例地址替换为家中电脑的局域网 IPv4 地址，例如 http://192.168.1.23:8787");',
         'ui.small("填写国内公网服务器提供的 HTTPS 地址，例如 https://你的备案域名；请勿填写 127.0.0.1 或局域网 IP。");',
     )
     source = source.replace(
-        'ui.heading("正在连接家庭账号服务器");',
-        'ui.heading("正在连接云端账号服务器");',
+        'ui.heading("正在连接国内公网账号服务器");',
+        'ui.heading("正在连接国内公网账号服务器");',
     )
     source = source.replace(
-        'ui.label("家中的账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");',
-        'ui.label("云端账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");',
+        'ui.label("国内公网账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");',
+        'ui.label("国内公网账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");',
     )
     source = source.replace(
-        'ui.label("请确认手机和服务器电脑连接同一个家庭 Wi-Fi，且服务器电脑保持开机。");',
+        'ui.label("请检查互联网连接和国内服务器状态后重试。");',
         'ui.label("请检查网络连接后重试。账号验证成功后即可进入软件。");',
     )
     source = source.replace(
-        'ui.label("管理员手机账号服务器地址");',
-        'ui.label("云端账号服务器地址（已预设）");',
+        'ui.label("国内公网账号服务器地址");',
+        'ui.label("国内公网账号服务器地址");',
     )
     source = source.replace(
-        'ui.small("请填写管理版“账号服务器”面板显示的 Wi-Fi 地址，端口为 8788，例如 http://192.168.1.23:8788。两台手机必须连接同一个 Wi-Fi。");',
-        'ui.small("连接国内公网账号服务；无需管理员手机与用户手机处于同一 Wi-Fi。");',
+        'ui.small("填写国内公网服务器提供的 HTTPS 地址；不要填写 127.0.0.1 或局域网 IP。");',
+        'ui.small("无需管理员手机与用户手机处于同一 Wi-Fi；管理员手机可在异地管理节点开关。");',
     )
     source = source.replace(
-        'ui.label("连接管理员手机开启的 EffectCraft 账号服务器");',
+        'ui.label("连接 EffectCraft 国内公网账号服务");',
         'ui.label("连接 EffectCraft 云端账号服务");',
     )
     source = source.replace(
