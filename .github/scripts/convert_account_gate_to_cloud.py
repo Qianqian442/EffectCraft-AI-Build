@@ -218,7 +218,7 @@ def main() -> None:
                         let hello = json!({
                             "type": "hello",
                             "v": 1,
-                            "peer_id": peer_id,
+                            "peer_id": peer_id.clone(),
                             "addresses": []
                         });
                         if socket.send(Message::Text(hello.to_string().into())).is_err() {
