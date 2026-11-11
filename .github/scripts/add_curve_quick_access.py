@@ -166,7 +166,11 @@ fn android_playhead_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSe
     let comp_id = app.session.active_comp_id()?;
     let comp = app.session.project.comp(comp_id)?;
     let layer = comp.layer(layer_id)?;
-    let prop = layer.props.find(prop_uid)?;
+    // A selected Puppet pin is a PropGroup uid; its animated Position property
+    // lives inside the pin group. Resolve that child so Puppet keys use the same curve UI.
+    let prop = layer.props.find(prop_uid).or_else(|| {
+        layer.props.find_group(prop_uid).and_then(|pin| pin.get("position")).filter(|position| position.is_animated())
+    })?;
     let playhead = app.session.time_of(comp_id);
 
     for pair in prop.keys.windows(2) {
