@@ -403,6 +403,15 @@ async function nodeNetworkState(request, env) {
   return stub.fetch("https://node-network.internal/state");
 }
 
+async function nodeNetworkPeers(request, env) {
+  const claims = await readToken(env, request, "user");
+  await requireActiveAccount(env, claims.sub);
+  const stub = await nodeNetworkStub(env);
+  const target = new URL("https://node-network.internal/peers");
+  target.searchParams.set("node_id", claims.sub);
+  return stub.fetch(target.toString());
+}
+
 async function nodeNetworkEvents(request, env) {
   const claims = await readToken(env, request, "user");
   await requireActiveAccount(env, claims.sub);
@@ -448,6 +457,7 @@ async function route(request, env) {
   try {
     if (request.method === "GET" && url.pathname === "/v1/events") return await accountEvents(request, env);
     if (request.method === "GET" && url.pathname === "/v1/nodes/network") return await nodeNetworkState(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/nodes/peers") return await nodeNetworkPeers(request, env);
     if (request.method === "GET" && url.pathname === "/v1/nodes/events") return await nodeNetworkEvents(request, env);
     if (request.method === "GET" && url.pathname === "/v1/admin/network") return await adminNetworkState(request, env);
     if (request.method === "POST" && url.pathname === "/v1/admin/network") return await adminSetNetworkState(request, env);
