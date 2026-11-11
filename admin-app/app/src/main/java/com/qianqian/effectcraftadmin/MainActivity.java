@@ -273,6 +273,8 @@ public final class MainActivity extends Activity {
         page.addView(loginStatus, new LinearLayout.LayoutParams(-1, dp(36)));
         loginButton.setOnClickListener(v -> doAdminLogin());
         page.addView(text("更换手机或清除应用数据后，需要重新输入管理员密码。", 12, false));
+        // Keep the server switch reachable even while logged out, so it can be turned back on.
+        addLocalAccountServerPanel(page);
         setRoot(page);
     }
 
