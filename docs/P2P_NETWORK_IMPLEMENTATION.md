@@ -33,6 +33,14 @@ Official project: https://github.com/libp2p/rust-libp2p
 - Bind network startup/shutdown to the account authorization and administrator global switch. On logout, ban, opt-out or global OFF, stop task acceptance and close peer sessions.
 - Prefer direct peer transport; fall back to a quota-limited relay. Apply peer allowlists, rate limits, connection limits, task size limits and signed task manifests.
 
+## Implemented client discovery milestone
+
+- The main-app account gate now opens the node WebSocket only when the user has opted in and the account is verified.
+- The client creates a per-session Ed25519 libp2p PeerId and announces it over the authenticated WebSocket. No private key is sent to the Worker.
+- The Worker returns the active peer list and broadcasts peer-online / peer-offline notifications. The account settings panel displays the current discovered-node count.
+- Turning node opt-in off, leaving the editor session, or being banned closes the local node socket; the server also revokes banned accounts and closes all sockets when the administrator switches the global network OFF.
+- This milestone is presence/discovery only. It does not yet create a libp2p Swarm, direct NAT traversal, encrypted peer payload channel, or actual project/media/task transfer. The relay endpoint rejects relay packets until both sides have announced a peer identity.
+
 ## Build and verification gates
 
 1. Add the pinned libp2p dependency and compile it for Android arm64-v8a in the existing NDK/Cargo workflow.
