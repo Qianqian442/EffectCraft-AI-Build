@@ -89,3 +89,7 @@ The implementation must use outbound authenticated signaling, attempt encrypted 
 The administrator-phone account database remains private and must not be exposed by removing the same-subnet account API guard. Cross-network account operations require a separately designed authenticated encrypted tunnel/service. Account-server and node-network switches remain independent.
 
 **Current status:** this is a confirmed requirement, not a completed feature. Current local account discovery and peer health checks are LAN-only; complete public-Wi-Fi signaling, end-to-end encrypted payload exchange, relay fallback and two-real-device tests remain outstanding.
+
+## Supported access networks (expanded 2026-11-11)
+
+Connectivity must work across home Wi-Fi, public Wi-Fi, office/school Wi-Fi where allowed, personal hotspots, and mobile data—not just public hotspots. Same-home-LAN discovery is an optional fast path only. The target is two phones on different networks/ISPs/locations exchanging authenticated data over outbound signaling and encrypted direct/relay transport, without shared SSID/subnet, manual IP, or router port forwarding. Home routers can also use NAT/CGNAT and block inbound traffic, so they must not be treated as automatically reachable. Captive portals and network-owner restrictions must be respected.
