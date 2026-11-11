@@ -71,6 +71,11 @@ public final class MainActivity extends Activity {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(accountServerIntent);
             else startService(accountServerIntent);
         }
+        if (getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).getBoolean("node_enabled", false)) {
+            Intent nodeIntent = new Intent(this, LanServerService.class);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(nodeIntent);
+            else startService(nodeIntent);
+        }
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
@@ -130,125 +135,53 @@ public final class MainActivity extends Activity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(10));
         panel.setBackground(rounded(Color.WHITE));
-        panel.addView(text("全局节点网络控制", 16, true));
-        TextView status = text("正在读取云端节点网络状态…", 13, false);
+        panel.addView(text("节点互联网络开关", 16, true));
+        TextView status = text("", 13, false);
+        TextView count = text("", 12, false);
         panel.addView(status);
-        TextView count = text("在线节点：读取中", 12, false);
         panel.addView(count);
-        Button toggle = button("读取中…");
-        toggle.setEnabled(false);
+        Button toggle = button("");
         panel.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
-        TextView note = text("关闭后由云端拒绝新的节点会话并断开现有会话；开启后允许节点重新连接。", 11, false);
+        Runnable refresh = () -> {
+            boolean enabled = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
+                .getBoolean("node_enabled", false);
+            boolean running = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
+                .getBoolean("node_running", false);
+            int peers = LanPeerDiscovery.getSavedPeers(this).length();
+            status.setText(enabled
+                ? (running ? "状态：已开启 · 本机节点正在运行" : "状态：已开启 · 正在等待节点服务启动")
+                : "状态：已关闭 · 本机节点已停止");
+            count.setText("已发现附近节点：" + peers + " 台（当前仅支持同一 Wi-Fi）");
+            toggle.setText(enabled ? "关闭节点互联网络" : "开启节点互联网络");
+        };
+        refresh.run();
+        toggle.setOnClickListener(v -> {
+            boolean enabled = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
+                .getBoolean("node_enabled", false);
+            boolean next = !enabled;
+            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).edit()
+                .putBoolean("node_enabled", next).apply();
+            Intent intent = new Intent(this, LanServerService.class);
+            if (next) {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+                    else startService(intent);
+                    toast("节点网络已开启，正在尝试发现附近节点");
+                } catch (Exception e) {
+                    toast("节点服务启动失败：" + e.getMessage());
+                }
+            } else {
+                stopService(intent);
+                toast("节点网络已关闭");
+            }
+            refresh.run();
+        });
+        TextView note = text("此开关独立于账号服务器开关。当前已实现同一 Wi-Fi 的节点广播与发现；跨地区公网穿透和远程统一控制尚未完成。", 11, false);
         note.setTextColor(Color.rgb(95, 103, 115));
         panel.addView(note);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = dp(10);
         page.addView(panel, params);
-
-        final boolean[] enabled = new boolean[]{true};
-        requestAsync("GET", "/v1/admin/network", null, true, result -> {
-            if (result == null) {
-                status.setText("云端总开关暂不可用：请先部署最新账号服务");
-                toggle.setText("重新读取状态");
-                toggle.setEnabled(true);
-                toggle.setOnClickListener(v -> addGlobalNodePanel((LinearLayout) panel.getParent()));
-                return;
-            }
-            JSONObject network = result.optJSONObject("network");
-            if (network == null) {
-                status.setText("云端返回的节点状态格式不正确");
-                return;
-            }
-            enabled[0] = network.optBoolean("enabled", false);
-            status.setText(enabled[0] ? "状态：已开启 · 允许跨地区节点连接" : "状态：已关闭 · 节点连接已被云端阻止");
-            toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
-            toggle.setEnabled(true);
-            requestAsync("GET", "/v1/admin/network/nodes", null, true, nodesResult -> {
-                if (nodesResult != null) {
-                    JSONArray nodes = nodesResult.optJSONArray("nodes");
-                    count.setText("在线节点会话：" + (nodes == null ? 0 : nodes.length()));
-                } else {
-                    count.setText("在线节点会话：暂时无法读取");
-                }
-            });
-            toggle.setOnClickListener(v -> {
-                boolean next = !enabled[0];
-                toggle.setEnabled(false);
-                toggle.setText(next ? "正在开启…" : "正在关闭…");
-                JSONObject body = new JSONObject();
-                try { body.put("enabled", next); } catch (Exception ignored) {}
-                requestAsync("POST", "/v1/admin/network", body, true, changed -> {
-                    if (changed == null) {
-                        toggle.setEnabled(true);
-                        toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
-                        status.setText("操作未确认；云端状态可能未改变，请重新读取");
-                        return;
-                    }
-                    JSONObject updated = changed.optJSONObject("network");
-                    if (updated == null) {
-                        toggle.setEnabled(true);
-                        status.setText("服务器返回状态异常，请重新读取");
-                        return;
-                    }
-                    enabled[0] = updated.optBoolean("enabled", false);
-                    status.setText(enabled[0] ? "状态：已开启 · 允许节点重新连接" : "状态：已关闭 · 云端已阻止节点会话");
-                    toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
-                    toggle.setEnabled(true);
-                    count.setText(enabled[0] ? "节点正在尝试重新连接" : "在线节点会话已要求断开");
-                    toast(enabled[0] ? "已开启公网节点网络，允许主 APK 节点重新连接" : "已关闭公网节点网络，云端已阻止节点会话");
-                });
-            });
-        });
-    }
-
-    private int dp(float value) {
-        return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
-    }
-
-    private TextView text(String value, int size, boolean bold) {
-        TextView v = new TextView(this);
-        v.setText(value);
-        v.setTextSize(size);
-        v.setTextColor(Color.rgb(30, 35, 45));
-        if (bold) v.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
-        v.setGravity(Gravity.CENTER_VERTICAL);
-        return v;
-    }
-
-    private GradientDrawable rounded(int color) {
-        GradientDrawable d = new GradientDrawable();
-        d.setColor(color);
-        d.setCornerRadius(dp(12));
-        return d;
-    }
-
-    private LinearLayout column() {
-        LinearLayout l = new LinearLayout(this);
-        l.setOrientation(LinearLayout.VERTICAL);
-        l.setPadding(dp(18), dp(18), dp(18), dp(18));
-        l.setBackgroundColor(Color.rgb(245, 247, 250));
-        return l;
-    }
-
-    private EditText field(String hint, boolean password) {
-        EditText e = new EditText(this);
-        e.setSingleLine(true);
-        e.setTextSize(15);
-        e.setHint(hint);
-        e.setPadding(dp(13), 0, dp(13), 0);
-        e.setBackground(rounded(Color.WHITE));
-        e.setInputType(password ? InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD : InputType.TYPE_CLASS_TEXT);
-        LinearLayout.LayoutParams p = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50));
-        p.bottomMargin = dp(10);
-        return e;
-    }
-
-    private Button button(String label) {
-        Button b = new Button(this);
-        b.setText(label);
-        b.setAllCaps(false);
-        b.setTextSize(14);
-        return b;
     }
 
     private void setRoot(LinearLayout content) {
@@ -522,6 +455,7 @@ public final class MainActivity extends Activity {
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
         addLocalAccountServerPanel(page);
+        addGlobalNodePanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
         Button search = button("搜索账号");
