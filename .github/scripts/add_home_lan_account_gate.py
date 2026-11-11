@@ -15,11 +15,11 @@ use egui::{Align2, Color32, Id, Order, Sense, Stroke, StrokeKind, Vec2, pos2, ve
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::net::{TcpStream, ToSocketAddrs, UdpSocket};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
 
-const DEFAULT_SERVER: &str = "http://192.168.1.100:8788";
+const DEFAULT_SERVER: &str = "";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Mode {
@@ -326,8 +326,25 @@ impl AccountState {
     }
 }
 
+fn discover_admin_server() -> Result<String, String> {
+    let socket = UdpSocket::bind("0.0.0.0:0").map_err(|e| e.to_string())?;
+    socket.set_broadcast(true).map_err(|e| e.to_string())?;
+    socket.set_read_timeout(Some(Duration::from_millis(1800))).map_err(|e| e.to_string())?;
+    socket.send_to(b"EFFECTCRAFT_ACCOUNT_DISCOVER_V1", "255.255.255.255:8789")
+        .map_err(|e| e.to_string())?;
+    let mut buffer = [0u8; 512];
+    let (length, _) = socket.recv_from(&mut buffer).map_err(|e| e.to_string())?;
+    let response = std::str::from_utf8(&buffer[..length]).map_err(|e| e.to_string())?;
+    let url = response.strip_prefix("EFFECTCRAFT_ACCOUNT_SERVER_V1|")
+        .ok_or_else(|| "管理员手机返回了无法识别的发现响应".to_string())?;
+    if !url.starts_with("http://") || !url.ends_with(":8788") {
+        return Err("管理员手机账号服务器地址无效".to_string());
+    }
+    Ok(url.to_string())
+}
+
 fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
-    let rest = url.strip_prefix("http://").ok_or_else(|| "服务器地址必须使用家庭局域网 http:// 地址".to_string())?;
+    // Refresh the admin-phone address on each request; its Wi-Fi IP may change.\n    let discovered = discover_admin_server().ok();\n    let target_url = discovered.as_deref().unwrap_or(url);\n    let rest = target_url.strip_prefix("http://").ok_or_else(|| "未发现管理员手机账号服务器，请确认管理员手机已开启服务且两台手机连接同一 Wi-Fi".to_string())?;
     let authority = rest.split('/').next().unwrap_or("");
     let (host, port) = authority.rsplit_once(':').unwrap_or((authority, "80"));
     if host.is_empty() || host.contains(' ') {
@@ -343,7 +360,7 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
     if !is_home_lan {
         return Err("账号服务器地址必须是家庭局域网 IP，不能使用公网地址".to_string());
     }
-    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(7)).map_err(|e| e.to_string())?;
+    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(7)).map_err(|e| format!("连接管理员手机失败：{e}"))?;
     stream.set_read_timeout(Some(Duration::from_secs(8))).map_err(|e| e.to_string())?;
     stream.set_write_timeout(Some(Duration::from_secs(8))).map_err(|e| e.to_string())?;
     let body_bytes = if body.is_null() { Vec::new() } else { serde_json::to_vec(&body).map_err(|e| e.to_string())? };
