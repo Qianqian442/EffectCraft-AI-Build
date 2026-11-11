@@ -633,8 +633,9 @@ def patch_picker(root: Path) -> None:
 def patch_toolbar(root: Path) -> None:
     path = root / "crates/ui-egui/src/header.rs"
     source = path.read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1" in source:
-        print("Desktop AE script choice is already present in the unified import menu.")
+    if ("EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1" in source
+        or "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1" in source):
+        print("Unified import menu already exists; folder import is added by the active toolbar patch.")
         return
 
     old_state = "    let mut import_wasm = false;\n    let mut import_ai = false;\n"
