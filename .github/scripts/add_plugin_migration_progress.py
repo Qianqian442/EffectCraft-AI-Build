@@ -91,7 +91,7 @@ fn is_native_directory_file(root: &Path, file: &Path) -> bool {
     });
     ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
         || ((root_is_bundle || name.contains(".plugin/") || name.contains(".ofx.bundle/"))
-            && (name.contains("contents/macos/") || name.contains("contents/win/")))
+            && (name.contains("contents/macos/") || name.contains("contents/win/") || name.contains("contents/linux/")))
 }
 
 /// Intercept native AE binaries selected directly, or native binaries in ZIP/ZXP bundles.
