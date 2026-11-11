@@ -21,9 +21,28 @@ export class NodeNetworkHub {
     if (url.pathname === "/nodes" && request.method === "GET") {
       const nodes = this.ctx.getWebSockets().map((socket) => {
         const a = socket.deserializeAttachment() || {};
-        return { node_id: a.nodeId || "unknown", connected_at: a.connectedAt || null };
+        return {
+          node_id: a.nodeId || "unknown",
+          connected_at: a.connectedAt || null,
+          peer_id: a.peerId || null,
+          addresses: Array.isArray(a.addresses) ? a.addresses : []
+        };
       });
       return Response.json({ enabled: (await this.ctx.storage.get("network_state"))?.enabled !== false, nodes });
+    }
+    if (url.pathname === "/peers" && request.method === "GET") {
+      const requester = url.searchParams.get("node_id") || "";
+      const peers = this.ctx.getWebSockets().map((socket) => {
+        const a = socket.deserializeAttachment() || {};
+        return {
+          node_id: a.nodeId || "unknown",
+          peer_id: a.peerId || null,
+          addresses: Array.isArray(a.addresses) ? a.addresses : [],
+          connected_at: a.connectedAt || null
+        };
+      }).filter((peer) => peer.node_id !== requester && peer.peer_id);
+      const enabled = (await this.ctx.storage.get("network_state"))?.enabled !== false;
+      return Response.json({ enabled, peers: enabled ? peers : [] });
     }
     if (url.pathname === "/revoke-node" && request.method === "POST") {
       const body = await request.json().catch(() => null);
@@ -78,6 +97,53 @@ export class NodeNetworkHub {
     if (message === "ping") {
       try { socket.send("pong"); } catch (_) {}
       return;
+    }
+    if (typeof message === "string" && message.length <= 50000) {
+      let hello;
+      try { hello = JSON.parse(message); } catch (_) { hello = null; }
+      if (hello?.type === "hello" && hello.v === 1) {
+        const peerId = String(hello.peer_id || "");
+        const peerIdValid = /^[1-9A-HJ-NP-Za-km-z]{20,100}$/.test(peerId);
+        const rawAddresses = Array.isArray(hello.addresses) ? hello.addresses : [];
+        const addresses = rawAddresses
+          .filter((value) => typeof value === "string" && value.length <= 512)
+          .filter((value) => value.startsWith("/") && value.includes("/p2p/" + peerId))
+          .filter((value) => !/\/ip4\/(10\.|127\.|0\.|169\.254\.|192\.168\.)/.test(value))
+          .filter((value) => !/\/ip4\/172\.(1[6-9]|2[0-9]|3[01])\./.test(value))
+          .slice(0, 8);
+        if (!peerIdValid || rawAddresses.length > 16) {
+          try { socket.send(JSON.stringify({ type: "error", code: "invalid_peer_announcement" })); } catch (_) {}
+          return;
+        }
+        if (a.peerId && a.peerId !== peerId) {
+          try { socket.send(JSON.stringify({ type: "error", code: "peer_identity_changed" })); } catch (_) {}
+          return;
+        }
+        a.peerId = peerId;
+        a.addresses = addresses;
+        a.announcedAt = new Date().toISOString();
+        socket.serializeAttachment(a);
+        const peers = this.ctx.getWebSockets().map((target) => {
+          const peer = target.deserializeAttachment() || {};
+          return {
+            node_id: peer.nodeId || "unknown",
+            peer_id: peer.peerId || null,
+            addresses: Array.isArray(peer.addresses) ? peer.addresses : [],
+            connected_at: peer.connectedAt || null
+          };
+        }).filter((peer) => peer.node_id !== a.nodeId && peer.peer_id);
+        try { socket.send(JSON.stringify({ type: "peer_list", v: 1, peers })); } catch (_) {}
+        const announcement = JSON.stringify({
+          type: "peer_online", v: 1, node_id: a.nodeId,
+          peer_id: a.peerId, addresses: a.addresses
+        });
+        for (const target of this.ctx.getWebSockets()) {
+          if (target === socket) continue;
+          const recipient = target.deserializeAttachment() || {};
+          try { target.send(announcement); } catch (_) {}
+        }
+        return;
+      }
     }
     if (typeof message !== "string" || message.length > 50000) {
       try { socket.send(JSON.stringify({ type: "error", code: "invalid_frame" })); } catch (_) {}
@@ -151,6 +217,14 @@ export class NodeNetworkHub {
   }
 
   webSocketClose(socket, code, reason) {
+    const a = socket.deserializeAttachment() || {};
+    if (a.peerId) {
+      const announcement = JSON.stringify({ type: "peer_offline", v: 1, node_id: a.nodeId, peer_id: a.peerId });
+      for (const target of this.ctx.getWebSockets()) {
+        if (target === socket) continue;
+        try { target.send(announcement); } catch (_) {}
+      }
+    }
     try { socket.close(code, reason); } catch (_) {}
   }
 }
