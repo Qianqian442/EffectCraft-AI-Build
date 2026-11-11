@@ -374,8 +374,9 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
 
 fn blocking_overlay(ctx: &egui::Context) {
     let screen = ctx.content_rect();
+    // Keep the dimming layer above the editor but below the foreground auth dialogs.
     egui::Area::new(Id::new("effectcraft-account-blocking-overlay"))
-        .order(Order::Foreground)
+        .order(Order::Middle)
         .fixed_pos(screen.min)
         .show(ctx, |ui| {
             ui.set_min_size(screen.size());
