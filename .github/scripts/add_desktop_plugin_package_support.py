@@ -150,7 +150,6 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let mut script_names: Vec<String> = Vec::new();
     let mut asset_names: Vec<String> = Vec::new();
     let mut native_names: Vec<String> = Vec::new();
-    let native_mappings: Vec<Value> = Vec::new();
     let mut skipped_names: Vec<String> = Vec::new();
 
     for index in 0..archive.len() {
@@ -364,7 +363,6 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         }
     }
 
-    let compatibility_match_count = 0usize;
     let compatibility_summary = native_mappings.iter().map(|item| {
         format!(
             "{} → {}：{}",
@@ -378,7 +376,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         "panels": installed_panels,
         "loaded": loaded_wasm,
         "errors": compatibility_errors,
-        "native_compatibility_matches": native_mappings.clone()
+        "native_compatibility_matches": []
     });
     let wat_result = json!({"loaded": loaded_wat, "errors": []});
     let report_dir = plugins_dir.join("Import-Reports");
@@ -400,7 +398,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         object.insert("desktop_scripts".into(), json!(script_names));
         object.insert("desktop_assets".into(), json!(asset_names));
         object.insert("desktop_native_requires_port".into(), json!(native_names));
-        object.insert("desktop_native_compatibility_matches".into(), json!(native_mappings));
+        object.insert("desktop_native_compatibility_matches".into(), json!([]));
         object.insert("desktop_skipped".into(), json!(skipped_names));
         object.insert("wat_result".into(), wat_result);
         object.insert("compatibility_report".into(), json!(report_path.to_string_lossy()));
