@@ -299,6 +299,8 @@ public final class MainActivity extends Activity {
         LinearLayout page = column();
         TextView title = text("EffectCraft 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
+        addAccountServerPanel(page);
+        page.addView(text("下方云端账号后台为旧版兼容入口；管理员手机本地账号服务器可独立启停。", 12, false));
         page.addView(text("云端账号管理：不同地区、不同网络的用户可以注册和登录。", 14, false));
         page.addView(text("管理设备只需能访问 Cloudflare HTTPS 服务，不需要保持开机供其他用户连接。", 13, false));
         page.addView(text("主 APK 用户端自动加入节点网络；本管理版只负责账号管理、封禁解禁和全局节点开关。", 13, false));
