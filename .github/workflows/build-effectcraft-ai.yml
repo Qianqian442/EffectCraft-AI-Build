@@ -2,7 +2,7 @@ name: Build EffectCraft AI Android APK
 
 on:
   push:
-    branches: [main, design/no-server-node-mesh, implementation/p2p-full-replacement]
+    branches: [main, design/no-server-node-mesh, implementation/p2p-full-replacement, implementation/admin-phone-main-server]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
@@ -25,7 +25,6 @@ on:
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
-      - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/add_libp2p_node_layer.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
@@ -385,18 +384,8 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_home_lan_account_gate.py
           python3 build-assets/.github/scripts/add_home_lan_account_gate.py
 
-      - name: Require public HTTPS account API and disable LAN fallback
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          AE_ACCOUNT_API_URL: https://ae-cloud-account-api.q1939023856.workers.dev
-        run: |
-          set -euo pipefail
-          if [ -z "${AE_ACCOUNT_API_URL:-}" ]; then
-            echo "::error::Public account API URL is missing. LAN account fallback is disabled."
-            exit 1
-          fi
-          python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
-          python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
+      - name: Keep account validation on the administrator phone
+        run: grep -Fq 'const DEFAULT_SERVER: &str = "";' build-assets/.github/scripts/add_home_lan_account_gate.py
 
       - name: Add native rust-libp2p node transport
         env:
