@@ -231,10 +231,10 @@ def main() -> None:
                                     if let Ok(value) = serde_json::from_str::<Value>(message.as_str()) {
                                         let _ = event_tx.send(value);
                                     }
-                                    std::thread::sleep(Duration::from_secs(25));
+                                    std::thread::sleep(Duration::from_secs(10));
                                 }
                                 Ok(Message::Close(_)) => break,
-                                Ok(_) => std::thread::sleep(Duration::from_secs(25)),
+                                Ok(_) => std::thread::sleep(Duration::from_secs(10)),
                                 Err(_) => break,
                             }
                         }
