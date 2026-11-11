@@ -1,30 +1,32 @@
-name: Validate EffectCraft node network Worker
+name: Validate EffectCraft domestic server
 
 on:
   push:
-    branches: [implementation/p2p-full-replacement, implementation/admin-phone-main-server]
+    branches: [implementation/admin-phone-main-server]
     paths:
-      - 'cloudflare-worker/src/**'
+      - 'domestic-server/**'
       - '.github/workflows/validate-node-network.yml'
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  validate-worker:
+  validate-domestic-server:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: domestic-server
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Check Worker JavaScript syntax
-        shell: bash
+      - name: Validate Node.js server syntax
+        run: node --check src/server.js
+      - name: Install dependencies and validate package
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Validate Docker configuration
         run: |
-          set -euo pipefail
-          node --check --input-type=module < cloudflare-worker/src/index.js
-          node --check --input-type=module < cloudflare-worker/src/node_network_hub.js
-          node --check --input-type=module < cloudflare-worker/src/account_session_hub.js
-          echo "Worker JavaScript syntax checks passed."
+          docker compose config
+          docker build -t effectcraft-domestic-server-check .
