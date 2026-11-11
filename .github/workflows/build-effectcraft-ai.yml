@@ -595,9 +595,32 @@ jobs:
           echo "rust-libp2p dependency graph compiles for Android ARM64."
 
       - name: Install GLSL compiler for Real-ESRGAN Vulkan shaders
+        shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y glslang-tools
+          set -euo pipefail
+          # Retry transient Ubuntu mirror/network failures instead of aborting the APK build.
+          for attempt in 1 2 3; do
+            if sudo apt-get update; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "APT package index update failed after 3 attempts." >&2
+              exit 1
+            fi
+            sleep $((attempt * 10))
+          done
+          for attempt in 1 2 3; do
+            if sudo apt-get install -y glslang-tools; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Could not install glslang-tools after 3 attempts." >&2
+              exit 1
+            fi
+            sudo apt-get clean
+            sleep $((attempt * 10))
+          done
+          command -v glslangValidator
 
       - name: Build local RIFE and Real-ESRGAN worker for Android arm64
         shell: bash
