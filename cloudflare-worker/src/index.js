@@ -94,8 +94,8 @@ async function readToken(env, request, requiredRole) {
   }
   if (!payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) throw new AuthError("登录已过期，请重新登录");
   if (payload.role !== requiredRole) throw new AuthError("无权访问");
-  if (requiredRole === "admin") {
-    if (!payload.device_id || !env.DB) throw new AuthError("管理员设备未绑定，请重新授权");
+  if (requiredRole === "admin" && payload.device_id) {
+    if (!env.DB) throw new AuthError("管理员设备验证服务不可用");
     const device = await env.DB.prepare(
       "SELECT device_id FROM admin_devices WHERE device_id = ? LIMIT 1"
     ).bind(payload.device_id).first();
