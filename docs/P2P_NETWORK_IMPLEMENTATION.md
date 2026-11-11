@@ -68,3 +68,7 @@ Official project: https://github.com/libp2p/rust-libp2p
 ## Non-regression
 
 Do not remove or weaken EffectCraft editor functionality, project import/export, WASM plugins, desktop AE plugin inspection/import, RIFE frame interpolation, Real-ESRGAN enhancement, or the separate optional DeepSeek plugin to make the network compile.
+
+## Supported Internet uplinks (expanded 2026-11-11)
+
+The requirement is not limited to public Wi-Fi. Support home Wi-Fi, public Wi-Fi, office/school Wi-Fi where permitted, personal phone hotspots, and mobile data. Two devices may be on different access networks, different routers, different ISPs/carriers, or different locations. Same-LAN discovery may accelerate connections at home, but it is optional; cross-network signaling and relay fallback are the common path. Do not require a shared SSID/subnet, manual IP, or router port forwarding. A home router's NAT/CGNAT and firewall restrictions must be handled the same way as restrictive public hotspots. Complete captive-portal sign-in and obey network-owner policies; never bypass them.
