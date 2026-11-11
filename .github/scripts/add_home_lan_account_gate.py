@@ -211,6 +211,26 @@ impl AccountState {
         );
     }
 
+    fn choose_avatar(&mut self) {
+        let selected = rfd::FileDialog::new()
+            .add_filter("图片", &["png", "jpg", "jpeg", "webp"])
+            .pick_file();
+        let Some(path) = selected else { return; };
+        match std::fs::read(&path) {
+            Ok(bytes) if !bytes.is_empty() && bytes.len() <= 2 * 1024 * 1024 => {
+                let mime = match path.extension().and_then(|v| v.to_str()).unwrap_or("").to_ascii_lowercase().as_str() {
+                    "jpg" | "jpeg" => "image/jpeg",
+                    "webp" => "image/webp",
+                    _ => "image/png",
+                };
+                self.avatar_url = format!("data:{};base64,{}", mime, base64_encode(&bytes));
+                self.status = "头像已选择，将随注册资料上传".to_string();
+            }
+            Ok(_) => self.status = "头像文件为空或超过2MB，请选择较小的图片".to_string(),
+            Err(error) => self.status = format!("读取头像失败：{}", error),
+        }
+    }
+
     fn submit_register(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         let qq = self.qq.trim();
         let wechat = self.wechat.trim();
@@ -347,6 +367,22 @@ impl AccountState {
             self.mode = Mode::Auth;
         }
     }
+}
+
+fn base64_encode(bytes: &[u8]) -> String {
+    const TABLE: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity((bytes.len() + 2) / 3 * 4);
+    for chunk in bytes.chunks(3) {
+        let a = chunk[0] as u32;
+        let b = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
+        let c = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
+        let n = (a << 16) | (b << 8) | c;
+        out.push(TABLE[((n >> 18) & 63) as usize] as char);
+        out.push(TABLE[((n >> 12) & 63) as usize] as char);
+        out.push(if chunk.len() > 1 { TABLE[((n >> 6) & 63) as usize] as char } else { '=' });
+        out.push(if chunk.len() > 2 { TABLE[(n & 63) as usize] as char } else { '=' });
+    }
+    out
 }
 
 fn discover_admin_server() -> Result<String, String> {
@@ -560,9 +596,21 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 ui.text_edit_singleline(&mut app.account.name);
                 ui.label("密码（至少8位）");
                 ui.add(egui::TextEdit::singleline(&mut app.account.password).password(true));
-                ui.label("头像图片地址（可选）");
-                ui.text_edit_singleline(&mut app.account.avatar_url);
-                ui.small("当前版本此处仍接收图片链接；相册直接选图需要接入 Android 图片选择器。");
+                ui.label("头像（可选）");
+                ui.horizontal(|ui| {
+                    if ui.button("从手机相册选择").clicked() {
+                        app.account.choose_avatar();
+                    }
+                    if !app.account.avatar_url.is_empty() {
+                        ui.label("已选择头像");
+                        if ui.button("清除").clicked() {
+                            app.account.avatar_url.clear();
+                        }
+                    } else {
+                        ui.label("尚未选择");
+                    }
+                });
+                ui.small("支持 PNG、JPG、WebP，单张最大2MB；取消选择不会影响注册。");
             } else {
                 ui.label("QQ号或微信号");
                 ui.text_edit_singleline(&mut app.account.login_identifier);
