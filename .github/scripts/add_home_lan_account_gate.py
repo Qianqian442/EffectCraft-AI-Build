@@ -715,6 +715,18 @@ def main() -> None:
     account_path = root / "crates/ui-egui/src/account.rs"
     account_path.write_text(ACCOUNT_RS, encoding="utf-8")
 
+    # The account profile avatar picker uses rfd::FileDialog. Declare the
+    # already-locked crate for native Android/desktop builds so account.rs links.
+    manifest_path = root / "crates/ui-egui/Cargo.toml"
+    manifest = manifest_path.read_text(encoding="utf-8")
+    target_header = """[target.'cfg(not(target_arch = "wasm32"))'.dependencies]\n"""
+    rfd_dependency = 'rfd = { version = "0.17.2", default-features = false }\n'
+    if rfd_dependency.strip() not in manifest:
+        if manifest.count(target_header) != 1:
+            raise SystemExit("Could not find the native dependency section for the Android avatar picker")
+        manifest = manifest.replace(target_header, target_header + rfd_dependency, 1)
+        manifest_path.write_text(manifest, encoding="utf-8")
+
     source = lib.read_text(encoding="utf-8")
     source = replace_once(source, "mod app;\n", "mod account;\nmod app;\n", "account module declaration")
     source = replace_once(
