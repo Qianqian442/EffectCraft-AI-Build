@@ -80,6 +80,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
 
     let mut import_wasm = false;
     let mut import_ai = false;
+    let mut import_folder = false;
     if menu_open {
         let mut popup_open = true;
         let mut close_menu = false;
@@ -97,6 +98,9 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                 if popup.button("WASM / WAT / AE 插件文件或包").clicked() {
                     import_wasm = true;
                 }
+                if popup.button("AE 插件文件夹 / macOS .plugin").clicked() {
+                    import_folder = true;
+                }
                 if popup.button("DeepSeek AI 插件 ZIP").clicked() {
                     import_ai = true;
                 }
@@ -107,12 +111,17 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                     close_menu = true;
                 }
             });
-        menu_open = popup_open && !close_menu && !import_wasm && !import_ai;
+        menu_open = popup_open && !close_menu && !import_wasm && !import_ai && !import_folder;
     }
     ui.ctx().data_mut(|d| d.insert_temp(menu_id, menu_open));
 
     if import_wasm
         && let Err(error) = crate::menus::invoke(app, ui.ctx(), "effect.plugins.load", json!({}))
+    {
+        app.ui.status = error;
+    }
+    if import_folder
+        && let Err(error) = crate::menus::invoke(app, ui.ctx(), "effect.plugins.loadFolder", json!({}))
     {
         app.ui.status = error;
     }
