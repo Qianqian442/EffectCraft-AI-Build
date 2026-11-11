@@ -595,34 +595,45 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # The hosted runner's Azure Ubuntu mirror intermittently fails DNS.
-          # Switch its mirror list to the canonical Ubuntu archive before retrying.
+          # GitHub-hosted runners may have intermittent DNS failures against a
+          # single Ubuntu mirror. Give APT several independent mirrors to choose
+          # from instead of repeatedly retrying the same broken hostname.
           if [ -f /etc/apt/apt-mirrors.txt ]; then
-            sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g' /etc/apt/apt-mirrors.txt
+            sudo tee /etc/apt/apt-mirrors.txt >/dev/null <<'MIRRORS'
+          https://mirror.umd.edu/ubuntu/
+          https://mirrors.edge.kernel.org/ubuntu/
+          https://ubuntu.osuosl.org/ubuntu/
+          https://us.archive.ubuntu.com/ubuntu/
+          https://archive.ubuntu.com/ubuntu/
+          MIRRORS
           fi
-          # Retry transient mirror/DNS failures instead of aborting the APK build.
+          # Update indexes with bounded retries; fail only after all mirrors/retries fail.
+          updated=0
+          for attempt in 1 2 3 4 5 6; do
+            if sudo apt-get -o Acquire::Retries=2 update; then
+              updated=1
+              break
+            fi
+            sudo apt-get clean
+            sleep $((attempt * 8))
+          done
+          if [ "$updated" -ne 1 ]; then
+            echo "APT package index update failed after trying the configured Ubuntu mirrors." >&2
+            exit 1
+          fi
+          installed=0
           for attempt in 1 2 3 4 5; do
-            if sudo apt-get update; then
+            if sudo apt-get -o Acquire::Retries=2 install -y glslang-tools; then
+              installed=1
               break
             fi
-            if [ "$attempt" -eq 5 ]; then
-              echo "APT package index update failed after 5 attempts." >&2
-              exit 1
-            fi
             sudo apt-get clean
-            sleep $((attempt * 10))
+            sleep $((attempt * 8))
           done
-          for attempt in 1 2 3; do
-            if sudo apt-get install -y glslang-tools; then
-              break
-            fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "Could not install glslang-tools after 3 attempts." >&2
-              exit 1
-            fi
-            sudo apt-get clean
-            sleep $((attempt * 10))
-          done
+          if [ "$installed" -ne 1 ]; then
+            echo "Could not install glslang-tools from the configured Ubuntu mirrors." >&2
+            exit 1
+          fi
           command -v glslangValidator
 
       - name: Build local RIFE and Real-ESRGAN worker for Android arm64
