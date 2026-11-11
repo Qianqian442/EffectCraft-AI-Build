@@ -45,7 +45,7 @@ import javax.crypto.spec.SecretKeySpec;
  * No desktop computer, Docker daemon, or public server is required.
  */
 final class LanAccountServer implements Runnable {
-    static final int PORT = 8787;
+    static final int PORT = 8788;
     private static final String PREFS = "effectcraft_lan_server";
     private static final int PBKDF2_ROUNDS = 310000;
     private static final int MAX_BODY = 1024 * 1024;
