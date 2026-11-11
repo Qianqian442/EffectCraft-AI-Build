@@ -26,3 +26,19 @@ WHEN EXISTS (SELECT 1 FROM accounts WHERE id <> OLD.id AND lower(trim(name)) = l
 BEGIN
   SELECT RAISE(ABORT, '账号名字已被注册');
 END;
+
+-- One authorized administrator phone. Its Android Keystore private key never leaves the device.
+CREATE TABLE IF NOT EXISTS admin_devices (
+  device_id TEXT PRIMARY KEY,
+  public_key TEXT NOT NULL,
+  label TEXT NOT NULL DEFAULT '管理员手机',
+  created_at TEXT NOT NULL,
+  last_seen TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS admin_device_challenges (
+  nonce TEXT PRIMARY KEY,
+  device_id TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_admin_device_challenges_expiry
+  ON admin_device_challenges(expires_at);
