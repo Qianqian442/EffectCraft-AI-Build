@@ -424,6 +424,8 @@ def main() -> None:
         "        }\n"
         "        app.account.node_event_started = false;\n"
         "        app.account.node_event_rx = None;\n"
+        "        app.account.node_outgoing_tx = None;\n"
+        "        app.account.node_incoming.clear();\n"
         "        app.account.node_peers = 0;\n"
         "    }",
         "remove 10-second polling and listen for events",
