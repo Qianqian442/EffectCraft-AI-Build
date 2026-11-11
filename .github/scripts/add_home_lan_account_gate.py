@@ -257,7 +257,19 @@ impl AccountState {
             self.status = "密码至少8位".to_string();
             return;
         }
-        self.status = "正在连接账号服务器并提交注册…".to_string();
+        // Save the registration profile locally before any network request.
+        self.user = Some(User {
+            id: String::new(),
+            qq: qq.to_string(),
+            wechat: wechat.to_string(),
+            name: self.name.trim().to_string(),
+            avatar_url: self.avatar_url.trim().to_string(),
+            created_at: String::new(),
+            banned_until: None,
+            ban_reason: String::new(),
+        });
+        self.persist(config);
+        self.status = "注册资料已先保存在本机，正在尝试同步账号服务器…".to_string();
         self.send(
             Action::Register,
             "POST",
