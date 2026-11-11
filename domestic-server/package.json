@@ -1,0 +1,1 @@
+{"name":"effectcraft-domestic-account-node-server","version":"1.0.0","private":true,"type":"module","scripts":{"start":"node src/server.js","check":"node --check src/server.js"},"dependencies":{"bcryptjs":"2.4.3","express":"4.21.2","jsonwebtoken":"9.0.2","pg":"8.13.1","ws":"8.18.0"}}
