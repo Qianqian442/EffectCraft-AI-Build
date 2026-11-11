@@ -9,6 +9,7 @@
     <application
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
+        android:usesCleartextTraffic="true"
         android:label="Ae账号管理"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <service android:name=".AccountServerService" android:exported="false" android:foregroundServiceType="dataSync" />
