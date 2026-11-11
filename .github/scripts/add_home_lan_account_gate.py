@@ -65,6 +65,8 @@ struct SavedAccount {
     server_url: String,
     token: String,
     #[serde(default)]
+    user: Option<User>,
+    #[serde(default)]
     node_opt_in: bool,
 }
 
@@ -156,6 +158,7 @@ impl AccountState {
                         self.server_url = saved.server_url;
                     }
                     self.node_opt_in = saved.node_opt_in;
+                    self.user = saved.user;
                     if !saved.token.is_empty() {
                         self.token = Some(saved.token);
                     }
@@ -163,7 +166,8 @@ impl AccountState {
             }
         }
         if self.token.is_some() {
-            self.mode = Mode::Checking;
+            // Open the editor from the locally cached session first; verify bans in the background.
+            self.mode = if self.user.is_some() { Mode::Editor } else { Mode::Checking };
             self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
         } else {
             self.mode = Mode::Auth;
@@ -171,10 +175,13 @@ impl AccountState {
     }
 
     fn persist(&self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
-        let (Some(store), Some(token)) = (config, self.token.as_ref()) else {
-            return;
+        let Some(store) = config else { return; };
+        let saved = SavedAccount {
+            server_url: self.server_url.clone(),
+            token: self.token.clone().unwrap_or_default(),
+            user: self.user.clone(),
+            node_opt_in: self.node_opt_in,
         };
-        let saved = SavedAccount { server_url: self.server_url.clone(), token: token.clone(), node_opt_in: self.node_opt_in };
         if let Ok(data) = serde_json::to_string(&saved) {
             let _ = store.write("effectcraft-home-account.json", &data);
         }
@@ -295,7 +302,7 @@ impl AccountState {
         match result {
             Err(error) => {
                 self.status = format!("无法连接管理员手机账号服务器：{error}");
-                if matches!(action, Action::Verify) {
+                if matches!(action, Action::Verify) && self.user.is_none() {
                     self.mode = Mode::Unavailable;
                 }
             }
@@ -311,7 +318,7 @@ impl AccountState {
                     .or_else(|| response.body.get("detail").and_then(|v| v.get("message")).and_then(Value::as_str))
                     .unwrap_or("请求失败");
                 self.status = format!("{detail}（HTTP {}）", response.status);
-                if matches!(action, Action::Verify) {
+                if matches!(action, Action::Verify) && self.user.is_none() {
                     self.mode = Mode::Unavailable;
                 }
             }
@@ -337,8 +344,10 @@ impl AccountState {
                     } else {
                         self.token = Some(token);
                         self.user = user;
-                        self.mode = Mode::Success;
+                        self.mode = Mode::Editor;
                         self.password.clear();
+                        self.last_verified = Some(std::time::Instant::now());
+                        self.status = "账号已登录，已进入剪辑界面；账号资料已保存在本机，后台继续验证管理员状态。".to_string();
                         self.persist(config);
                     }
                 }
@@ -651,17 +660,8 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 ui.label(&app.account.status);
             }
         }),
-        Mode::Success => centered_window(ctx, "账号成功", vec2(380.0, 280.0), |ui| {
-            ui.vertical_centered(|ui| {
-                ui.heading("你已成功注册 / 登录账号");
-                ui.add_space(12.0);
-                ui.label("请点击 OK 退出软件，再次打开软件后即可正常使用。");
-                ui.add_space(18.0);
-                if ui.button("OK").clicked() {
-                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
-                }
-            });
-        }),
+        Mode::Success => {},
+
         Mode::Banned => centered_window(ctx, "账号已被封禁", vec2(400.0, 320.0), |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("账号已被封禁");
