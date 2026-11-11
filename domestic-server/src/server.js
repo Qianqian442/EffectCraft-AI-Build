@@ -44,7 +44,14 @@ function validAvatar(v) {
 function sendAccount(id,event){for(const ws of accountSockets.get(id)||[])if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(event));}
 function sendNodes(event){for(const ws of nodeSockets.values())if(ws.readyState===WebSocket.OPEN)ws.send(JSON.stringify(event));}
 async function getNetwork(){return (await pool.query("SELECT enabled,changed_at,changed_by FROM network_state WHERE id=1")).rows[0]||{enabled:true,changed_by:"bootstrap"};}
-async function requireAdmin(req){return claims(req,"admin");}
+async function requireAdmin(req){
+ const c=claims(req,"admin");
+ if(c.device_id){
+  const row=(await pool.query("SELECT device_id FROM admin_devices WHERE device_id=$1",[c.device_id])).rows[0];
+  if(!row)throw Object.assign(new Error("管理员手机授权已撤销，请重新绑定"),{status:401});
+ }
+ return c;
+}
 app.get("/health",async(_req,res)=>{try{await pool.query("SELECT 1");res.json({ok:true,service:"EffectCraft Domestic Account API",database:true});}catch{res.status(503).json({ok:false,database:false});}});
 app.post("/v1/register",async(req,res)=>{try{
  const b=req.body||{},qq=String(b.qq||"").trim(),wechat=String(b.wechat||"").trim(),name=String(b.name||"").trim(),password=String(b.password||""),avatar=String(b.avatar_url||"").trim();
@@ -107,7 +114,7 @@ server.on("upgrade",async(req,socket,head)=>{try{
  wss.handleUpgrade(req,socket,head,ws=>{
   if(url.pathname==="/v1/events"){if(!accountSockets.has(c.sub))accountSockets.set(c.sub,new Set());accountSockets.get(c.sub).add(ws);ws.on("close",()=>accountSockets.get(c.sub)?.delete(ws));return;}
   nodeSockets.set(c.sub,ws);ws.send(JSON.stringify({type:"network_state",enabled:true}));
-  ws.on("message",rawMessage=>{try{const m=JSON.parse(String(rawMessage));
+  ws.on("message",rawMessage=>{try{if(String(rawMessage)==="ping"){ws.send("pong");return;}const m=JSON.parse(String(rawMessage));
    if(m.type==="hello"&&m.v===1){const peer=String(m.peer_id||"");if(!/^[1-9A-HJ-NP-Za-km-z]{20,100}$/.test(peer)){ws.send(JSON.stringify({type:"error",code:"invalid_peer_announcement"}));return;}ws.peerId=peer;ws.send(JSON.stringify({type:"peer_list",peers:[...nodeSockets.keys()].filter(id=>id!==c.sub)}));for(const [id,peerWs] of nodeSockets)if(id!==c.sub&&peerWs.readyState===WebSocket.OPEN)peerWs.send(JSON.stringify({type:"peer_online",node_id:c.sub,peer_id:peer}));return;}
    if(m.type==="relay"&&m.v===1&&typeof m.to==="string"&&typeof m.ciphertext==="string"&&m.ciphertext.length>=16&&m.ciphertext.length<=40000){const target=nodeSockets.get(m.to);if(target?.readyState===WebSocket.OPEN)target.send(JSON.stringify({type:"relay",from:c.sub,message_id:String(m.message_id||"").slice(0,80),sent_at:Number(m.sent_at)||Date.now(),ciphertext:m.ciphertext}));}
   }catch{}});
