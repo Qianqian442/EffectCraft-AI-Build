@@ -39,7 +39,8 @@ Official project: https://github.com/libp2p/rust-libp2p
 - The client creates a per-session Ed25519 libp2p PeerId and announces it over the authenticated WebSocket. No private key is sent to the Worker.
 - The Worker returns the active peer list and broadcasts peer-online / peer-offline notifications. The account settings panel displays the current discovered-node count.
 - Turning node opt-in off, leaving the editor session, or being banned closes the local node socket; the server also revokes banned accounts and closes all sockets when the administrator switches the global network OFF.
-- This milestone is presence/discovery only. It does not yet create a libp2p Swarm, direct NAT traversal, encrypted peer payload channel, or actual project/media/task transfer. The relay endpoint rejects relay packets until both sides have announced a peer identity.
+- The native account gate now also has bounded outbound/inbound queues for opaque ciphertext envelopes. The Worker accepts only announced senders and announced recipients, validates message IDs/timestamps, rate-limits delivery, deduplicates messages, and never decrypts payloads. The queue API is a transport primitive; no editor/task caller or end-to-end key agreement has been wired to it yet.
+- This milestone is presence/discovery plus a bounded ciphertext relay primitive. It does not yet create a libp2p Swarm, direct NAT traversal, perform end-to-end encryption/key pairing, or transfer actual project/media/task data.
 
 ## Build and verification gates
 
