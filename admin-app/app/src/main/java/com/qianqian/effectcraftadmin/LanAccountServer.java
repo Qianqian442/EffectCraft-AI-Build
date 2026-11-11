@@ -139,7 +139,7 @@ final class LanAccountServer implements Runnable {
             }
             try (ServerSocket server = new ServerSocket()) {
                 server.setReuseAddress(true);
-                server.bind(new InetSocketAddress(InetAddress.getByName(currentIp), PORT), 32);
+                server.bind(new InetSocketAddress(InetAddress.getByName("0.0.0.0"), PORT), 32);
                 server.setSoTimeout(2500);
                 listener = server;
                 boundIp = currentIp;
