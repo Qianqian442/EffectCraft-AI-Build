@@ -178,7 +178,9 @@ export class NodeNetworkHub {
       try { socket.send(JSON.stringify({ type: "error", code: "peer_hello_required" })); } catch (_) {}
       return;
     }
-    const sentAt = Date.parse(String(packet.sent_at || ""));
+    const sentAt = typeof packet.sent_at === "number"
+      ? packet.sent_at
+      : Date.parse(String(packet.sent_at || ""));
     if (!Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > 120000) {
       try { socket.send(JSON.stringify({ type: "error", code: "expired_message" })); } catch (_) {}
       return;
