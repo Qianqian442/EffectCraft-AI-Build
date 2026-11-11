@@ -347,6 +347,9 @@ final class LanAccountServer implements Runnable {
         if (name.isEmpty() || name.length() > 40) return error(422, "姓名不能为空且不能超过40字", "", "");
         if (password.length() < 8 || password.length() > 128) return error(422, "密码至少8位", "", "");
         if (!avatar.isEmpty() && !(avatar.startsWith("https://") || avatar.startsWith("http://"))) return error(422, "头像地址格式不正确", "", "");
+        Cursor nameCursor = db.getReadableDatabase().rawQuery("SELECT 1 FROM accounts WHERE lower(trim(name))=lower(trim(?)) LIMIT 1", new String[]{name});
+        try { if (nameCursor.moveToFirst()) return error(409, "该名字已被注册，每个名字只能注册一个账号", "", ""); }
+        finally { nameCursor.close(); }
         String id = UUID.randomUUID().toString();
         byte[] salt = randomBytes(16);
         String passHash = hashPassword(password, salt);
@@ -359,7 +362,7 @@ final class LanAccountServer implements Runnable {
             values.put("created_at", Instant.now().toString());
             writable.insertOrThrow("accounts", null, values);
         } catch (android.database.SQLException e) {
-            return error(409, "QQ号或微信号已注册", "", "");
+            return error(409, "名字、QQ号或微信号已被注册", "", "");
         }
         return authResult(id, "user", 30L * 24 * 60 * 60);
     }
@@ -402,6 +405,9 @@ final class LanAccountServer implements Runnable {
         String name = body.optString("name", "").trim();
         String avatar = body.optString("avatar_url", "").trim();
         if (!QQ.matcher(qq).matches() || !WECHAT.matcher(wechatRaw).matches() || name.isEmpty()) return error(422, "QQ号、微信号或姓名格式不正确", "", "");
+        Cursor nameCursor = db.getReadableDatabase().rawQuery("SELECT 1 FROM accounts WHERE lower(trim(name))=lower(trim(?)) AND id<>? LIMIT 1", new String[]{name, id});
+        try { if (nameCursor.moveToFirst()) return error(409, "该名字已被其他账号使用", "", ""); }
+        finally { nameCursor.close(); }
         String newPassword = body.optString("new_password", "");
         android.content.ContentValues values = new android.content.ContentValues();
         values.put("qq", qq); values.put("wechat", wechat); values.put("name", name); values.put("avatar_url", avatar);
@@ -417,7 +423,7 @@ final class LanAccountServer implements Runnable {
         try {
             db.getWritableDatabase().update("accounts", values, "id=?", new String[]{id});
         } catch (android.database.SQLException e) {
-            return error(409, "QQ号或微信号已被其他账号使用", "", "");
+            return error(409, "名字、QQ号或微信号已被其他账号使用", "", "");
         }
         JSONObject out = new JSONObject(); out.put("user", findUser(id)); return out;
     }
