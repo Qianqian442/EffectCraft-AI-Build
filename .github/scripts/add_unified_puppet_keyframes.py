@@ -34,7 +34,7 @@ def main() -> None:
         let Some(layer) = comp.layer(*layer_id) else { continue };
         let Some(pin_group) = layer.props.find_group(*selected_uid) else { continue };
         let Some(position) = pin_group.get("position").filter(|prop| prop.is_animated()) else { continue };
-        if !rows.iter().any(|row| row.layer == *layer_id && matches!(row.kind, RowKind::Prop { uid } if uid == position.uid)) {
+        if !rows.iter().any(|row| row.layer == *layer_id && matches!(&row.kind, RowKind::Prop { uid } if *uid == position.uid)) {
             rows.push(Row {
                 layer: *layer_id,
                 depth: 2,
