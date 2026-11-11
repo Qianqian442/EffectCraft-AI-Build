@@ -385,9 +385,139 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
     path.write_text(source, encoding="utf-8")
 
 
+
+
+def patch_android_touch_apply(root: Path) -> None:
+    """On Android, apply effects and animation presets with a single tap."""
+    path = root / "crates/ui-egui/src/panels/effects_presets.rs"
+    source = path.read_text(encoding="utf-8")
+
+    old_effect = """    if resp.clicked() {
+        nav_click(&ctx, app, id);
+    }
+    if resp.double_clicked() {
+        *apply = Some(Apply::Effect(e.id.to_string()));
+    }
+"""
+    new_effect = """    if resp.clicked() {
+        nav_click(&ctx, app, id);
+        #[cfg(target_os = "android")]
+        {
+            *apply = Some(Apply::Effect(e.id.to_string()));
+        }
+    }
+    if resp.double_clicked() {
+        *apply = Some(Apply::Effect(e.id.to_string()));
+    }
+"""
+    source = replace_once(source, old_effect, new_effect, "Android single-tap effect apply")
+
+    old_preset = """    if resp.clicked() {
+        nav_click(ui.ctx(), app, id);
+    }
+    if resp.drag_started() {
+        egui::DragAndDrop::set_payload(ui.ctx(), DragPayload::Preset { preset: preset.clone(), name: name.to_string() });
+    }
+    if resp.double_clicked() {
+        *apply = Some(Apply::Preset(preset));
+    }
+"""
+    new_preset = """    if resp.clicked() {
+        nav_click(ui.ctx(), app, id);
+        #[cfg(target_os = "android")]
+        {
+            *apply = Some(Apply::Preset(preset.clone()));
+        }
+    }
+    if resp.drag_started() {
+        egui::DragAndDrop::set_payload(ui.ctx(), DragPayload::Preset { preset: preset.clone(), name: name.to_string() });
+    }
+    if resp.double_clicked() {
+        *apply = Some(Apply::Preset(preset));
+    }
+"""
+    source = replace_once(source, old_preset, new_preset, "Android single-tap animation preset apply")
+
+    old_result = """    match app.session.execute(cmd, params) {
+        Err(e) => app.ui.status = e.to_string(),
+        Ok(applied) => {
+            if let Apply::Effect(id) = &apply {
+                push_recent(&mut app.ui.effects_recent, id);
+                app.show_panel(crate::dock::PanelKind::EffectControls);
+                app.ui.focused = crate::dock::PanelKind::EffectsPresets;
+                crate::panels::effect_controls::choose_files_after_apply(app, &applied);
+            }
+        }
+    }
+"""
+    new_result = """    match app.session.execute(cmd, params) {
+        Err(e) => app.ui.status = e.to_string(),
+        Ok(applied) => {
+            if let Apply::Effect(id) = &apply {
+                push_recent(&mut app.ui.effects_recent, id);
+                app.show_panel(crate::dock::PanelKind::EffectControls);
+                app.ui.focused = crate::dock::PanelKind::EffectsPresets;
+                crate::panels::effect_controls::choose_files_after_apply(app, &applied);
+            } else if let Apply::Preset(PresetRef::Builtin(id)) = &apply {
+                app.ui.status = format!(
+                    "已应用动画预设：{id}。它修改图层属性，请在“变换”中查看，不会显示在效果控件里。"
+                );
+            } else if matches!(&apply, Apply::Preset(PresetRef::Text(_))) {
+                app.ui.status = "文字动画预设已应用。".into();
+            } else if matches!(&apply, Apply::Preset(PresetRef::File(_))) {
+                app.ui.status = "动画预设已应用。".into();
+            }
+        }
+    }
+"""
+    source = replace_once(source, old_result, new_result, "Animation preset success feedback")
+    path.write_text(source, encoding="utf-8")
+
+
+def patch_shake_behavior(root: Path) -> None:
+    """Use the expression engine's direct property wiggle call for the Shake preset."""
+    path = root / "crates/engine/presets/behaviors.json"
+    source = path.read_text(encoding="utf-8")
+    source = replace_once(
+        source,
+        '"transform/position": "var w = wiggle(14, 12); [w[0], w[1]]"',
+        '"transform/position": "wiggle(14, 12)"',
+        "Simplify Shake expression",
+    )
+    path.write_text(source, encoding="utf-8")
+
+
+def patch_mobile_shortcut_layout(root: Path) -> None:
+    """Lay out Import, Curve and Add Keyframe side-by-side along the bottom edge."""
+    path = root / "crates/ui-egui/src/panels/timeline.rs"
+    source = path.read_text(encoding="utf-8")
+    source = replace_once(
+        source,
+        "pos2(rect.min.x + 10.0, rect.max.y - 56.0)",
+        "pos2(rect.min.x + 156.0, rect.max.y - 56.0)",
+        "Curve shortcut horizontal position",
+    )
+    source = replace_once(
+        source,
+        "pos2(footer.min.x + 8.0, footer.center().y - keyframe_height * 0.5)",
+        "pos2(footer.min.x + 228.0, footer.center().y - keyframe_height * 0.5)",
+        "Keyframe shortcut horizontal position",
+    )
+    source = replace_once(
+        source,
+        "pos2(footer.min.x + 128.0, footer.min.y + 3.0)",
+        "pos2(footer.min.x + 348.0, footer.min.y + 3.0)",
+        "Timeline switch label horizontal position",
+    )
+    path.write_text(source, encoding="utf-8")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "vendor/effectcraft"))
     patch_timeline(root)
+    patch_android_touch_apply(root)
+    patch_shake_behavior(root)
+    patch_mobile_shortcut_layout(root)
 
 
 if __name__ == "__main__":
