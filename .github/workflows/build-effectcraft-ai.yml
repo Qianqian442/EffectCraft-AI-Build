@@ -2,7 +2,7 @@ name: Build EffectCraft AI Android APK
 
 on:
   push:
-    branches: [main, design/no-server-node-mesh]
+    branches: [main, design/no-server-node-mesh, implementation/p2p-full-replacement]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
