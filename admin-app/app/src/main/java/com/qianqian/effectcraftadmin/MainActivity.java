@@ -213,7 +213,7 @@ public final class MainActivity extends Activity {
         page.addView(text("管理员身份已验证；正在读取云端 D1 账号数据库。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
-            showConnecting("正在重新读取管理员手机本地账号数据库…");
+            showConnecting("正在重新读取云端 D1 账号数据库…");
             loadUsers("");
         });
         page.addView(retry, new LinearLayout.LayoutParams(-1, dp(48)));
@@ -628,7 +628,7 @@ public final class MainActivity extends Activity {
                 .setPositiveButton("确认删除并释放资料", (dialog, which) -> {
                     requestAsync("DELETE", "/v1/admin/users/" + id, null, true, result -> {
                         if (result != null && result.optBoolean("deleted", false)) {
-                            toast("账号已从本机数据库删除，名字、QQ号和微信号已释放，可以重新注册");
+                            toast("账号已从云端数据库删除，名字、QQ号和微信号已释放，可以重新注册");
                             loadUsers(searchInput == null ? "" : searchInput.getText().toString());
                         }
                     });
@@ -644,7 +644,7 @@ public final class MainActivity extends Activity {
                     try { body.put("banned_until", JSONObject.NULL); body.put("reason", ""); } catch (Exception ignored) {}
                     requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
                         if (result != null) {
-                            toast("已解禁；账号状态已在本机数据库更新");
+                            toast("已解禁；云端账号状态已更新");
                             updateVisibleUser(result.optJSONObject("user"));
                         }
                     });
