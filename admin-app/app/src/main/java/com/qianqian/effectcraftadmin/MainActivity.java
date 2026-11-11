@@ -85,7 +85,7 @@ public final class MainActivity extends Activity {
         panel.addView(status);
         Button toggle = button("读取状态…");
         panel.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
-        TextView note = text("此阶段服务仅监听本机 Wi-Fi，尚未完成跨网络 TLS/安全中继和主 APK 客户端接入。请勿在不可信 Wi-Fi 上传输真实账号密码。", 11, false);
+        TextView note = text("当前账号服务仅监听本机 Wi-Fi，主 APK 需连接管理员手机的局域网地址；跨地区安全中继尚未接通。请勿在不可信 Wi-Fi 上传输真实账号密码。", 11, false);
         note.setTextColor(Color.rgb(160, 85, 35));
         panel.addView(note);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
@@ -280,10 +280,10 @@ public final class MainActivity extends Activity {
         page.addView(text("Ae账号管理", 24, true), new LinearLayout.LayoutParams(-1, dp(56)));
         TextView status = text(message, 15, false);
         page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
-        page.addView(text("正在通过 HTTPS 连接云端账号服务；不需要其他用户与管理设备处于同一 Wi-Fi。", 12, false));
+        page.addView(text("管理员身份已验证；正在读取管理员手机本地 SQLite 账号数据库。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
-            showConnecting("正在重新连接云端账号服务…");
+            showConnecting("正在重新读取管理员手机本地账号数据库…");
             loadUsers("");
         });
         page.addView(retry, new LinearLayout.LayoutParams(-1, dp(48)));
