@@ -237,7 +237,7 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
         lines.push(format!("原版电脑版插件文件已原样保存：{native_originals} 个；尚未在 Android 中运行。"));
     }
     if errors > 0 {
-        lines.push(format!("有 {errors} 项兼容模块安装错误，请查看插件导入报告。"));
+        lines.push(format!("有 {errors} 项插件加载错误，请查看插件导入报告。"));
     }
     if skipped > 0 {
         lines.push(format!("有 {skipped} 个不支持或超限文件已跳过。"));
