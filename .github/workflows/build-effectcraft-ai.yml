@@ -595,15 +595,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Retry transient Ubuntu mirror/network failures instead of aborting the APK build.
-          for attempt in 1 2 3; do
+          # The hosted runner's Azure Ubuntu mirror intermittently fails DNS.
+          # Switch its mirror list to the canonical Ubuntu archive before retrying.
+          if [ -f /etc/apt/apt-mirrors.txt ]; then
+            sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g' /etc/apt/apt-mirrors.txt
+          fi
+          # Retry transient mirror/DNS failures instead of aborting the APK build.
+          for attempt in 1 2 3 4 5; do
             if sudo apt-get update; then
               break
             fi
-            if [ "$attempt" -eq 3 ]; then
-              echo "APT package index update failed after 3 attempts." >&2
+            if [ "$attempt" -eq 5 ]; then
+              echo "APT package index update failed after 5 attempts." >&2
               exit 1
             fi
+            sudo apt-get clean
             sleep $((attempt * 10))
           done
           for attempt in 1 2 3; do
