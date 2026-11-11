@@ -70,7 +70,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let mut script_names: Vec<String> = Vec::new();
     let mut asset_names: Vec<String> = Vec::new();
     let mut native_names: Vec<String> = Vec::new();
-    let mut native_mappings: Vec<Value> = Vec::new();
+    let native_mappings: Vec<Value> = Vec::new();
     let mut skipped_names: Vec<String> = Vec::new();
 
     for index in 0..archive.len() {
@@ -193,51 +193,9 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                 std::fs::write(originals_dir.join(&destination_name), &bytes)
                     .map_err(|error| bad(CMD, format!("无法保存原始插件 {file_name}：{error}")))?;
                 native_names.push(destination_name);
-                // Map common desktop plug-in filenames to compatible recreations
-                // already bundled with this EffectCraft APK.
-                let token = entry_name.to_ascii_lowercase()
-                    .replace('_', "")
-                    .replace('-', "")
-                    .replace(' ', "");
-                let mapping = if token.contains("rsmb") {
-                    Some(("org.effectcraft.compat.rsmb-motion-blur",
-                          "RSMB 风格方向模糊（非原版）",
-                          "安卓方向模糊兼容效果；不是原厂 RSMB 运动矢量估算"))
-                } else if token.contains("sglowaura") || token.contains("sapphireglowaura") {
-                    Some(("org.effectcraft.sapphire.compat.glow-aura",
-                          "Sapphire-style Glow Aura",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("sglow") || token.contains("sapphireglow") {
-                    Some(("org.effectcraft.sapphire.compat.glow",
-                          "Sapphire-style Glow",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("slensflare") || token.contains("sapphirelensflare") {
-                    Some(("org.effectcraft.sapphire.compat.lensflare",
-                          "Sapphire-style LensFlare",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("sblur") || token.contains("sapphireblur") {
-                    Some(("org.effectcraft.sapphire.compat.blur",
-                          "Sapphire-style Blur",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("sdistort") || token.contains("sapphiredistort") {
-                    Some(("org.effectcraft.sapphire.compat.distort",
-                          "Sapphire-style Distort",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("sstylize") || token.contains("sapphirestylize") {
-                    Some(("org.effectcraft.sapphire.compat.stylize",
-                          "Sapphire-style Stylize",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else {
-                    None
-                };
-                if let Some((effect_id, effect_name, note)) = mapping {
-                    native_mappings.push(json!({
-                        "source": entry_name,
-                        "effect_id": effect_id,
-                        "effect_name": effect_name,
-                        "note": note
-                    }));
-                }
+                // Never substitute a built-in effect based on a desktop plug-in filename.
+                // Preserve the original binary byte-for-byte; only a real runtime or port may
+                // report this plug-in as compatible.
             }
             _ => {}
         }
