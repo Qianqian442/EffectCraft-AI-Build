@@ -1058,11 +1058,11 @@ jobs:
       - name: Install and launch on Android ARM64 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 31
           target: google_apis
           arch: arm64-v8a
           profile: pixel_6
-          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel off
+          emulator-options: -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -no-snapshot
           disable-animations: true
           script: |
             set -euo pipefail
