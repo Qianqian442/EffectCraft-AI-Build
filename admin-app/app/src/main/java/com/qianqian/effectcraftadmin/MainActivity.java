@@ -51,7 +51,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private static final String DEFAULT_SERVER = BuildConfig.ACCOUNT_API_URL;
+    private static final String DEFAULT_SERVER = "http://127.0.0.1:8788";
     private static final String PERMANENT_BAN_UNTIL = "9999-12-31T23:59:59Z";
     private String server = DEFAULT_SERVER;
     private String adminToken = "";
@@ -73,15 +73,10 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-        String savedServer = getPreferences(MODE_PRIVATE).getString("server", "");
-        server = savedServer.startsWith("https://") ? trimServer(savedServer) : trimServer(DEFAULT_SERVER);
-        adminToken = "";
-        if (hasAdminDeviceKey()) {
-            showConnecting("正在验证已绑定的管理员手机…");
-            autoDeviceLogin();
-        } else {
-            showLogin();
-        }
+        server = DEFAULT_SERVER;
+        adminToken = getPreferences(MODE_PRIVATE).getString("admin_token", "");
+        if (!adminToken.isEmpty()) { showConnecting("正在读取管理员手机本地账号数据库…"); loadUsers(""); }
+        else { showLogin(); }
     }
 
     /** Server-authoritative global node switch; never trust a local preference for this control. */
@@ -223,10 +218,10 @@ public final class MainActivity extends Activity {
         page.addView(text("Ae账号管理", 24, true), new LinearLayout.LayoutParams(-1, dp(56)));
         TextView status = text(message, 15, false);
         page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
-        page.addView(text("管理员身份已验证；正在读取云端 D1 账号数据库。", 12, false));
+        page.addView(text("管理员手机本地 SQLite 账号数据库；账号资料不会上传到第三方云平台。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
-            showConnecting("正在重新读取云端 D1 账号数据库…");
+            showConnecting("正在重新读取管理员手机本地账号数据库…");
             loadUsers("");
         });
         page.addView(retry, new LinearLayout.LayoutParams(-1, dp(48)));
@@ -244,23 +239,22 @@ public final class MainActivity extends Activity {
         LinearLayout page = column();
         TextView title = text("EffectCraft 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
-        page.addView(text("主 APK 和管理版共用云端 D1 账号数据库；不同地区注册的账号会显示在这里。", 12, false));
-        page.addView(text("首次只需授权绑定这台管理员手机；绑定成功后，以后打开自动登录，无需重复输入密码。", 14, false));
-        page.addView(text("主 APK 用户端自动加入节点网络；本管理版只负责账号管理、封禁解禁和全局节点开关。", 13, false));
+        page.addView(text("本机就是账号主服务器，账号资料保存在这台管理员手机，不使用 Cloudflare 或外国云端数据库。", 13, false));
         page.addView(text("服务器地址", 13, true));
-        serverInput = field("服务器地址由管理版自动配置", false);
-        serverInput.setText(server);
+        serverInput = field("本机账号服务器", false);
+        serverInput.setText(DEFAULT_SERVER);
+        serverInput.setEnabled(false);
         page.addView(serverInput);
-        page.addView(text("首次绑定授权密码", 13, true));
-        passwordInput = field("仅首次绑定时输入管理员授权密码", true);
+        page.addView(text("管理员密码", 13, true));
+        passwordInput = field("输入管理员密码", true);
         page.addView(passwordInput);
-        loginButton = button("授权并绑定本机（仅一次）");
+        loginButton = button("登录本机管理员");
         page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
-        loginStatus = text("绑定后使用本机安全密钥自动登录；不会取消服务器安全密钥。", 12, false);
+        loginStatus = text("首次登录后保存本机登录凭据；账号服务器在管理员手机后台运行。", 12, false);
         loginStatus.setTextColor(Color.rgb(95, 103, 115));
         page.addView(loginStatus, new LinearLayout.LayoutParams(-1, dp(36)));
         loginButton.setOnClickListener(v -> doAdminLogin());
-        page.addView(text("更换手机或清除应用数据后，需要重新授权绑定。", 12, false));
+        page.addView(text("更换手机或清除应用数据后，需要重新输入管理员密码。", 12, false));
         setRoot(page);
     }
 
@@ -368,83 +362,27 @@ public final class MainActivity extends Activity {
     }
 
     private void doAdminLogin() {
-        server = trimServer(serverInput.getText().toString());
-        String password = passwordInput.getText().toString().trim();
-        if (server.isEmpty() || password.isEmpty()) {
-            toast("请填写服务器地址和首次绑定授权密码");
-            return;
-        }
+        server = DEFAULT_SERVER;
+        String password = passwordInput.getText().toString();
+        if (password.isEmpty()) { toast("请输入管理员密码"); return; }
         loginButton.setEnabled(false);
-        loginButton.setText("正在绑定本机…");
-        loginStatus.setText("正在创建 Android 本机安全密钥并验证首次授权…");
-        io.execute(() -> {
-            JSONObject result = null;
-            String error = null;
-            try {
-                KeyPair pair = ensureAdminDeviceKey();
-                JSONObject body = new JSONObject();
-                body.put("device_id", deviceId());
-                body.put("public_key", publicKeyEncoded(pair));
-                body.put("password", password);
-                URL url = new URL(server + "/v1/admin/device/enroll");
-                if (!"https".equalsIgnoreCase(url.getProtocol()) ||
-                    url.getHost() == null || !url.getHost().endsWith(".workers.dev")) {
-                    throw new java.io.IOException("请填写完整的 HTTPS workers.dev 地址");
-                }
-                HttpURLConnection c = (HttpURLConnection) url.openConnection();
-                try {
-                    c.setRequestMethod("POST");
-                    c.setConnectTimeout(10000);
-                    c.setReadTimeout(12000);
-                    c.setDoOutput(true);
-                    c.setRequestProperty("Accept", "application/json");
-                    c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    try (OutputStream out = c.getOutputStream()) {
-                        out.write(body.toString().getBytes(StandardCharsets.UTF_8));
-                    }
-                    int code = c.getResponseCode();
-                    InputStream in = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
-                    ByteArrayOutputStream data = new ByteArrayOutputStream();
-                    if (in != null) try (InputStream stream = in) {
-                        byte[] buffer = new byte[4096]; int n;
-                        while ((n = stream.read(buffer)) > 0) data.write(buffer, 0, n);
-                    }
-                    JSONObject parsed = new JSONObject(new String(data.toByteArray(), StandardCharsets.UTF_8));
-                    if (code >= 200 && code < 300) result = parsed;
-                    else {
-                        JSONObject detail = parsed.optJSONObject("detail");
-                        error = detail == null ? ("HTTP " + code) : detail.optString("message", "绑定失败");
-                    }
-                } finally { c.disconnect(); }
-            } catch (Exception e) {
-                error = "无法连接服务器：" + e.getMessage();
+        loginButton.setText("正在验证…");
+        JSONObject body = new JSONObject();
+        try { body.put("username", "admin"); body.put("password", password); } catch (Exception ignored) { }
+        requestAsync("POST", "/v1/admin/login", body, false, result -> {
+            loginButton.setEnabled(true);
+            loginButton.setText("登录本机管理员");
+            if (result == null || result.optString("token", "").isEmpty()) {
+                loginStatus.setText("管理员密码验证失败，请检查密码或确认本机服务器正在运行。");
+                return;
             }
-            JSONObject finalResult = result;
-            String finalError = error;
-            runOnUiThread(() -> {
-                loginButton.setEnabled(true);
-                loginButton.setText("授权并绑定本机（仅一次）");
-                if (finalError != null) {
-                    loginStatus.setText(finalError);
-                    toast(finalError);
-                    return;
-                }
-                adminToken = finalResult.optString("token", "");
-                if (adminToken.isEmpty()) {
-                    loginStatus.setText("服务器没有返回登录凭据，请检查账号服务部署");
-                    return;
-                }
-                passwordInput.setText("");
-                getPreferences(MODE_PRIVATE).edit()
-                    .putString("server", server)
-                    .putString("admin_token", adminToken).apply();
-                toast("本机已授权绑定，以后打开管理版会自动登录");
-                showConnecting("管理员手机绑定成功，正在读取云端账号库…");
-                loadUsers("");
-            });
+            adminToken = result.optString("token");
+            getPreferences(MODE_PRIVATE).edit().putString("admin_token", adminToken).apply();
+            passwordInput.setText("");
+            showConnecting("管理员身份验证成功，正在读取本地账号…");
+            loadUsers("");
         });
     }
-
     private String trimServer(String value) {
         String s = value.trim();
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
@@ -522,7 +460,7 @@ public final class MainActivity extends Activity {
         requestAsync("GET", "/v1/admin/users?q=" + encoded, null, true, result -> {
             if (result == null) {
                 if (adminToken.isEmpty()) showLogin();
-                else toast("云端账号列表读取失败，请检查网络后刷新");
+                else toast("本机账号列表读取失败，请确认管理员手机服务器正在运行。");
                 return;
             }
             showUsers(result.optJSONArray("users"));
