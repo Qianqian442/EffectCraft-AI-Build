@@ -19,7 +19,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
 
-const DEFAULT_SERVER: &str = "http://192.168.1.100:8787";
+const DEFAULT_SERVER: &str = "http://192.168.1.100:8788";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Mode {
