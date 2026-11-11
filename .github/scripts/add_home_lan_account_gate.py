@@ -8,8 +8,8 @@ from pathlib import Path
 MARKER = "EFFECTCRAFT_HOME_LAN_ACCOUNT_GATE_V1"
 
 ACCOUNT_RS = r'''// EFFECTCRAFT_HOME_LAN_ACCOUNT_GATE_V1
-//! Home-Wi-Fi-only account gate. The account API is intentionally fail-closed:
-//! when a saved account cannot be checked against the home server, the editor stays locked.
+//! Admin-phone LAN account gate. The account API is intentionally fail-closed:
+//! when a saved account cannot be checked against the admin phone, the editor stays locked.
 use crate::EffectcraftApp;
 use egui::{Align2, Color32, Id, Order, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
 use serde::{Deserialize, Serialize};
@@ -251,7 +251,7 @@ impl AccountState {
         let action = self.pending_action.take().unwrap_or(Action::Verify);
         match result {
             Err(error) => {
-                self.status = format!("无法连接家中的账号服务器：{error}");
+                self.status = format!("无法连接管理员手机账号服务器：{error}");
                 if matches!(action, Action::Verify) {
                     self.mode = Mode::Unavailable;
                 }
@@ -491,12 +491,12 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         Mode::Auth => centered_window(ctx, "账号注册 / 登录", vec2(420.0, 570.0), |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("EffectCraft 账号");
-                ui.label("仅连接家中的 Wi-Fi 账号服务器");
+                ui.label("连接管理员手机开启的 EffectCraft 账号服务器");
             });
             ui.separator();
-            ui.label("家庭服务器地址");
+            ui.label("管理员手机账号服务器地址");
             ui.text_edit_singleline(&mut app.account.server_url);
-            ui.small("把示例地址替换为家中电脑的局域网 IPv4 地址，例如 http://192.168.1.23:8787");
+            ui.small("请填写管理版“账号服务器”面板显示的 Wi-Fi 地址，端口为 8788，例如 http://192.168.1.23:8788。两台手机必须连接同一个 Wi-Fi。");
             ui.horizontal(|ui| {
                 if ui.selectable_label(!app.account.login_mode_register, "登录").clicked() {
                     app.account.login_mode_register = false;
@@ -547,8 +547,8 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             });
         }),
         Mode::Unavailable => centered_window(ctx, "无法验证账号", vec2(400.0, 300.0), |ui| {
-            ui.label("家中的账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");
-            ui.label("请确认手机和服务器电脑连接同一个家庭 Wi-Fi，且服务器电脑保持开机。");
+            ui.label("管理员手机账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");
+            ui.label("请确认两台手机连接同一个 Wi-Fi，并确认管理版已开启账号服务器。");
             ui.label(format!("服务器地址：{}", app.account.server_url));
             if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新连接")).clicked() {
                 app.account.retry(config);
@@ -630,7 +630,7 @@ def main() -> None:
         "account UI overlay call",
     )
     app.write_text(source, encoding="utf-8")
-    print("Installed the first-launch home-Wi-Fi account gate, profile window, server verification and ban lock.")
+    print("Installed the admin-phone LAN account gate, profile window, server verification and ban lock.")
 
 
 if __name__ == "__main__":
