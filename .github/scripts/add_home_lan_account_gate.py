@@ -344,7 +344,10 @@ fn discover_admin_server() -> Result<String, String> {
 }
 
 fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
-    // Refresh the admin-phone address on each request; its Wi-Fi IP may change.\n    let discovered = discover_admin_server().ok();\n    let target_url = discovered.as_deref().unwrap_or(url);\n    let rest = target_url.strip_prefix("http://").ok_or_else(|| "未发现管理员手机账号服务器，请确认管理员手机已开启服务且两台手机连接同一 Wi-Fi".to_string())?;
+    // Refresh the admin-phone address on each request; its Wi-Fi IP may change.
+    let discovered = discover_admin_server().ok();
+    let target_url = discovered.as_deref().unwrap_or(url);
+    let rest = target_url.strip_prefix("http://").ok_or_else(|| "未发现管理员手机账号服务器，请确认管理员手机已开启服务且两台手机连接同一 Wi-Fi".to_string())?;
     let authority = rest.split('/').next().unwrap_or("");
     let (host, port) = authority.rsplit_once(':').unwrap_or((authority, "80"));
     if host.is_empty() || host.contains(' ') {
