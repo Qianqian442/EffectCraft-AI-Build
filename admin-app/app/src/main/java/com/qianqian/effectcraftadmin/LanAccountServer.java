@@ -331,6 +331,7 @@ final class LanAccountServer implements Runnable {
                 String id = tail.substring(0, tail.length() - 4);
                 return banUser(id, body);
             }
+            if (method.equals("DELETE")) return deleteUser(tail);
         }
         return error(404, "未找到请求接口", "", "");
     }
@@ -449,6 +450,20 @@ final class LanAccountServer implements Runnable {
         JSONObject out = new JSONObject(); out.put("user", findUser(id)); return out;
     }
 
+    private JSONObject deleteUser(String id) throws Exception {
+        JSONObject user = findUser(id);
+        if (!"9999-12-31T23:59:59Z".equals(user.optString("banned_until", ""))) {
+            return error(409, "只能删除已永久封禁的账号；请先执行永久封禁", "", "");
+        }
+        int deleted = db.getWritableDatabase().delete("accounts", "id=?", new String[]{id});
+        if (deleted != 1) return error(404, "账号不存在或已删除", "", "");
+        JSONObject out = new JSONObject();
+        out.put("deleted", true);
+        out.put("id", id);
+        out.put("released", new JSONArray().put(user.optString("name")).put(user.optString("qq")).put(user.optString("wechat")));
+        return out;
+    }
+
     private JSONObject findUser(String id) throws Exception {
         Cursor c = db.getReadableDatabase().query("accounts", null, "id=?", new String[]{id}, null, null, null, "1");
         try {
@@ -563,11 +578,18 @@ final class LanAccountServer implements Runnable {
     }
 
     private static final class AccountDb extends SQLiteOpenHelper {
-        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 1); }
+        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 2); }
         @Override public void onCreate(SQLiteDatabase db) {
             db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT NOT NULL UNIQUE, wechat TEXT NOT NULL UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
             db.execSQL("CREATE INDEX idx_accounts_name ON accounts(name)");
+            createNameUniquenessTriggers(db);
         }
-        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) { }
+        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+            if (oldVersion < 2) createNameUniquenessTriggers(db);
+        }
+        private static void createNameUniquenessTriggers(SQLiteDatabase db) {
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS accounts_unique_name_insert BEFORE INSERT ON accounts WHEN EXISTS (SELECT 1 FROM accounts WHERE lower(trim(name)) = lower(trim(NEW.name))) BEGIN SELECT RAISE(ABORT, '账号名字已被注册'); END");
+            db.execSQL("CREATE TRIGGER IF NOT EXISTS accounts_unique_name_update BEFORE UPDATE OF name ON accounts WHEN EXISTS (SELECT 1 FROM accounts WHERE id <> OLD.id AND lower(trim(name)) = lower(trim(NEW.name))) BEGIN SELECT RAISE(ABORT, '账号名字已被注册'); END");
+        }
     }
 }
