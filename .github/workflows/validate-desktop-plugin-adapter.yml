@@ -2,7 +2,7 @@ name: Validate desktop plug-in compatibility adapter
 
 on:
   push:
-    branches: [main, desktop-plugin-compat]
+    branches: [main, desktop-plugin-compat, desktop-plugin-compat-v2]
     paths:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
@@ -17,6 +17,10 @@ on:
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/add_chroma_key_effect.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
+      - 'vendor/effectcraft/crates/plugin/src/tests.rs'
+      - 'vendor/effectcraft/crates/plugin/src/lib.rs'
+      - 'vendor/effectcraft/crates/plugin/src/wasm.rs'
+      - 'vendor/effectcraft/crates/effects/src/plugin.rs'
   pull_request:
     branches: [main]
     paths:
@@ -162,6 +166,19 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: python3 .github/scripts/add_chroma_key_effect.py
+
+      - name: Install tracked typed-property plug-in API v2 source
+        run: |
+          cp vendor/effectcraft/crates/effects/src/plugin.rs effectcraft/crates/effects/src/plugin.rs
+          cp vendor/effectcraft/crates/plugin/src/wasm.rs effectcraft/crates/plugin/src/wasm.rs
+          cp vendor/effectcraft/crates/plugin/src/lib.rs effectcraft/crates/plugin/src/lib.rs
+          cp vendor/effectcraft/crates/plugin/src/tests.rs effectcraft/crates/plugin/src/tests.rs
+
+      - name: Test legacy API v1 and typed-property API v2 plug-in runtime
+        working-directory: effectcraft
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo test -p effectcraft-plugin --features wasm
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
