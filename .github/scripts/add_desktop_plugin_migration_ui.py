@@ -92,12 +92,9 @@ impl Default for State {
     }
 }
 
-/// Called after the Android file picker returns. Only ZIPs containing desktop-native plug-ins
-/// open the migration dialog; ordinary WASM/WAT/script ZIPs keep their existing import path.
+/// Called after the Android picker returns. Native binaries can be imported directly,
+/// or found inside ZIP/ZXP containers.
 pub(crate) fn offer(app: &mut EffectcraftApp, path: &str) -> bool {
-    if !Path::new(path).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip")) {
-        return false;
-    }
     let Some(pending) = inspect_archive(path) else {
         return false;
     };
@@ -144,6 +141,23 @@ fn per_file_limit(kind: &str) -> u64 {
 }
 
 fn inspect_archive(path: &str) -> Option<Pending> {
+    let source_path = Path::new(path);
+    if source_path.is_file() {
+        let extension = source_path.extension()?.to_str()?.to_ascii_lowercase();
+        let name = source_path.file_name()?.to_string_lossy().into_owned();
+        if is_native(&name, &extension) {
+            let size = std::fs::metadata(source_path).ok()?.len();
+            if size == 0 || size > MAX_NATIVE_BYTES { return None; }
+            return Some(Pending {
+                path: path.to_string(),
+                file_name: name,
+                native_count: 1,
+                total_bytes: size,
+                entries: 1,
+            });
+        }
+        if extension != "zip" && extension != "zxp" { return None; }
+    } else { return None; }
     let file = File::open(path).ok()?;
     let mut archive = ZipArchive::new(file).ok()?;
     if archive.len() > MAX_ENTRIES {
@@ -184,8 +198,24 @@ fn inspect_archive(path: &str) -> Option<Pending> {
 
 fn scan_in_background(pending: Pending, tx: mpsc::Sender<WorkerMessage>) {
     let result = (|| -> Result<ScanResult, String> {
+        let extension = Path::new(&pending.path).extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+        if is_native(&pending.file_name, &extension) {
+            let mut file = File::open(&pending.path).map_err(|e| format!("无法读取原插件：{e}"))?;
+            let total = pending.total_bytes.max(1);
+            let mut scanned = 0u64;
+            let mut buffer = [0u8; 64 * 1024];
+            loop {
+                let count = file.read(&mut buffer).map_err(|e| format!("扫描原插件失败：{e}"))?;
+                if count == 0 { break; }
+                scanned = scanned.saturating_add(count as u64);
+                let _ = tx.send(WorkerMessage::Progress {
+                    bytes: scanned.min(total), total, file: pending.file_name.clone(),
+                });
+            }
+            return Ok(ScanResult { files_scanned: 1, bytes_scanned: scanned });
+        }
         let file = File::open(&pending.path).map_err(|e| format!("无法读取插件包：{e}"))?;
-        let mut archive = ZipArchive::new(file).map_err(|e| format!("插件 ZIP 无效或已损坏：{e}"))?;
+        let mut archive = ZipArchive::new(file).map_err(|e| format!("插件 ZIP/ZXP 无效或已损坏：{e}"))?;
         if archive.len() > MAX_ENTRIES {
             return Err("插件包文件数量超过 512 个安全上限".into());
         }
@@ -262,13 +292,13 @@ fn result_from_import(pending: Pending, scan: ScanResult, result: Result<Value, 
     let wasm = array_len(&value, "installed");
     let panels = array_len(&value, "panels");
     let scripts = array_len(&value, "desktop_scripts");
-    let compatible = array_len(&value, "desktop_native_compatibility_matches");
-        .max(array_len(&value, "native_compatibility_matches"));
-    let native_remaining = pending.native_count.saturating_sub(compatible);
+    let native_ported = array_len(&value, "desktop_native_ported");
+    let native_requires_port = array_len(&value, "desktop_native_requires_port");
+    let native_remaining = pending.native_count.saturating_sub(native_ported);
     let errors = array_len(&value, "errors");
     let skipped = array_len(&value, "desktop_skipped");
-    let usable = wasm + panels + scripts + compatible;
-    let successful = usable > 0;
+    let usable = wasm + panels + scripts;
+    let successful = usable > 0 && native_remaining == 0 && errors == 0;
     let partial = native_remaining > 0 || errors > 0 || skipped > 0;
     let title = if !successful {
         "移植未成功".to_string()
@@ -278,11 +308,11 @@ fn result_from_import(pending: Pending, scan: ScanResult, result: Result<Value, 
         "兼容导入完成".to_string()
     };
     let mut detail = format!(
-        "已检查 {} 个文件（{} 字节）。\nWASM 效果插件：{} 个\nAE 脚本面板：{} 个\nAE 脚本：{} 个\n内置兼容替代效果：{} 个",
-        scan.files_scanned, scan.bytes_scanned, wasm, panels, scripts, compatible
+        "已检查 {} 个文件（{} 字节）。\n原版 WASM 效果插件：{} 个\nAE 脚本面板：{} 个\nAE 脚本：{} 个\n原生电脑版插件已原样归档：{} 个（尚未加载）",
+        scan.files_scanned, scan.bytes_scanned, wasm, panels, scripts, native_requires_port
     );
     if native_remaining > 0 {
-        detail.push_str(&format!("\n仍需专门移植的电脑版原生插件：{} 个", native_remaining));
+        detail.push_str(&format!("\n尚未在 Android 宿主运行、需要逐个适配 AE 接口的原生插件：{} 个", native_remaining));
     }
     if errors > 0 {
         detail.push_str(&format!("\n导入/兼容错误：{} 项", errors));
@@ -290,11 +320,11 @@ fn result_from_import(pending: Pending, scan: ScanResult, result: Result<Value, 
     if skipped > 0 {
         detail.push_str(&format!("\n未导入或跳过的文件：{} 个", skipped));
     }
-    detail.push_str("\n\n说明：.aex/.dll/.ofx 等 Windows/macOS 原生插件不能直接在 Android 执行；匹配到的兼容效果是替代实现，不是原厂插件。");
+    detail.push_str("\n\n说明：不会按文件名匹配替代效果。原生 .aex/.dll/.ofx 原件只会原样保存，只有原版算法和参数面板真实运行通过后才会算兼容。");
     if successful {
-        detail.push_str("\n可加载的 WASM 插件已注册到 EffectCraft；点击 OK 关闭窗口。");
+        detail.push_str("\n可加载的 WASM 原版插件已注册；点击 OK 关闭窗口。");
     } else {
-        detail.push_str("\n没有发现可在当前 APK 中加载的插件或兼容实现；原始文件仅保留供后续专门移植。");
+        detail.push_str("\n原生电脑版插件尚未运行；原件已保留，不能将归档误认为移植完成。");
     }
     Done { title, detail, successful }
 }
