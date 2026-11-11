@@ -78,22 +78,8 @@ def main() -> None:
     media = replace_once(media, old_lift, new_lift, "import progress-card reserved-height calculation")
     media_path.write_text(media, encoding="utf-8")
 
-    # The AI bubble is draggable and may have been saved over the new bottom-left
-    # import shortcut. Bump its Area ID once so egui discards the old saved position
-    # and uses the existing safe bottom-right default. It remains draggable.
-    assistant_path = root / "crates/ui-egui/src/ai_assistant.rs"
-    if assistant_path.is_file():
-        assistant = assistant_path.read_text(encoding="utf-8")
-        old_bubble_id = 'egui::Area::new(Id::new("effectcraft-ai-bubble"))'
-        new_bubble_id = 'egui::Area::new(Id::new("effectcraft-ai-bubble-v2"))'
-        if new_bubble_id not in assistant:
-            assistant = replace_once(
-                assistant, old_bubble_id, new_bubble_id,
-                "AI bubble saved-position reset",
-            )
-            assistant_path.write_text(assistant, encoding="utf-8")
 
-    print("Installed the bottom-left Import Media shortcut, reserved room for progress cards/toasts, and reset the draggable AI bubble to its safe bottom-right default.")
+    print("Installed the bottom-left Import Media shortcut and reserved room for progress cards/toasts; the AI assistant is unchanged.")
 
 
 if __name__ == "__main__":
