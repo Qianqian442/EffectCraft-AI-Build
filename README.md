@@ -7,22 +7,35 @@ Private, reproducible Android build workspace for EffectCraft 0.21.1.
 - Main EffectCraft APK.
 - Separate EffectCraft Admin APK.
 
-The admin phone is the authoritative account server when its owner enables the server switch in the Admin APK. The Admin APK is both the management console and the optional server host; it is not a worker node. Main APK clients connect to that admin-hosted service for registration, login, account/profile sync, and ban-status checks. The server can be stopped at any time from the Admin APK.
+## Two coexisting network systems
 
-## Admin-phone server mode (selected architecture)
+Both systems are part of the selected design. They are separate services with independent controls in the Admin APK; neither replaces the other.
 
-- Switch ON: the admin phone starts the account service, opens its authenticated API, and publishes/maintains its reachable endpoint. Main APK clients connect to it.
-- Switch OFF: the service stops accepting new requests and stops account synchronization. Existing local projects and editor functions remain usable; online account operations are unavailable until the admin server is enabled again.
-- Admin phone offline / app force-stopped / Android suspends it: clients cannot reach the authoritative account service. The service does not magically remain available.
-- Cross-network access: phones on different carriers are commonly behind CGNAT. A phone-hosted server may not accept inbound connections directly. The implementation must test direct reachability and, where required, use an explicitly configured secure reverse tunnel/relay. A relay is transport only; it must not become a second account database or silently replace the admin phone as authority.
-- No false online state: Admin APK status must reflect a real listener and a real external reachability/health check, not merely the switch value.
+### A. Admin-phone account server
 
-This is a phone-hosted client/server account architecture, not a fully decentralized P2P account mesh. The user has chosen the admin phone as the central authority with a manual ON/OFF control. Do not describe it as serverless or as every phone holding an authoritative replicated account database.
+The admin phone is the authoritative account server when enabled. It stores the authoritative account database and handles registration, login, profile updates, account status, ban/unban, reasons and expiry. Main APK clients use this service for account operations. The Admin APK has a dedicated **Account Server ON/OFF** switch. OFF stops the account API but does not delete data; account operations are unavailable until it is turned on again. The admin phone being offline, force-stopped, or suspended makes the account service unavailable.
+
+Cross-network inbound access to a phone may be blocked by NAT/CGNAT. The implementation must test reachability and may require an explicitly configured secure relay/reverse tunnel. Such a relay only transports encrypted traffic; the admin phone remains the account authority and the relay must not host a second account database.
+
+### B. P2P phone-node network
+
+Phones in different locations form a peer network for node discovery, peer-to-peer communication, and distributed compute tasks such as eligible frame/image processing. The Admin APK has a separate **P2P Node Network ON/OFF** global control. This switch controls peer networking and task participation independently of the account server switch. Main APK devices do not show node-management controls or connection-status UI.
+
+P2P is not the authoritative account database. Account identity and final account/ban decisions remain governed by the admin-phone account server. P2P peers must authenticate each other, encrypt sessions, verify signed task/control messages, and never accept an unsigned ban/unban instruction. Direct connections can fail behind CGNAT; hole punching and user-operated relays improve reachability but cannot guarantee every pair connects. Android background restrictions may pause nodes.
+
+### Independent switch behavior
+
+- Account Server ON, P2P ON: account services and peer network both operate.
+- Account Server ON, P2P OFF: account services operate; peer discovery and distributed tasks stop.
+- Account Server OFF, P2P ON: peer network can operate for peer communication/eligible tasks; online account operations are unavailable and must not be faked.
+- Both OFF: both network services stop; local editor and local project work remain available.
+
+The Admin APK status panel must report real service state, external reachability, last successful account request/sync, and verified peer connectivity separately. Never infer online status from a switch alone.
 
 ## Preserved Main APK features
 
-The main APK remains EffectCraft 0.21.1. Do not remove editor features, project import/export, WASM plug-ins, desktop-AE plug-in inspection/import, RIFE frame interpolation, or Real-ESRGAN quality enhancement to make account networking compile. The DeepSeek local model remains a separate optional importable plugin/resource and is not bundled into the main APK.
+The main APK remains EffectCraft 0.21.1. Do not remove editor features, project import/export, WASM plug-ins, desktop-AE plug-in inspection/import, RIFE frame interpolation, or Real-ESRGAN quality enhancement to make networking compile. The DeepSeek local model remains a separate optional importable plugin/resource and is not bundled into the main APK.
 
 ## Build and verification
 
-A queued/running workflow is not a completed APK build. A successful compilation is not proof of installation or cross-network operation. Verify APK integrity, signing, installation compatibility, admin server start/stop, external reachability, registration/login, account sync, and ban/unban behavior separately. Never claim a test passed unless it was actually run.
+A queued/running workflow is not a completed APK build. A successful compilation is not proof of installation or cross-network operation. Verify APK integrity, signing, installation compatibility, both independent switches, admin server start/stop, external reachability, registration/login, account sync, ban/unban, peer discovery, cross-network transport, and task result validation separately. Never claim a test passed unless it was actually run.
