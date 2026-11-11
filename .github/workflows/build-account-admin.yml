@@ -53,6 +53,10 @@ jobs:
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
         working-directory: admin-app
         run: |
+          if [[ -z "${AE_ACCOUNT_API_URL:-}" || "${AE_ACCOUNT_API_URL}" != https://*.workers.dev ]]; then
+            echo "Repository variable AE_ACCOUNT_API_URL must contain the deployed HTTPS workers.dev URL." >&2
+            exit 1
+          fi
           gradle --no-daemon :app:assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
           cp app/build/outputs/apk/debug/app-debug.apk ../EffectCraft-Account-Admin.apk
