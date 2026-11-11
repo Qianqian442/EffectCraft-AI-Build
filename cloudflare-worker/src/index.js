@@ -66,11 +66,13 @@ async function verifyPassword(env, password, stored) {
 async function signingKey(secret) {
   return crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign", "verify"]);
 }
-async function makeToken(env, subject, role, seconds) {
+async function makeToken(env, subject, role, seconds, deviceId = null) {
   if (!env.JWT_SECRET || env.JWT_SECRET.length < 32) throw new Error("JWT_SECRET 未正确设置");
   const now = Math.floor(Date.now() / 1000);
   const header = jsonPart({ alg: "HS256", typ: "JWT" });
-  const payload = jsonPart({ sub: subject, role, iat: now, exp: now + seconds });
+  const claims = { sub: subject, role, iat: now, exp: now + seconds };
+  if (deviceId) claims.device_id = deviceId;
+  const payload = jsonPart(claims);
   const signingInput = header + "." + payload;
   const signature = await crypto.subtle.sign("HMAC", await signingKey(env.JWT_SECRET), encoder.encode(signingInput));
   return signingInput + "." + bytesToB64Url(new Uint8Array(signature));
@@ -92,6 +94,13 @@ async function readToken(env, request, requiredRole) {
   }
   if (!payload.exp || payload.exp <= Math.floor(Date.now() / 1000)) throw new AuthError("登录已过期，请重新登录");
   if (payload.role !== requiredRole) throw new AuthError("无权访问");
+  if (requiredRole === "admin") {
+    if (!payload.device_id || !env.DB) throw new AuthError("管理员设备未绑定，请重新授权");
+    const device = await env.DB.prepare(
+      "SELECT device_id FROM admin_devices WHERE device_id = ? LIMIT 1"
+    ).bind(payload.device_id).first();
+    if (!device) throw new AuthError("管理员手机授权已撤销，请重新绑定");
+  }
   return payload;
 }
 class AuthError extends Error {}
@@ -239,6 +248,79 @@ async function adminLogin(request, env) {
     token: await makeToken(env, "admin", "admin", 8 * 60 * 60),
     expires_in: 8 * 60 * 60,
   });
+}
+
+// First-time authorization: the administrator password is used only once to
+// bind this phone's non-exportable Android Keystore public key.
+async function adminDeviceEnroll(request, env) {
+  const body = await readJson(request);
+  const deviceId = String(body.device_id || "").trim();
+  const publicKey = String(body.public_key || "").trim();
+  const password = String(body.password || "");
+  if (!env.ADMIN_PASSWORD || env.ADMIN_PASSWORD.length < 12) return fail(503, "管理员授权尚未配置");
+  if (password !== env.ADMIN_PASSWORD) return fail(401, "首次绑定授权密码不正确");
+  if (!/^[A-Za-z0-9_-]{16,80}$/.test(deviceId) || publicKey.length < 200 || publicKey.length > 4096) {
+    return fail(422, "管理员设备信息无效");
+  }
+  const now = new Date().toISOString();
+  await env.DB.prepare(
+    "INSERT INTO admin_devices (device_id, public_key, label, created_at, last_seen) VALUES (?, ?, '管理员手机', ?, ?) ON CONFLICT(device_id) DO UPDATE SET public_key = excluded.public_key, last_seen = excluded.last_seen"
+  ).bind(deviceId, publicKey, now, now).run();
+  // Keep a single authorized admin phone. Rebinding replaces the previous phone.
+  await env.DB.prepare("DELETE FROM admin_devices WHERE device_id <> ?").bind(deviceId).run();
+  const token = await makeToken(env, "admin", "admin", 30 * 24 * 60 * 60, deviceId);
+  return response({ token, expires_in: 30 * 24 * 60 * 60, device_bound: true });
+}
+
+async function adminDeviceChallenge(request, env) {
+  const body = await readJson(request);
+  const deviceId = String(body.device_id || "").trim();
+  if (!/^[A-Za-z0-9_-]{16,80}$/.test(deviceId)) return fail(422, "设备编号无效");
+  const device = await env.DB.prepare(
+    "SELECT device_id FROM admin_devices WHERE device_id = ? LIMIT 1"
+  ).bind(deviceId).first();
+  if (!device) return fail(404, "这台手机尚未绑定");
+  const nonce = bytesToB64Url(randomBytes(32));
+  const expiresAt = Date.now() + 2 * 60 * 1000;
+  await env.DB.prepare(
+    "INSERT INTO admin_device_challenges (nonce, device_id, expires_at) VALUES (?, ?, ?)"
+  ).bind(nonce, deviceId, expiresAt).run();
+  await env.DB.prepare("DELETE FROM admin_device_challenges WHERE expires_at < ?").bind(Date.now()).run();
+  return response({ challenge: nonce, expires_in: 120 });
+}
+
+async function adminDeviceLogin(request, env) {
+  const body = await readJson(request);
+  const deviceId = String(body.device_id || "").trim();
+  const nonce = String(body.challenge || "").trim();
+  const signature = String(body.signature || "").trim();
+  if (!deviceId || !nonce || !signature) return fail(422, "设备登录凭据不完整");
+  const challenge = await env.DB.prepare(
+    "SELECT nonce, expires_at FROM admin_device_challenges WHERE nonce = ? AND device_id = ? LIMIT 1"
+  ).bind(nonce, deviceId).first();
+  if (!challenge || Number(challenge.expires_at) < Date.now()) return fail(401, "登录挑战已过期，请重试");
+  // Consume the challenge before signature verification to prevent replay.
+  await env.DB.prepare("DELETE FROM admin_device_challenges WHERE nonce = ?").bind(nonce).run();
+  const device = await env.DB.prepare(
+    "SELECT public_key FROM admin_devices WHERE device_id = ? LIMIT 1"
+  ).bind(deviceId).first();
+  if (!device) return fail(401, "管理员手机尚未授权");
+  try {
+    const key = await crypto.subtle.importKey(
+      "spki", b64UrlToBytes(device.public_key),
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]
+    );
+    const valid = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5", key, b64UrlToBytes(signature), b64UrlToBytes(nonce)
+    );
+    if (!valid) return fail(401, "管理员设备身份验证失败");
+  } catch (_) {
+    return fail(401, "管理员设备密钥无效");
+  }
+  const now = new Date().toISOString();
+  await env.DB.prepare("UPDATE admin_devices SET last_seen = ? WHERE device_id = ?").bind(now, deviceId).run();
+  const token = await makeToken(env, "admin", "admin", 30 * 24 * 60 * 60, deviceId);
+  return response({ token, expires_in: 30 * 24 * 60 * 60, device_bound: true });
 }
 async function adminUsers(request, env, url) {
   await readToken(env, request, "admin");
@@ -464,6 +546,9 @@ async function route(request, env) {
     if (request.method === "GET" && url.pathname === "/v1/admin/network/nodes") return await adminNetworkNodes(request, env);
     if (request.method === "POST" && url.pathname === "/v1/register") return await register(request, env);
     if (request.method === "POST" && url.pathname === "/v1/login") return await login(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/admin/device/enroll") return await adminDeviceEnroll(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/admin/device/challenge") return await adminDeviceChallenge(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/admin/device/login") return await adminDeviceLogin(request, env);
     if (request.method === "POST" && url.pathname === "/v1/admin/login") return await adminLogin(request, env);
     if (request.method === "GET" && url.pathname === "/v1/me") return await me(request, env);
     if (request.method === "POST" && url.pathname === "/v1/profile") return await updateProfile(request, env);
