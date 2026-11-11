@@ -11,7 +11,7 @@ MODULE = r'''//! Draggable After Effects desktop-plug-in migration flow for Andr
 use std::{
     fs::File,
     io::Read,
-    path::Path,
+    path::{Path, PathBuf},
     sync::{
         atomic::{AtomicUsize, Ordering},
         mpsc::{self, Receiver, TryRecvError},
@@ -55,11 +55,59 @@ struct ScanReport {
     total_bytes: u64,
 }
 
+fn directory_files(root: &Path) -> Result<Vec<PathBuf>, String> {
+    if !root.is_dir() {
+        return Err("选择的路径不是文件夹".into());
+    }
+    let canonical_root = root.canonicalize().map_err(|error| format!("无法解析插件目录：{error}"))?;
+    let mut pending = vec![canonical_root.clone()];
+    let mut files = Vec::new();
+    while let Some(directory) = pending.pop() {
+        for entry in std::fs::read_dir(&directory).map_err(|error| format!("读取插件目录失败：{error}"))? {
+            let entry = entry.map_err(|error| format!("读取插件目录条目失败：{error}"))?;
+            let kind = entry.file_type().map_err(|error| format!("读取插件文件类型失败：{error}"))?;
+            if kind.is_symlink() { continue; }
+            let path = entry.path();
+            if kind.is_dir() {
+                pending.push(path);
+            } else if kind.is_file() {
+                files.push(path);
+                if files.len() > MAX_ENTRIES {
+                    return Err(format!("插件目录文件数超过 {MAX_ENTRIES} 个安全上限"));
+                }
+            }
+        }
+    }
+    files.sort();
+    Ok(files)
+}
+
+fn is_native_directory_file(root: &Path, file: &Path) -> bool {
+    let relative = file.strip_prefix(root).unwrap_or(file);
+    let name = relative.to_string_lossy().replace('\\', "/").to_ascii_lowercase();
+    let extension = relative.extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let root_is_bundle = root.extension().and_then(|v| v.to_str()).is_some_and(|v| {
+        v.eq_ignore_ascii_case("plugin") || v.eq_ignore_ascii_case("bundle")
+    });
+    ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
+        || ((root_is_bundle || name.contains(".plugin/") || name.contains(".ofx.bundle/"))
+            && (name.contains("contents/macos/") || name.contains("contents/win/")))
+}
+
 /// Intercept native AE binaries selected directly, or native binaries in ZIP/ZXP bundles.
 pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool {
     let source = Path::new(path);
     let extension = source.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_ascii_lowercase();
     let native_extensions = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"];
+    if source.is_dir() {
+        if let Ok(files) = directory_files(source) {
+            let native_count = files.iter().filter(|file| is_native_directory_file(source, file)).count();
+            if native_count > 0 {
+                app.plugin_import = Some(ImportState::Confirm { path: path.to_string(), native_count });
+                return true;
+            }
+        }
+    }
     if native_extensions.contains(&extension.as_str()) && source.is_file() {
         let Ok(meta) = std::fs::metadata(source) else { return false };
         if meta.len() == 0 || meta.len() > MAX_ENTRY_BYTES { return false; }
@@ -104,6 +152,51 @@ fn scan_archive(path: &str, progress: &AtomicUsize) -> Result<ScanReport, String
     let source = Path::new(path);
     let extension = source.extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
     let native_extensions = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"];
+    if source.is_dir() {
+        let files = directory_files(source)?;
+        let mut total_bytes = 0u64;
+        let native_count = files.iter().filter(|file| is_native_directory_file(source, file)).count();
+        if native_count == 0 {
+            return Err("所选目录中没有找到可识别的电脑版原生插件文件".into());
+        }
+        for file in &files {
+            let metadata = std::fs::metadata(file).map_err(|error| format!("无法读取文件属性：{error}"))?;
+            if metadata.len() > MAX_ENTRY_BYTES {
+                return Err(format!("文件超过 64 MB 单文件安全上限：{}", file.display()));
+            }
+            total_bytes = total_bytes.checked_add(metadata.len()).ok_or_else(|| "插件目录大小计算溢出".to_string())?;
+            if total_bytes > MAX_TOTAL_BYTES {
+                return Err("插件目录总大小超过 256 MB 安全上限".into());
+            }
+        }
+        let mut completed = 0u64;
+        let mut native_names = Vec::new();
+        let mut buffer = [0u8; 64 * 1024];
+        for file in &files {
+            let relative = file.strip_prefix(source).unwrap_or(file);
+            let name = relative.to_string_lossy().replace('\\', "/");
+            if is_native_directory_file(source, file) && native_names.len() < 8 {
+                native_names.push(name.clone());
+            }
+            let mut input = File::open(file).map_err(|error| format!("无法读取 {name}：{error}"))?;
+            loop {
+                let count = input.read(&mut buffer).map_err(|error| format!("扫描 {name} 失败：{error}"))?;
+                if count == 0 { break; }
+                completed = completed.saturating_add(count as u64);
+                let value = if total_bytes > 0 {
+                    ((completed.saturating_mul(SCAN_PROGRESS_MAX as u64) / total_bytes).min(SCAN_PROGRESS_MAX as u64)) as usize
+                } else { SCAN_PROGRESS_MAX };
+                progress.store(value, Ordering::Release);
+            }
+        }
+        progress.store(SCAN_PROGRESS_MAX, Ordering::Release);
+        return Ok(ScanReport {
+            file_count: files.len(),
+            native_count,
+            native_names,
+            total_bytes: completed,
+        });
+    }
     if native_extensions.contains(&extension.as_str()) && source.is_file() {
         let mut file = File::open(source).map_err(|error| format!("无法读取原插件：{error}"))?;
         let total_bytes = file.metadata().map_err(|error| error.to_string())?.len();
@@ -477,11 +570,12 @@ def main() -> None:
     source = frontend_path.read_text(encoding="utf-8")
     anchor = "    // Save (untitled) becomes Save As.\n    let id = if id == \"file.save\" { \"file.saveAs\" } else { id };\n"
     replacement = """    // EFFECTCRAFT_ANDROID_AE_PLUGIN_MIGRATION_PROGRESS_V1
-    // Desktop ZIPs containing native AE binaries get a draggable migration confirmation
-    // before the existing safe importer is invoked.
+    // Direct binaries, ZIP/ZXP packages and complete plugin folders all use the same
+    // byte-counted confirmation and truthful import report.
     #[cfg(not(target_arch = \"wasm32\"))]
-    if id == \"effect.plugins.load\" {
-        if let Some(path) = p.get(\"path\").and_then(Value::as_str) {
+    if id == \"effect.plugins.load\" || id == \"effect.plugins.loadFolder\" {
+        let selected = p.get(\"path\").or_else(|| p.get(\"folder\")).and_then(Value::as_str);
+        if let Some(path) = selected {
             if crate::plugin_migration::intercept_if_native(app, path) {
                 return Ok(json!({\"dialog\": \"desktop-plugin-migration\"}));
             }
