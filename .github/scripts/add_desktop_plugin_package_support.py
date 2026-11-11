@@ -168,11 +168,18 @@ fn archive_desktop_plugin_folder(s: &mut Session, folder_path: &str) -> Result<O
         }
         let relative_text = relative.to_string_lossy().replace('\\', "/");
         let extension = relative.extension().and_then(|v| v.to_str()).unwrap_or_default().to_ascii_lowercase();
-        let in_macos_bundle_executable = (bundle_name.ends_with(".plugin") || relative_text.to_ascii_lowercase().contains(".plugin/"))
-            && relative_text.to_ascii_lowercase().contains("contents/macos/");
+        let lower_relative = relative_text.to_ascii_lowercase();
+        let in_native_bundle_executable = (
+            bundle_name.ends_with(".plugin") || bundle_name.ends_with(".ofx.bundle") || bundle_name.ends_with(".bundle")
+            || lower_relative.contains(".plugin/") || lower_relative.contains(".ofx.bundle/")
+        ) && (
+            lower_relative.contains("contents/macos/")
+            || lower_relative.contains("contents/win")
+            || lower_relative.contains("contents/linux")
+        );
         let is_native = native_extensions.contains(&extension.as_str())
             || extension == "bundle"
-            || in_macos_bundle_executable;
+            || in_native_bundle_executable;
         if is_native {
             let metadata = std::fs::metadata(file)
                 .map_err(|error| bad(CMD, format!("无法读取原插件属性：{error}")))?;
@@ -268,6 +275,21 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
 
     let archive_file = std::fs::File::open(archive_path)
         .map_err(|error| bad(CMD, format!("无法读取插件 ZIP：{error}")))?;
+    let archive_size = archive_file.metadata()
+        .map_err(|error| bad(CMD, format!("无法读取插件包大小：{error}")))?.len();
+    if archive_size == 0 || archive_size > MAX_TOTAL_BYTES {
+        return Err(bad(CMD, "原始插件压缩包为空或超过 256 MB 安全上限"));
+    }
+    std::fs::create_dir_all(&originals_dir)
+        .map_err(|error| bad(CMD, format!("无法创建原插件存档目录：{error}")))?;
+    let archive_name = Path::new(archive_path).file_name().and_then(|v| v.to_str())
+        .ok_or_else(|| bad(CMD, "插件压缩包文件名无效"))?;
+    if archive_name.len() > 180 || !super::scripts::is_bare_name(archive_name) {
+        return Err(bad(CMD, "插件压缩包文件名不安全"));
+    }
+    let original_archive = originals_dir.join(format!("original_{archive_name}"));
+    std::fs::copy(archive_path, &original_archive)
+        .map_err(|error| bad(CMD, format!("无法原样保存原始插件包：{error}")))?;
     let mut archive = zip::ZipArchive::new(archive_file)
         .map_err(|error| bad(CMD, format!("插件 ZIP 无效或已损坏：{error}")))?;
     if archive.len() > MAX_ENTRIES {
@@ -525,6 +547,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         object.insert("desktop_skipped".into(), json!(skipped_names));
         object.insert("wat_result".into(), wat_result);
         object.insert("compatibility_report".into(), json!(report_path.to_string_lossy()));
+        object.insert("desktop_original_archive".into(), json!(original_archive.to_string_lossy()));
     }
     let mut notice = format!(
         "电脑插件包已分析：WASM {wasm_count} 个、JSX 面板 {panel_count} 个、JS 脚本 {script_count} 个、素材 {asset_count} 个"
