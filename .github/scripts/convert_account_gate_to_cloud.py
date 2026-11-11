@@ -37,11 +37,13 @@ def main() -> None:
     )
     source = replace_once(
         source,
-        "use std::io::{Read, Write};\n"
-        "use std::net::{TcpStream, ToSocketAddrs};\n"
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::time::Duration;\n\n"
-        'const DEFAULT_SERVER: &str = "http://192.168.1.100:8788";',
+        "use std::sync::{Arc, atomic::{AtomicBool, Ordering}};\n"
+        "use std::time::Duration;\n"
+        "use tungstenite::client::IntoClientRequest;\n"
+        "use tungstenite::http::HeaderValue;\n"
+        "use tungstenite::Message;\n\n"
+        'const DEFAULT_SERVER: &str = "{api_url}";',
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::sync::{Arc, atomic::{AtomicBool, Ordering}};\n"
         "use std::time::Duration;\n"
