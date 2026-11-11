@@ -43,6 +43,7 @@ def main() -> None:
         "use std::time::Duration;\n\n"
         'const DEFAULT_SERVER: &str = "http://192.168.1.100:8787";',
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
+        "use std::sync::{Arc, atomic::{AtomicBool, Ordering}};\n"
         "use std::time::Duration;\n"
         "use tungstenite::client::IntoClientRequest;\n"
         "use tungstenite::http::HeaderValue;\n"
@@ -60,6 +61,7 @@ def main() -> None:
         "    events: Option<Receiver<Result<Value, String>>>,\n"
         "    event_started: bool,\n"
         "    node_event_started: bool,\n"
+        "    node_event_control: Option<Arc<AtomicBool>>,\n"
         "    notification_pending: Option<String>,",
         "account event state fields",
     )
@@ -73,6 +75,7 @@ def main() -> None:
         "            events: None,\n"
         "            event_started: false,\n"
         "            node_event_started: false,\n"
+        "            node_event_control: None,\n"
         "            notification_pending: None,",
         "account event state initialization",
     )
@@ -167,9 +170,11 @@ def main() -> None:
             .replacen("https://", "wss://", 1);
         let ws_url = format!("{base}/v1/nodes/events");
         self.node_event_started = true;
+        let active = Arc::new(AtomicBool::new(true));
+        self.node_event_control = Some(active.clone());
         std::thread::spawn(move || {
             let mut reconnect_delay = 3u64;
-            loop {
+            while active.load(Ordering::Relaxed) {
                 let mut request = match ws_url.clone().into_client_request() {
                     Ok(request) => request,
                     Err(_) => {
@@ -190,6 +195,10 @@ def main() -> None:
                             // The hub treats this authenticated connection as this
                             // account's online phone node. Ping/pong keeps presence
                             // alive without forwarding arbitrary peer payloads.
+                            if !active.load(Ordering::Relaxed) {
+                                let _ = socket.close(None);
+                                break;
+                            }
                             if socket.send(Message::Text("ping".into())).is_err() {
                                 break;
                             }
@@ -207,6 +216,7 @@ def main() -> None:
                     }
                     Err(_) => {}
                 }
+                if !active.load(Ordering::Relaxed) { break; }
                 std::thread::sleep(Duration::from_secs(reconnect_delay));
                 reconnect_delay = (reconnect_delay * 2).min(600);
             }
@@ -305,8 +315,11 @@ def main() -> None:
         "    app.account.poll(config);\n"
         "    if matches!(app.account.mode, Mode::Editor | Mode::Banned) {\n"
         "        app.account.start_events();\n"
-        "        if app.account.mode == Mode::Editor {\n"
+        "        if app.account.mode == Mode::Editor && app.account.node_opt_in {\n"
         "            app.account.start_node_events();\n"
+        "        } else if let Some(active) = app.account.node_event_control.as_ref() {\n"
+        "            active.store(false, Ordering::Relaxed);\n"
+        "            app.account.node_event_started = false;\n"
         "        }\n"
         "        app.account.poll_events(config);\n"
         "    }",
