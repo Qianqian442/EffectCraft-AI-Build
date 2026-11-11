@@ -346,6 +346,25 @@ def main() -> None:
         'ui.label("请确认手机和服务器电脑连接同一个家庭 Wi-Fi，且服务器电脑保持开机。");',
         'ui.label("请检查网络连接后重试。账号验证成功后即可进入软件。");',
     )
+    source = source.replace(
+        'ui.label("管理员手机账号服务器地址");',
+        'ui.label("云端账号服务器地址（已预设）");',
+    )
+    source = source.replace(
+        'ui.small("请填写管理版“账号服务器”面板显示的 Wi-Fi 地址，端口为 8788，例如 http://192.168.1.23:8788。两台手机必须连接同一个 Wi-Fi。");',
+        'ui.small("已预设 Cloudflare 云端地址，无需管理员手机开机，也无需连接同一个 Wi-Fi。");',
+    )
+    source = source.replace(
+        'ui.label("连接管理员手机开启的 EffectCraft 账号服务器");',
+        'ui.label("连接 EffectCraft 云端账号服务");',
+    )
+    source = source.replace(
+        'ui.small("开启后本机将通过加密连接参与节点在线互联；不会自动共享账号密码或媒体文件。关闭后停止本机节点连接。");',
+        'ui.small("开启后本机尝试保持跨地区节点在线连接；关闭后停止本机节点连接。节点间加密配对和媒体转发仍需后续版本完成。");',
+    )
+    if "管理员手机账号服务器地址" in source or "必须连接同一个 Wi-Fi" in source:
+        raise SystemExit("LAN-only account UI text remains after cloud conversion.")
+
     if "last_verified" in source or "TcpStream" in source or "192.168.1.100" in source:
         raise SystemExit("LAN/10-second account code remains after cloud conversion.")
     account_path.write_text(source, encoding="utf-8")
