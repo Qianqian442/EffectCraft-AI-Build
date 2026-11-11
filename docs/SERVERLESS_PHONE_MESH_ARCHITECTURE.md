@@ -1,78 +1,80 @@
-# Serverless phone-to-phone account and node mesh
+# EffectCraft VPN account channel + independent phone P2P node network
 
-Status: selected target architecture; implementation is not complete. Do not publish either APK as a serverless release until all acceptance tests pass.
+Status: selected implementation target. This document is a specification, not proof that the APK implementation is complete.
 
 ## Product decision
 
-The selected design removes the fixed account server and the build-time `AE_ACCOUNT_API_URL` variable. Phones communicate directly with other participating phones. Slower discovery, login synchronization, and ban propagation are acceptable; silently falling back to a central account server is not.
+Use the administrator's Android phone as the sole account authority and SQLite database host. Main APKs reach the account API only through an authenticated, encrypted VPN overlay connection to the administrator phone. The account channel is limited to registration, login/session verification, account profile modification, account deletion, and administrator ban/unban operations. It is not a general-purpose public API.
 
-After the required first-run consent, the Main APK does not show an in-app node list, node pause/stop switch, node-management screen, connection indicator, peer count, sync progress, VPN-like icon, or persistent connection-status notification. Discovery, connection attempts, and synchronization run in the background within Android's permission and background-execution rules. The separate Admin APK must show a persistent, always-visible mesh status panel on its main management screen, including the global network switch state, this admin console's mesh reachability, last successful peer sync time, and verified reachable peer count. Each value must come from live protocol/service data; show “未知/尚未同步/暂时不可达” rather than fabricated values. The panel remains visible while the Admin APK screen is open and refreshes as real connectivity changes. The app must not fabricate or display connection state. Android may defer background work; without a foreground-service notification, continuous always-on listening cannot be promised. All product-level global node-network administration (enable/disable, node policy, and administrative actions) is centralized in the separate Admin APK. This does not bypass Android system permissions, battery controls, or the user's ability to revoke OS permissions/uninstall the app.
+The node network is a separate phone-to-phone P2P subsystem. Do not route node payloads through the account API, do not use the administrator account endpoint as a media relay, and keep the account-service switch independent from the global node-network switch.
 
-## Identity and registration
+The user does not operate or maintain a rented VPS, cloud database, Docker host, or fixed account server. A VPN overlay may still rely on its own coordination/relay infrastructure depending on the selected VPN implementation and NAT conditions; never describe such a dependency as literally infrastructure-free. Prefer direct VPN peer paths and use only the VPN product's encrypted relay fallback when required. Do not introduce a self-hosted public server as a hidden prerequisite.
 
-- Each installation creates a cryptographic device key pair using Android Keystore where supported.
-- An account identity is derived from its public key (stable, globally unique without a central username allocator).
-- Registration creates a signed account record and propagates it to reachable peers.
-- Display name, QQ/WeChat contact fields, avatar, and profile data are attributes, not globally unique identity keys.
-- Login proves possession of the private key. A local PIN/password may unlock the protected key; never replicate passwords or private keys.
-- New-device recovery/onboarding uses a QR invitation or a previously paired trusted device. Do not promise recovery if the user loses every trusted device and recovery phrase.
+## Account authority and allowed API surface
 
-## Admin authority and ban/unban
+- The Admin APK owns the local SQLite database and the administrator signing key.
+- The Admin APK runs the account listener only while its independent account-service switch is ON.
+- The listener must accept account requests only on the VPN interface/address and from authenticated VPN peers. It must not bind broadly to public interfaces or accept arbitrary LAN clients as a substitute.
+- Account operations: registration, login, session/token validation, read/update own profile, delete own account, admin list/read users, admin edit/delete users, admin ban and unban with mandatory reason and optional expiry.
+- Main APK users may register/login and modify/delete only their own account. They cannot invoke admin endpoints or change another account.
+- Admin endpoints require a separate administrator authorization proof in addition to VPN membership. VPN membership alone is not administrator permission.
+- Keep password hashing with a modern salted password KDF, short-lived challenge where appropriate, token expiry/revocation, rate limiting, request-size limits, and audit events.
+- Use HTTPS/TLS or an equivalently authenticated encrypted application channel inside the VPN; VPN encryption does not justify sending reusable credentials over plaintext HTTP.
+- Never expose SQLite, database files, admin secrets, or debug endpoints.
+- On account-service OFF, stop the listener and reject new account operations. Node networking remains independently controlled.
+- On VPN loss, account actions fail closed and show a clear offline/retry state. Do not pretend registration/login succeeded or silently fall back to a cloud endpoint.
 
-- The admin APK owns an offline administrator signing key. Its public verification key is pinned in the main APK and admin APK.
-- Ban/unban records are signed, append-only events containing account public-key ID, action, reason, issue time, optional expiry, and monotonic admin sequence number.
-- Every peer verifies the signature before applying an admin event. Ordinary worker nodes cannot create or override admin actions.
-- A ban remains effective offline once received. A disconnected device cannot learn about a newer ban until it reconnects; the UI must show the last synchronization time and must not claim globally current status while offline.
-- Admin key rotation requires a record signed by the currently trusted admin key (or a separately documented recovery process).
+## VPN connectivity and limitations
 
-## Peer discovery and synchronization
+- Both APKs join the same private VPN overlay using device-specific cryptographic identities.
+- The Admin APK advertises/reaches its account endpoint only over the VPN address; the Main APK discovers the authorized admin peer through a signed invitation/peer configuration, not LAN broadcast alone.
+- Do not require the same Wi-Fi SSID, subnet, router, ISP, city, or manual public IP.
+- Prefer direct encrypted peer-to-peer VPN paths. If NAT/CGNAT or network policy prevents direct paths, the chosen VPN may require an encrypted coordination or relay service. The owner must not have to operate that service, but it must be disclosed and its availability cannot be guaranteed without it.
+- If the user requires absolutely no third-party coordination or relay infrastructure, cross-network VPN reachability cannot be guaranteed. Show unreachable status rather than weakening security.
+- Respect captive portals, hotspot client isolation, VPN restrictions, Android background limits, battery settings, and user permission revocation. Never bypass network-owner policy.
+- The VPN is for account control-plane traffic only. Node P2P transport remains separate and must not be coupled to account VPN availability unless explicitly required by a security policy.
 
-- Prefer nearby Android discovery / Wi-Fi LAN discovery when available.
-- For internet peers, use authenticated peer invitations and a bounded peer table; attempt direct connections with retries and exponential backoff.
-- Use signed gossip/synchronization messages and request missing event ranges by sequence/hash.
-- Persist verified records locally and replicate to multiple reachable peers. Never trust an unsigned profile, node-presence, ban, or unban message.
-- Participating phones may relay only within the scope disclosed and accepted during initial node-network consent. The Admin APK is an administrator console, not a worker node.
-- No fixed account endpoint, Cloudflare Worker, central database, or GitHub variable is part of the runtime account protocol.
+## Independent node network
 
-## Important network limitation
+- Main APK devices may join the node P2P network according to the agreed first-run disclosure/consent and Android system controls.
+- Admin APK owns the global node-network ON/OFF control and is not a worker node.
+- OFF closes existing node sessions and stops new participation; ON allows eligible peers to retry/reconnect.
+- Use authenticated encrypted peer sessions, replay protection, bounded peer discovery, and resource controls.
+- Same-LAN discovery is an optional accelerator only. Cross-network direct P2P is best effort; CGNAT/firewalls may prevent it. Do not claim universal connectivity without a reachable encrypted relay path.
+- Account-service ON/OFF and node-network ON/OFF are two independent switches.
 
-Pure phone-to-phone internet connectivity cannot guarantee that any two phones can reach each other. Carrier NAT/CGNAT, Android background restrictions, battery optimization, and offline peers can prevent discovery or direct connections. Without a central rendezvous/relay service, first contact across unrelated networks may require a QR invitation, manual peer exchange, or a previously known peer. The app must report this honestly. Slow retries are acceptable; fabricating online status or silently routing through a central server is not.
+## Android and privacy requirements
 
-## Conflict and consistency rules
-
-- Account IDs are public-key-derived, not usernames.
-- Admin events are authoritative only when signed by the pinned admin key and have a valid monotonic sequence.
-- Profile and node-presence updates are non-authoritative, timestamped/versioned metadata.
-- Duplicate or replayed events are idempotently ignored.
-- Conflicting admin events at the same sequence are treated as a security fault and surfaced to the admin; never resolve by trusting the latest wall-clock timestamp.
-- Offline clients reconcile missing records after reconnecting.
-
-## Privacy and resource controls
-
-- Encrypt peer sessions and authenticate both endpoints.
-- Share only account/event metadata needed for synchronization; do not send project media or AI model weights as part of account sync.
-- First-run consent must clearly disclose automatic peer discovery, background network use, and any relay/compute work the device may perform. Do not hide this disclosure or imply the feature is inactive.
-- Ordinary users have no in-app node list, pause/stop switch, or node-management page. Do not add a per-user in-app exit control as part of this product design; Android system permission and app controls remain authoritative and must not be bypassed.
-- The global node-network enable/disable control remains in the Admin APK only. Disabling it stops mesh participation; enabling it resumes discovery/reconnection across participating devices.
-- The Admin APK must not become a worker node.
+- Keep device keys in Android Keystore where supported; never hard-code private keys, passwords, bearer tokens, or VPN credentials in source or APK resources.
+- Pair/enroll devices using signed invitations or a secure one-time QR flow. Revocation must invalidate the peer's account-channel access.
+- Show a clear first-run explanation of VPN connection, account traffic, background activity, and node participation. Do not hide resource use or imply a connection exists when it does not.
+- No project media, video frames, AI model weights, or editor assets are sent through the account channel.
+- Preserve user control through Android VPN permission, OS network settings, app uninstall, and notification controls.
 
 ## Build requirements
 
-- Remove `AE_ACCOUNT_API_URL` from both APK workflows only after the LAN/Cloudflare account patch path is replaced by the peer-mesh implementation.
-- Add no fake URL and no localhost/LAN fallback.
-- Include the same pinned admin public key and protocol version in both APKs.
-- Build must fail if the peer-mesh module or protocol verification tests are absent/failing, not silently ship the old LAN account gate.
+- Remove the old LAN-only account discovery/endpoint assumptions from the Main APK only after VPN peer enrollment and authenticated account transport are implemented.
+- Remove Cloudflare Worker/D1 account runtime dependencies and AE_ACCOUNT_API_URL from both APK workflows only after all account operations work over the VPN channel.
+- Do not use localhost, a fixed public URL, raw public HTTP, or a fake endpoint as a fallback.
+- Add the same protocol version and pinned administrator verification identity to both APKs.
+- Build must fail if VPN account transport, peer authentication, endpoint allowlisting, or protocol tests are absent/failing.
+- Preserve all original editor functions, project import/export, WASM plugins, desktop AE plugin migration, RIFE interpolation, Real-ESRGAN enhancement, export, and the separate DeepSeek plugin.
 
 ## Acceptance tests before release
 
-1. Two phones discover and pair on the same Wi-Fi without any account server.
-2. A new account is created and synchronized between peers; duplicate/replayed records are rejected.
-3. Login works offline on a previously paired device using its protected key.
-4. A signed admin ban with reason/expiry propagates to online peers and is applied when an offline peer reconnects.
-5. A signed unban propagates and restores access; a forged unsigned ban/unban is rejected.
-6. Admin sequence conflicts and admin-key rotation are handled safely.
-7. A device with no known peer clearly reports that first-time registration/sync is unavailable rather than pretending success.
-8. Global node toggle in the admin APK stops/resumes discovery; the Admin APK continuously displays real mesh status while open. The Main APK has no global toggle and displays no connection state, peer count, sync progress, VPN-like icon, or persistent connection notification.
-9. Cross-network tests document where direct P2P fails due to NAT/background restrictions; the UI accurately reports disconnected/stale state.
-10. Main APK retains editor, RIFE, Real-ESRGAN, project import/export, plug-ins, and export features. Admin APK remains separate.
-11. APK package/signature checks pass, followed by real multi-device end-to-end tests.
+1. Admin phone and Main phone join the VPN overlay from unrelated networks.
+2. Main APK can register and login through the VPN account channel; no cloud account endpoint is used.
+3. Main APK can modify/delete its own profile/account but cannot modify/delete another user's account.
+4. Admin can list, modify, delete, ban and unban accounts; ban reason and expiry persist and audit records are created.
+5. A normal VPN member cannot call admin endpoints; a forged/replayed admin request is rejected.
+6. Account-service OFF blocks account API requests while node-network state remains unchanged.
+7. VPN disconnection fails closed; reconnection restores account access without manual IP entry.
+8. No account listener is reachable through public Wi-Fi/mobile interfaces outside the VPN.
+9. Node-network OFF independently closes node sessions; ON permits eligible nodes to reconnect.
+10. Test two real phones on different Wi-Fi/mobile networks, including a restrictive NAT case; record when the VPN uses direct path versus encrypted relay.
+11. Verify key revocation, token expiry, rate limits, and account deletion behavior.
+12. APK package/signature/integrity checks pass and original editor/AI/import/export/plugin features remain intact.
+
+## Current implementation checkpoint
+
+The current Admin APK source is still a LAN-only HTTP listener bound around port 8788 and uses Wi-Fi IPv4/subnet checks. It is not yet a VPN-bound TLS account server. Existing UDP/mDNS discovery is LAN-only. This must be replaced or securely adapted before release. This document does not claim the VPN channel or cross-network account access is already implemented.
