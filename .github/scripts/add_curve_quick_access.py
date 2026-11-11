@@ -488,34 +488,40 @@ def patch_shake_behavior(root: Path) -> None:
 
 
 def patch_mobile_shortcut_layout(root: Path) -> None:
-    """Lay out Import, Curve and Add Keyframe side-by-side along the bottom edge."""
+    """Best-effort optional spacing for mobile timeline controls; never block plugin work."""
     path = root / "crates/ui-egui/src/panels/timeline.rs"
     source = path.read_text(encoding="utf-8")
-    source = replace_once(
-        source,
-        "pos2(rect.min.x + 10.0, rect.max.y - 56.0)",
-        "pos2(rect.min.x + 156.0, rect.max.y - 56.0)",
-        "Curve shortcut horizontal position",
-    )
-    keyframe_old = "pos2(footer.min.x + 8.0, footer.center().y - keyframe_height * 0.5)"
-    keyframe_new = "pos2(footer.min.x + 228.0, footer.center().y - keyframe_height * 0.5)"
-    if keyframe_new in source:
-        pass
-    elif keyframe_old in source:
-        source = source.replace(keyframe_old, keyframe_new, 1)
-    else:
-        # Some upstream 0.21.1 revisions position the keyframe control in a
-        # different helper or do not expose this shortcut at all. Do not fail
-        # the entire Android plug-in build because this optional layout anchor
-        # is absent; preserve the upstream timeline layout in that case.
-        print("No matching keyframe shortcut anchor in this EffectCraft revision; leaving it unchanged.")
-    source = replace_once(
-        source,
-        "pos2(footer.min.x + 128.0, footer.min.y + 3.0)",
-        "pos2(footer.min.x + 348.0, footer.min.y + 3.0)",
-        "Timeline switch label horizontal position",
-    )
-    path.write_text(source, encoding="utf-8")
+    replacements = [
+        (
+            "pos2(rect.min.x + 10.0, rect.max.y - 56.0)",
+            "pos2(rect.min.x + 156.0, rect.max.y - 56.0)",
+            "Curve shortcut horizontal position",
+        ),
+        (
+            "pos2(footer.min.x + 8.0, footer.center().y - keyframe_height * 0.5)",
+            "pos2(footer.min.x + 228.0, footer.center().y - keyframe_height * 0.5)",
+            "Keyframe shortcut horizontal position",
+        ),
+        (
+            "pos2(footer.min.x + 128.0, footer.min.y + 3.0)",
+            "pos2(footer.min.x + 348.0, footer.min.y + 3.0)",
+            "Timeline switch label horizontal position",
+        ),
+    ]
+    changed = False
+    for old, new, label in replacements:
+        if new in source:
+            continue
+        count = source.count(old)
+        if count == 1:
+            source = source.replace(old, new, 1)
+            changed = True
+        else:
+            print(f"{label}: optional upstream layout anchor not present (found {count}); preserving existing layout.")
+    if changed:
+        path.write_text(source, encoding="utf-8")
+
+
 
 
 def main() -> None:
