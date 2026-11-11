@@ -2,7 +2,7 @@ name: Validate Ae Cloud Account Worker
 
 on:
   push:
-    branches: [main, 'feature/automatic-phone-node-main-apk']
+    branches: [main, 'feature/automatic-phone-node-main-apk', implementation/p2p-full-replacement]
     paths:
       - 'cloudflare-worker/**'
       - '.github/workflows/validate-ae-cloud-account.yml'
