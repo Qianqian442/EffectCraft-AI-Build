@@ -120,7 +120,7 @@ fn archive_desktop_plugin_folder(s: &mut Session, folder_path: &str) -> Result<O
     let root = source.canonicalize()
         .map_err(|error| bad(CMD, format!("无法解析插件目录：{error}")))?;
     let mut stack = vec![root.clone()];
-    let mut files: Vec<PathBuf> = Vec::new();
+    let mut files: Vec<std::path::PathBuf> = Vec::new();
     let mut total_bytes = 0_u64;
     while let Some(directory) = stack.pop() {
         let entries = std::fs::read_dir(&directory)
@@ -597,8 +597,14 @@ def patch_picker(root: Path) -> None:
         if old not in source:
             raise SystemExit("Could not find the plugin picker extension list.")
         source = source.replace(old, new, 1)
-        path.write_text(source, encoding="utf-8")
-    print("Plugin file picker accepts WASM/WAT, ZIP/ZXP and individual native plugin files.")
+    folder_command = '"effect.plugins.load" if params.get("folder").is_none() =>'
+    folder_alias = '"effect.plugins.loadFolder" => ("folder", Ask::Folder),\\n        ' + folder_command
+    if '"effect.plugins.loadFolder" => ("folder", Ask::Folder)' not in source:
+        if source.count(folder_command) != 1:
+            raise SystemExit("Could not find the plugin picker mapping for folder import.")
+        source = source.replace(folder_command, folder_alias, 1)
+    path.write_text(source, encoding="utf-8")
+    print("Plugin file picker accepts WASM/WAT, ZIP/ZXP, individual native files and complete plugin folders.")
 
 
 def patch_toolbar(root: Path) -> None:
