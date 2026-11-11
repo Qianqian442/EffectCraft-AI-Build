@@ -1,13 +1,13 @@
 //! # effectcraft-plugin (L3)
 //!
-//! Loads **WebAssembly effect plug-ins** (plug-in API v1, see `docs/plugins.md`) into the effect
+//! Loads **WebAssembly effect plug-ins** (plug-in API v1 and typed property API v2, see `docs/plugins.md`) into the effect
 //! registry ([`effectcraft_effects::plugin`]). A plug-in is a `.wasm` (or `.wat`) module with
 //! no imports that exports:
 //!
 //! | export | signature | |
 //! |---|---|---|
 //! | `memory` | memory | linear memory shared with the host |
-//! | `ec_api_version` | `() -> i32` | must return 1 |
+//! | `ec_api_version` | `() -> i32` | must return 1 for legacy plug-ins or 2 for typed-property plug-ins |
 //! | `ec_manifest_ptr`, `ec_manifest_len` | `() -> i32` | a UTF-8 JSON [`PluginManifest`] in memory |
 //! | `ec_alloc` | `(bytes: i32) -> i32` | a buffer of at least `bytes` bytes, 8-byte aligned; it may reuse the previous one |
 //! | `ec_render` | `(pixels: i32, width: i32, height: i32, params: i32, nparams: i32, time: f64, scale: f64) -> i32` | process the pixels in place; 0 = ok |
@@ -59,7 +59,7 @@ pub fn loader(bytes: &[u8], source: &str) -> Result<serde_json::Value, String> {
         "name": spec.name,
         "category": spec.category,
         "version": m.as_ref().map(|m| m.version.clone()).unwrap_or_default(),
-        "api": PLUGIN_API_VERSION,
+        "api": m.as_ref().map(|manifest| manifest.api).unwrap_or(PLUGIN_API_VERSION),
         "params": spec.params.len(),
     }))
 }
