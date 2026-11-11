@@ -406,7 +406,7 @@ jobs:
 
       - name: Integrate Puppet Position into the unified native keyframe Timeline
         env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/vendor/effectcraft
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_unified_puppet_keyframes.py
           python3 build-assets/.github/scripts/add_unified_puppet_keyframes.py
