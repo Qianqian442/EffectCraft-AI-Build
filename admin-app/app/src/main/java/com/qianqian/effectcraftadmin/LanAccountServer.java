@@ -144,12 +144,9 @@ final class LanAccountServer implements Runnable {
     @Override public void run() {
         while (running) {
             String currentIp = getWifiIpv4();
-            if (currentIp.isEmpty()) {
-                boundIp = "";
-                activeBoundIp = "";
-                sleepQuietly(2500);
-                continue;
-            }
+            // Always bind the listener, even when Wi-Fi is unavailable.
+            // This keeps same-device clients on 127.0.0.1 working; LAN peers
+            // become available automatically when a Wi-Fi IPv4 address exists.
             try (ServerSocket server = new ServerSocket()) {
                 server.setReuseAddress(true);
                 server.bind(new InetSocketAddress(InetAddress.getByName("0.0.0.0"), PORT), 32);
@@ -358,8 +355,11 @@ final class LanAccountServer implements Runnable {
         String name = body.optString("name", "").trim();
         String password = body.optString("password", "");
         String avatar = body.optString("avatar_url", "").trim();
-        if (!QQ.matcher(qq).matches()) return error(422, "QQ号应填写5至12位数字", "", "");
-        if (!WECHAT.matcher(body.optString("wechat", "").trim()).matches()) return error(422, "微信号格式不正确", "", "");
+        boolean hasQq = !qq.isEmpty();
+        boolean hasWechat = !wechat.isEmpty();
+        if (!hasQq && !hasWechat) return error(422, "QQ号和微信号至少填写一项", "", "");
+        if (hasQq && !QQ.matcher(qq).matches()) return error(422, "QQ号应填写5至12位数字", "", "");
+        if (hasWechat && !WECHAT.matcher(body.optString("wechat", "").trim()).matches()) return error(422, "微信号格式不正确", "", "");
         if (name.isEmpty() || name.length() > 40) return error(422, "姓名不能为空且不能超过40字", "", "");
         if (password.length() < 8 || password.length() > 128) return error(422, "密码至少8位", "", "");
         if (!avatar.isEmpty() && !(avatar.startsWith("https://") || avatar.startsWith("http://"))) return error(422, "头像地址格式不正确", "", "");
@@ -372,7 +372,12 @@ final class LanAccountServer implements Runnable {
         SQLiteDatabase writable = db.getWritableDatabase();
         try {
             android.content.ContentValues values = new android.content.ContentValues();
-            values.put("id", id); values.put("qq", qq); values.put("wechat", wechat);
+            // The legacy schema keeps both identifier columns NOT NULL UNIQUE.
+            // Store a per-account private sentinel for the unused identifier;
+            // userFromCursor converts it back to an empty string for clients.
+            values.put("id", id);
+            values.put("qq", hasQq ? qq : unusedIdentifier(id, "qq"));
+            values.put("wechat", hasWechat ? wechat : unusedIdentifier(id, "wechat"));
             values.put("name", name); values.put("password_hash", passHash);
             values.put("password_salt", b64(salt)); values.put("avatar_url", avatar);
             values.put("created_at", Instant.now().toString());
@@ -486,13 +491,20 @@ final class LanAccountServer implements Runnable {
         String wechat = wechatRaw.toLowerCase(Locale.ROOT);
         String name = body.optString("name", "").trim();
         String avatar = body.optString("avatar_url", "").trim();
-        if (!QQ.matcher(qq).matches() || !WECHAT.matcher(wechatRaw).matches() || name.isEmpty()) return error(422, "QQ号、微信号或姓名格式不正确", "", "");
+        boolean hasQq = !qq.isEmpty();
+        boolean hasWechat = !wechatRaw.isEmpty();
+        if ((!hasQq && !hasWechat) ||
+                (hasQq && !QQ.matcher(qq).matches()) ||
+                (hasWechat && !WECHAT.matcher(wechatRaw).matches()) ||
+                name.isEmpty()) return error(422, "QQ号或微信号至少填写一项，并检查姓名及账号格式", "", "");
         Cursor nameCursor = db.getReadableDatabase().rawQuery("SELECT 1 FROM accounts WHERE lower(trim(name))=lower(trim(?)) AND id<>? LIMIT 1", new String[]{name, id});
         try { if (nameCursor.moveToFirst()) return error(409, "该名字已被其他账号使用", "", ""); }
         finally { nameCursor.close(); }
         String newPassword = body.optString("new_password", "");
         android.content.ContentValues values = new android.content.ContentValues();
-        values.put("qq", qq); values.put("wechat", wechat); values.put("name", name); values.put("avatar_url", avatar);
+        values.put("qq", hasQq ? qq : unusedIdentifier(id, "qq"));
+        values.put("wechat", hasWechat ? wechat : unusedIdentifier(id, "wechat"));
+        values.put("name", name); values.put("avatar_url", avatar);
         if (!newPassword.isEmpty()) {
             Cursor c = db.getReadableDatabase().query("accounts", new String[]{"password_hash", "password_salt"}, "id=?", new String[]{id}, null, null, null);
             try {
@@ -574,11 +586,19 @@ final class LanAccountServer implements Runnable {
         } finally { c.close(); }
     }
 
+    private static String unusedIdentifier(String id, String kind) {
+        return "__effectcraft_unused_" + kind + "_" + id.replace("-", "");
+    }
+
+    private static String visibleIdentifier(String value) {
+        return value != null && value.startsWith("__effectcraft_unused_") ? "" : (value == null ? "" : value);
+    }
+
     private static JSONObject userFromCursor(Cursor c) throws Exception {
         JSONObject u = new JSONObject();
         u.put("id", c.getString(c.getColumnIndexOrThrow("id")));
-        u.put("qq", c.getString(c.getColumnIndexOrThrow("qq")));
-        u.put("wechat", c.getString(c.getColumnIndexOrThrow("wechat")));
+        u.put("qq", visibleIdentifier(c.getString(c.getColumnIndexOrThrow("qq"))));
+        u.put("wechat", visibleIdentifier(c.getString(c.getColumnIndexOrThrow("wechat"))));
         u.put("name", c.getString(c.getColumnIndexOrThrow("name")));
         u.put("avatar_url", c.getString(c.getColumnIndexOrThrow("avatar_url")));
         u.put("created_at", c.getString(c.getColumnIndexOrThrow("created_at")));
