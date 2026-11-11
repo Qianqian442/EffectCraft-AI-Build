@@ -1,0 +1,30 @@
+name: Validate EffectCraft node network Worker
+
+on:
+  push:
+    branches: [implementation/p2p-full-replacement]
+    paths:
+      - 'cloudflare-worker/src/**'
+      - '.github/workflows/validate-node-network.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Check Worker JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check --input-type=module < cloudflare-worker/src/index.js
+          node --check --input-type=module < cloudflare-worker/src/node_network_hub.js
+          node --check --input-type=module < cloudflare-worker/src/account_session_hub.js
+          echo "Worker JavaScript syntax checks passed."
