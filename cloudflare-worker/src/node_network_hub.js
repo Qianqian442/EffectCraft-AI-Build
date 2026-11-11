@@ -171,6 +171,10 @@ export class NodeNetworkHub {
       try { socket.send(JSON.stringify({ type: "error", code: "invalid_relay_envelope" })); } catch (_) {}
       return;
     }
+    if (!a.peerId) {
+      try { socket.send(JSON.stringify({ type: "error", code: "peer_hello_required" })); } catch (_) {}
+      return;
+    }
     const sentAt = Date.parse(String(packet.sent_at || ""));
     if (!Number.isFinite(sentAt) || Math.abs(Date.now() - sentAt) > 120000) {
       try { socket.send(JSON.stringify({ type: "error", code: "expired_message" })); } catch (_) {}
@@ -203,7 +207,7 @@ export class NodeNetworkHub {
     for (const target of targets) {
       if (target === socket) continue;
       const recipient = target.deserializeAttachment() || {};
-      if (recipient.nodeId !== packet.to) continue;
+      if (recipient.nodeId !== packet.to || !recipient.peerId) continue;
       try {
         target.send(JSON.stringify({
           type: "relay",
