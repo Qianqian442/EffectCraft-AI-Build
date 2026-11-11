@@ -41,6 +41,7 @@ on:
       - '.github/scripts/build_rsmb_compat.py'
       - '.github/scripts/looks_compat_pack.rs'
       - '.github/scripts/build_looks_compat_pack.py'
+      - 'vendor/effectcraft/crates/ui-egui/src/panels/timeline.rs'
   workflow_dispatch:
 
 permissions:
