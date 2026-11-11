@@ -411,9 +411,6 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     if native_count > 0 {
         notice.push_str(&format!("；另有 {native_count} 个电脑原生插件需要移植，未在安卓执行"));
     }
-    if compatibility_match_count > 0 {
-        notice.push_str(&format!("；另匹配到 {compatibility_match_count} 个内置兼容效果"));
-    }
     if skipped_count > 0 {
         notice.push_str(&format!("；跳过 {skipped_count} 个不支持或超限文件"));
     }
