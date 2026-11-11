@@ -63,6 +63,8 @@ def main() -> None:
         "    node_event_started: bool,\n"
         "    node_event_control: Option<Arc<AtomicBool>>,\n"
         "    node_event_rx: Option<Receiver<Value>>,\n"
+        "    node_outgoing_tx: Option<mpsc::Sender<Value>>,\n"
+        "    node_incoming: Vec<Value>,\n"
         "    node_peers: usize,\n"
         "    notification_pending: Option<String>,",
         "account event state fields",
@@ -79,6 +81,8 @@ def main() -> None:
         "            node_event_started: false,\n"
         "            node_event_control: None,\n"
         "            node_event_rx: None,\n"
+        "            node_outgoing_tx: None,\n"
+        "            node_incoming: Vec::new(),\n"
         "            node_peers: 0,\n"
         "            notification_pending: None,",
         "account event state initialization",
@@ -182,7 +186,9 @@ def main() -> None:
             .replacen("https://", "wss://", 1);
         let ws_url = format!("{base}/v1/nodes/events");
         let (event_tx, event_rx) = mpsc::channel();
+        let (outgoing_tx, outgoing_rx) = mpsc::channel();
         self.node_event_rx = Some(event_rx);
+        self.node_outgoing_tx = Some(outgoing_tx);
         self.node_event_started = true;
         let active = Arc::new(AtomicBool::new(true));
         self.node_event_control = Some(active.clone());
@@ -223,6 +229,11 @@ def main() -> None:
                                 let _ = socket.close(None);
                                 break;
                             }
+                            while let Ok(packet) = outgoing_rx.try_recv() {
+                                if socket.send(Message::Text(packet.to_string().into())).is_err() {
+                                    break;
+                                }
+                            }
                             if socket.send(Message::Text("ping".into())).is_err() {
                                 break;
                             }
@@ -248,6 +259,48 @@ def main() -> None:
         });
     }
 
+    fn queue_encrypted_node_payload(
+        &self,
+        target_node_id: &str,
+        message_id: &str,
+        ciphertext: &str,
+    ) -> Result<(), String> {
+        if !self.node_opt_in || !self.node_event_started {
+            return Err("本机节点未开启".to_string());
+        }
+        let valid_id = |value: &str| {
+            !value.is_empty()
+                && value.len() <= 80
+                && value.bytes().all(|b| b.is_ascii_hexdigit() || b == b'-')
+        };
+        if !valid_id(target_node_id) || !valid_id(message_id) {
+            return Err("节点或消息标识无效".to_string());
+        }
+        if ciphertext.len() < 16 || ciphertext.len() > 40000 {
+            return Err("加密消息长度无效".to_string());
+        }
+        let sent_at = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let packet = json!({
+            "type": "relay",
+            "v": 1,
+            "to": target_node_id,
+            "message_id": message_id,
+            "sent_at": sent_at,
+            "ciphertext": ciphertext
+        });
+        self.node_outgoing_tx.as_ref()
+            .ok_or_else(|| "节点连接尚未建立".to_string())?
+            .send(packet)
+            .map_err(|_| "节点发送队列已关闭".to_string())
+    }
+
+    fn take_encrypted_node_messages(&mut self) -> Vec<Value> {
+        std::mem::take(&mut self.node_incoming)
+    }
+
     fn poll_events(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         loop {
             let next = match self.node_event_rx.as_ref().map(|rx| rx.try_recv()) {
@@ -261,6 +314,10 @@ def main() -> None:
                 }
                 "peer_online" => self.node_peers = self.node_peers.saturating_add(1),
                 "peer_offline" => self.node_peers = self.node_peers.saturating_sub(1),
+                "relay" => {
+                    if self.node_incoming.len() >= 32 { self.node_incoming.remove(0); }
+                    self.node_incoming.push(event);
+                }
                 "node_access_revoked" => self.node_peers = 0,
                 "network_state" if event.get("enabled") == Some(&Value::Bool(false)) => self.node_peers = 0,
                 _ => {}
