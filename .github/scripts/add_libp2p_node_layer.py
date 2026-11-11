@@ -15,11 +15,11 @@ def main() -> None:
         raise SystemExit("native dependency section not found in ui-egui/Cargo.toml")
 
     dependency = (
-        'libp2p = { version = "=0.57.1", default-features = false, '
+        'libp2p = { version = "=0.56.0", default-features = false, '
         'features = ["tokio", "tcp", "quic", "dns", "noise", "yamux", '
         '"relay", "dcutr", "autonat", "identify", "macros", "ed25519"] }\n'
     )
-    if 'libp2p = { version = "=0.57.1"' not in cargo:
+    if 'libp2p = { version = "=0.56.0"' not in cargo:
         cargo = cargo.replace(marker, marker + dependency, 1)
         manifest.write_text(cargo, encoding="utf-8")
 
