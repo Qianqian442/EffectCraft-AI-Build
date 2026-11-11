@@ -3395,7 +3395,7 @@ fn layer_bar_drag(g: &mut Rw, rc: &RowCtx<'_>, bars: &BarResps, quick: bool) {
     }
 }
 
-fn layer_bar_markers(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Rw, rc: &RowCtx<'_>) {
+fn layer_bar_markers(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &mut Rw, rc: &RowCtx<'_>) {
     let graph_x0 = g.tl.graph_x0;
     let tm = g.tl.tm;
     let rows_rect = g.tl.rows_rect;
@@ -3404,6 +3404,39 @@ fn layer_bar_markers(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Rw, rc: &R
     let r = rc.r;
     let gclip = rows_rect.intersect(Rect::from_min_max(pos2(graph_x0, rows_rect.min.y), rows_rect.max));
     super::markers_ui::layer_markers(app, ui, gclip, &comp, layer, tm, r);
+
+    // Layer-level summary diamonds: one marker per distinct comp-time, regardless of
+    // how many properties (including Puppet pins) have a key at that time.
+    let mut props = Vec::new();
+    collect_props(&layer.props, &mut props, &|p| !p.keys.is_empty());
+    let mut times: Vec<Tick> = Vec::new();
+    for uid in props {
+        if let Some(prop) = layer.props.find(uid) {
+            for key in &prop.keys {
+                let ct = layer.comp_time(key.time);
+                if !times.iter().any(|t| (t.0 - ct.0).abs() <= 1) {
+                    times.push(ct);
+                }
+            }
+        }
+    }
+    times.sort_by_key(|t| t.0);
+    let painter = ui.painter().clone();
+    for (i, time) in times.into_iter().enumerate() {
+        let x = tm.x(time.seconds());
+        if x < gclip.min.x - 8.0 || x > gclip.max.x + 8.0 { continue; }
+        let center = pos2(x, r.center().y);
+        let hit = Rect::from_center_size(center, vec2(14.0, 14.0)).intersect(gclip);
+        if hit.is_positive() {
+            let resp = ui.interact(hit, egui::Id::unique(("layer-key-summary", layer.id.0, time.0)), Sense::click())
+                .on_hover_text("Layer keyframes — click to move to this time");
+            let c = center;
+            let points = vec![pos2(c.x, c.y - 4.5), pos2(c.x + 4.5, c.y), pos2(c.x, c.y + 4.5), pos2(c.x - 4.5, c.y)];
+            painter.add(egui::Shape::convex_polygon(points, Color32::WHITE, Stroke::new(0.8, Color32::from_gray(55))));
+            if resp.clicked() { g.ui_actions.push(UiAct::SetTime(time)); }
+            app.auto.add(&format!("timeline.layer.{}.keySummary.{}", layer.id.0, i), hit, "Layer keyframe");
+        }
+    }
 }
 
 /// The group row's background and effect label bar; returns the name to draw.
