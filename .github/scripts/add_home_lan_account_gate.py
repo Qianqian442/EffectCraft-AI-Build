@@ -446,7 +446,13 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
     if !is_home_lan {
         return Err("账号服务器地址必须是家庭局域网 IP，不能使用公网地址".to_string());
     }
-    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(7)).map_err(|e| format!("连接管理员手机失败：{e}"))?;
+    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(7)).map_err(|e| {
+        if host == "127.0.0.1" || host.eq_ignore_ascii_case("localhost") {
+            format!("连接被拒绝：127.0.0.1 只指向当前手机。若管理版和主 APK 在两台手机，请填写管理版显示的 Wi-Fi IP（端口 8788），并确认两台手机连接同一 Wi-Fi。原始错误：{e}")
+        } else {
+            format!("连接管理员手机失败：{e}。请确认管理版账号主服务器已开启，且 IP 和端口正确。")
+        }
+    })?;
     stream.set_read_timeout(Some(Duration::from_secs(8))).map_err(|e| e.to_string())?;
     stream.set_write_timeout(Some(Duration::from_secs(8))).map_err(|e| e.to_string())?;
     let body_bytes = if body.is_null() { Vec::new() } else { serde_json::to_vec(&body).map_err(|e| e.to_string())? };
