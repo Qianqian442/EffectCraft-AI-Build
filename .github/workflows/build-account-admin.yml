@@ -2,7 +2,7 @@ name: Build EffectCraft Account Admin APK
 
 on:
   push:
-    branches: [main, design/no-server-node-mesh]
+    branches: [main, design/no-server-node-mesh, implementation/p2p-full-replacement]
     paths:
       - 'admin-app/**'
       - '.github/workflows/build-account-admin.yml'
@@ -49,14 +49,8 @@ jobs:
           key: effectcraft-admin-debug-signing-v1-${{ github.repository_id }}
 
       - name: Build admin APK
-        env:
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
         working-directory: admin-app
         run: |
-          if [[ -z "${AE_ACCOUNT_API_URL:-}" || "${AE_ACCOUNT_API_URL}" != https://*.workers.dev ]]; then
-            echo "Repository variable AE_ACCOUNT_API_URL must contain the deployed HTTPS workers.dev URL." >&2
-            exit 1
-          fi
           gradle --no-daemon :app:assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
           cp app/build/outputs/apk/debug/app-debug.apk ../EffectCraft-Account-Admin.apk
