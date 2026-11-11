@@ -117,10 +117,10 @@ public final class MainActivity extends Activity {
             .getBoolean("requested", false);
         boolean process = getSharedPreferences("effectcraft_account_server_state", MODE_PRIVATE)
             .getBoolean("service_process", false);
-        String ip = LanAccountServer.getWifiIpv4();
-        String bound = requested && process && !ip.isEmpty() ? ip + ":" + LanAccountServer.PORT : "尚未监听";
+        String ip = LanAccountServer.getActiveBoundIp();
+        String bound = !ip.isEmpty() ? ip + ":" + LanAccountServer.PORT : "尚未监听";
         status.setText("服务开关：" + (requested ? "开启" : "关闭") +
-            " · 服务进程：" + (process ? "运行中" : "未运行") +
+            " · 服务进程：" + (process && !ip.isEmpty() ? "运行并监听" : "未监听") +
             "\n本机监听地址：" + bound +
             "\n跨地区可达性：尚未验证");
         toggle.setText(requested ? "关闭账号服务器" : "开启账号服务器");
