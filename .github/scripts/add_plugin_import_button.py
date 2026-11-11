@@ -71,7 +71,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     let mut menu_open = ui.ctx().data(|d| d.get_temp::<bool>(menu_id).unwrap_or(false));
     let response = ui
         .put(rect, egui::Button::new("导入插件"))
-        .on_hover_text("导入 WASM、WAT、ZIP 效果插件或 DeepSeek AI ZIP");
+        .on_hover_text("导入 WASM/WAT、AE 原生插件文件、ZIP/ZXP 包或 DeepSeek AI ZIP");
     app.auto.add_response("header.importPlugin", &response, "Import Plug-in");
     widgets::focus_outline(ui, &response, &app.tokens);
     if response.clicked() {
@@ -94,7 +94,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
             .open(&mut popup_open)
             .show(ui.ctx(), |popup| {
                 popup.label("选择插件类型");
-                if popup.button("WASM / WAT / ZIP 效果插件").clicked() {
+                if popup.button("WASM / WAT / AE 插件文件或包").clicked() {
                     import_wasm = true;
                 }
                 if popup.button("DeepSeek AI 插件 ZIP").clicked() {
@@ -102,7 +102,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                 }
                 popup.label("电脑版 AE 原生插件 .aex 不能直接在 Android 运行");
                 popup.label(".aep / .aepx 是 AE 工程文件，请用“导入工程”，不要走“开始移植”。");
-                popup.label("支持直接选择 .aex/.dll/.ofx 原生文件，也支持 ZIP/ZXP 插件包；不会按名称替换效果。");
+                popup.label("支持直接选择 .aex/.dll/.ofx 原生文件、ZIP/ZXP 包；不会按名称匹配替代。");
                 if popup.button("关闭").clicked() {
                     close_menu = true;
                 }
