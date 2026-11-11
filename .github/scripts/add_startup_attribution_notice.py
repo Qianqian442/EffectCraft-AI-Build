@@ -32,13 +32,13 @@ def main() -> None:
     # Earlier Android patches can add logic around the eframe UI callback, so
     # anchor to the stable draw call instead of requiring an exact whole-method body.
     draw_call = "self.draw(ui, frame);"
-    if "effectcraft_startup_attribution_notice(ui.ctx());" not in source:
+    if "effectcraft_startup_attribution_notice(ui.ctx());" not in source and "allows_startup_notice()" not in source:
         count = source.count(draw_call)
         if count != 1:
             raise SystemExit(f"app UI startup notice call: expected one draw call, found {count}")
         source = source.replace(
             draw_call,
-            draw_call + "\n        effectcraft_startup_attribution_notice(ui.ctx());",
+            draw_call + "\n        if self.account.allows_startup_notice() { effectcraft_startup_attribution_notice(ui.ctx()); }",
             1,
         )
 
