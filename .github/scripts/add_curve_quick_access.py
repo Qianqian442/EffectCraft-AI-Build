@@ -309,8 +309,10 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                let presets: [(&str, &str, &str); 11] = [
+                                let presets: [(&str, &str, &str); 15] = [
                                     ("线性", "linear", "linear"),
+                                    ("快速启动", "ease_in", "ease_in"),
+                                    ("快速停止", "ease_out", "ease_out"),
                                     ("缓入", "ease_in", "ease_in"),
                                     ("缓出", "ease_out", "ease_out"),
                                     ("缓入缓出", "ease", "ease"),
@@ -318,9 +320,11 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                                     ("连续贝塞尔", "continuous", "continuous"),
                                     ("自动贝塞尔", "ease", "auto"),
                                     ("保持", "hold", "hold"),
-                                    ("周期运动", "loop_cycle", "loop_cycle"),
+                                    ("周期循环", "loop_cycle", "loop_cycle"),
                                     ("往返周期", "loop_pingpong", "loop_pingpong"),
+                                    ("弹跳往返", "loop_pingpong", "loop_pingpong"),
                                     ("偏移周期", "loop_offset", "loop_offset"),
+                                    ("循环弹跳", "loop_pingpong", "loop_pingpong"),
                                 ];
                                 for (label, preview, curve) in presets {
                                     let (card, response) = ui.allocate_exact_size(vec2(88.0, 94.0), Sense::click());
