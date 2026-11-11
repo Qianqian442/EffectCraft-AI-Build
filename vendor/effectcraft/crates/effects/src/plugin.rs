@@ -22,7 +22,7 @@
 //! * rendering must be deterministic (same inputs, same output) and may run on several threads
 //!   at once.
 
-use std::sync::{Arc, OnceLock, RwLock};
+use std::{collections::HashMap, sync::{Arc, OnceLock, RwLock}};
 
 use effectcraft_keyframe::Value;
 use effectcraft_project::ParamUi;
@@ -31,7 +31,8 @@ use serde::{Deserialize, Serialize};
 use crate::{Buf, EffectCtx, EffectSpec, ParamSpec, RenderFn};
 
 /// The plug-in API version this build implements.
-pub const PLUGIN_API_VERSION: u32 = 1;
+pub const LEGACY_PLUGIN_API_VERSION: u32 = 1;
+pub const PLUGIN_API_VERSION: u32 = 2;
 
 /// The most plug-in effects one process can register.
 pub const MAX_PLUGINS: usize = 64;
@@ -78,6 +79,11 @@ pub enum PluginParamKind {
         #[serde(default = "white")]
         default: [f64; 4],
     },
+    /// A native EffectCraft property kind passed as a tagged value through API v2.
+    Property {
+        ui: ParamUi,
+        default: Value,
+    },
 }
 
 fn hundred() -> f64 {
@@ -99,6 +105,7 @@ impl PluginParamKind {
         match self {
             PluginParamKind::Point { .. } => 2,
             PluginParamKind::Color { .. } => 4,
+            PluginParamKind::Property { default, .. } => default.components().len(),
             _ => 1,
         }
     }
@@ -138,7 +145,7 @@ impl PluginManifest {
     /// Check the manifest against this API version.
     pub fn validate(&self) -> Result<(), String> {
         const MAX_PARAMS: usize = 256;
-        if self.api != PLUGIN_API_VERSION {
+        if self.api != LEGACY_PLUGIN_API_VERSION && self.api != PLUGIN_API_VERSION {
             return Err(format!("plug-in `{}` targets plug-in API {} but this build implements API {PLUGIN_API_VERSION}", self.id, self.api));
         }
         let ok_id = |s: &str| !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
@@ -153,8 +160,34 @@ impl PluginManifest {
         }
         let mut seen = std::collections::HashSet::new();
         for p in &self.params {
-            if p.id.is_empty() || !p.id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') || !seen.insert(p.id.as_str()) {
-                return Err(format!("plug-in `{}`: bad or duplicate parameter id `{}`", self.id, p.id));
+            let valid_id = |id: &str| !id.is_empty() && id.split('/').all(|part| {
+                !part.is_empty() && part.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+            });
+            if !valid_id(&p.id) || (self.api == LEGACY_PLUGIN_API_VERSION && p.id.contains('/')) || !seen.insert(p.id.as_str()) {
+                return Err(format!("plug-in parameter id is invalid or duplicated: {}", p.id));
+            }
+            if let PluginParamKind::Property { ui, default } = &p.kind {
+                if self.api < PLUGIN_API_VERSION {
+                    return Err(format!("typed native property {} requires plug-in API v2", p.id));
+                }
+                let compatible = match ui {
+                    ParamUi::Number | ParamUi::Slider { .. } | ParamUi::Percent
+                    | ParamUi::Angle | ParamUi::Pixels | ParamUi::Mask => matches!(default, Value::Scalar(_)),
+                    ParamUi::Point => matches!(default, Value::Vec2(_)),
+                    ParamUi::Point3 => matches!(default, Value::Vec3(_)),
+                    ParamUi::Color => matches!(default, Value::Color(_)),
+                    ParamUi::Checkbox => matches!(default, Value::Bool(_)),
+                    ParamUi::Popup { options } => matches!(default, Value::Enum(index) if (*index as usize) < options.len()) && !options.is_empty(),
+                    ParamUi::Layer => matches!(default, Value::Layer(_)),
+                    ParamUi::Path => matches!(default, Value::Path(_)),
+                    ParamUi::Text => matches!(default, Value::Text(_)),
+                    ParamUi::File { .. } => matches!(default, Value::Str(_)),
+                    ParamUi::Gradient => matches!(default, Value::Gradient(_)),
+                    ParamUi::Hidden => true,
+                };
+                if !compatible {
+                    return Err(format!("native property {} has a default incompatible with its UI type", p.id));
+                }
             }
             if let PluginParamKind::Popup { options, default } = &p.kind
                 && (options.is_empty() || *default as usize >= options.len())
@@ -191,9 +224,15 @@ pub struct PluginFrame<'a> {
 pub struct PluginParams<'a> {
     pub manifest: &'a PluginManifest,
     pub flat: &'a [f64],
+    /// Full evaluated native values, including paths, layer references and gradients.
+    pub values: &'a HashMap<String, Value>,
 }
 
 impl PluginParams<'_> {
+    pub fn value(&self, id: &str) -> Option<&Value> {
+        self.values.get(id)
+    }
+
     fn slot(&self, id: &str) -> Option<&[f64]> {
         let mut at = 0;
         for p in &self.manifest.params {
@@ -266,6 +305,7 @@ fn param_spec(p: &PluginParam) -> ParamSpec {
         PluginParamKind::Popup { options, default } => (Value::Enum(*default), ParamUi::Popup { options: options.clone() }),
         PluginParamKind::Point { default } => (Value::Vec2(*default), ParamUi::Point),
         PluginParamKind::Color { default } => (Value::Color(*default), ParamUi::Color),
+        PluginParamKind::Property { ui, default } => (default.clone(), ui.clone()),
     };
     ParamSpec { id: leak(&p.id), name: leak(&p.name), default, ui }
 }
@@ -326,6 +366,15 @@ pub fn flatten(m: &PluginManifest, ctx: &EffectCtx, buf: &Buf) -> Vec<f64> {
             }
             PluginParamKind::Checkbox { .. } => out.push(if v.map(Value::as_bool).unwrap_or(false) { 1.0 } else { 0.0 }),
             PluginParamKind::Popup { .. } => out.push(v.map(Value::as_enum).unwrap_or(0) as f64),
+            PluginParamKind::Property { ui, default } => {
+                let value = v.unwrap_or(default);
+                if matches!(ui, ParamUi::Point) {
+                    let (x, y) = buf.to_px(value.as_vec2());
+                    out.extend([x, y]);
+                } else {
+                    out.extend(value.components());
+                }
+            }
             _ => out.push(v.map(Value::as_f64).unwrap_or(0.0)),
         }
     }
@@ -336,7 +385,7 @@ fn run_slot(slot: usize, ctx: &EffectCtx, mut buf: Buf) -> Buf {
     let Some(plugin) = SLOTS[slot].get() else { return buf };
     let m = plugin.manifest();
     let flat = flatten(m, ctx, &buf);
-    let params = PluginParams { manifest: m, flat: &flat };
+    let params = PluginParams { manifest: m, flat: &flat, values: &ctx.params.values };
     let (width, height) = (buf.img.width, buf.img.height);
     let before = buf.img.data.clone();
     let mut frame = PluginFrame { width, height, pixels: &mut buf.img.data, scale: buf.scale };
