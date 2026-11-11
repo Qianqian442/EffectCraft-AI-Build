@@ -212,6 +212,25 @@ impl AccountState {
     }
 
     fn submit_register(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        let qq = self.qq.trim();
+        let wechat = self.wechat.trim();
+        if qq.is_empty() && wechat.is_empty() {
+            self.status = "QQ号和微信号至少填写一项".to_string();
+            return;
+        }
+        if !qq.is_empty() && !qq.chars().all(|c| c.is_ascii_digit()) {
+            self.status = "QQ号只能填写数字".to_string();
+            return;
+        }
+        if self.name.trim().is_empty() {
+            self.status = "请填写名字".to_string();
+            return;
+        }
+        if self.password.chars().count() < 8 {
+            self.status = "密码至少8位".to_string();
+            return;
+        }
+        self.status = "正在连接账号服务器并提交注册…".to_string();
         self.send(
             Action::Register,
             "POST",
@@ -521,7 +540,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             ui.separator();
             ui.label("管理员手机账号服务器地址");
             ui.text_edit_singleline(&mut app.account.server_url);
-            ui.small("请填写管理版“账号服务器”面板显示的 Wi-Fi 地址，端口为 8788，例如 http://192.168.1.23:8788。两台手机必须连接同一个 Wi-Fi。");
+            ui.small("与管理版安装在同一台手机：填写 http://127.0.0.1:8788。若管理版和主 APK 在两台手机：填写管理版显示的 Wi-Fi 地址（端口 8788），两台手机连接同一 Wi-Fi。");
             ui.horizontal(|ui| {
                 if ui.selectable_label(!app.account.login_mode_register, "登录").clicked() {
                     app.account.login_mode_register = false;
@@ -532,16 +551,18 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             });
             ui.separator();
             if app.account.login_mode_register {
-                ui.label("QQ号");
+                ui.label("QQ号（可选）");
                 ui.text_edit_singleline(&mut app.account.qq);
-                ui.label("微信号");
+                ui.label("微信号（可选）");
                 ui.text_edit_singleline(&mut app.account.wechat);
+                ui.small("QQ号和微信号填写其中一个即可，至少填写一项。");
                 ui.label("名字");
                 ui.text_edit_singleline(&mut app.account.name);
                 ui.label("密码（至少8位）");
                 ui.add(egui::TextEdit::singleline(&mut app.account.password).password(true));
-                ui.label("头像图片地址（可选，https 图片链接）");
+                ui.label("头像图片地址（可选）");
                 ui.text_edit_singleline(&mut app.account.avatar_url);
+                ui.small("当前版本此处仍接收图片链接；相册直接选图需要接入 Android 图片选择器。");
             } else {
                 ui.label("QQ号或微信号");
                 ui.text_edit_singleline(&mut app.account.login_identifier);
