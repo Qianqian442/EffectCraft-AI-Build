@@ -82,19 +82,19 @@ def main() -> None:
     # The LAN gate persists an HTTP URL and node_opt_in. Never restore a
     # legacy LAN endpoint or its bearer token after switching to the cloud API.
     legacy_saved = (
-        '                    if saved.server_url.starts_with("http://") {\\n'
-        "                        self.server_url = saved.server_url;\\n"
-        "                    }\\n"
-        "                    self.node_opt_in = saved.node_opt_in;\\n"
-        "                    if !saved.token.is_empty() {\\n"
-        "                        self.token = Some(saved.token);\\n"
+        '                    if saved.server_url.starts_with("http://") {\n'
+        "                        self.server_url = saved.server_url;\n"
+        "                    }\n"
+        "                    self.node_opt_in = saved.node_opt_in;\n"
+        "                    if !saved.token.is_empty() {\n"
+        "                        self.token = Some(saved.token);\n"
         "                    }"
     )
     cloud_saved = (
-        "                    if saved.server_url == self.server_url {\\n"
-        "                        if !saved.token.is_empty() {\\n"
-        "                            self.token = Some(saved.token);\\n"
-        "                        }\\n"
+        "                    if saved.server_url == self.server_url {\n"
+        "                        if !saved.token.is_empty() {\n"
+        "                            self.token = Some(saved.token);\n"
+        "                        }\n"
         "                    }"
     )
     if legacy_saved in source:
