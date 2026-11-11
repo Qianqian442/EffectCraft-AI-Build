@@ -1,7 +1,13 @@
-# Previous PC-based account server — retired
+# 管理员手机本地账号服务器
 
-The files in this folder are kept only for historical reference. **Do not use the Windows, Docker, or batch-file setup.** The supported deployment no longer needs a computer.
+旧的 Windows、Docker、Cloudflare Worker、D1 账号服务方案均不属于当前 APK 方案。
 
-Install the Android account-admin APK from `admin-app/` on one Android phone connected to the home Wi-Fi. That phone hosts the API and stores the SQLite database locally. See `admin-app/README.md` for the phone-only instructions.
+当前主服务器是安装管理版 APK 的管理员 Android 手机：
 
-Never configure router port forwarding for port 8787.
+- SQLite 数据库：保存在管理员手机应用私有目录。
+- HTTP 账号 API：本机 `127.0.0.1:8788`；局域网客户端访问管理员手机的 Wi-Fi IPv4 地址 `:8788`。
+- 发现协议：UDP 广播端口 `8789`。
+- 节点健康检查：TCP `8787`，与账号服务器分离。
+- 账号服务器开关和节点网络开关是两个独立开关。
+
+当前仅完成同一 Wi-Fi 内的发现与账号访问。跨地区 NAT 穿透和中继还未完成。禁止路由器端口转发，禁止将本地 SQLite 账号数据库暴露到公网。
