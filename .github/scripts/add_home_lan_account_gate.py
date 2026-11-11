@@ -64,6 +64,8 @@ struct User {
 struct SavedAccount {
     server_url: String,
     token: String,
+    #[serde(default)]
+    node_opt_in: bool,
 }
 
 struct HttpResult {
@@ -76,6 +78,7 @@ pub(crate) struct AccountState {
     mode: Mode,
     pub(crate) server_url: String,
     token: Option<String>,
+    node_opt_in: bool,
     user: Option<User>,
     login_mode_register: bool,
     login_identifier: String,
@@ -106,6 +109,7 @@ impl Default for AccountState {
             mode: Mode::Auth,
             server_url: DEFAULT_SERVER.to_string(),
             token: None,
+            node_opt_in: false,
             user: None,
             login_mode_register: false,
             login_identifier: String::new(),
@@ -147,6 +151,7 @@ impl AccountState {
                     if saved.server_url.starts_with("http://") {
                         self.server_url = saved.server_url;
                     }
+                    self.node_opt_in = saved.node_opt_in;
                     if !saved.token.is_empty() {
                         self.token = Some(saved.token);
                     }
@@ -165,7 +170,7 @@ impl AccountState {
         let (Some(store), Some(token)) = (config, self.token.as_ref()) else {
             return;
         };
-        let saved = SavedAccount { server_url: self.server_url.clone(), token: token.clone() };
+        let saved = SavedAccount { server_url: self.server_url.clone(), token: token.clone(), node_opt_in: self.node_opt_in };
         if let Ok(data) = serde_json::to_string(&saved) {
             let _ = store.write("effectcraft-home-account.json", &data);
         }
@@ -443,6 +448,13 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     ui.text_edit_singleline(&mut app.account.edit_name);
                     ui.label("头像图片地址（可填写 https 图片链接）");
                     ui.text_edit_singleline(&mut app.account.edit_avatar);
+                    ui.separator();
+                    let mut node_opt_in = app.account.node_opt_in;
+                    if ui.checkbox(&mut node_opt_in, "允许本机参与 EffectCraft 节点互联（可随时关闭）").changed() {
+                        app.account.node_opt_in = node_opt_in;
+                        app.account.persist(config);
+                    }
+                    ui.small("开启后本机将通过加密连接参与节点在线互联；不会自动共享账号密码或媒体文件。关闭后停止本机节点连接。");
                     ui.separator();
                     ui.label("修改密码（不修改可留空）");
                     ui.label("当前密码");
