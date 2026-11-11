@@ -25,6 +25,7 @@ on:
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/add_libp2p_node_layer.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
@@ -68,6 +69,7 @@ jobs:
             .github/scripts/upgrade_export_preflight.py \
             .github/scripts/integrate_video_ai.py \
             .github/scripts/add_android_gallery_export.py \
+            .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/add_libp2p_node_layer.py
 
   build:
@@ -384,9 +386,13 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_home_lan_account_gate.py
           python3 build-assets/.github/scripts/add_home_lan_account_gate.py
 
-      - name: Keep account validation on the administrator phone
+      - name: Switch account gate to public cross-network Cloudflare service
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          AE_ACCOUNT_API_URL: https://ae-cloud-account-api.q1939023856.workers.dev
         run: |
-          grep -Fq 'const DEFAULT_SERVER: &str = "";' build-assets/.github/scripts/add_home_lan_account_gate.py
+          python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
+          python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
 
       - name: Add native rust-libp2p node transport
         env:
