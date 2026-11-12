@@ -41,7 +41,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "${GITHUB_WORKSPACE}/artifacts/qemu"
-          find output -type f \\( -name 'qemu-user-x86-64*.deb' -o -name 'proot_*.deb' -o -name 'qemu-system-x86-64-headless*.deb' \\) -print -exec cp {} "${GITHUB_WORKSPACE}/artifacts/qemu/" \\
+          find output -type f -name 'qemu-user-x86-64*.deb' -exec cp -t "${GITHUB_WORKSPACE}/artifacts/qemu/" {} +
+          find output -type f -name 'proot_*.deb' -exec cp -t "${GITHUB_WORKSPACE}/artifacts/qemu/" {} +
+          find output -type f -name 'qemu-system-x86-64-headless*.deb' -exec cp -t "${GITHUB_WORKSPACE}/artifacts/qemu/" {} +
           test -n "$(find "${GITHUB_WORKSPACE}/artifacts/qemu" -name 'qemu-user-x86-64*.deb' -print -quit)"
           dpkg-deb -I "${GITHUB_WORKSPACE}"/artifacts/qemu/qemu-user-x86-64*.deb
           sha256sum "${GITHUB_WORKSPACE}"/artifacts/qemu/* > "${GITHUB_WORKSPACE}/artifacts/qemu/SHA256SUMS.txt"
@@ -83,16 +85,16 @@ jobs:
       - name: Configure CLVK for Android ARM64 (precompiled SPIR-V mode)
         run: |
           NDK_SYSROOT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
-          cmake -S third_party/clvk -B build/clvk-android-arm64 -G Ninja \\
-            -DCMAKE_BUILD_TYPE=Release \\
-            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \\
-            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=28 \\
-            -DCLVK_VULKAN_IMPLEMENTATION=custom \\
-            -DVulkan_INCLUDE_DIRS="$NDK_SYSROOT/usr/include" \\
-            -DVulkan_LIBRARIES="$NDK_SYSROOT/usr/lib/aarch64-linux-android/28/libvulkan.so" \\
-            -DCLVK_COMPILER_AVAILABLE=OFF \\
-            -DCLVK_CLSPV_ONLINE_COMPILER=OFF \\
-            -DCLVK_BUILD_TESTS=OFF \\
+          cmake -S third_party/clvk -B build/clvk-android-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=28 \
+            -DCLVK_VULKAN_IMPLEMENTATION=custom \
+            -DVulkan_INCLUDE_DIRS="$NDK_SYSROOT/usr/include" \
+            -DVulkan_LIBRARIES="$NDK_SYSROOT/usr/lib/aarch64-linux-android/28/libvulkan.so" \
+            -DCLVK_COMPILER_AVAILABLE=OFF \
+            -DCLVK_CLSPV_ONLINE_COMPILER=OFF \
+            -DCLVK_BUILD_TESTS=OFF \
             -DCMAKE_INSTALL_PREFIX="$PWD/stage/clvk"
 
       - name: Compile CLVK
