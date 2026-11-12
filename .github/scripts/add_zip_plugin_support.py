@@ -216,27 +216,24 @@ def patch_picker(root: Path) -> None:
         for index, line in enumerate(lines):
             if '"effect.plugins.load"' not in line or "Ask::Open" not in line:
                 continue
-            if '"zip"' in line:
-                print(f"Plugin picker already accepts ZIP archives: {path}")
+            import re
+            match = re.search(r'Ask::Open\(&\[(.*?)\]\)', line)
+            if not match:
+                continue
+            entries = match.group(1)
+            present = set(re.findall(r'"([^"]+)"', entries))
+            wanted = ["zip", "aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"]
+            missing = [extension for extension in wanted if extension not in present]
+            if not missing:
+                print(f"Effect plug-in picker already accepts ZIP and desktop binary files: {path}")
                 return
-            if '["wasm", "wat"]' in line:
-                lines[index] = line.replace('["wasm", "wat"]', '["wasm", "wat", "zip"]', 1)
-            elif '["wasm", "wat", "zip"]' in line:
-                print(f"Plugin picker already accepts ZIP archives: {path}")
-                return
-            else:
-                # Keep any future extension added upstream; append ZIP without replacing it.
-                import re
-                match = re.search(r'Ask::Open\(&\[(.*?)\]\)', line)
-                if not match:
-                    continue
-                entries = match.group(1)
-                lines[index] = line[:match.start(1)] + entries + ', "zip"' + line[match.end(1):]
+            suffix = (", " if entries.strip() else "") + ", ".join(f'"{extension}"' for extension in missing)
+            lines[index] = line[:match.start(1)] + entries + suffix + line[match.end(1):]
             changed = True
             break
         if changed:
             path.write_text("".join(lines), encoding="utf-8")
-            print(f"Enabled ZIP in the effect plug-in picker: {path}")
+            print(f"Enabled ZIP and standalone desktop plug-in formats in the effect plug-in picker: {path}")
             return
     raise SystemExit("Could not locate the effect.plugins.load file-picker mapping in the expected frontend sources.")
 
@@ -248,7 +245,7 @@ def main() -> None:
     patch_manifests(root)
     patch_effect_loader(root)
     patch_picker(root)
-    print("The single plug-in import flow now accepts .wasm, .wat and .zip.")
+    print("The single plug-in import flow now accepts .wasm, .wat, .zip and standalone .aex/.dll/.ofx desktop plug-in files.")
     print("ZIP archives are safely scanned and their WASM/WAT effect modules are extracted to the persistent Plug-ins folder.")
     print("DeepSeek's signed AI ZIP continues through its dedicated Android package installer flow.")
 
