@@ -37,6 +37,36 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     const MAX_ASSET_BYTES: u64 = 32 * 1024 * 1024;
     const MAX_NATIVE_BYTES: u64 = 64 * 1024 * 1024;
 
+    // Extract visible ASCII and UTF-16LE strings without loading or executing the binary.
+    // AE PiPL resources carry effect names, categories and match-name identifiers; plug-in
+    // binaries may also retain parameter labels and UI text as readable strings.
+    fn readable_plugin_strings(bytes: &[u8]) -> Vec<String> {
+        fn push_run(output: &mut Vec<String>, run: &mut Vec<u8>) {
+            if run.len() >= 4 && output.len() < 160 {
+                let value = String::from_utf8_lossy(run).trim().to_string();
+                if !value.is_empty() && !output.contains(&value) {
+                    output.push(value.chars().take(180).collect());
+                }
+            }
+            run.clear();
+        }
+        let mut output = Vec::new();
+        let mut ascii = Vec::new();
+        for byte in bytes.iter().copied() {
+            if (0x20..=0x7e).contains(&byte) { ascii.push(byte); }
+            else { push_run(&mut output, &mut ascii); }
+        }
+        push_run(&mut output, &mut ascii);
+        let mut wide = Vec::new();
+        for pair in bytes.chunks_exact(2) {
+            let unit = u16::from_le_bytes([pair[0], pair[1]]);
+            if (0x20..=0x7e).contains(&unit) { wide.push(unit as u8); }
+            else { push_run(&mut output, &mut wide); }
+        }
+        push_run(&mut output, &mut wide);
+        output
+    }
+
     // Match only effects for which this APK actually ships an Android reimplementation.
     // Probe both package paths and readable strings embedded in native plug-in binaries.
     fn desktop_native_compatibility(source: &str, probe: &str) -> Option<Value> {
@@ -130,6 +160,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let mut asset_names: Vec<String> = Vec::new();
     let mut native_names: Vec<String> = Vec::new();
     let mut native_mappings: Vec<Value> = Vec::new();
+    let mut native_metadata: Vec<Value> = Vec::new();
     let mut skipped_names: Vec<String> = Vec::new();
 
     for index in 0..archive.len() {
@@ -260,14 +291,19 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                 std::fs::write(originals_dir.join(&destination_name), &bytes)
                     .map_err(|error| bad(CMD, format!("无法保存原始插件 {file_name}：{error}")))?;
                 native_names.push(destination_name);
-                // A few AE plug-ins keep their effect identifiers in the binary rather than
-                // the filename. Probe readable embedded strings as a second, non-executing signal.
-                let embedded_text = String::from_utf8_lossy(&bytes);
+                // Inspect PiPL-adjacent names and strings embedded in the binary. This is static
+                // metadata extraction only: native code is never loaded or executed.
+                let embedded_strings = readable_plugin_strings(&bytes);
+                let embedded_text = embedded_strings.join("\n");
                 if let Some(mapping) = desktop_native_compatibility(&entry_name, &entry_name)
                     .or_else(|| desktop_native_compatibility(&entry_name, &embedded_text))
                 {
                     push_unique_native_mapping(&mut native_mappings, mapping);
                 }
+                native_metadata.push(json!({
+                    "file": entry_name,
+                    "strings": embedded_strings.iter().take(64).collect::<Vec<_>>()
+                }));
             }
             _ => {}
         }
@@ -365,6 +401,13 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             item["note"].as_str().unwrap_or("")
         )
     }).collect::<Vec<_>>().join("\n");
+    let metadata_summary = native_metadata.iter().map(|item| {
+        let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑版插件");
+        let strings = item.get("strings").and_then(Value::as_array)
+            .map(|values| values.iter().filter_map(Value::as_str).take(24).collect::<Vec<_>>().join(" | "))
+            .unwrap_or_default();
+        format!("\n[{file}]\n{strings}")
+    }).collect::<Vec<_>>().join("\n");
     let mut install_result = json!({
         "installed": installed_wasm,
         "panels": installed_panels,
@@ -382,7 +425,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。若文件名匹配已内置兼容效果，报告会列出替代效果；替代效果不是原厂插件。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从原生插件提取的可读元数据/参数线索：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。若文件名匹配已内置兼容效果，报告会列出替代效果；替代效果不是原厂插件。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
@@ -393,6 +436,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         object.insert("desktop_assets".into(), json!(asset_names));
         object.insert("desktop_native_requires_port".into(), json!(native_names));
         object.insert("desktop_native_compatibility_matches".into(), json!(native_mappings));
+        object.insert("desktop_native_metadata".into(), json!(native_metadata));
         object.insert("desktop_skipped".into(), json!(skipped_names));
         object.insert("wat_result".into(), wat_result);
         object.insert("compatibility_report".into(), json!(report_path.to_string_lossy()));
