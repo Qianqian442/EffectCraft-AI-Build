@@ -20,7 +20,7 @@ final class NativeP2P {
 
     private NativeP2P() {}
 
-    private static native String nativeStart(String filesDirectory);
+    private static native String nativeStartAdmin(String filesDirectory);
     private static native String nativeStatus();
 
     static synchronized String start(Context context) {
@@ -33,7 +33,7 @@ final class NativeP2P {
                 multicastLock.setReferenceCounted(false);
                 multicastLock.acquire();
             }
-            return nativeStart(context.getFilesDir().getAbsolutePath());
+            return nativeStartAdmin(context.getFilesDir().getAbsolutePath());
         } catch (UnsatisfiedLinkError | SecurityException error) {
             return "ERROR:" + error.getMessage();
         }
