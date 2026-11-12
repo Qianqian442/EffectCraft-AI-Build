@@ -91,6 +91,79 @@ The experimental bridge source is in `windows-compat/aexlo-host/`. It exposes a 
 
 GPU path: the first integration should force aexlo's CPU rendering path unless a supported CUDA/driver translation path is proven. AEX-only plug-ins that rely on unsupported GPU callbacks or AEGP suites may not render. OpenFX remains a separate ABI and host.
 
+## Additional open-source fallbacks found
+
+### QEMU linux-user as a third CPU backend
+
+Pinned source reference: https://www.qemu.org/docs/master/user/
+
+- QEMU user-mode can run an executable built for another CPU architecture while using the host operating system's kernel interfaces.
+- Termux's official Android package recipe explicitly builds the `x86_64-linux-user` target for Android/ARM64, packages it as `qemu-user-x86-64`, and links Android-specific shmem/log support.
+- Termux recipe: https://github.com/termux/termux-packages/blob/master/packages/qemu-system-x86-64-headless/build.sh
+- QEMU source release in the inspected recipe: 11.1.3, GPL-2.0.
+
+EffectCraft fallback chain:
+1. Primary: Winlator Bionic standard x86-64 Wine container + Box64.
+2. Alternate: Arm64EC Wine/Proton container + FEXCore/WowBox64.
+3. Diagnostic/compatibility fallback: Android QEMU `qemu-x86_64` + x86-64 Linux Wine rootfs.
+
+QEMU does **not** load Windows PE DLLs by itself. It translates the x86-64 Linux Wine process; Wine remains responsible for Windows PE and API compatibility. This backend is expected to be slower than Box64/FEX and is an alternate path for compatibility/debugging, not a promise of higher performance.
+
+### Android root filesystem and process-launcher model
+
+Use Winlator's Android implementation as the primary reference rather than assuming a full PRoot container is required:
+
+- Winlator's `RootFS` and `RootFSInstaller` extract a compressed Ubuntu/Wine root filesystem into the app's private files directory.
+- Its `GuestProgramLauncherComponent` starts the Android/Bionic Box64 binary with environment variables such as `LD_LIBRARY_PATH` and `BOX64_LD_LIBRARY_PATH`, pointing at the matching native and x86-64 rootfs libraries.
+- Its Java `ProcessHelper` uses Android `ProcessBuilder` and process lifecycle control; no root permission is required for the basic launcher pattern.
+- Sources: https://github.com/brunodev85/winlator-app
+
+PRoot remains an optional helper when a chroot-like path view or cross-architecture rootfs management is useful:
+- https://github.com/termux/proot
+- https://github.com/termux/proot-distro
+
+PRoot-Distro documents rootless Android rootfs use and QEMU user-mode integration. It uses ptrace syscall interception and filesystem path rewriting; Android/SELinux compatibility must be verified on target devices before using it in the main APK:
+https://github.com/termux/proot-distro
+
+### Optional OpenCL acceleration: CLVK
+
+- Project: https://github.com/kpet/clvk
+- License: Apache-2.0.
+- Implements OpenCL 3.0 on top of Vulkan using clspv.
+- The upstream README provides an Android NDK build path; Khronos' Vulkan documentation also describes using clvk on Android.
+- Android build reference: https://github.khronos.org/Vulkan-Site/tutorial/latest/Advanced_Vulkan_Compute/12_Mobile_and_Embedded_Compute/02_android_compute.html
+
+Potential use: provide an Android ARM64 OpenCL 3 implementation to a compatible Wine/Arm64EC OpenCL bridge, so some plug-ins using portable OpenCL kernels may execute on a Vulkan-capable GPU.
+
+Limitations:
+- A build with compiler support disabled only accepts precompiled SPIR-V paths and is **not** sufficient for arbitrary plug-ins that call `clCreateProgramWithSource` at runtime.
+- A full runtime compiler requires clspv/LLVM components and is a much heavier build.
+- Wine's OpenCL ICD/Unix bridge must be tested to ensure an Arm64EC/native Wine process can call the Android ARM64 `libOpenCL.so`.
+- OpenCL interoperability extensions and GPU sharing with the host compositor are not guaranteed.
+- CLVK does not implement CUDA. CUDA-dependent AE plug-ins remain a separate unresolved compatibility class.
+
+### Static and dynamic PE analysis helpers
+
+Use these as analysis tools, not as the production runtime:
+
+- [LIEF](https://github.com/lief-project/LIEF), Apache-2.0: parses and abstracts PE/COFF, imports, exports, sections, symbols and other binary metadata. It can be used as an independent check against EffectCraft's PE importer report.
+- [Qiling](https://github.com/qilingframework/qiling), GPL-2.0-or-later: a Unicorn-based multi-architecture Windows PE/Linux/Android emulation and instrumentation framework. It can help inspect API calls and discover missing Windows API dependencies under a controlled development harness. It is Python-based and should stay outside the shipping APK unless its size, performance and GPL distribution obligations are deliberately accepted.
+- Qiling is useful for probing dependencies and making compatibility shims; it is not an AE host and cannot make an arbitrary plug-in render correctly without the required AE SDK suites and effect data.
+
+## Graphics/API coverage strategy
+
+Keep multiple graphics paths instead of assuming one translation layer solves every plug-in:
+
+- WineD3D / DXVK for Direct3D 9/10/11 to OpenGL/Vulkan paths.
+- VKD3D-Proton for Direct3D 12 to Vulkan paths.
+- Mesa Zink / Turnip / VirGL as optional OpenGL/Vulkan driver paths according to GPU and device support.
+- CLVK as an experimental OpenCL-on-Vulkan path.
+- CUDA remains unimplemented on ordinary Android GPUs; do not report a CUDA plug-in as supported merely because Wine/Box64 loads its DLL.
+
+Winlator's official project page and source list Wine, Box64/Box86, PRoot, Mesa, DXVK and VKD3D as constituent compatibility layers:
+https://www.winlator.org/
+https://github.com/winebox64/winlator
+
 ## Work now implemented on this branch
 
 - Extend the desktop ZIP import patch to inspect PE headers without executing binaries.
