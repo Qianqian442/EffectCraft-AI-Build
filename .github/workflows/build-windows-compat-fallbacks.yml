@@ -30,11 +30,43 @@ jobs:
           ref: master
           path: third_party/termux-packages
 
-      - name: Build official Android QEMU and PRoot packages
+      - name: Patch Termux QEMU recipe to build only x86-64 Linux-user emulation
+        working-directory: third_party/termux-packages
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          recipe = Path("packages/qemu-system-x86-64-headless/build.sh")
+          source = recipe.read_text()
+          start = source.index('\tlocal QEMU_TARGETS=""')
+          end = source.index('\n\tCFLAGS+=', start)
+          source = source[:start] + '''\t# EffectCraft uses QEMU only as an x86-64 Linux-user fallback for Wine.
+          \t# Avoid softmmu/system-emulation targets and their device-tree dependencies.
+          \tlocal QEMU_TARGETS="x86_64-linux-user"
+          ''' + source[end:]
+          source = source.replace('alsa-lib, dtc, glib,', 'glib,')
+          source = source.replace('--enable-fdt=system', '--disable-fdt')
+          source = source.replace('--audio-drv-list=pa', '--audio-drv-list=')
+          source = source.replace('--enable-curses', '--disable-curses')
+          source = source.replace('--enable-vnc', '--disable-vnc')
+          source = source.replace('--enable-virtfs', '--disable-virtfs')
+          source = source.replace('--enable-spice', '--disable-spice')
+          source = source.replace('--enable-libusb', '--disable-libusb')
+          source = source.replace('--enable-usb-redir', '--disable-usb-redir')
+          recipe.write_text(source)
+          print("Patched QEMU to x86_64-linux-user only; DTC and system emulation disabled.")
+          PY
+
+      - name: Build Android PRoot helper
         working-directory: third_party/termux-packages
         run: |
           set -euo pipefail
           sudo ./scripts/run-docker.sh ./build-package.sh -a aarch64 proot
+
+      - name: Build Android QEMU x86-64 Linux-user package
+        working-directory: third_party/termux-packages
+        run: |
+          set -euo pipefail
           sudo ./scripts/run-docker.sh ./build-package.sh -a aarch64 qemu-system-x86-64-headless
 
       - name: Collect QEMU user-mode and PRoot packages
