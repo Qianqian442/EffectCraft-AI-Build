@@ -21,6 +21,7 @@ final class NativeP2P {
     private NativeP2P() {}
 
     private static native String nativeStartAdmin(String filesDirectory);
+    private static native String nativeStopAdmin();
     private static native String nativeStatus();
 
     static synchronized String start(Context context) {
@@ -40,6 +41,9 @@ final class NativeP2P {
     }
 
     static synchronized void stop() {
+        if (AVAILABLE) {
+            try { nativeStopAdmin(); } catch (Throwable ignored) {}
+        }
         if (multicastLock != null && multicastLock.isHeld()) {
             try { multicastLock.release(); } catch (RuntimeException ignored) {}
         }
