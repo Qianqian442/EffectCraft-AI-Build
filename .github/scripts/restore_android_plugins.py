@@ -102,7 +102,7 @@ def main() -> None:
     } else {
         // EFFECTCRAFT_ANDROID_BUILTIN_EFFECTS_V1
         // Ship original compatibility and color-grading modules in the host APK itself.
-        const BUILTIN_EFFECTS_VERSION: &str = "3.0.0";
+        const BUILTIN_EFFECTS_VERSION: &str = "4.0.0";
         let bundled_modules: [(&str, &[u8]); 12] = [
             ("ec_sapphire_glow.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_glow.wasm")),
             ("ec_sapphire_aura.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_aura.wasm")),
