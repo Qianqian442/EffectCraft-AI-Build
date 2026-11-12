@@ -98,7 +98,7 @@ fn plugin_parameter_ui(param: &EffectParam<'_, '_>, width: f64, height: f64) -> 
             };
             let ui = match (param.valid_min(), param.valid_max()) {
                 (Some(min), Some(max)) if min.is_finite() && max.is_finite() && min < max => {
-                    let (slider_min, slider_max) = param.slider_range().unwrap_or((min, max));
+                    let (slider_min, slider_max) = param.slider_range().filter(|(a, b)| a.is_finite() && b.is_finite() && a < b).unwrap_or((min, max));
                     ParamUi::Slider {
                         min,
                         max,
@@ -328,7 +328,7 @@ def main() -> None:
         if effect == "aep.plugin.unported" {
             let warning = "已保留原版 AE 插件参数和原始数据；当前 Android 版本尚未运行该插件。";
             let wr = Rect::from_min_size(pos2(body.min.x + 12.0, y + 1.0), vec2((body.width() - 24.0).max(40.0), ROW));
-            bp.text(wr.left_center() + egui::vec2(0.0, wr.height() * 0.5), Align2::LEFT_CENTER, warning, Tokens::ui(10.5), t.warning);
+            bp.text(wr.left_center(), Align2::LEFT_CENTER, warning, Tokens::ui(10.5), t.warning);
             app.auto.add(&format!("effectControls.effect.{}.nativePluginStatus", g.uid), wr, warning);
             y += ROW;
         }
