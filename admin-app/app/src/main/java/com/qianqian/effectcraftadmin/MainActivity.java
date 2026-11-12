@@ -127,8 +127,8 @@ public final class MainActivity extends Activity {
                 String peerId = node.optString("peerId", "");
                 if (peerId.isEmpty()) { toast("管理员节点 ID 尚未生成，请稍后再试"); return; }
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                clipboard.setPrimaryClip(ClipData.newPlainText("EffectCraft 管理员节点 ID", peerId));
-                toast("管理员节点 ID 已复制，可分享给需要连接的用户用于身份核验");
+                clipboard.setPrimaryClip(ClipData.newPlainText("EffectCraft 管理员节点地址", "p2p://" + peerId));
+                toast("管理员节点连接地址已复制，可分享给用户首次配对");
             } catch (Exception error) { toast("复制节点 ID 失败：" + error.getMessage()); }
         });
         panel.addView(copyPeer, new LinearLayout.LayoutParams(-1, dp(44)));
