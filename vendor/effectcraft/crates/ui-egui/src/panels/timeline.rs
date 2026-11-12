@@ -4801,7 +4801,7 @@ fn current_time_indicator(app: &mut EffectcraftApp, g: &Rw) {
     }
 }
 
-/// The footer: scroll bars and render time. Modes are visible by default; F4 remains available.
+/// The footer: scroll bars and render time.
 fn footer_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Rw) -> Rect {
     let t = g.tl.t;
     let rect = g.tl.rect;
