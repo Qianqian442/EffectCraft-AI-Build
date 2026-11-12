@@ -216,6 +216,30 @@ pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeStatus
     new_java_string(&mut env, snapshot_json())
 }
 
+#[no_mangle]
+pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeStart(
+    mut env: JNIEnv,
+    _class: JClass,
+    directory: JString,
+) -> jstring {
+    let directory = match env.get_string(&directory) {
+        Ok(value) => value.to_string_lossy().into_owned(),
+        Err(error) => return new_java_string(&mut env, format!("ERROR:{error}")),
+    };
+    match start_node(&directory) {
+        Ok(peer_id) => new_java_string(&mut env, peer_id),
+        Err(error) => new_java_string(&mut env, format!("ERROR:{error}")),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeStatus(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    new_java_string(&mut env, snapshot_json())
+}
+
 fn new_java_string(env: &mut JNIEnv, value: String) -> jstring {
     match env.new_string(value) {
         Ok(value) => value.into_raw(),
@@ -418,7 +442,7 @@ mod tests {
             state.started = true;
             state.peer_id = "node\\\"a".to_string();
             state.status = "testing".to_string();
-            state.last_error = "line1\\nline2".to_string();
+            state.last_error = "line1\nline2".to_string();
         });
         let value: serde_json::Value = serde_json::from_str(&snapshot_json()).expect("valid JSON");
         assert_eq!(value["started"], true);
