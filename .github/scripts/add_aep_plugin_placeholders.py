@@ -301,7 +301,7 @@ def main() -> None:
     if MARKER not in source:
         source = source.replace(
             "use effectcraft_project::{Node, ParamUi, PropGroup};",
-            "use effectcraft_project::{Node, ParamUi, PropGroup};\nuse serde_json::json;",
+            "use effectcraft_project::{Node, ParamUi, PropGroup};",
             1,
         )
         anchor = "/// The match names of the effects the importer converts (the others are reported)."
