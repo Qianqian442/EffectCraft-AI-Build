@@ -10,6 +10,7 @@ on:
       - 'windows-compat/runtime-manifest.json'
       - 'windows-compat/aexlo-host/**'
       - 'windows-compat/tools/**'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 permissions:
@@ -38,6 +39,16 @@ jobs:
         run: |
           python3 -m py_compile .github/scripts/add_desktop_plugin_package_support.py
           python3 -m py_compile windows-compat/tools/pe_audit.py
+
+      - name: Install actionlint
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Lint GitHub Actions workflows
+        run: |
+          go install github.com/rhysd/actionlint/cmd/actionlint@latest
+          "$HOME/go/bin/actionlint" -color .github/workflows/*.yml
 
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
