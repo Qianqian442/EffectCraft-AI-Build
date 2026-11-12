@@ -91,6 +91,15 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Admin APK explicitly signs with the persisted keystore path",
+        "admin-app/app/build.gradle",
+        (
+            'System.getProperty("user.home") + "/.android/debug.keystore"',
+            'signingConfig signingConfigs.debug',
+            'keyAlias "androiddebugkey"',
+        ),
+    ),
+    (
         "Android SQLite account lifecycle regression tests are part of the admin build",
         "admin-app/app/src/test/java/com/qianqian/effectcraftadmin/LanAccountServerAccountFlowTest.java",
         (
