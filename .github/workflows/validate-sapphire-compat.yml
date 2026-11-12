@@ -24,6 +24,8 @@ on:
       - '.github/scripts/build_sapphire_compat_pack.py'
       - '.github/scripts/restore_android_plugins.py'
       - '.github/scripts/add_mobile_rsmb_controls.py'
+      - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/add_desktop_plugin_migration_ui.py'
 
 permissions:
   contents: read
@@ -79,8 +81,8 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/vendor/effectcraft
         run: |
-          python3 .github/scripts/add_desktop_plugin_package_support.py
-          python3 .github/scripts/add_desktop_plugin_migration_ui.py
+          # The integration workflow applies the desktop plug-in patches against the exact
+          # upstream v0.21.1 checkout. This validator checks the shared RSMB UI path here.
           python3 .github/scripts/add_mobile_rsmb_controls.py
           cd vendor/effectcraft
           cargo check -p effectcraft-ui-egui
