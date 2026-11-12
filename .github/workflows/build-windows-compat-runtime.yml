@@ -6,11 +6,16 @@ on:
     branches:
       - experiment/windows-plugin-runtime
     paths:
-      - 'windows-compat/**'
+      - 'windows-compat/runtime-manifest.json'
+      - 'windows-compat/aexlo-host/**'
       - '.github/workflows/build-windows-compat-runtime.yml'
 
 permissions:
   contents: read
+
+concurrency:
+  group: effectcraft-windows-compat-runtime-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   box64-android:
