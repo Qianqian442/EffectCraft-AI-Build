@@ -248,6 +248,20 @@ fn array_len(value: &Value, key: &str) -> usize {
     value.get(key).and_then(Value::as_array).map_or(0, Vec::len)
 }
 
+fn compatibility_mapping_details(value: &Value) -> Vec<String> {
+    value.get("desktop_native_compatibility_matches")
+        .or_else(|| value.get("native_compatibility_matches"))
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|item| {
+            let source = item.get("source")?.as_str()?;
+            let effect = item.get("effect_name")?.as_str()?;
+            Some(format!("{source} → {effect}"))
+        })
+        .collect()
+}
+
 fn result_from_import(pending: Pending, scan: ScanResult, result: Result<Value, String>) -> Done {
     let value = match result {
         Ok(value) => value,
@@ -262,7 +276,7 @@ fn result_from_import(pending: Pending, scan: ScanResult, result: Result<Value, 
     let wasm = array_len(&value, "installed");
     let panels = array_len(&value, "panels");
     let scripts = array_len(&value, "desktop_scripts");
-    let compatible = array_len(&value, "desktop_native_compatibility_matches");
+    let compatible = array_len(&value, "desktop_native_compatibility_matches")
         .max(array_len(&value, "native_compatibility_matches"));
     let native_remaining = pending.native_count.saturating_sub(compatible);
     let errors = array_len(&value, "errors");
@@ -289,6 +303,14 @@ fn result_from_import(pending: Pending, scan: ScanResult, result: Result<Value, 
     }
     if skipped > 0 {
         detail.push_str(&format!("\n未导入或跳过的文件：{} 个", skipped));
+    }
+    let mappings = compatibility_mapping_details(&value);
+    if !mappings.is_empty() {
+        detail.push_str("\n\n已识别的安卓兼容效果：\n");
+        detail.push_str(&mappings.iter().take(16).cloned().collect::<Vec<_>>().join("\n"));
+        if mappings.len() > 16 {
+            detail.push_str(&format!("\n另有 {} 项匹配", mappings.len() - 16));
+        }
     }
     detail.push_str("\n\n说明：.aex/.dll/.ofx 等 Windows/macOS 原生插件不能直接在 Android 执行；匹配到的兼容效果是替代实现，不是原厂插件。");
     if successful {
