@@ -486,6 +486,26 @@ def main() -> None:
         source = replace_once(source, "web-time = { workspace = true }\n", "web-time = { workspace = true }\nzip = { workspace = true }\n", "ZIP scan dependency")
         cargo_path.write_text(source, encoding="utf-8")
 
+    # The APK workflow uses Cargo.lock with --locked; record the UI crate's new ZIP dependency.
+    lock_path = root / "Cargo.lock"
+    lock_source = lock_path.read_text(encoding="utf-8")
+    package_start = lock_source.find('name = "effectcraft-ui-egui"\nversion = "0.21.1"\ndependencies = [')
+    if package_start < 0:
+        raise SystemExit("Could not locate effectcraft-ui-egui in Cargo.lock")
+    package_end = lock_source.find("\n]\n", package_start)
+    if package_end < 0:
+        raise SystemExit("Could not locate effectcraft-ui-egui dependency list in Cargo.lock")
+    dependency_block = lock_source[package_start:package_end]
+    if '"zip 9.1.3"' not in dependency_block:
+        dependency_block = replace_once(
+            dependency_block,
+            ' "web-time",',
+            ' "web-time",\n "zip 9.1.3",',
+            "Cargo.lock UI ZIP dependency",
+        )
+        lock_source = lock_source[:package_start] + dependency_block + lock_source[package_end:]
+        lock_path.write_text(lock_source, encoding="utf-8")
+
     print("Added the draggable AE migration confirmation, real ZIP scan progress, 100% completion state, and final OK result window.")
     print("Only archives containing native desktop plug-in files enter this flow; ordinary WASM/WAT ZIP imports keep the original path.")
 
