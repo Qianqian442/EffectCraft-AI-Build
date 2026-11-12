@@ -203,8 +203,6 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                 save_project_copy = true;
             }
             ui.small("QQ 分享建议：完整导出后压缩整个文件夹；接收方解压后导入其中的 .ecproj。");
-            ui.small("电脑版 AE 工程导入手机版后，导出的 .ecproj 工程包只能在手机版 EffectCraft 之间传递，不能导入 AM 或 NV。");
-            ui.small("AM/NV 工程请使用各自原始工程文件直接导入。");
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button("取消").clicked() {
