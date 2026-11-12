@@ -589,6 +589,21 @@ for path in (comp_settings_path, render_queue_path):
 #   <chosen-folder>/<Project>.ecproj
 #   <chosen-folder>/(Footage)/<media files>
 file_more = engine_file_more_path.read_text()
+# Keep each full-project export in its own newly-created folder beneath the user's chosen
+# destination. This prevents the QQ ZIP step from including unrelated files in Downloads.
+old_collection_root = '    let out = format!("{folder}/{stem}.ecproj");'
+new_collection_root = """    let mut collection_root = std::path::PathBuf::from(&folder).join(&stem);
+    let mut suffix = 2_u32;
+    while collection_root.exists() {
+        collection_root = std::path::PathBuf::from(&folder).join(format!("{stem} {suffix}"));
+        suffix += 1;
+    }
+    let folder = collection_root.to_string_lossy().to_string();
+    let out = format!("{folder}/{stem}.ecproj");"""
+if new_collection_root not in file_more:
+    if old_collection_root not in file_more:
+        raise SystemExit("Could not find the Collect Files output-folder insertion point.")
+    file_more = file_more.replace(old_collection_root, new_collection_root, 1)
 old_media_path = "            new_paths.push(dst.clone());"
 new_media_path = """            let filename = std::path::Path::new(dst).file_name().map(|name| name.to_string_lossy()).unwrap_or_else(|| "footage".into());
             new_paths.push(format!("(Footage)/{filename}"));"""
