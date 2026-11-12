@@ -1,0 +1,39 @@
+name: Validate main APK workflow and P2P integration
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-effectcraft-ai.yml'
+      - '.github/workflows/validate-main-workflow.yml'
+      - '.github/scripts/integrate_p2p_bridge.py'
+      - 'p2p-bridge/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Parse workflow and compile P2P integration script
+        run: |
+          python -m pip install --disable-pip-version-check PyYAML
+          python - <<'PY'
+          import pathlib
+          import py_compile
+          import yaml
+          workflow = pathlib.Path('.github/workflows/build-effectcraft-ai.yml')
+          try:
+              yaml.safe_load(workflow.read_text(encoding='utf-8'))
+          except yaml.YAMLError as error:
+              print(f'YAML parse failed: {error}')
+              raise
+          py_compile.compile('.github/scripts/integrate_p2p_bridge.py', doraise=True)
+          print('Main APK workflow YAML and P2P integration script are valid.')
+          PY
