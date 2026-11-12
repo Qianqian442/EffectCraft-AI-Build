@@ -862,4 +862,90 @@ mod tests {
         assert!((left[0] - 0.2).abs() < 1e-6);
         assert!((right[0] - 0.8).abs() < 1e-6);
     }
+
+    #[cfg(sapphire_glint)]
+    #[test]
+    fn glint_creates_rays_from_a_bright_point() {
+        let mut frame = vec![[0.0_f32, 0.0, 0.0, 1.0]; 9 * 9];
+        frame[4 * 9 + 4] = [1.0, 1.0, 1.0, 1.0];
+        let mut params = [0.0_f64; 30];
+        params[0] = 0.1;
+        for index in 1..=4 { params[index] = 1.0; }
+        for index in 5..=8 { params[index] = 1.0; }
+        params[14] = 6.0;
+        for index in 15..=21 { params[index] = 1.0; }
+        params[27] = 1.0;
+        params[29] = 100.0;
+        assert_eq!(super::render_glint(&mut frame, 9, 9, &params, 1.0), 0);
+        let energy: f32 = frame.iter().map(|px| px[0] + px[1] + px[2]).sum();
+        assert!(energy > 3.0, "glint renderer should add visible ray energy");
+    }
+
+    #[cfg(sapphire_rays)]
+    #[test]
+    fn rays_emit_from_highlight_toward_outer_frame() {
+        let mut frame = vec![[0.0_f32, 0.0, 0.0, 1.0]; 9 * 5];
+        frame[2 * 9 + 4] = [1.0, 1.0, 1.0, 1.0];
+        let mut params = [0.0_f64; 31];
+        params[0] = 0.0;
+        params[1] = 4.0;
+        params[2] = 2.0;
+        params[3] = 0.8;
+        for index in 4..=6 { params[index] = 1.0; }
+        params[8] = 3.0;
+        for index in 13..=16 { params[index] = 1.0; }
+        params[23] = 0.4;
+        params[29] = 1.0;
+        params[30] = 100.0;
+        assert_eq!(super::render_rays(&mut frame, 9, 5, &params, 1.0), 0);
+        assert!(frame[2 * 9][0] > 0.0, "ray renderer should illuminate pixels away from the center");
+    }
+
+    #[cfg(sapphire_halftone)]
+    #[test]
+    fn halftone_generates_antialiased_black_dots() {
+        let mut frame = Vec::new();
+        for y in 0..8 {
+            for x in 0..8 {
+                let value = (x as f32 + y as f32) / 14.0;
+                frame.push([value, value, value, 1.0]);
+            }
+        }
+        let original = frame.clone();
+        let mut params = [0.0_f64; 18];
+        params[1] = 2.0;
+        params[2] = 30.0;
+        params[3] = 1.0;
+        params[4] = 4.0;
+        params[7] = 1.0;
+        params[8] = 1.0;
+        params[9] = 1.0;
+        params[11] = 0.0;
+        params[12] = 0.0;
+        params[13] = 0.0;
+        params[17] = 100.0;
+        assert_eq!(super::render_halftone(&mut frame, 8, 8, &params, 1.0), 0);
+        assert!(frame.iter().zip(original.iter()).any(|(a,b)| (a[0]-b[0]).abs() > 0.05));
+        assert!(frame.iter().all(|px| px.iter().all(|v| v.is_finite())));
+    }
+
+    #[cfg(sapphire_pixelsort)]
+    #[test]
+    fn pixel_sort_linear_mode_sorts_threshold_run() {
+        let values = [0.1_f32, 0.9, 0.2, 0.8, 0.3, 0.7, 0.4, 0.6];
+        let mut frame: Vec<[f32; 4]> = values.iter().map(|v| [*v, *v, *v, 1.0]).collect();
+        let mut params = [0.0_f64; 20];
+        params[0] = 0.0;
+        params[1] = 0.0;
+        params[6] = 360.0;
+        params[8] = 3.0;
+        params[11] = 360.0;
+        params[15] = 2.0;
+        params[16] = 48.0;
+        params[19] = 100.0;
+        assert_eq!(super::render_pixelsort(&mut frame, 8, 1, &params), 0);
+        for index in 1..frame.len() {
+            assert!(frame[index - 1][0] <= frame[index][0] + 1e-6);
+        }
+    }
 }
