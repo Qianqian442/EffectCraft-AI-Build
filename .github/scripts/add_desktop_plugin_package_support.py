@@ -637,6 +637,20 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let ae_entrypoints = exports.iter().filter(|name| {
             matches!(name.as_str(), "PluginDataEntryFunction2" | "PluginDataEntryFunction" | "EffectMain")
         }).cloned().collect::<Vec<_>>();
+        let backend_candidates: &[&str] = match machine {
+            0x8664 => &[
+                "Wine + Box64 x86-64 容器",
+                "Arm64EC Wine/Proton + FEXCore 备选容器"
+            ],
+            0x014c => &[
+                "Wine + Box86 32 位容器（若该 Wine 构建提供）",
+                "Arm64EC Wine/Proton + FEXCore/WowBox64（若该容器提供 32 位 ABI）"
+            ],
+            0xa641 => &["Arm64EC Wine/Proton 容器（仍需核对模块 ABI）"],
+            0xa64e => &["ARM64X 混合 PE：需要人工确认加载方式"],
+            0xaa64 => &["ARM64 原生运行时（仅在插件本身及宿主 ABI 均匹配时）"],
+            _ => &["未知架构：先静态分析，不自动执行"]
+        };
         json!({
             "is_pe": true,
             "machine": format!("0x{machine:04x}"),
@@ -647,7 +661,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             "imports": imported_dlls,
             "imported_symbols_sample": imported_symbols.iter().take(96).collect::<Vec<_>>(),
             "exports_sample": exports.iter().take(96).collect::<Vec<_>>(),
-            "ae_entrypoint_candidates": ae_entrypoints
+            "ae_entrypoint_candidates": ae_entrypoints,
+            "backend_candidates": backend_candidates
         })
     }
 
