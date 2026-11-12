@@ -58,6 +58,11 @@ struct ScanReport {
 /// Called when the existing effect.plugins.load picker returns a ZIP. Only desktop
 /// archives containing native plug-in binaries are diverted into the migration dialog.
 pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool {
+    // The migration dialog calls the same original loader after its scan. While the dialog is
+    // active, let that internal call pass straight through instead of opening itself again.
+    if app.plugin_import.is_some() {
+        return false;
+    }
     let source = Path::new(path);
     let is_zip = source.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip"));
     let import_path = if is_zip {
