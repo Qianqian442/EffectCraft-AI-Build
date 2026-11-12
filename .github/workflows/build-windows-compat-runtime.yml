@@ -197,6 +197,7 @@ jobs:
       - name: Package AE host worker and notices
         shell: pwsh
         run: |
+          Copy-Item "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe" "artifacts/"
           Copy-Item "third_party/aexlo/LICENSE" "artifacts/AEXLO-MIT-LICENSE"
           Get-FileHash "artifacts/effectcraft-aex-host.exe" -Algorithm SHA256 | Format-List | Out-File "artifacts/SHA256.txt"
 
