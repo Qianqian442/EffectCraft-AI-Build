@@ -8,6 +8,7 @@ on:
     paths:
       - 'windows-compat/runtime-manifest.json'
       - 'windows-compat/aexlo-host/**'
+      - 'windows-compat/tools/**'
       - '.github/workflows/build-windows-compat-runtime.yml'
 
 permissions:
