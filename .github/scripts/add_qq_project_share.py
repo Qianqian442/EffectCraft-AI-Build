@@ -32,7 +32,8 @@ def patch_manifest_generator(builder: Path) -> None:
 '''
         source = once(source, anchor, provider + anchor, "FileProvider manifest registration")
     resource_anchor = '    (android_dir / "AndroidManifest.xml").write_text(manifest_xml(android_meta))\n'
-    resource_code = '''    # EFFECTCRAFT_SHARE_FILEPROVIDER_V1
+    resource_marker = "EFFECTCRAFT_SHARE_FILEPROVIDER_RESOURCE_V1"
+    resource_code = '''    # EFFECTCRAFT_SHARE_FILEPROVIDER_RESOURCE_V1
     if android_meta.get("package") == "com.artcraft.effectcraft":
         share_paths = android_dir / "res" / "xml" / "effectcraft_file_paths.xml"
         share_paths.parent.mkdir(parents=True, exist_ok=True)
@@ -43,7 +44,7 @@ def patch_manifest_generator(builder: Path) -> None:
 </paths>
 """)
 '''
-    if marker not in source:
+    if resource_marker not in source:
         source = once(source, resource_anchor, resource_anchor + "\n" + resource_code, "FileProvider XML resource generation")
     path.write_text(source, encoding="utf-8")
 
