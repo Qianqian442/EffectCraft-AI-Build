@@ -550,43 +550,56 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
 def patch_toolbar(root: Path) -> None:
     path = root / "crates/ui-egui/src/header.rs"
     source = path.read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1" in source:
+    marker = "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1"
+    if marker in source:
         print("Desktop AE script choice is already present in the unified import menu.")
         return
 
-    old_state = "    let mut import_wasm = false;\n    let mut import_ai = false;\n"
-    new_state = old_state + "    let mut import_script = false;\n    let mut import_panel = false;\n"
-    source = replace_once(source, old_state, new_state, "toolbar import state")
+    # The menu no longer imports a separate DeepSeek APK/ZIP. It now only imports effect
+    # plug-ins; the embedded DeepSeek model manager is opened from the AI assistant itself.
+    state_with_ai = "    let mut import_wasm = false;\n    let mut import_ai = false;\n"
+    state_without_ai = "    let mut import_wasm = false;\n"
+    if state_with_ai in source:
+        source = replace_once(
+            source, state_with_ai,
+            state_with_ai + "    let mut import_script = false;\n    let mut import_panel = false;\n",
+            "toolbar import state",
+        )
+        keep_ai_flag = True
+    elif state_without_ai in source:
+        source = replace_once(
+            source, state_without_ai,
+            state_without_ai + "    let mut import_script = false;\n    let mut import_panel = false;\n",
+            "toolbar import state",
+        )
+        keep_ai_flag = False
+    else:
+        raise SystemExit("Could not locate the WASM plug-in import state in the toolbar.")
 
-    old_button = '''                if popup.button("DeepSeek AI 插件 ZIP").clicked() {
-                    import_ai = true;
+    wasm_button = '''                if popup.button("WASM / WAT / ZIP 效果插件 / 电脑插件文件").clicked() {
+                    import_wasm = true;
                 }
-                popup.label("电脑版 .aex/.dll/.ofx 单文件和插件 ZIP 可直接选择；安卓端会分析并匹配兼容效果");'''
-    new_button = '''                if popup.button("DeepSeek AI 插件 ZIP").clicked() {
-                    import_ai = true;
-                }
-                // EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1
+'''
+    script_buttons = '''                // EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1
                 if popup.button("AE 脚本 (.jsx/.js)").clicked() {
                     import_script = true;
                 }
                 if popup.button("ScriptUI 面板 (.jsx)").clicked() {
                     import_panel = true;
                 }
-                popup.label("电脑插件 ZIP 可自动装入 WASM、JSX 和脚本；原生 .aex/.dll/.ofx 需要移植");'''
-    source = replace_once(source, old_button, new_button, "desktop script menu item")
+'''
+    source = replace_once(source, wasm_button, wasm_button + script_buttons, "desktop script menu item")
 
-    old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai;\n"
-    new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai && !import_script && !import_panel;\n"
+    if keep_ai_flag:
+        old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai;\n"
+        new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai && !import_script && !import_panel;\n"
+    else:
+        old_close = "        menu_open = popup_open && !close_menu && !import_wasm;\n"
+        new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_script && !import_panel;\n"
     source = replace_once(source, old_close, new_close, "desktop script menu close state")
 
-    old_ai = '''    if import_ai {
-        match crate::open_ai_plugin_import_from_toolbar() {
-            Ok(()) => app.ui.status = "请选择 DeepSeek AI 插件 ZIP；随后按 Android 系统提示确认安装。".into(),
-            Err(error) => app.ui.status = error,
-        }
-    }
-'''
-    new_ai = old_ai + '''    if import_script {
+    route_anchor = "    x + 84.0\n"
+    routes = '''    if import_script {
         match crate::menus::invoke(app, ui.ctx(), "file.installScript", json!({})) {
             Ok(_) => app.ui.status = "AE 脚本已导入；可在 文件 → 脚本 中使用。".into(),
             Err(error) => app.ui.status = error,
@@ -599,9 +612,9 @@ def patch_toolbar(root: Path) -> None:
         }
     }
 '''
-    source = replace_once(source, old_ai, new_ai, "AE script installer route")
+    source = replace_once(source, route_anchor, routes + route_anchor, "AE script installer route")
     path.write_text(source, encoding="utf-8")
-    print("Added AE .jsx/.js import through EffectCraft's original script installer inside the one unified toolbar entry.")
+    print("Added AE .jsx/.js import through EffectCraft's original script installer inside the unified plug-in entry.")
 
 
 def main() -> None:
