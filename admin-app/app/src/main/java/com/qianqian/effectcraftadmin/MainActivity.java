@@ -115,7 +115,8 @@ public final class MainActivity extends Activity {
     }
 
     private boolean isNodeServerEnabled() {
-        return getPreferences(MODE_PRIVATE).getBoolean("node_server_enabled", true);
+        return getSharedPreferences(LanServerService.SETTINGS_PREFS, MODE_PRIVATE)
+            .getBoolean("node_server_enabled", true);
     }
 
     private void startNodeServerService() {
@@ -135,7 +136,8 @@ public final class MainActivity extends Activity {
         if (serverToggleChanging) return;
         boolean previous = isNodeServerEnabled();
         try {
-            getPreferences(MODE_PRIVATE).edit().putBoolean("node_server_enabled", enabled).apply();
+            getSharedPreferences(LanServerService.SETTINGS_PREFS, MODE_PRIVATE)
+                .edit().putBoolean("node_server_enabled", enabled).apply();
             if (enabled) {
                 startNodeServerService();
                 toast("账号服务器已开启，正在启动 P2P 节点");
@@ -145,7 +147,8 @@ public final class MainActivity extends Activity {
             }
             if (p2pStatusView != null) p2pStatusView.setText(readP2PStatus());
         } catch (RuntimeException error) {
-            getPreferences(MODE_PRIVATE).edit().putBoolean("node_server_enabled", previous).apply();
+            getSharedPreferences(LanServerService.SETTINGS_PREFS, MODE_PRIVATE)
+                .edit().putBoolean("node_server_enabled", previous).apply();
             serverToggleChanging = true;
             control.setChecked(previous);
             serverToggleChanging = false;
