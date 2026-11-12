@@ -110,6 +110,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             '账号服务器开关',
             'startNodeServerService()',
             'stopService(new Intent(this, LanServerService.class))',
+            'getSharedPreferences(LanServerService.SETTINGS_PREFS, MODE_PRIVATE)',
         ),
     ),
     (
@@ -119,6 +120,8 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             'P2PAccountBridge.stop();',
             'NativeP2P.stop();',
             'accountServer.stopServer();',
+            'getSharedPreferences(SETTINGS_PREFS, MODE_PRIVATE)',
+            'START_NOT_STICKY',
         ),
     ),
     (
