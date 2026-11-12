@@ -45,6 +45,23 @@ def main() -> None:
         if not required.exists():
             raise SystemExit(f"Required integrated DeepSeek build input is missing: {required}")
 
+    # Copy the Android sources and catalog into the builder checkout because the workflow
+    # cleans the source bundle before Gradle generates the project.
+    embedded_ai_dir = builder / "effectcraft-ai-source"
+    embedded_ai_dir.mkdir(parents=True, exist_ok=True)
+    for ai_file in ("InferenceService.kt", "PluginManagerActivity.kt"):
+        (embedded_ai_dir / ai_file).write_bytes((plugin_src / ai_file).read_bytes())
+    embedded_catalog = builder / "effectcraft-ai-libs.versions.toml"
+    embedded_catalog.write_bytes(catalog_src.read_bytes())
+
+    os.environ["EFFECTCRAFT_AI_SOURCE"] = str(embedded_ai_dir)
+    os.environ["EFFECTCRAFT_AI_CATALOG"] = str(embedded_catalog)
+    github_env = os.environ.get("GITHUB_ENV")
+    if github_env:
+        with open(github_env, "a", encoding="utf-8") as env_file:
+            env_file.write(f"EFFECTCRAFT_AI_SOURCE={embedded_ai_dir}\\n")
+            env_file.write(f"EFFECTCRAFT_AI_CATALOG={embedded_catalog}\\n")
+
     # Reuse the already-tested host UI/JNI wiring, then replace its package installer IPC
     # with an in-process service binding. This preserves the existing assistant state wiring.
     sys.argv = [str(legacy_bridge)]
