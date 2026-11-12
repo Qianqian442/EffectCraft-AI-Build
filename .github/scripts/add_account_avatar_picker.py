@@ -244,7 +244,7 @@ fn encode_avatar_file(path: &std::path::Path) -> Result<(String, String), String
     limits.max_image_width = Some(8192);
     limits.max_image_height = Some(8192);
     limits.max_alloc = Some(96 * 1024 * 1024);
-    reader.limits(limits);
+    reader = reader.limits(limits);
     let decoded = reader.decode().map_err(|error| format!("图片解码失败：{error}"))?;
 
     let mut side = 256u32;
