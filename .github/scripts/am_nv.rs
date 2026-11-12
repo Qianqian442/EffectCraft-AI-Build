@@ -722,8 +722,11 @@ fn import_capcut(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> Resul
                 };
                 let display_name = material.get("material_name").or_else(|| material.get("name")).and_then(J::as_str)
                     .filter(|v| !v.trim().is_empty())
-                    .or_else(|| material.get("path").and_then(J::as_str).and_then(|p| Path::new(p.replace('\\', "/").as_str()).file_name()).and_then(|n| n.to_str()))
-                    .unwrap_or(if kind == "text" { "CapCut Text" } else { "CapCut Clip" }).to_string();
+                    .or_else(|| material.get("path").and_then(J::as_str).and_then(|p| {
+                        let normalized = p.replace('\\', "/");
+                        Path::new(&normalized).file_name().map(|n| n.to_string_lossy().to_string())
+                    }))
+                    .unwrap_or_else(|| if kind == "text" { "CapCut Text" } else { "CapCut Clip" }.to_string());
                 let target = segment.get("target_timerange");
                 let timeline_start = capcut_secs(target.and_then(|v| v.get("start")), 0.0).max(0.0);
                 let target_duration = capcut_secs(target.and_then(|v| v.get("duration")), 1.0 / fps).clamp(1.0 / fps, 86_400.0);
@@ -757,8 +760,10 @@ fn import_capcut(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> Resul
                     let mut doc = TextDoc::default();
                     doc.text = text;
                     doc.size = material.get("font_size").and_then(J::as_f64).unwrap_or(48.0).clamp(1.0, 512.0);
-                    doc.font = material.get("font_path").and_then(J::as_str)
-                        .and_then(|p| Path::new(p.replace('\\', "/").as_str()).file_name()).and_then(|n| n.to_str()).unwrap_or("Inter").to_string();
+                    doc.font = material.get("font_path").and_then(J::as_str).and_then(|p| {
+                        let normalized = p.replace('\\', "/");
+                        Path::new(&normalized).file_name().map(|n| n.to_string_lossy().to_string())
+                    }).unwrap_or_else(|| "Inter".into());
                     let color = parse_xml_color(material.get("text_color").and_then(J::as_str).unwrap_or("#FFFFFFFF"));
                     doc.fill = [color[0] as f32, color[1] as f32, color[2] as f32, color[3] as f32];
                     if let Some(group) = layer.props.sub_mut("text") {
