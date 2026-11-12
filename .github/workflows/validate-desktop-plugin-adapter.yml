@@ -15,6 +15,8 @@ on:
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
+      - '.github/scripts/add_aep_plugin_placeholders.py'
+      - 'vendor/effectcraft/crates/aep/tests/it/import/effects.rs'
       - '.github/scripts/add_chroma_key_effect.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - 'vendor/effectcraft/crates/plugin/src/tests.rs'
@@ -173,6 +175,19 @@ jobs:
           cp vendor/effectcraft/crates/plugin/src/wasm.rs effectcraft/crates/plugin/src/wasm.rs
           cp vendor/effectcraft/crates/plugin/src/lib.rs effectcraft/crates/plugin/src/lib.rs
           cp vendor/effectcraft/crates/plugin/src/tests.rs effectcraft/crates/plugin/src/tests.rs
+
+      - name: Preserve unmapped original AE plug-ins in AEP imports
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile .github/scripts/add_aep_plugin_placeholders.py
+          python3 .github/scripts/add_aep_plugin_placeholders.py
+
+      - name: Test AEP and AEPX parser and import regression suite
+        working-directory: effectcraft
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo test -p effectcraft-aep
 
       - name: Test legacy API v1 and typed-property API v2 plug-in runtime
         working-directory: effectcraft
