@@ -272,7 +272,15 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
     let ctx = ui.ctx().clone();
     let id = android_curve_segment_id();
     let mut state: Option<AndroidCurveSegment> = ctx.data(|data| data.get_temp(id));
-    let button_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, rect.max.y - 56.0), vec2(64.0, 24.0));
+    // Keep the Curve shortcut separate from the global bottom-left Import Media button.
+    // On normal-width timelines it sits beside Import Media; on narrow screens it moves
+    // to a second row above it. The keyframe button remains in its own footer slot.
+    let (curve_x, curve_y) = if rect.width() >= 240.0 {
+        (rect.min.x + 160.0, rect.max.y - 56.0)
+    } else {
+        (rect.min.x + 10.0, rect.max.y - 88.0)
+    };
+    let button_rect = Rect::from_min_size(pos2(curve_x, curve_y), vec2(64.0, 24.0));
     let button = ui.interact(button_rect, egui::Id::new("effectcraft-curve-quick-button"), Sense::click());
     let p = ui.painter();
     p.rect_filled(button_rect, 5.0, if button.hovered() { app.tokens.accent.gamma_multiply(0.25) } else { app.tokens.panel_bg });
