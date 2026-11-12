@@ -327,11 +327,10 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
     let _ = swarm.behaviour_mut().kad.bootstrap();
     swarm.behaviour_mut().kad.get_closest_peers(local_peer_id);
     let service_key = kad::RecordKey::new(&ADMIN_SERVICE_KEY);
-    if is_admin {
-        let _ = swarm.behaviour_mut().kad.start_providing(service_key.clone());
-    } else {
+    if !is_admin {
         swarm.behaviour_mut().kad.get_providers(service_key.clone());
     }
+    let mut authority_advertised = false;
 
     let mut candidate_queue: VecDeque<(PeerId, Multiaddr)> = VecDeque::new();
     let mut candidate_addresses: HashMap<PeerId, Multiaddr> = HashMap::new();
@@ -488,6 +487,26 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                     SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Ping(event)) => {
                         if event.result.is_err() && active_relays.contains(&event.peer) {
                             set_snapshot(|state| state.status = "relay_health_degraded".to_string());
+                        }
+                    }
+                    SwarmEvent::NewListenAddr { address, .. } => {
+                        // A phone behind NAT must publish its accepted relay-circuit
+                        // address, not its unusable 0.0.0.0 listener address. The DHT
+                        // provider record carries the peer's available dial addresses.
+                        if is_admin
+                            && !authority_advertised
+                            && address.iter().any(|protocol| matches!(protocol, Protocol::P2pCircuit))
+                        {
+                            match swarm.behaviour_mut().kad.start_providing(service_key.clone()) {
+                                Ok(_) => {
+                                    authority_advertised = true;
+                                    set_snapshot(|state| {
+                                        state.status = "admin_authority_advertised_via_relay".to_string();
+                                        state.last_error.clear();
+                                    });
+                                }
+                                Err(error) => set_snapshot(|state| state.last_error = format!("账号权威节点发布失败：{error}")),
+                            }
                         }
                     }
                     SwarmEvent::ConnectionEstablished { peer_id, .. } => {
