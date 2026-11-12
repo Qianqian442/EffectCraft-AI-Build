@@ -150,6 +150,17 @@ Limitations:
 - OpenCL interoperability extensions and GPU sharing with the host compositor are not guaranteed.
 - CLVK does not implement CUDA. CUDA-dependent AE plug-ins remain a separate unresolved compatibility class.
 
+### Deep reverse-engineering fallback: Ghidra
+
+- Project: https://github.com/NationalSecurityAgency/ghidra
+- License: Apache-2.0.
+- Supports x86/x86-64 and ARM/AArch64 disassembly, decompilation, call graphs, symbol analysis and scripted analysis of Windows PE programs.
+- Use it in the developer workflow when a closed-source `.aex` cannot be mapped from imports/exports and embedded strings alone: identify its entry point, inspect API calls, follow effect parameter handling, locate CPU/GPU render routines, and export a structured analyst report.
+- This is not an Android runtime and does not automatically recover original source or recreate a plug-in's algorithm. Dynamic testing still needs a compatible Wine/Box64/FEX execution container and the AE host shim.
+
+Ghidra's official project overview and license:
+https://github.com/NationalSecurityAgency/ghidra
+
 ### Static and dynamic PE analysis helpers
 
 Use these as analysis tools, not as the production runtime:
