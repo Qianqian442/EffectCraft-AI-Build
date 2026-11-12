@@ -127,7 +127,7 @@ jobs:
           ready = json.loads(ready_line)
           if ready.get("event") != "ready":
               raise SystemExit(f"Unexpected worker startup event: {ready}")
-          p.stdin.write(json.dumps({"op": "shutdown", "id": 1}) + "\\n")
+          p.stdin.write(json.dumps({"op": "shutdown", "id": 1}) + "\n")
           p.stdin.flush()
           response_line = p.stdout.readline()
           if not response_line:
