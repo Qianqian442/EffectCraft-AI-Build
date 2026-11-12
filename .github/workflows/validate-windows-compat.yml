@@ -9,6 +9,7 @@ on:
       - '.github/workflows/validate-windows-compat.yml'
       - 'windows-compat/runtime-manifest.json'
       - 'windows-compat/aexlo-host/**'
+      - 'windows-compat/android-runtime/**'
       - 'windows-compat/tools/**'
       - '.github/workflows/**'
   workflow_dispatch:
@@ -52,7 +53,22 @@ jobs:
             .github/workflows/validate-windows-compat.yml \
             .github/workflows/build-windows-compat-runtime.yml \
             .github/workflows/build-windows-compat-fallbacks.yml \
-            .github/workflows/build-aexlo-x86-host.yml
+            .github/workflows/build-aexlo-x86-host.yml \
+            .github/workflows/build-box64-box32-backend.yml
+
+      - name: Set up Java for runtime selector checks
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Compile and test Winlator Bionic runtime selector
+        run: |
+          mkdir -p build/windows-runtime-selector
+          javac -d build/windows-runtime-selector \
+            windows-compat/android-runtime/src/main/java/com/effectcraft/windowscompat/WindowsRuntimeSelector.java \
+            windows-compat/android-runtime/src/test/java/com/effectcraft/windowscompat/WindowsRuntimeSelectorSelfTest.java
+          java -ea -cp build/windows-runtime-selector com.effectcraft.windowscompat.WindowsRuntimeSelectorSelfTest
 
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
