@@ -85,7 +85,13 @@
     "keep no application-level memory limits in all runtime backends",
     "test the BOX32-enabled Box64 runtime with 32-bit x86 Linux ELF fixtures and a matching 32-bit Wine/WoW64 prefix",
     "test the 32-bit aexlo Windows host worker inside a matching Box86/Box64-WoW64/FEXCore container before claiming 32-bit AEX execution support",
-    "use a developer-side Ghidra analysis pipeline for closed-source AEX files whose effect identity/parameters cannot be determined with static PE metadata and string extraction alone; do not bundle Ghidra in the main APK"
+    "use a developer-side Ghidra analysis pipeline for closed-source AEX files whose effect identity/parameters cannot be determined with static PE metadata and string extraction alone; do not bundle Ghidra in the main APK",
+    "recreate the Winlator Bionic ImageFS + Proton x86-64 and ARM64EC one-time download/install flow in EffectCraft private app storage, with checksum verification",
+    "verify every component's license/NOTICE/source obligations from the actual package contents before redistribution",
+    "create isolated Wine prefixes from the matching x86-64 and ARM64EC container patterns; never share one prefix between different ABI backends",
+    "launch the x86-64 aexlo worker through Box64+Proton and the x86 worker through a verified 32-bit Wine/WoW64 route",
+    "launch and render the AEX sample under both Box64 x86-64 and ARM64EC/FEXCore Wine/Proton containers",
+    "test the same runtime plan on OPPO/Qualcomm and Huawei/Mali-class ARM64 devices"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
@@ -266,5 +272,131 @@
       "role": "CUDA plug-in execution",
       "status": "not currently solved for ordinary Android GPUs"
     }
-  ]
+  ],
+  "winlator_bionic_runtime": {
+    "repository": "https://github.com/EmuProto/Winlator-Ludashi",
+    "revision": "95224ca7db27ae133dbb1578e004b94b86ef8894",
+    "branch": "winlator_bionic",
+    "repository_code_license": "MIT",
+    "license_caveat": "MIT applies to the fork's source code only. Ubuntu ImageFS, Wine/Proton, Box64, FEXCore, WowBox64, Mesa, DXVK, VKD3D and other runtime assets retain their own licenses and NOTICE/source obligations.",
+    "source_files": {
+      "imagefs_installer": "app/src/main/java/com/winlator/cmod/xenvironment/ImageFsInstaller.java",
+      "imagefs_model": "app/src/main/java/com/winlator/cmod/xenvironment/ImageFs.java",
+      "wine_info": "app/src/main/java/com/winlator/cmod/core/WineInfo.java",
+      "launcher": "app/src/main/java/com/winlator/cmod/xenvironment/components/GuestProgramLauncherComponent.java",
+      "process_helper": "app/src/main/java/com/winlator/cmod/core/ProcessHelper.java",
+      "container_manager": "app/src/main/java/com/winlator/cmod/container/ContainerManager.java",
+      "content_manager": "app/src/main/java/com/winlator/cmod/contents/ContentsManager.java"
+    },
+    "base_imagefs": {
+      "version": 21,
+      "archive_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/imagefs/imagefs.txz",
+      "checksum_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/imagefs/imagefs.txz.sha256sum",
+      "source_build_uses_four_parts": true,
+      "install_path": "<app-private-files>/imagefs",
+      "role": "Ubuntu Bionic userland and ARM64 Android helper libraries, including Wine/graphics runtime layout"
+    },
+    "wine_runtimes": [
+      {
+        "id": "proton-9.0-x86_64",
+        "architecture": "x86_64",
+        "archive_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-x86_64.txz",
+        "checksum_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-x86_64.txz.sha256sum",
+        "install_path": "/opt/proton-9.0-x86_64",
+        "launcher": "/usr/bin/box64 <proton-bin>/<guest-executable>",
+        "container_pattern": {
+          "path": "app/src/main/assets/proton-9.0-x86_64_container_pattern.tzst",
+          "size_bytes": 8698674,
+          "git_blob_sha1": "c7a6ed5972f6a357ed033da88b5de0dc5eaaf468",
+          "raw_url": "https://raw.githubusercontent.com/EmuProto/Winlator-Ludashi/95224ca7db27ae133dbb1578e004b94b86ef8894/app/src/main/assets/proton-9.0-x86_64_container_pattern.tzst"
+        },
+        "purpose": "Standard x86-64 Windows PE execution through Wine/Proton and Box64"
+      },
+      {
+        "id": "proton-9.0-arm64ec",
+        "architecture": "ARM64EC",
+        "archive_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-arm64ec.txz",
+        "checksum_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-arm64ec.txz.sha256sum",
+        "install_path": "/opt/proton-9.0-arm64ec",
+        "launcher": "<proton-bin>/<guest-executable> (native ARM64EC Wine/Proton path, no Box64 wrapper)",
+        "container_pattern": {
+          "path": "app/src/main/assets/proton-9.0-arm64ec_container_pattern.tzst",
+          "size_bytes": 10309411,
+          "git_blob_sha1": "6a2fe6f1a7aa2f70d6f15d2c057fc7c6b2246248",
+          "raw_url": "https://raw.githubusercontent.com/EmuProto/Winlator-Ludashi/95224ca7db27ae133dbb1578e004b94b86ef8894/app/src/main/assets/proton-9.0-arm64ec_container_pattern.tzst"
+        },
+        "purpose": "ARM64EC Wine/Proton with FEXCore or WowBox64 Windows WoW64 emulator DLL selected via HODLL"
+      }
+    ],
+    "emulator_components": {
+      "box64": {
+        "path": "app/src/main/assets/box64/box64-0.3.7.tzst",
+        "size_bytes": 2971992,
+        "git_blob_sha1": "32c8a016de8368c68090c27e6de91389f927cc04",
+        "role": "Standard x86-64 Wine/Proton process translation"
+      },
+      "fexcore": {
+        "path": "app/src/main/assets/fexcore/fexcore-2508.tzst",
+        "size_bytes": 3416724,
+        "git_blob_sha1": "9cde1a54074e183ef627c1d1a18a943cff622c86",
+        "role": "ARM64EC and 32-bit WoW64 DLLs; extract into the matching prefix system32"
+      },
+      "wowbox64": {
+        "path": "app/src/main/assets/wowbox64/wowbox64-0.3.7.tzst",
+        "size_bytes": 1049978,
+        "git_blob_sha1": "807702ccb71c7ee5c0983f02e5217517cb3caf95",
+        "role": "Alternative 32-bit WoW64 DLL; extract into the matching prefix system32"
+      }
+    },
+    "launch_rules": {
+      "x86_64": {
+        "command": "<imagefs>/usr/bin/box64 <imagefs>/opt/proton-9.0-x86_64/bin/<guest-executable>",
+        "environment": [
+          "BOX64_DYNAREC=1",
+          "BOX64_X11GLX=1",
+          "WINEPREFIX=<private-prefix>"
+        ]
+      },
+      "arm64ec_fexcore": {
+        "command": "<imagefs>/opt/proton-9.0-arm64ec/bin/<guest-executable>",
+        "environment": [
+          "HODLL=libwow64fex.dll",
+          "WINEPREFIX=<private-prefix>"
+        ],
+        "dlls": [
+          "libarm64ecfex.dll",
+          "libwow64fex.dll"
+        ]
+      },
+      "arm64ec_wowbox64": {
+        "command": "<imagefs>/opt/proton-9.0-arm64ec/bin/<guest-executable>",
+        "environment": [
+          "HODLL=wowbox64.dll",
+          "WINEPREFIX=<private-prefix>"
+        ],
+        "dlls": [
+          "wowbox64.dll"
+        ]
+      }
+    },
+    "install_flow": [
+      "Download ImageFS and Proton runtime archives from upstream and verify their SHA-256 sidecars before extraction.",
+      "Extract ImageFS into the app-private files/imagefs directory.",
+      "Extract selected Proton runtime under /opt/proton-9.0-<arch>.",
+      "Create a separate private Wine prefix per EffectCraft compatibility container by extracting the pinned matching container-pattern archive.",
+      "Install common Windows DLLs for x86-64/ARM64EC and i386 from the Wine runtime into system32/syswow64 as the upstream ContainerManager does.",
+      "For ARM64EC, extract FEXCore or WowBox64 emulator DLLs into the selected prefix system32 and set HODLL consistently.",
+      "Launch the Windows AE host worker in its own supervised process using the architecture-specific launcher.",
+      "Preserve logs and allow switching to another backend/prefix if a plugin fails."
+    ],
+    "memory_policy": {
+      "application_imposed_ram_limit": false,
+      "rlimit_as": false,
+      "cgroup_memory_limit": false,
+      "box64_memory_cap": false,
+      "fexcore_memory_cap": false,
+      "wine_memory_cap": false,
+      "video_memory_limit": "Use 0/driver default; never impose an arbitrary fixed cap for plug-in compatibility"
+    }
+  }
 }
