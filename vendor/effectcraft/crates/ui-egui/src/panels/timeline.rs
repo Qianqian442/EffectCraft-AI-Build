@@ -4801,7 +4801,7 @@ fn current_time_indicator(app: &mut EffectcraftApp, g: &Rw) {
     }
 }
 
-/// The footer: scroll bars, the switches / modes toggle and render time.
+/// The footer: scroll bars and render time.
 fn footer_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Rw) -> Rect {
     let t = g.tl.t;
     let rect = g.tl.rect;
@@ -4824,19 +4824,6 @@ fn footer_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Rw) -> Rect {
         // The layer rows' scroll bar, on the right edge beside the time graph.
         let track = Rect::from_min_max(pos2(rect.max.x - 6.0, rows_rect.min.y + 1.0), pos2(rect.max.x - 2.0, rows_rect.max.y - 1.0));
         app.ui.timeline.scroll_y = widgets::scroll_bar(ui, &mut app.auto, "timeline.scroll", track, app.ui.timeline.scroll_y, max_scroll, &t);
-    }
-    let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));
-    let tresp = ui.interact(tgl, egui::Id::unique("tl-toggle-modes"), Sense::click());
-    p.text(
-        tgl.left_center(),
-        Align2::LEFT_CENTER,
-        crate::i18n::tr("Toggle Switches / Modes"),
-        Tokens::ui(11.0),
-        if tresp.hovered() { t.text } else { t.text_dim },
-    );
-    app.auto.add("timeline.toggleSwitchesModes", tgl, "Toggle Switches / Modes");
-    if tresp.clicked() {
-        app.ui.timeline.show_modes = !app.ui.timeline.show_modes;
     }
     let ms = app.frames.last_ms.lock().map(|v| *v).unwrap_or(0.0);
     p.text(
