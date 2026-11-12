@@ -10,6 +10,8 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -50,9 +52,19 @@ public final class MainActivity extends Activity {
     private EditText searchInput;
     private Button loginButton;
     private TextView loginStatus;
+    private TextView p2pStatusView;
+    private final Handler p2pUiHandler = new Handler(Looper.getMainLooper());
+    private final Runnable p2pStatusRefresh = new Runnable() {
+        @Override public void run() {
+            if (p2pStatusView != null) p2pStatusView.setText(readP2PStatus());
+            p2pUiHandler.postDelayed(this, 5000);
+        }
+    };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        NativeP2P.start(this);
+        p2pUiHandler.postDelayed(p2pStatusRefresh, 2500);
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
@@ -68,6 +80,34 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private String readP2PStatus() {
+        if (!NativeP2P.isAvailable()) return "原生 P2P 组件未加载，请检查管理版 APK 构建包。";
+        try {
+            JSONObject value = new JSONObject(NativeP2P.status());
+            String peer = value.optString("peerId", "等待分配");
+            String state = value.optString("status", "starting");
+            int peers = value.optInt("discoveredPeers", 0);
+            int candidates = value.optInt("relayCandidates", 0);
+            int active = value.optInt("activeRelays", 0);
+            int direct = value.optInt("directPeers", 0);
+            String error = value.optString("lastError", "");
+            return "节点 ID：" + peer
+                + "\n网络状态：" + state
+                + " · 已发现节点：" + peers
+                + " · 候选中继：" + candidates
+                + " · 已获准中继：" + active
+                + " · 直连节点：" + direct
+                + (error.isEmpty() ? "" : "\n最近错误：" + error);
+        } catch (Exception error) {
+            return "正在读取本机 P2P 状态：" + error.getMessage();
+        }
+    }
+
+    @Override protected void onDestroy() {
+        p2pUiHandler.removeCallbacks(p2pStatusRefresh);
+        super.onDestroy();
+    }
+
     /** Server-authoritative global node switch; never trust a local preference for this control. */
     private void addGlobalNodePanel(LinearLayout page) {
         LinearLayout panel = new LinearLayout(this);
@@ -75,6 +115,10 @@ public final class MainActivity extends Activity {
         panel.setPadding(dp(12), dp(10), dp(12), dp(10));
         panel.setBackground(rounded(Color.WHITE));
         panel.addView(text("全局节点网络控制", 16, true));
+        panel.addView(text("本机 P2P 节点（公共中继发现）", 13, true));
+        p2pStatusView = text(readP2PStatus(), 11, false);
+        p2pStatusView.setTextColor(Color.rgb(75, 84, 98));
+        panel.addView(p2pStatusView);
         TextView status = text("正在读取云端节点网络状态…", 13, false);
         panel.addView(status);
         TextView count = text("在线节点：读取中", 12, false);
