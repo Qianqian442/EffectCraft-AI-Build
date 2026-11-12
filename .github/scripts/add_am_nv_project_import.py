@@ -55,6 +55,9 @@ def main() -> None:
     cmd_registry = root / "crates/engine/src/cmd.rs"
     replace_once(cmd_registry, "mod import_project;\n",
                  "mod am_nv;\nmod import_project;\n", "project import module registration")
+    replace_once(cmd_registry, '        v.extend(file::specs());\n',
+                 '        v.extend(file::specs());\n        v.extend(am_nv::specs());\n',
+                 "register AM, NodeVideo and CapCut project export commands")
 
     import_project = root / "crates/engine/src/cmd/import_project.rs"
     replace_once(
