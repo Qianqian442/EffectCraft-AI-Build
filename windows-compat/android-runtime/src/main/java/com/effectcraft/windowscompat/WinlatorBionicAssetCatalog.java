@@ -2,6 +2,7 @@ package com.effectcraft.windowscompat;
 
 import java.net.URI;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 
 /** Immutable source catalog for the pinned Winlator Bionic runtime components. */
@@ -24,7 +25,7 @@ public final class WinlatorBionicAssetCatalog {
                 RuntimeAssetInstaller.DigestKind.SHA256_SIDECAR,
                 null,
                 -1,
-                Path.of("downloads/imagefs-v21.txz"));
+                Paths.get("downloads/imagefs-v21.txz"));
     }
 
     public static RuntimeAssetInstaller.AssetSpec protonX64() {
@@ -90,7 +91,7 @@ public final class WinlatorBionicAssetCatalog {
                 RuntimeAssetInstaller.DigestKind.SHA256_SIDECAR,
                 null,
                 -1,
-                Path.of(destination));
+                Paths.get(destination));
     }
 
     private static RuntimeAssetInstaller.AssetSpec gitAsset(
@@ -102,6 +103,6 @@ public final class WinlatorBionicAssetCatalog {
                 RuntimeAssetInstaller.DigestKind.GIT_BLOB_SHA1,
                 sha1,
                 size,
-                Path.of(destination));
+                Paths.get(destination));
     }
 }
