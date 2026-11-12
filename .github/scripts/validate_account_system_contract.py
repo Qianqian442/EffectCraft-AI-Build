@@ -83,6 +83,26 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Main APK revalidates user ban state every ten seconds while editing",
+        ".github/scripts/add_home_lan_account_gate.py",
+        (
+            'Duration::from_secs(10)',
+            '"/v1/me"',
+        ),
+    ),
+    (
+        "Android SQLite account lifecycle regression tests are part of the admin build",
+        "admin-app/app/src/test/java/com/qianqian/effectcraftadmin/LanAccountServerAccountFlowTest.java",
+        (
+            'qqRegistrationLoginBanAndUnbanUseTheSameSqliteAuthority',
+            'wechatOnlyRegistrationAndLoginAreSupported',
+            'banned user must not log in',
+            'banned users cannot update profile',
+            'unbanned account can log in again',
+            'PHOTO_AVATAR',
+        ),
+    ),
+    (
         "Admin phone has a real on/off switch and stops the native P2P node",
         "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
         (
