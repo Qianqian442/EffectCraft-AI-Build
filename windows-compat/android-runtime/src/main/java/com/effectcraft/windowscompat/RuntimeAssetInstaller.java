@@ -79,6 +79,12 @@ public final class RuntimeAssetInstaller {
             this.checksumSidecar = checksumSidecar == null ? null : requireHttps(checksumSidecar);
             this.digestKind = Objects.requireNonNull(digestKind, "digest kind");
             this.expectedDigest = expectedDigest == null ? null : expectedDigest.toLowerCase(Locale.ROOT);
+            if (this.expectedDigest != null) {
+                String pattern = digestKind == DigestKind.SHA256_SIDECAR ? "(?i)[0-9a-f]{64}" : "(?i)[0-9a-f]{40}";
+                if (!this.expectedDigest.matches(pattern)) {
+                    throw new IllegalArgumentException("pinned digest has the wrong length or format");
+                }
+            }
             this.expectedSize = expectedSize;
             this.destinationRelative = Objects.requireNonNull(destinationRelative, "destination");
             if (destinationRelative.isAbsolute() || destinationRelative.normalize().startsWith("..")) {
@@ -116,6 +122,10 @@ public final class RuntimeAssetInstaller {
             connection.setInstanceFollowRedirects(true);
             connection.setRequestProperty("User-Agent", "EffectCraft-Windows-Compat-Runtime/1");
             int status = connection.getResponseCode();
+            if (!"https".equalsIgnoreCase(connection.getURL().getProtocol())) {
+                connection.disconnect();
+                throw new IOException("refusing insecure HTTP redirect for " + uri);
+            }
             if (status < 200 || status >= 300) {
                 connection.disconnect();
                 throw new IOException("HTTP " + status + " downloading " + uri);
@@ -141,7 +151,9 @@ public final class RuntimeAssetInstaller {
         }
         Path parent = destination.getParent();
         if (parent == null) throw new IOException("asset destination has no parent");
+        ensureNoSymlinkPath(parent);
         Files.createDirectories(parent);
+        ensureNoSymlinkPath(parent);
 
         String expected = expectedDigest(spec);
         if (Files.isRegularFile(destination) && matches(spec, destination, expected)) {
@@ -220,7 +232,7 @@ public final class RuntimeAssetInstaller {
                 bytes.write(buffer, 0, count);
             }
         }
-        Matcher matcher = SHA256_TOKEN.matcher(bytes.toString(StandardCharsets.UTF_8));
+        Matcher matcher = SHA256_TOKEN.matcher(new String(bytes.toByteArray(), StandardCharsets.UTF_8));
         if (!matcher.find()) throw new IOException("invalid SHA-256 sidecar for " + spec.id);
         return matcher.group(1).toLowerCase(Locale.ROOT);
     }
@@ -267,6 +279,20 @@ public final class RuntimeAssetInstaller {
             throw new IllegalArgumentException("runtime assets must use HTTPS URLs");
         }
         return uri;
+    }
+
+    private void ensureNoSymlinkPath(Path path) throws IOException {
+        Path current = privateRoot;
+        if (Files.isSymbolicLink(current)) {
+            throw new IOException("private runtime root must not be a symbolic link");
+        }
+        Path relative = privateRoot.relativize(path.toAbsolutePath().normalize());
+        for (Path part : relative) {
+            current = current.resolve(part);
+            if (Files.exists(current) && Files.isSymbolicLink(current)) {
+                throw new IOException("symbolic link in private runtime path: " + current);
+            }
+        }
     }
 
     private static String requireText(String value, String label) {
