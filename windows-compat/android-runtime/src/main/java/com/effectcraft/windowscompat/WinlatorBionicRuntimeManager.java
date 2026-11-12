@@ -175,7 +175,9 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         Path protonArm = imageFsRoot.resolve("opt/proton-9.0-arm64ec");
         if (!Files.isRegularFile(box64, LinkOption.NOFOLLOW_LINKS)
                 || !Files.isDirectory(protonX64, LinkOption.NOFOLLOW_LINKS)
-                || !Files.isDirectory(protonArm, LinkOption.NOFOLLOW_LINKS)) {
+                || !Files.isDirectory(protonArm, LinkOption.NOFOLLOW_LINKS)
+                || !Files.isRegularFile(protonX64.resolve("bin/wine64"))
+                || !Files.isRegularFile(protonArm.resolve("bin/wine64"))) {
             throw new IOException("runtime install marker exists but required Wine/Box64 files are missing");
         }
     }
@@ -239,9 +241,9 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("Wine common DLL source directory is missing: " + source);
         }
-        Files.createDirectories(destination);
+        createDirectoriesNoSymlink(privateRoot, destination);
         try (var stream = Files.list(source)) {
-            for (Path file : (Iterable<Path>) stream.sorted().iterator()::iterator) {
+            for (Path file : (Iterable<Path>) stream.sorted()::iterator) {
                 String name = file.getFileName().toString();
                 if (name.equalsIgnoreCase("tabtip.exe") || name.equalsIgnoreCase("icu.dll")) continue;
                 Path actual = file;
@@ -407,6 +409,24 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         if (container == null || container.architecture != expected
                 || !container.root.toAbsolutePath().normalize().startsWith(containersRoot)) {
             throw new IOException("container architecture/root mismatch");
+        }
+    }
+
+    private static void createDirectoriesNoSymlink(Path privateRoot, Path path) throws IOException {
+        Path root = privateRoot.toAbsolutePath().normalize();
+        Path normalized = path.toAbsolutePath().normalize();
+        if (!normalized.startsWith(root)) throw new IOException("directory escapes private runtime root");
+        if (Files.isSymbolicLink(root)) throw new IOException("private runtime root is a symlink");
+        Path current = root;
+        for (Path part : root.relativize(normalized)) {
+            current = current.resolve(part);
+            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(current) || !Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException("unsafe runtime directory component: " + current);
+                }
+            } else {
+                Files.createDirectory(current);
+            }
         }
     }
 
