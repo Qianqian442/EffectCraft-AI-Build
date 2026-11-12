@@ -323,5 +323,34 @@ if "fn effectcraft_export_device_preflight(" not in header:
 elif "EFFECTCRAFT_ANDROID_EXPORT_DEVICE_PREFLIGHT_V2" not in header:
     raise SystemExit("A preflight helper exists without the expected marker; refusing to overwrite it")
 
+dimension_helper = r'''
+/// Preserve source aspect ratio while converting the selected export resolution
+/// to even dimensions. Supports landscape, portrait and square compositions.
+fn effectcraft_export_dimensions(source_width: u32, source_height: u32, resolution: &str) -> (u32, u32) {
+    let target_height = match resolution {
+        "480" => 480_u32,
+        "720" => 720_u32,
+        "1080" => 1080_u32,
+        "1440" => 1440_u32,
+        "2160" => 2160_u32,
+        _ => return (source_width.max(2) & !1, source_height.max(2) & !1),
+    };
+    let source_width = source_width.max(1);
+    let source_height = source_height.max(1);
+    let scaled_width = ((source_width as f64 * target_height as f64)
+        / source_height as f64)
+        .round()
+        .clamp(2.0, 8192.0) as u32;
+    let width = (scaled_width.max(2) & !1).max(2);
+    (width, target_height)
+}
+'''
+if "fn effectcraft_export_dimensions(" not in header:
+    header = header.rstrip() + "\n\n" + dimension_helper.strip() + "\n"
+if "fn effectcraft_export_dimensions(" not in header:
+    raise SystemExit("Export dimensions helper is still missing after the repair.")
+
 header_path.write_text(header)
 print("Added comprehensive Android export device checks.")
+
+# The final generated header must contain both export helper functions.
