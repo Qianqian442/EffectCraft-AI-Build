@@ -10,6 +10,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from itertools import islice
 
 import lief
 
@@ -27,7 +28,7 @@ def audit(path: Path) -> dict:
             "dll": library.name,
             "symbols": [
                 entry.name if entry.name else f"ordinal:{entry.ordinal}"
-                for entry in library.entries[:512]
+                for entry in islice(library.entries, 512)
             ],
         })
 
@@ -39,7 +40,7 @@ def audit(path: Path) -> dict:
                 "address": int(entry.address),
                 "forwarded": bool(entry.is_forwarded),
             }
-            for entry in binary.exported_functions[:2048]
+            for entry in islice(binary.exported_functions, 2048)
         ]
 
     sections = [
