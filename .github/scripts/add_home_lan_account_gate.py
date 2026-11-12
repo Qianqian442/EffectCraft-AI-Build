@@ -144,9 +144,13 @@ impl AccountState {
         if let Some(name) = Self::account_file(config) {
             if let Some(data) = config.and_then(|store| store.read(name)) {
                 if let Ok(saved) = serde_json::from_str::<SavedAccount>(&data) {
-                    // Upgrade old LAN-only profiles to automatic P2P discovery while
-                    // retaining the login token issued by the administrator phone.
-                    self.server_url = DEFAULT_SERVER.to_string();
+                    // Preserve an explicitly pinned administrator identity. Upgrade
+                    // legacy LAN profiles to auto-discovery without discarding tokens.
+                    self.server_url = if saved.server_url.starts_with("p2p://") {
+                        saved.server_url
+                    } else {
+                        DEFAULT_SERVER.to_string()
+                    };
                     if !saved.token.is_empty() {
                         self.token = Some(saved.token);
                     }
@@ -185,7 +189,7 @@ impl AccountState {
         let (tx, rx) = mpsc::channel();
         self.pending = Some(rx);
         self.pending_action = Some(action);
-        self.status = "正在连接家中的账号服务器…".to_string();
+        self.status = "正在连接管理员账号节点…".to_string();
         std::thread::spawn(move || {
             let _ = tx.send(http_request(&url, &method, &path, body, token.as_deref()));
         });
@@ -323,7 +327,7 @@ impl AccountState {
 
 fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
     if url.starts_with("p2p://") {
-        return p2p_account_request(method, path, body, token);
+        return p2p_account_request(url, method, path, body, token);
     }
     let rest = url.strip_prefix("http://").ok_or_else(|| "服务器连接方式无效，请使用 p2p://auto 或家庭局域网 http:// 地址".to_string())?;
     let authority = rest.split('/').next().unwrap_or("");
@@ -371,7 +375,18 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
 }
 
 
-fn p2p_account_request(method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
+fn p2p_account_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
+    let peer_spec = url.strip_prefix("p2p://").unwrap_or("auto");
+    let preferred_peer_id = if peer_spec.is_empty() || peer_spec == "auto" {
+        String::new()
+    } else {
+        if peer_spec.len() < 30 || peer_spec.len() > 120
+            || !peer_spec.bytes().all(|c| c.is_ascii_alphanumeric())
+        {
+            return Err("管理员节点 ID 不正确。请填写 p2p://auto 或 p2p:// 后接管理版显示的节点 ID。".to_string());
+        }
+        peer_spec.to_string()
+    };
     let address = "127.0.0.1:8789".parse::<std::net::SocketAddr>().map_err(|e| e.to_string())?;
     let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(5))
         .map_err(|_| "P2P 账号通道尚未就绪，请确认管理员手机已启动账号管理版并保持在线".to_string())?;
@@ -382,6 +397,7 @@ fn p2p_account_request(method: &str, path: &str, body: Value, token: Option<&str
         "method": method,
         "path": path,
         "token": token.unwrap_or(""),
+        "preferred_peer_id": preferred_peer_id,
         "body": body_text
     });
     let wire = serde_json::to_vec(&packet).map_err(|e| e.to_string())?;
@@ -514,7 +530,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             ui.separator();
             ui.label("账号节点连接方式");
             ui.text_edit_singleline(&mut app.account.server_url);
-            ui.small("默认 p2p://auto：同 Wi-Fi 优先直连，跨网络自动尝试打洞和可用公共中继；也可填写管理员手机的局域网 http://IP:8787 地址。");
+            ui.small("填写 p2p://auto 自动发现，或填写 p2p://管理员节点ID 固定核验管理员身份。节点 ID 可在管理版复制；首次配对后自动连接，不需逐次审批。");
             ui.horizontal(|ui| {
                 if ui.selectable_label(!app.account.login_mode_register, "登录").clicked() {
                     app.account.login_mode_register = false;
