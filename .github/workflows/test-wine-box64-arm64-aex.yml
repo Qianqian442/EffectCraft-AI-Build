@@ -177,13 +177,30 @@ jobs:
             test -d "$src"
           done
           while IFS= read -r -d '' file; do
-            cp -n "$file" "$prefix/drive_c/windows/system32/"
+            target="$prefix/drive_c/windows/system32/$(basename "$file")"
+            if [ ! -e "$target" ]; then cp "$file" "$target"; fi
           done < <(find "$wine_root/lib/wine/x86_64-windows" -maxdepth 1 -type f ! -iname 'tabtip.exe' ! -iname 'icu.dll' -print0)
           while IFS= read -r -d '' file; do
-            cp -n "$file" "$prefix/drive_c/windows/syswow64/"
+            target="$prefix/drive_c/windows/syswow64/$(basename "$file")"
+            if [ ! -e "$target" ]; then cp "$file" "$target"; fi
           done < <(find "$wine_root/lib/wine/i386-windows" -maxdepth 1 -type f ! -iname 'tabtip.exe' ! -iname 'icu.dll' -print0)
-          test -x "$wine_root/bin/wine64"
-          file "$wine_root/bin/wine64"
+          echo "Proton bin directory:"
+          find "$wine_root" -maxdepth 5 -type f -perm /111 -print | sort | head -n 120
+          echo "Potential Wine launchers:"
+          find "$wine_root" -maxdepth 8 \( -type f -o -type l \) \( -name 'wine64' -o -name 'wine' -o -name 'wine64-preloader' \) -print
+          wine_launcher=""
+          for candidate in "$wine_root/bin/wine64" "$wine_root/bin/wine" "$wine_root/files/bin/wine64" "$wine_root/files/bin/wine"; do
+            if [ -e "$candidate" ]; then wine_launcher="$candidate"; break; fi
+          done
+          if [ -z "$wine_launcher" ]; then
+            wine_launcher="$(find "$wine_root" -maxdepth 8 -type f -perm /111 \( -name 'wine64' -o -name 'wine' \) -print -quit)"
+          fi
+          if [ -z "$wine_launcher" ]; then
+            echo "No executable Wine launcher found in Proton root" >&2
+            exit 1
+          fi
+          echo "WINE_LAUNCHER=$wine_launcher" >> "$GITHUB_ENV"
+          file "$wine_launcher"
 
       - name: Smoke-test Proton under ARM64 Box64
         env:
@@ -197,8 +214,7 @@ jobs:
         run: |
           set -euo pipefail
           imagefs="$PWD/imagefs"
-          wine64="$imagefs/opt/proton-9.0-x86_64/bin/wine64"
-          "$imagefs/usr/bin/box64" "$wine64" --version
+          "$imagefs/usr/bin/box64" "$WINE_LAUNCHER" --version
 
       - name: Run real Windows AEX worker and render a sample frame
         env:
@@ -233,7 +249,7 @@ jobs:
               handle.write(json.dumps(payload) + "\n")
               handle.write(json.dumps({"cmd":"quit"}) + "\n")
           PY
-          BOX64_DYNAREC=1 "$PWD/imagefs/usr/bin/box64" "$PWD/imagefs/opt/proton-9.0-x86_64/bin/wine64" "$worker_win" "$plugin_win" < worker-requests.jsonl > worker-output.jsonl 2> worker-error.log
+          BOX64_DYNAREC=1 "$PWD/imagefs/usr/bin/box64" "$WINE_LAUNCHER" "$worker_win" "$plugin_win" < worker-requests.jsonl > worker-output.jsonl 2> worker-error.log
           python3 - <<'PY'
           import json
           from pathlib import Path
