@@ -86,17 +86,18 @@ final class LanAccountServer implements Runnable {
 
     static String ensureAdminPassword(Context context) {
         SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (p.contains("admin_hash")) return p.getString("admin_initial_password_pending", null);
-        String password = randomPassword();
+        if (p.contains("admin_hash")) return null;
+        // Create a throwaway local verifier so the service can start. On the
+        // first login, the owner-entered password is adopted only if SQLite
+        // confirms that there are zero registered accounts.
+        String placeholder = randomPassword();
         byte[] salt = randomBytes(16);
-        String hash = hashPassword(password, salt);
         p.edit()
             .putString("admin_salt", b64(salt))
-            .putString("admin_hash", hash)
+            .putString("admin_hash", hashPassword(placeholder, salt))
             .putString("jwt_secret", b64(randomBytes(48)))
-            .putString("admin_initial_password_pending", password)
             .apply();
-        return password;
+        return null;
     }
 
     static void acknowledgeAdminPasswordSaved(Context context) {
