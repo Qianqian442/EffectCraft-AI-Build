@@ -64,13 +64,13 @@ if package_name != "com.artcraft.effectcraft":
     raise SystemExit(f"Unexpected EffectCraft Android package for P2P JNI: {package_name}")
 
 text = manifest.read_text(encoding="utf-8")
-permission_block = '''
+permission_block = """
 [[package.metadata.android.uses_permission]]
 name = "android.permission.ACCESS_WIFI_STATE"
 
 [[package.metadata.android.uses_permission]]
 name = "android.permission.CHANGE_WIFI_MULTICAST_STATE"
-'''
+"""
 if "android.permission.CHANGE_WIFI_MULTICAST_STATE" not in text:
     anchor = "[package.metadata.android.application]"
     if text.count(anchor) != 1:
