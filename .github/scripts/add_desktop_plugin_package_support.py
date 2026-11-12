@@ -204,10 +204,11 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                 || entry_name.to_ascii_lowercase().contains(".ofx.bundle/") { "native" }
             else if ["cube", "3dl", "lut", "look", "csp", "spi1d", "spi3d", "spimtx", "cc", "ccc", "cdl", "ocio",
                      "png", "jpg", "jpeg", "webp", "tif", "tiff", "exr", "ttf", "otf",
-                     "json", "xml", "txt", "md", "toml", "cmake", "mk", "sh", "py", "gradle",
+                     "json", "xml", "txt", "md", "toml", "plist", "rsrc", "r", "rc", "strings", "manifest",
+                     "yaml", "yml", "ini", "config", "pdb", "map", "cmake", "mk", "sh", "py", "gradle",
                      "glsl", "frag", "vert", "wgsl", "hlsl", "dctl", "metal",
                      "fx", "osl", "h", "hpp", "c", "cpp", "rs", "sbsar"].contains(&extension.as_str()) { "asset" }
-            else if extension == "jsxbin" { "encoded_script" }
+            else if extension == "jsxbin" { "asset" }
             else { "unknown" };
 
         if kind == "unknown" {
@@ -277,7 +278,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     .map_err(|error| bad(CMD, format!("无法保存素材 {file_name}：{error}")))?;
                 // Read common package manifests for effect identifiers when the binary filename
                 // is generic (for example, a bundle named simply "Plugin.aex").
-                if ["json", "xml", "txt", "md", "toml", "plist", "yaml", "yml"].contains(&extension.as_str()) {
+                if ["json", "xml", "txt", "md", "toml", "plist", "rsrc", "r", "rc", "strings", "manifest", "yaml", "yml", "ini", "config", "pdb", "map"].contains(&extension.as_str()) {
                     let metadata = String::from_utf8_lossy(&bytes);
                     if let Some(mapping) = desktop_native_compatibility(&entry_name, &metadata) {
                         push_unique_native_mapping(&mut native_mappings, mapping);
@@ -425,7 +426,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从原生插件提取的可读元数据/参数线索：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。若文件名匹配已内置兼容效果，报告会列出替代效果；替代效果不是原厂插件。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从原生插件提取的可读元数据/参数线索：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。若文件名匹配已内置兼容效果，报告会列出替代效果；替代效果不是原厂插件。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。PiPL 的 .r/.rc/.rsrc、Info.plist 和 JSXBIN 编译脚本会归档并提取可读字符串用于后续移植分析，但不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
