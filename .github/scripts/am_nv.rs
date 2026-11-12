@@ -112,7 +112,7 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
         let lower = name.to_ascii_lowercase();
         if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
             project_file = Some(destination);
-        } else if lower.ends_with("draft_content.json") || lower.ends_with(".capcut.json") {
+        } else if project_file.is_none() && (lower.ends_with("draft_content.json") || lower.ends_with(".capcut.json")) {
             project_file = Some(destination);
         } else if lower.ends_with(".nv") {
             if project_file.is_none() { project_file = Some(destination); }
@@ -722,6 +722,7 @@ fn import_capcut(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> Resul
                 };
                 let display_name = material.get("material_name").or_else(|| material.get("name")).and_then(J::as_str)
                     .filter(|v| !v.trim().is_empty())
+                    .map(str::to_owned)
                     .or_else(|| material.get("path").and_then(J::as_str).and_then(|p| {
                         let normalized = p.replace('\\', "/");
                         Path::new(&normalized).file_name().map(|n| n.to_string_lossy().to_string())
