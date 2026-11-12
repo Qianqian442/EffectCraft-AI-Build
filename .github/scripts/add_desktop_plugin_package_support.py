@@ -67,6 +67,57 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         output
     }
 
+    fn native_binary_info(bytes: &[u8]) -> (&'static str, &'static str) {
+        if bytes.len() >= 2 && &bytes[..2] == b"MZ" {
+            if bytes.len() >= 0x40 {
+                let offset = u32::from_le_bytes([bytes[0x3c], bytes[0x3d], bytes[0x3e], bytes[0x3f]]) as usize;
+                if let Some(header) = bytes.get(offset..offset.saturating_add(6)) {
+                    if header.len() >= 6 && &header[..4] == b"PE\0\0" {
+                        let machine = u16::from_le_bytes([header[4], header[5]]);
+                        let arch = match machine {
+                            0x014c => "x86",
+                            0x8664 => "x86-64",
+                            0xaa64 => "ARM64",
+                            0x01c4 => "ARM",
+                            0x0200 => "IA-64",
+                            _ => "unknown PE architecture",
+                        };
+                        return ("Windows PE", arch);
+                    }
+                }
+            }
+            return ("Windows MZ executable/DLL", "architecture not resolved");
+        }
+        if bytes.len() >= 20 && &bytes[..4] == b"\x7fELF" {
+            let machine = if bytes[5] == 2 {
+                u16::from_be_bytes([bytes[18], bytes[19]])
+            } else {
+                u16::from_le_bytes([bytes[18], bytes[19]])
+            };
+            let arch = match machine {
+                3 => "x86",
+                40 => "ARM",
+                62 => "x86-64",
+                183 => "AArch64",
+                243 => "RISC-V",
+                _ => "unknown ELF architecture",
+            };
+            return ("ELF", arch);
+        }
+        if bytes.len() >= 4 {
+            let magic = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+            return match magic {
+                0xfeedface => ("Mach-O", "32-bit big-endian"),
+                0xcefaedfe => ("Mach-O", "32-bit little-endian"),
+                0xfeedfacf => ("Mach-O", "64-bit big-endian"),
+                0xcffaedfe => ("Mach-O", "64-bit little-endian"),
+                0xcafebabe | 0xbebafeca | 0xcafebabf | 0xbfbafeca => ("Mach-O universal/fat", "multiple architectures"),
+                _ => ("unknown/native data", "architecture not resolved"),
+            };
+        }
+        ("unknown/native data", "architecture not resolved")
+    }
+
     // Match only effects for which this APK actually ships an Android reimplementation.
     // Probe both package paths and readable strings embedded in native plug-in binaries.
     fn desktop_native_compatibility(source: &str, probe: &str) -> Option<Value> {
@@ -309,8 +360,11 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                 {
                     push_unique_native_mapping(&mut native_mappings, mapping);
                 }
+                let (binary_format, architecture) = native_binary_info(&bytes);
                 native_metadata.push(json!({
                     "file": entry_name,
+                    "binary_format": binary_format,
+                    "architecture": architecture,
                     "strings": embedded_strings.iter().take(64).collect::<Vec<_>>()
                 }));
             }
@@ -412,10 +466,12 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     }).collect::<Vec<_>>().join("\n");
     let metadata_summary = native_metadata.iter().map(|item| {
         let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑版插件");
+        let format = item.get("binary_format").and_then(Value::as_str).unwrap_or("metadata");
+        let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("");
         let strings = item.get("strings").and_then(Value::as_array)
             .map(|values| values.iter().filter_map(Value::as_str).take(24).collect::<Vec<_>>().join(" | "))
             .unwrap_or_default();
-        format!("\n[{file}]\n{strings}")
+        format!("\n[{file}] {format} / {architecture}\n{strings}")
     }).collect::<Vec<_>>().join("\n");
     let mut install_result = json!({
         "installed": installed_wasm,
