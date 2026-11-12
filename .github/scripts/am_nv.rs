@@ -112,8 +112,10 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
         let lower = name.to_ascii_lowercase();
         if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
             project_file = Some(destination);
-        } else if lower.ends_with(".nv") {
+        } else if lower.ends_with("draft_content.json") || lower.ends_with(".capcut.json") {
             project_file = Some(destination);
+        } else if lower.ends_with(".nv") {
+            if project_file.is_none() { project_file = Some(destination); }
         } else if project_file.is_none() && (lower.ends_with(".xml") || lower.ends_with(".alight")) {
             project_file = Some(destination);
         }
@@ -650,6 +652,173 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8], font
     s.toast(format!("Imported Alight Motion project {name} ({} import notes)", warnings.len()));
     Ok(json!({"folder": folder.0, "comp": cid.0, "items": items, "missingMedia": missing, "warnings": warnings}))
 }
+
+fn capcut_material<'a>(draft: &'a J, category: &str, id: &str) -> Option<&'a J> {
+    draft.get("materials")?.get(category)?.as_array()?.iter()
+        .find(|m| m.get("id").and_then(J::as_str) == Some(id))
+}
+fn capcut_secs(v: Option<&J>, fallback: f64) -> f64 {
+    v.and_then(J::as_f64).filter(|n| n.is_finite()).map(|n| n / 1_000_000.0).unwrap_or(fallback)
+}
+fn capcut_media_path(base: &str, stored: &str) -> Option<String> {
+    if let Some(path) = media_file(base, stored) { return Some(path); }
+    let name = Path::new(stored.replace('\\', "/").as_str()).file_name()?.to_string_lossy().to_ascii_lowercase();
+    if name.is_empty() { return None; }
+    let mut pending = vec![PathBuf::from(base)];
+    let mut checked = 0usize;
+    while let Some(dir) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
+        for entry in entries.flatten() {
+            checked += 1;
+            if checked > 20_000 { return None; }
+            let path = entry.path();
+            if path.is_dir() { pending.push(path); }
+            else if path.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(&name)) {
+                return Some(path.to_string_lossy().to_string());
+            }
+        }
+    }
+    None
+}
+fn import_capcut(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> Result<J> {
+    if bytes.len() > MAX_PROJECT_BYTES { return Err(err("CapCut draft_content.json exceeds the 128 MB JSON safety limit")); }
+    let draft: J = serde_json::from_slice(bytes).map_err(|e| err(format!("Invalid CapCut draft_content.json: {e}")))?;
+    let tracks = draft.get("tracks").and_then(J::as_array)
+        .ok_or_else(|| err("This JSON is not a CapCut project: tracks[] was not found"))?;
+    if draft.get("materials").and_then(J::as_object).is_none() {
+        return Err(err("This JSON is not a CapCut project: materials{} was not found"));
+    }
+    let width = draft.get("canvas_config").and_then(|v| v.get("width")).and_then(J::as_u64).unwrap_or(1080).clamp(64, 8192) as u32;
+    let height = draft.get("canvas_config").and_then(|v| v.get("height")).and_then(J::as_u64).unwrap_or(1920).clamp(64, 8192) as u32;
+    let fps = draft.get("fps").and_then(J::as_f64).filter(|n| n.is_finite()).unwrap_or(30.0).clamp(1.0, 240.0);
+    let rate = FrameRate::from_f64(fps);
+    let draft_duration = capcut_secs(draft.get("duration"), 10.0).clamp(0.1, 86_400.0);
+    let name = draft.get("name").and_then(J::as_str).filter(|n| !n.trim().is_empty()).map(str::to_string)
+        .or_else(|| Path::new(base).file_name().map(|n| n.to_string_lossy().to_string()))
+        .or_else(|| Path::new(path).parent().and_then(|p| p.file_name()).map(|n| n.to_string_lossy().to_string()))
+        .unwrap_or_else(|| "CapCut Project".into());
+    let mut initial_warnings = Vec::new();
+    let unsupported = tracks.iter().filter(|t| !matches!(t.get("type").and_then(J::as_str).unwrap_or(""), "video" | "audio" | "text")).count();
+    if unsupported > 0 { initial_warnings.push(format!("{unsupported} sticker/effect/filter/adjustment track(s) were skipped")); }
+    let result = s.edit("Import CapCut Project", None, |project, state| {
+        let folder = project.add_item(&name, Label::Yellow, None, ItemKind::Folder);
+        let comp = Comp::new(width, height, rate, Tick::from_seconds_f64(draft_duration));
+        let cid = project.add_item(&name, Label::Sandstone, Some(folder), ItemKind::Comp(comp.into()));
+        let comp_copy = comp_id(project, cid)?;
+        let mut items = Vec::new();
+        let mut missing = Vec::new();
+        let mut warnings = initial_warnings;
+        let mut max_end = draft_duration;
+        // CapCut track 0 is the base lane; EffectCraft stores the first layer at the top.
+        for track in tracks.iter().rev() {
+            let kind = track.get("type").and_then(J::as_str).unwrap_or("");
+            let category = match kind { "video" => "videos", "audio" => "audios", "text" => "texts", _ => continue };
+            let Some(segments) = track.get("segments").and_then(J::as_array) else { continue };
+            for segment in segments {
+                let id = segment.get("material_id").and_then(J::as_str).unwrap_or("");
+                let Some(material) = capcut_material(&draft, category, id) else {
+                    warnings.push(format!("CapCut segment {id}: referenced material was not found"));
+                    continue;
+                };
+                let display_name = material.get("material_name").or_else(|| material.get("name")).and_then(J::as_str)
+                    .filter(|v| !v.trim().is_empty())
+                    .or_else(|| material.get("path").and_then(J::as_str).and_then(|p| Path::new(p.replace('\\', "/").as_str()).file_name()).and_then(|n| n.to_str()))
+                    .unwrap_or(if kind == "text" { "CapCut Text" } else { "CapCut Clip" }).to_string();
+                let target = segment.get("target_timerange");
+                let timeline_start = capcut_secs(target.and_then(|v| v.get("start")), 0.0).max(0.0);
+                let target_duration = capcut_secs(target.and_then(|v| v.get("duration")), 1.0 / fps).clamp(1.0 / fps, 86_400.0);
+                max_end = max_end.max(timeline_start + target_duration);
+                let source = segment.get("source_timerange");
+                let source_start = capcut_secs(source.and_then(|v| v.get("start")), 0.0).max(0.0);
+                let source_duration = capcut_secs(source.and_then(|v| v.get("duration")), target_duration).max(1.0 / fps);
+                let stretch = (target_duration / source_duration).clamp(0.001, 1000.0);
+                let layer_start = timeline_start - source_start * stretch;
+                let clip = segment.get("clip");
+                let clip_pos = clip.and_then(|v| v.get("transform"));
+                let transform = Xform {
+                    pos: [
+                        (clip_pos.and_then(|v| v.get("x")).and_then(J::as_f64).unwrap_or(0.0) + 1.0) * 0.5,
+                        (1.0 - clip_pos.and_then(|v| v.get("y")).and_then(J::as_f64).unwrap_or(0.0)) * 0.5,
+                    ],
+                    scale: [
+                        clip.and_then(|v| v.get("scale")).and_then(|v| v.get("x")).and_then(J::as_f64).unwrap_or(1.0).clamp(0.001, 100.0),
+                        clip.and_then(|v| v.get("scale")).and_then(|v| v.get("y")).and_then(J::as_f64).unwrap_or(1.0).clamp(0.001, 100.0),
+                    ],
+                    rotation: clip.and_then(|v| v.get("rotation")).and_then(J::as_f64).unwrap_or(0.0),
+                    opacity: clip.and_then(|v| v.get("alpha")).and_then(J::as_f64).unwrap_or(1.0).clamp(0.0, 1.0),
+                };
+                if kind == "text" {
+                    let rich = material.get("content").and_then(J::as_str).and_then(|v| serde_json::from_str::<J>(v).ok());
+                    let text = rich.as_ref().and_then(|v| v.get("text")).and_then(J::as_str)
+                        .or_else(|| material.get("text").and_then(J::as_str)).unwrap_or("").to_string();
+                    if text.is_empty() { warnings.push(format!("{display_name}: empty text layer skipped")); continue; }
+                    let mut layer = attach_layer(project, cid, &comp_copy, &display_name, LayerSource::Text,
+                        (width, height), layer_start, timeline_start, timeline_start + target_duration, stretch, transform)?;
+                    let mut doc = TextDoc::default();
+                    doc.text = text;
+                    doc.size = material.get("font_size").and_then(J::as_f64).unwrap_or(48.0).clamp(1.0, 512.0);
+                    doc.font = material.get("font_path").and_then(J::as_str)
+                        .and_then(|p| Path::new(p.replace('\\', "/").as_str()).file_name()).and_then(|n| n.to_str()).unwrap_or("Inter").to_string();
+                    let color = parse_xml_color(material.get("text_color").and_then(J::as_str).unwrap_or("#FFFFFFFF"));
+                    doc.fill = [color[0] as f32, color[1] as f32, color[2] as f32, color[3] as f32];
+                    if let Some(group) = layer.props.sub_mut("text") {
+                        if let Some(prop) = group.get_mut("sourceText") { prop.value = Value::Text(Box::new(doc)); }
+                    }
+                    push_layer(project, cid, layer)?;
+                    warnings.push(format!("{display_name}: text imported; advanced styling/templates may be simplified"));
+                } else {
+                    let stored = material.get("path").or_else(|| material.get("file_path")).and_then(J::as_str).unwrap_or("");
+                    let found = capcut_media_path(base, stored);
+                    let mut footage = Footage::default();
+                    footage.path = found.clone().unwrap_or_else(|| stored.to_string());
+                    footage.kind = if kind == "audio" { FootageKind::Audio }
+                        else if material.get("type").and_then(J::as_str) == Some("photo") { FootageKind::Still } else { FootageKind::Video };
+                    footage.width = material.get("width").and_then(J::as_u64).unwrap_or(width as u64).clamp(1, 8192) as u32;
+                    footage.height = material.get("height").and_then(J::as_u64).unwrap_or(height as u64).clamp(1, 8192) as u32;
+                    footage.frame_rate = rate;
+                    footage.duration = Tick::from_seconds_f64(capcut_secs(material.get("duration"), source_duration).clamp(1.0 / fps, 86_400.0));
+                    footage.has_video = kind == "video";
+                    footage.has_audio = kind == "audio" || material.get("has_audio").and_then(J::as_bool).unwrap_or(false);
+                    footage.missing = found.is_none();
+                    if found.is_none() {
+                        missing.push(format!("{display_name}: {}", Path::new(stored.replace('\\', "/").as_str()).file_name().unwrap_or_default().to_string_lossy()));
+                    }
+                    let item = project.add_item(&display_name, Label::None, Some(folder), ItemKind::Footage(footage));
+                    items.push(item.0);
+                    let size = (
+                        material.get("width").and_then(J::as_u64).unwrap_or(width as u64).clamp(1,8192) as u32,
+                        material.get("height").and_then(J::as_u64).unwrap_or(height as u64).clamp(1,8192) as u32,
+                    );
+                    let mut layer = attach_layer(project, cid, &comp_copy, &display_name, LayerSource::Footage { item },
+                        size, layer_start, timeline_start, timeline_start + target_duration, stretch, transform)?;
+                    if kind == "audio" { layer.switches.video = false; layer.switches.audio = true; }
+                    push_layer(project, cid, layer)?;
+                }
+                if segment.get("common_keyframes").and_then(J::as_array).is_some_and(|keys| !keys.is_empty()) {
+                    warnings.push(format!("{display_name}: CapCut keyframes detected; their curves/animated parameters are not fully mapped yet"));
+                }
+                if segment.get("extra_material_refs").and_then(J::as_array).is_some_and(|refs| !refs.is_empty()) {
+                    warnings.push(format!("{display_name}: attached CapCut effects/transitions were not converted in this import pass"));
+                }
+            }
+        }
+        if let Some(comp) = project.comp_mut(cid) {
+            if max_end > comp.duration.seconds() {
+                comp.duration = Tick::from_seconds_f64(max_end);
+                comp.work_area = (Tick::ZERO, comp.duration);
+            }
+        }
+        if !missing.is_empty() { warnings.push(format!("{} media file(s) were not found; placeholders were created", missing.len())); }
+        state.project_selection = vec![folder];
+        Ok((folder, cid, items, missing, warnings))
+    })?;
+    let (folder, cid, items, missing, warnings) = result;
+    s.open_comp(cid);
+    s.toast(if warnings.is_empty() { format!("Imported CapCut project {name}") }
+        else { format!("Imported CapCut project {name} ({} import notes)", warnings.len()) });
+    Ok(json!({"folder": folder.0, "comp": cid.0, "items": items, "missingMedia": missing, "warnings": warnings}))
+}
+
 fn parse_xml_color(value: &str) -> [f64; 4] {
     let v = value.trim().trim_start_matches('#');
     let parsed = u32::from_str_radix(v, 16).ok();
@@ -661,11 +830,10 @@ fn parse_xml_color(value: &str) -> [f64; 4] {
 }
 
 pub fn import_path(s: &mut Session, path: &str) -> Result<J> {
-    let actual = if ext(path) == "zip" || ext(path) == "alight" && std::fs::read(path).ok().is_some_and(|b| b.starts_with(b"PK")) {
-        extract_project_zip(s, path)?.0
-    } else {
-        path.to_string()
-    };
+    let (actual, package_root) = if ext(path) == "zip" || ext(path) == "alight" && std::fs::read(path).ok().is_some_and(|b| b.starts_with(b"PK")) {
+        let (file, root) = extract_project_zip(s, path)?;
+        (file, Some(root))
+    } else { (path.to_string(), None) };
     if matches!(ext(&actual).as_str(), "ecproj" | "ecprojx") {
         return super::import_project::import_project(s, &json!({"path": actual}));
     }
@@ -673,12 +841,19 @@ pub fn import_path(s: &mut Session, path: &str) -> Result<J> {
         Ok(bytes) => bytes,
         Err(_) => s.services.read_file(&actual).map_err(|e| err(format!("Cannot read selected project file: {e}")))?,
     };
+    let base = package_root.unwrap_or_else(|| Path::new(&actual).parent().unwrap_or(Path::new("")).to_string_lossy().to_string());
+    if ext(&actual) == "json" && bytes.first().is_some_and(|b| *b == b'{') {
+        let probe: J = serde_json::from_slice(&bytes).map_err(|e| err(format!("Invalid project JSON: {e}")))?;
+        if probe.get("tracks").and_then(J::as_array).is_some() && probe.get("materials").and_then(J::as_object).is_some() {
+            return import_capcut(s, &actual, &base, &bytes);
+        }
+        let font_map = register_imported_fonts(&base);
+        return import_nodevideo(s, &actual, &base, &bytes, &font_map);
+    }
     if ext(&actual) == "nv" || bytes.first().is_some_and(|b| *b == b'{') {
-        let base = Path::new(&actual).parent().unwrap_or(Path::new("")).to_string_lossy().to_string();
         let font_map = register_imported_fonts(&base);
         import_nodevideo(s, &actual, &base, &bytes, &font_map)
     } else if ext(&actual) == "xml" || ext(&actual) == "alight" || bytes.starts_with(b"<?xml") || bytes.starts_with(b"<scene") {
-        let base = Path::new(&actual).parent().unwrap_or(Path::new("")).to_string_lossy().to_string();
         let font_map = register_imported_fonts(&base);
         import_alight_xml(s, &actual, &base, &bytes, &font_map)
     } else {
