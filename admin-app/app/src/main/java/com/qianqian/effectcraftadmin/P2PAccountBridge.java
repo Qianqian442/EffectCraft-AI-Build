@@ -21,6 +21,7 @@ final class P2PAccountBridge {
     private static final int MAX_PACKET = 1_200_000;
     private static final ExecutorService clients = Executors.newFixedThreadPool(6);
     private static volatile LanAccountServer accountServer;
+    private static volatile ServerSocket listenerSocket;
     private static volatile boolean started;
 
     private P2PAccountBridge() {}
@@ -32,6 +33,7 @@ final class P2PAccountBridge {
             // Bind synchronously so the native P2P node is never advertised before
             // the local SQLite forwarding endpoint is actually listening.
             ServerSocket listener = new ServerSocket(PORT, 32, InetAddress.getByName("127.0.0.1"));
+            listenerSocket = listener;
             started = true;
             Thread worker = new Thread(() -> listen(listener), "EffectCraft-P2P-Account-Bridge");
             worker.setDaemon(true);
@@ -42,15 +44,32 @@ final class P2PAccountBridge {
         }
     }
 
+    static synchronized void stop() {
+        started = false;
+        accountServer = null;
+        ServerSocket current = listenerSocket;
+        listenerSocket = null;
+        if (current != null) {
+            try { current.close(); } catch (Exception ignored) {}
+        }
+    }
+
     private static void listen(ServerSocket listener) {
         try (ServerSocket server = listener) {
-            while (true) {
+            while (started && listenerSocket == server) {
                 Socket socket = server.accept();
                 clients.execute(() -> handle(socket));
             }
         } catch (Exception error) {
-            started = false;
-            Log.e(TAG, "Loopback account bridge failed", error);
+            if (started && listenerSocket == listener) {
+                Log.e(TAG, "Loopback account bridge failed", error);
+            }
+        } finally {
+            if (listenerSocket == listener) {
+                listenerSocket = null;
+                started = false;
+                accountServer = null;
+            }
         }
     }
 
