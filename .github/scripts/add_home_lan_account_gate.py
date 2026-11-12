@@ -185,7 +185,7 @@ impl AccountState {
         let (tx, rx) = mpsc::channel();
         self.pending = Some(rx);
         self.pending_action = Some(action);
-        self.status = "正在连接家中的账号服务器…".to_string();
+        self.status = "正在连接管理员手机账号主服务器…".to_string();
         std::thread::spawn(move || {
             let _ = tx.send(http_request(&url, &method, &path, body, token.as_deref()));
         });
@@ -246,7 +246,7 @@ impl AccountState {
         let action = self.pending_action.take().unwrap_or(Action::Verify);
         match result {
             Err(error) => {
-                self.status = format!("无法连接家中的账号服务器：{error}");
+                self.status = format!("无法连接管理员手机账号主服务器：{error}");
                 if matches!(action, Action::Verify) {
                     self.mode = Mode::Unavailable;
                 }
@@ -322,11 +322,11 @@ impl AccountState {
 }
 
 fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
-    let rest = url.strip_prefix("http://").ok_or_else(|| "服务器地址必须使用家庭局域网 http:// 地址".to_string())?;
+    let rest = url.strip_prefix("http://").ok_or_else(|| "服务器地址必须使用管理员手机的局域网 http:// 地址".to_string())?;
     let authority = rest.split('/').next().unwrap_or("");
     let (host, port) = authority.rsplit_once(':').unwrap_or((authority, "80"));
     if host.is_empty() || host.contains(' ') {
-        return Err("服务器地址不正确，请填写家中电脑的局域网IPv4地址和端口".to_string());
+        return Err("服务器地址不正确，请填写管理版首页显示的管理员手机局域网IPv4地址和端口".to_string());
     }
     let port: u16 = port.parse().map_err(|_| "服务器端口不正确".to_string())?;
     let address = (host, port).to_socket_addrs().map_err(|e| e.to_string())?
@@ -336,7 +336,7 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
         std::net::IpAddr::V6(ip) => ip.is_loopback() || ip.is_unique_local() || ip.is_unicast_link_local(),
     };
     if !is_home_lan {
-        return Err("账号服务器地址必须是家庭局域网 IP，不能使用公网地址".to_string());
+        return Err("当前版本仅支持管理员手机的家庭局域网 IP；跨网中继尚未接入，不能填写公网地址".to_string());
     }
     let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(7)).map_err(|e| e.to_string())?;
     stream.set_read_timeout(Some(Duration::from_secs(8))).map_err(|e| e.to_string())?;
@@ -479,12 +479,12 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         Mode::Auth => centered_window(ctx, "账号注册 / 登录", vec2(420.0, 570.0), |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("EffectCraft 账号");
-                ui.label("仅连接家中的 Wi-Fi 账号服务器");
+                ui.label("账号由管理员手机主服务器管理");
             });
             ui.separator();
-            ui.label("家庭服务器地址");
+            ui.label("管理员手机服务器地址");
             ui.text_edit_singleline(&mut app.account.server_url);
-            ui.small("把示例地址替换为家中电脑的局域网 IPv4 地址，例如 http://192.168.1.23:8787");
+            ui.small("请填写管理版首页显示的 Wi-Fi 地址和端口，例如 http://192.168.1.23:8787");
             ui.horizontal(|ui| {
                 if ui.selectable_label(!app.account.login_mode_register, "登录").clicked() {
                     app.account.login_mode_register = false;
@@ -495,9 +495,10 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             });
             ui.separator();
             if app.account.login_mode_register {
-                ui.label("QQ号");
+                ui.label("QQ号和微信号至少填写一项；可以只填写其中一个");
+                ui.label("QQ号（可选）");
                 ui.text_edit_singleline(&mut app.account.qq);
-                ui.label("微信号");
+                ui.label("微信号（可选）");
                 ui.text_edit_singleline(&mut app.account.wechat);
                 ui.label("名字");
                 ui.text_edit_singleline(&mut app.account.name);
@@ -528,15 +529,15 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         }),
         Mode::Checking => centered_window(ctx, "账号验证中", vec2(360.0, 230.0), |ui| {
             ui.vertical_centered(|ui| {
-                ui.heading("正在连接家庭账号服务器");
+                ui.heading("正在连接管理员手机账号主服务器");
                 ui.label("验证通过后才能进入 EffectCraft");
                 ui.spinner();
                 ui.label(&app.account.server_url);
             });
         }),
         Mode::Unavailable => centered_window(ctx, "无法验证账号", vec2(400.0, 300.0), |ui| {
-            ui.label("家中的账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");
-            ui.label("请确认手机和服务器电脑连接同一个家庭 Wi-Fi，且服务器电脑保持开机。");
+            ui.label("管理员手机账号主服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");
+            ui.label("请确认用户手机与管理员手机连接同一个 Wi-Fi，并且管理版保持运行。");
             ui.label(format!("服务器地址：{}", app.account.server_url));
             if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新连接")).clicked() {
                 app.account.retry(config);
