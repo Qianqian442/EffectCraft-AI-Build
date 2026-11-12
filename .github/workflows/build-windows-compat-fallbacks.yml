@@ -1,0 +1,123 @@
+name: Build EffectCraft Windows Compatibility Fallbacks
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/windows-plugin-runtime
+    paths:
+      - 'windows-compat/runtime-manifest.json'
+      - '.github/workflows/build-windows-compat-fallbacks.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-windows-compat-fallbacks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qemu-user-android:
+    name: Build QEMU x86-64 Linux user-mode fallback for Android
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    steps:
+      - name: Check out Termux Android package recipes
+        uses: actions/checkout@v4
+        with:
+          repository: termux/termux-packages
+          ref: master
+          path: third_party/termux-packages
+
+      - name: Build official Android QEMU and PRoot packages
+        working-directory: third_party/termux-packages
+        run: |
+          set -euo pipefail
+          sudo ./scripts/run-docker.sh ./build-package.sh -a aarch64 proot
+          sudo ./scripts/run-docker.sh ./build-package.sh -a aarch64 qemu-system-x86-64-headless
+
+      - name: Collect QEMU user-mode and PRoot packages
+        working-directory: third_party/termux-packages
+        run: |
+          set -euo pipefail
+          mkdir -p "${GITHUB_WORKSPACE}/artifacts/qemu"
+          find output -type f \\( -name 'qemu-user-x86-64*.deb' -o -name 'proot_*.deb' -o -name 'qemu-system-x86-64-headless*.deb' \\) -print -exec cp {} "${GITHUB_WORKSPACE}/artifacts/qemu/" \\
+          test -n "$(find "${GITHUB_WORKSPACE}/artifacts/qemu" -name 'qemu-user-x86-64*.deb' -print -quit)"
+          dpkg-deb -I "${GITHUB_WORKSPACE}"/artifacts/qemu/qemu-user-x86-64*.deb
+          sha256sum "${GITHUB_WORKSPACE}"/artifacts/qemu/* > "${GITHUB_WORKSPACE}/artifacts/qemu/SHA256SUMS.txt"
+
+      - name: Upload Android QEMU fallback components
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-QEMU-x86-64-Android-Fallback
+          path: artifacts/qemu/*
+          retention-days: 30
+
+  clvk-opencl-android:
+    name: Build Android ARM64 CLVK OpenCL-on-Vulkan backend
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out EffectCraft compatibility configuration
+        uses: actions/checkout@v4
+
+      - name: Check out pinned CLVK source
+        uses: actions/checkout@v4
+        with:
+          repository: kpet/clvk
+          ref: 5aa061c93c2d5a53b591e646ad359f2e5408b794
+          path: third_party/clvk
+          submodules: recursive
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build python3 wget unzip file
+
+      - name: Install Android NDK r26b
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -O "$RUNNER_TEMP/android-ndk.zip"
+          unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
+
+      - name: Configure CLVK for Android ARM64 (precompiled SPIR-V mode)
+        run: |
+          NDK_SYSROOT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
+          cmake -S third_party/clvk -B build/clvk-android-arm64 -G Ninja \\
+            -DCMAKE_BUILD_TYPE=Release \\
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \\
+            -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=28 \\
+            -DCLVK_VULKAN_IMPLEMENTATION=custom \\
+            -DVulkan_INCLUDE_DIRS="$NDK_SYSROOT/usr/include" \\
+            -DVulkan_LIBRARIES="$NDK_SYSROOT/usr/lib/aarch64-linux-android/28/libvulkan.so" \\
+            -DCLVK_COMPILER_AVAILABLE=OFF \\
+            -DCLVK_CLSPV_ONLINE_COMPILER=OFF \\
+            -DCLVK_BUILD_TESTS=OFF \\
+            -DCMAKE_INSTALL_PREFIX="$PWD/stage/clvk"
+
+      - name: Compile CLVK
+        run: |
+          cmake --build build/clvk-android-arm64 --target OpenCL --parallel 2
+          test -s build/clvk-android-arm64/libOpenCL.so
+          file build/clvk-android-arm64/libOpenCL.so
+
+      - name: Package CLVK and notices
+        run: |
+          mkdir -p artifacts/clvk
+          install -m 0644 build/clvk-android-arm64/libOpenCL.so artifacts/clvk/libOpenCL.so
+          cp third_party/clvk/LICENSE artifacts/clvk/CLVK-APACHE-2.0-LICENSE
+          cat > artifacts/clvk/BUILD-MODE.txt <<'EOF'
+          Android ARM64 CLVK build with CLVK_COMPILER_AVAILABLE=OFF.
+          Supports only precompiled SPIR-V / OpenCL IL flows.
+          This build does not provide general OpenCL C runtime compilation.
+          It does not implement CUDA.
+          Wine OpenCL ICD bridging must be verified separately.
+          EOF
+          sha256sum artifacts/clvk/* > artifacts/clvk/SHA256SUMS.txt
+
+      - name: Upload CLVK Android ARM64 component
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-CLVK-Android-ARM64-Experimental
+          path: artifacts/clvk/*
+          retention-days: 30
