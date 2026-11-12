@@ -36,10 +36,12 @@ jobs:
         run: |
           python3 -m py_compile .github/scripts/add_desktop_plugin_package_support.py
 
-      - name: Apply desktop plug-in importer patch to a clean source checkout
+      - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: |
+          python3 .github/scripts/add_plugin_import_button.py
+          python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
           grep -Fq 'fn windows_pe_metadata' effectcraft/crates/engine/src/cmd/effect.rs
