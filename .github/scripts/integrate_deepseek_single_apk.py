@@ -59,8 +59,8 @@ def main() -> None:
     github_env = os.environ.get("GITHUB_ENV")
     if github_env:
         with open(github_env, "a", encoding="utf-8") as env_file:
-            env_file.write(f"EFFECTCRAFT_AI_SOURCE={embedded_ai_dir}\\n")
-            env_file.write(f"EFFECTCRAFT_AI_CATALOG={embedded_catalog}\\n")
+            env_file.write(f"EFFECTCRAFT_AI_SOURCE={embedded_ai_dir}\n")
+            env_file.write(f"EFFECTCRAFT_AI_CATALOG={embedded_catalog}\n")
 
     # Reuse the already-tested host UI/JNI wiring, then replace its package installer IPC
     # with an in-process service binding. This preserves the existing assistant state wiring.
