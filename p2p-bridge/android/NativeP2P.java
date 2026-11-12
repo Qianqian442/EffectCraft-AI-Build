@@ -15,7 +15,7 @@ final class NativeP2P {
 
     private NativeP2P() {}
 
-    private static native String nativeStart(String filesDirectory);
+    private static native String nativeStartClient(String filesDirectory);
     private static native String nativeStatus();
 
     static synchronized void start(Context context) {
@@ -28,7 +28,7 @@ final class NativeP2P {
                 multicastLock.acquire();
             }
 
-            String result = nativeStart(context.getFilesDir().getAbsolutePath());
+            String result = nativeStartClient(context.getFilesDir().getAbsolutePath());
             Log.i(TAG, "P2P node start: " + result);
         } catch (Throwable error) {
             // Network setup must never prevent the editor itself from launching.
