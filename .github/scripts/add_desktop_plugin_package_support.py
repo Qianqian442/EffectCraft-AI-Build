@@ -651,6 +651,12 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             0xaa64 => &["ARM64 原生运行时（仅在插件本身及宿主 ABI 均匹配时）"],
             _ => &["未知架构：先静态分析，不自动执行"]
         };
+        let ae_host_candidates: &[&str] = match machine {
+            0x8664 => &["aexlo Windows x64 AE Effect 宿主工作进程"],
+            0xa641 => &["aexlo Windows x64 宿主 + Arm64EC 容器候选（尚需实测）"],
+            0x014c => &["当前 aexlo 上游不提供 32-bit Windows 宿主：需单独移植/重编译"],
+            _ => &["当前没有已验证的 AE 宿主 ABI 路径"]
+        };
         json!({
             "is_pe": true,
             "machine": format!("0x{machine:04x}"),
@@ -662,7 +668,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             "imported_symbols_sample": imported_symbols.iter().take(96).collect::<Vec<_>>(),
             "exports_sample": exports.iter().take(96).collect::<Vec<_>>(),
             "ae_entrypoint_candidates": ae_entrypoints,
-            "backend_candidates": backend_candidates
+            "backend_candidates": backend_candidates,
+            "ae_host_candidates": ae_host_candidates
         })
     }
 
@@ -1193,6 +1200,12 @@ fn inspect_desktop_native_file(s: &mut Session, source_path: &str) -> Result<Val
     let entrypoints = pe.get("ae_entrypoint_candidates").and_then(Value::as_array)
         .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "))
         .unwrap_or_default();
+    let backend_candidates = pe.get("backend_candidates").and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n"))
+        .unwrap_or_else(|| "暂无".into());
+    let ae_host_candidates = pe.get("ae_host_candidates").and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n"))
+        .unwrap_or_else(|| "暂无".into());
     let mapping_summary = mappings.iter().map(|item| format!(
         "{} → {}：{}",
         item["source"].as_str().unwrap_or(file_name),
@@ -1200,7 +1213,7 @@ fn inspect_desktop_native_file(s: &mut Session, source_path: &str) -> Result<Val
         item["note"].as_str().unwrap_or("")
     )).collect::<Vec<_>>().join("\n");
     let report = format!(
-        "EffectCraft 电脑版原生插件分析报告\n时间戳：{stamp}\n文件：{file_name}\n大小：{} 字节\n格式：{binary_format}\n架构：{architecture}\nPE 元数据：{}\n导入 DLL：{imports}\nAE 插件入口候选：{entrypoints}\n导出符号：{exports}\n可读字符串线索：{}\n兼容效果匹配：{}\n\n说明：当前阶段仅做安全静态分析与原件归档，不会执行 Windows 原生机器码。真正运行还需要 Android Wine/Box64 运行时以及对应的插件宿主 ABI 实现。\n原件目录：{}\n",
+        "EffectCraft 电脑版原生插件分析报告\n时间戳：{stamp}\n文件：{file_name}\n大小：{} 字节\n格式：{binary_format}\n架构：{architecture}\nPE 元数据：{}\n导入 DLL：{imports}\nAE 插件入口候选：{entrypoints}\n导出符号：{exports}\n执行后端候选：{backend_candidates}\nAE 宿主候选：{ae_host_candidates}\n可读字符串线索：{}\n兼容效果匹配：{}\n\n说明：当前阶段仅做安全静态分析与原件归档，不会直接执行 Windows 原生机器码。后续运行需要 Android Wine/Box64 或 Arm64EC/FEXCore 运行时，以及相应 AE 宿主 ABI。\n原件目录：{}\n",
         bytes.len(),
         pe,
         embedded_strings.iter().take(96).cloned().collect::<Vec<_>>().join(" | "),
