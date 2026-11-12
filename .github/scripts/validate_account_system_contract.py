@@ -43,7 +43,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             'if (isBanned(user)) return error(423',
             'if (isBanned(current)) return error(423',
             "private boolean isBanned(JSONObject user)",
-            'until.isAfter(Instant.now())',
+            'Instant.parse(until).isAfter(Instant.now())',
             'path.equals("/v1/me")',
         ),
     ),
