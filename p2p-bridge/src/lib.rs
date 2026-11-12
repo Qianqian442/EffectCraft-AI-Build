@@ -11,7 +11,7 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     path::Path,
     str::FromStr,
-    sync::{mpsc as std_mpsc, Mutex, OnceLock},
+    sync::{atomic::{AtomicBool, Ordering}, mpsc as std_mpsc, Mutex, OnceLock},
     thread,
     time::{Duration, Instant},
 };
@@ -60,9 +60,39 @@ enum RpcCommand {
         request: AccountRpcRequest,
         reply: std_mpsc::Sender<Result<AccountRpcResponse, String>>,
     },
+    Shutdown,
 }
 
-static RPC_COMMAND_TX: OnceLock<UnboundedSender<RpcCommand>> = OnceLock::new();
+static RPC_COMMAND_TX: OnceLock<Mutex<Option<UnboundedSender<RpcCommand>>>> = OnceLock::new();
+static CLIENT_RPC_PROXY_STARTED: AtomicBool = AtomicBool::new(false);
+
+fn rpc_command_slot() -> &'static Mutex<Option<UnboundedSender<RpcCommand>>> {
+    RPC_COMMAND_TX.get_or_init(|| Mutex::new(None))
+}
+
+fn current_rpc_command_tx() -> Option<UnboundedSender<RpcCommand>> {
+    rpc_command_slot().lock().ok().and_then(|slot| slot.as_ref().cloned())
+}
+
+fn clear_rpc_command_tx() {
+    if let Ok(mut slot) = rpc_command_slot().lock() {
+        *slot = None;
+    }
+}
+
+fn stop_node() {
+    let sender = rpc_command_slot().lock().ok().and_then(|mut slot| slot.take());
+    if let Some(sender) = sender {
+        let _ = sender.send(RpcCommand::Shutdown);
+    } else {
+        set_snapshot(|state| {
+            state.started = false;
+            state.status = "stopped".to_string();
+            state.active_relays = 0;
+            state.direct_peers = 0;
+        });
+    }
+}
 const BOOTSTRAP_PEERS: [&str; 4] = [
     "QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
     "QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
@@ -206,10 +236,30 @@ fn start_node(data_directory: &str, is_admin: bool) -> Result<String, String> {
         state.peer_id = peer_id.clone();
         state.status = "starting".to_string();
         state.last_error.clear();
+        state.discovered_peers = 0;
+        state.relay_candidates = 0;
+        state.active_relays = 0;
+        state.direct_peers = 0;
     }
 
     let (command_tx, command_rx) = mpsc::unbounded_channel::<RpcCommand>();
-    let _ = RPC_COMMAND_TX.set(command_tx.clone());
+    {
+        let mut slot = rpc_command_slot().lock().map_err(|_| "P2P command channel is unavailable".to_string())?;
+        *slot = Some(command_tx);
+    }
+
+    if !is_admin {
+        if let Err(error) = start_client_rpc_proxy() {
+            clear_rpc_command_tx();
+            set_snapshot(|state| {
+                state.started = false;
+                state.status = "rpc_proxy_error".to_string();
+                state.last_error = error.to_string();
+            });
+            return Err(error);
+        }
+    }
+
     if let Err(error) = thread::Builder::new()
         .name("effectcraft-p2p".to_string())
         .spawn(move || {
@@ -220,6 +270,7 @@ fn start_node(data_directory: &str, is_admin: bool) -> Result<String, String> {
             {
                 Ok(runtime) => runtime,
                 Err(error) => {
+                    clear_rpc_command_tx();
                     set_snapshot(|state| {
                         state.started = false;
                         state.status = "runtime_error".to_string();
@@ -231,6 +282,7 @@ fn start_node(data_directory: &str, is_admin: bool) -> Result<String, String> {
             runtime.block_on(run_node(key, is_admin, command_rx));
         })
     {
+        clear_rpc_command_tx();
         set_snapshot(|state| {
             state.started = false;
             state.status = "thread_error".to_string();
@@ -239,9 +291,6 @@ fn start_node(data_directory: &str, is_admin: bool) -> Result<String, String> {
         return Err(format!("start peer network thread: {error}"));
     }
 
-    if !is_admin {
-        start_client_rpc_proxy(command_tx);
-    }
     Ok(peer_id)
 }
 
@@ -259,6 +308,15 @@ pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeStartA
         Ok(peer_id) => new_java_string(&mut env, peer_id),
         Err(error) => new_java_string(&mut env, format!("ERROR:{error}")),
     }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeStopAdmin(
+    mut env: JNIEnv,
+    _class: JClass,
+) -> jstring {
+    stop_node();
+    new_java_string(&mut env, "OK".to_string())
 }
 
 #[no_mangle]
@@ -305,6 +363,7 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
     let mut swarm = match build_swarm(key, is_admin) {
         Ok(swarm) => swarm,
         Err(error) => {
+            clear_rpc_command_tx();
             set_snapshot(|state| {
                 state.started = false;
                 state.status = "transport_error".to_string();
@@ -360,28 +419,34 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
 
     loop {
         tokio::select! {
-            command = commands.recv(), if !is_admin => {
-                if let Some(RpcCommand::Request { request, reply }) = command {
-                    if request.preferred_peer_id.is_empty() {
-                        let _ = reply.send(Err("必须先固定管理员 Peer ID，保护账号凭据不被冒充节点窃取".to_string()));
-                        continue;
-                    }
-                    let preferred = PeerId::from_str(&request.preferred_peer_id).ok()
-                        .filter(|peer| admin_peers.contains(peer));
-                    if let Some(peer) = preferred {
-                        let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer, request);
-                        pending_rpc.insert(request_id, reply);
-                    } else {
-                        if let Ok(peer) = PeerId::from_str(&request.preferred_peer_id) {
-                            swarm.behaviour_mut().kad.get_closest_peers(peer);
+            command = commands.recv() => {
+                match command {
+                    Some(RpcCommand::Shutdown) | None => break,
+                    Some(RpcCommand::Request { request, reply }) if !is_admin => {
+                        if request.preferred_peer_id.is_empty() {
+                            let _ = reply.send(Err("必须先固定管理员 Peer ID，保护账号凭据不被冒充节点窃取".to_string()));
+                            continue;
                         }
-                        deferred_rpc.push_back((request, reply));
-                        swarm.behaviour_mut().kad.get_providers(service_key.clone());
+                        let preferred = PeerId::from_str(&request.preferred_peer_id).ok()
+                            .filter(|peer| admin_peers.contains(peer));
+                        if let Some(peer) = preferred {
+                            let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer, request);
+                            pending_rpc.insert(request_id, reply);
+                        } else {
+                            if let Ok(peer) = PeerId::from_str(&request.preferred_peer_id) {
+                                swarm.behaviour_mut().kad.get_closest_peers(peer);
+                            }
+                            deferred_rpc.push_back((request, reply));
+                            swarm.behaviour_mut().kad.get_providers(service_key.clone());
+                        }
+                    }
+                    Some(RpcCommand::Request { reply, .. }) => {
+                        let _ = reply.send(Err("管理员节点不接受本机发起的账号请求".to_string()));
                     }
                 }
             }
             event = futures::StreamExt::next(&mut swarm) => {
-                let Some(event) = event else { continue };
+                let Some(event) = event else { break };
                 match event {
                     SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
                         result: kad::QueryResult::GetClosestPeers(Ok(result)),
@@ -627,6 +692,14 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
             }
         }
     }
+    clear_rpc_command_tx();
+    set_snapshot(|state| {
+        state.started = false;
+        state.status = "stopped".to_string();
+        state.active_relays = 0;
+        state.direct_peers = 0;
+        state.relay_candidates = 0;
+    });
 }
 
 
@@ -651,32 +724,42 @@ fn dispatch_deferred_for_peer(
     }
 }
 
-fn start_client_rpc_proxy(command_tx: UnboundedSender<RpcCommand>) {
-    let _ = thread::Builder::new()
+fn start_client_rpc_proxy() -> Result<(), String> {
+    if CLIENT_RPC_PROXY_STARTED.load(Ordering::Acquire) {
+        return Ok(());
+    }
+    let listener = TcpListener::bind(CLIENT_RPC_PROXY)
+        .map_err(|error| format!("账号本机代理 8789 绑定失败：{error}"))?;
+    if CLIENT_RPC_PROXY_STARTED.swap(true, Ordering::AcqRel) {
+        drop(listener);
+        return Ok(());
+    }
+    let spawn = thread::Builder::new()
         .name("effectcraft-account-rpc-proxy".to_string())
         .spawn(move || {
-            let listener = match TcpListener::bind(CLIENT_RPC_PROXY) {
-                Ok(listener) => listener,
-                Err(error) => {
-                    set_snapshot(|state| state.last_error = format!("account RPC localhost proxy: {error}"));
-                    return;
-                }
-            };
             for stream in listener.incoming() {
                 match stream {
                     Ok(stream) => {
-                        let tx = command_tx.clone();
                         let _ = thread::Builder::new().name("effectcraft-account-rpc-call".to_string()).spawn(move || {
-                            serve_client_rpc(stream, tx);
+                            serve_client_rpc(stream);
                         });
                     }
-                    Err(error) => set_snapshot(|state| state.last_error = format!("account RPC proxy accept: {error}")),
+                    Err(error) => {
+                        set_snapshot(|state| state.last_error = format!("account RPC proxy accept: {error}"));
+                        break;
+                    }
                 }
             }
+            CLIENT_RPC_PROXY_STARTED.store(false, Ordering::Release);
         });
+    if let Err(error) = spawn {
+        CLIENT_RPC_PROXY_STARTED.store(false, Ordering::Release);
+        return Err(format!("账号本机代理线程启动失败：{error}"));
+    }
+    Ok(())
 }
 
-fn serve_client_rpc(mut stream: TcpStream, command_tx: UnboundedSender<RpcCommand>) {
+fn serve_client_rpc(mut stream: TcpStream) {
     let _ = stream.set_read_timeout(Some(Duration::from_secs(8)));
     let _ = stream.set_write_timeout(Some(Duration::from_secs(40)));
     let clone = match stream.try_clone() {
@@ -696,9 +779,21 @@ fn serve_client_rpc(mut stream: TcpStream, command_tx: UnboundedSender<RpcComman
         write_proxy_error(&mut stream, "账号请求接口不受支持".to_string());
         return;
     }
+    let Some(command_tx) = current_rpc_command_tx() else {
+        let state = snapshot_json();
+        write_proxy_error(&mut stream, format!("P2P 网络节点尚未就绪；当前节点状态：{state}"));
+        return;
+    };
     let (reply_tx, reply_rx) = std_mpsc::channel();
     if command_tx.send(RpcCommand::Request { request, reply: reply_tx }).is_err() {
-        write_proxy_error(&mut stream, "P2P 网络节点尚未就绪".to_string());
+        clear_rpc_command_tx();
+        set_snapshot(|state| {
+            state.started = false;
+            state.status = "command_channel_closed".to_string();
+            state.last_error = "账号请求代理发现 P2P 命令通道已关闭，等待自动恢复".to_string();
+        });
+        let state = snapshot_json();
+        write_proxy_error(&mut stream, format!("P2P 网络节点尚未就绪；节点通道已退出：{state}"));
         return;
     }
     let response = match reply_rx.recv_timeout(Duration::from_secs(38)) {
