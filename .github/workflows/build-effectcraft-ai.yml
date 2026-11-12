@@ -916,7 +916,12 @@ jobs:
           grep -Fxq "assets/models/rife-v4.6/flownet.bin" "$APK_ENTRIES"
           grep -Fxq "assets/models/realesrgan-x4plus.bin" "$APK_ENTRIES"
           P2P_DEX_STRINGS="$(mktemp)"
-          while IFS= read -r DEX; do unzip -p "$APK" "$DEX" | strings; done < <(grep -E '^classes[0-9]*[.]dex          echo "Verified APK contains DEX, P2P transport, RIFE 4.6, Real-ESRGAN x4 and Android native worker; DeepSeek GGUF is excluded from the host APK."
+          while IFS= read -r DEX; do
+            unzip -p "$APK" "$DEX" | strings
+          done < <(grep -E '^classes[0-9]*[.]dex$' "$APK_ENTRIES") > "$P2P_DEX_STRINGS"
+          grep -Fq "NativeP2P" "$P2P_DEX_STRINGS"
+          rm -f "$P2P_DEX_STRINGS" "$APK_ENTRIES"
+          echo "Verified APK contains DEX, P2P transport, RIFE 4.6, Real-ESRGAN x4 and Android native worker; DeepSeek GGUF is excluded from the host APK."
           echo "Verified APK: $APK ($SIZE bytes)"
           sha256sum "$APK"
 
