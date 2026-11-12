@@ -394,15 +394,6 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_home_lan_account_gate.py
           python3 build-assets/.github/scripts/add_home_lan_account_gate.py
 
-      - name: Convert account gate to cloud HTTPS and real-time ban notifications
-        if: ${{ vars.AE_ACCOUNT_API_URL != '' }}
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
-          python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
-
       - name: Add independent connected Puppet pin rigs
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
