@@ -38,7 +38,6 @@ def audit(path: Path) -> dict:
             {
                 "name": entry.name,
                 "address": int(entry.address),
-                "forwarded": bool(entry.is_forwarded),
             }
             for entry in islice(binary.exported_functions, 2048)
         ]
