@@ -4,17 +4,17 @@ use std::vec::Vec;
 
 const MANIFEST: &str = {
     #[cfg(sapphire_glow)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.glow","name":"Sapphire-style Glow","category":"Glow","version":"1.0.0","author":"EffectCraft Compatibility Layer","description":"Android-native-compatible soft highlight glow; not the proprietary desktop Sapphire plug-in.","params":[{"id":"radius","name":"Glow Radius","type":"slider","default":12,"min":1,"max":48,"decimals":0},{"id":"threshold","name":"Threshold","type":"slider","default":0.72,"min":0.05,"max":0.98,"decimals":2},{"id":"intensity","name":"Intensity","type":"slider","default":0.8,"min":0,"max":2,"decimals":2}]}"# } 
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.glow","name":"Sapphire-style Glow","category":"Glow","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Android-native-compatible soft highlight glow; not the proprietary desktop Sapphire plug-in.","params":[{"id":"radius","name":"Glow Radius","type":"slider","default":12,"min":1,"max":48,"decimals":0},{"id":"threshold","name":"Threshold","type":"slider","default":0.72,"min":0.05,"max":0.98,"decimals":2},{"id":"intensity","name":"Intensity","type":"slider","default":0.8,"min":0,"max":2,"decimals":2}]}"# } 
     #[cfg(sapphire_aura)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.glow-aura","name":"Sapphire-style Glow Aura","category":"Glow","version":"1.0.0","author":"EffectCraft Compatibility Layer","description":"Tinted highlight aura for Android; a compatible recreation, not the proprietary desktop plug-in.","params":[{"id":"radius","name":"Aura Radius","type":"slider","default":18,"min":1,"max":64,"decimals":0},{"id":"intensity","name":"Intensity","type":"slider","default":0.85,"min":0,"max":2,"decimals":2},{"id":"threshold","name":"Threshold","type":"slider","default":0.55,"min":0.05,"max":0.98,"decimals":2},{"id":"tint","name":"Aura Color","type":"color","default":[0.45,0.68,1,1]}]}"# }
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.glow-aura","name":"Sapphire-style Glow Aura","category":"Glow","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Tinted highlight aura for Android; a compatible recreation, not the proprietary desktop plug-in.","params":[{"id":"radius","name":"Aura Radius","type":"slider","default":18,"min":1,"max":64,"decimals":0},{"id":"intensity","name":"Intensity","type":"slider","default":0.85,"min":0,"max":2,"decimals":2},{"id":"threshold","name":"Threshold","type":"slider","default":0.55,"min":0.05,"max":0.98,"decimals":2},{"id":"tint","name":"Aura Color","type":"color","default":[0.45,0.68,1,1]}]}"# }
     #[cfg(sapphire_lensflare)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.lensflare","name":"Sapphire-style LensFlare","category":"Light","version":"1.0.0","author":"EffectCraft Compatibility Layer","description":"Procedural lens flare with a movable center and star rays; not the proprietary desktop plug-in.","params":[{"id":"center","name":"Flare Center","type":"point","default":[0.5,0.5]},{"id":"intensity","name":"Intensity","type":"slider","default":0.8,"min":0,"max":2,"decimals":2},{"id":"size","name":"Flare Size","type":"slider","default":0.38,"min":0.08,"max":1.5,"decimals":2},{"id":"color","name":"Flare Color","type":"color","default":[1,0.78,0.48,1]}]}"# }
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.lensflare","name":"Sapphire-style LensFlare","category":"Light","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Procedural lens flare with a movable center and star rays; not the proprietary desktop plug-in.","params":[{"id":"center","name":"Flare Center","type":"point","default":[0.5,0.5]},{"id":"intensity","name":"Intensity","type":"slider","default":0.8,"min":0,"max":2,"decimals":2},{"id":"size","name":"Flare Size","type":"slider","default":0.38,"min":0.08,"max":1.5,"decimals":2},{"id":"color","name":"Flare Color","type":"color","default":[1,0.78,0.48,1]}]}"# }
     #[cfg(sapphire_blur)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.blur","name":"Sapphire-style Blur","category":"Blur","version":"1.0.0","author":"EffectCraft Compatibility Layer","description":"Fast separable box blur with adjustable radius and mix; compatible recreation.","params":[{"id":"radius","name":"Radius","type":"slider","default":6,"min":1,"max":32,"decimals":0},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.blur","name":"Sapphire-style Blur","category":"Blur","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Fast separable box blur with adjustable radius and mix; compatible recreation.","params":[{"id":"radius","name":"Radius","type":"slider","default":6,"min":1,"max":32,"decimals":0},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
     #[cfg(sapphire_distort)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.distort","name":"Sapphire-style Distort","category":"Distort","version":"1.0.0","author":"EffectCraft Compatibility Layer","description":"Radial swirl and ripple distortion with a movable center; compatible recreation.","params":[{"id":"center","name":"Distortion Center","type":"point","default":[0.5,0.5]},{"id":"strength","name":"Swirl Strength","type":"slider","default":0.65,"min":-1.5,"max":1.5,"decimals":2},{"id":"radius","name":"Radius","type":"slider","default":0.75,"min":0.1,"max":1.5,"decimals":2},{"id":"ripple","name":"Ripple","type":"slider","default":2,"min":0,"max":12,"decimals":1}]}"# }
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.distort","name":"Sapphire-style Distort","category":"Distort","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Radial swirl and ripple distortion with a movable center; compatible recreation.","params":[{"id":"center","name":"Distortion Center","type":"point","default":[0.5,0.5]},{"id":"strength","name":"Swirl Strength","type":"slider","default":0.65,"min":-1.5,"max":1.5,"decimals":2},{"id":"radius","name":"Radius","type":"slider","default":0.75,"min":0.1,"max":1.5,"decimals":2},{"id":"ripple","name":"Ripple","type":"slider","default":2,"min":0,"max":12,"decimals":1}]}"# }
     #[cfg(sapphire_stylize)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.stylize","name":"Sapphire-style Stylize","category":"Stylize","version":"1.0.0","author":"EffectCraft Compatibility Layer","description":"Color posterization, contrast and saturation controls; compatible recreation.","params":[{"id":"levels","name":"Color Levels","type":"slider","default":8,"min":2,"max":32,"decimals":0},{"id":"contrast","name":"Contrast","type":"slider","default":1.15,"min":0.5,"max":2,"decimals":2},{"id":"saturation","name":"Saturation","type":"slider","default":1.1,"min":0,"max":2,"decimals":2}]}"# }
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.stylize","name":"Sapphire-style Stylize","category":"Stylize","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Color posterization, contrast and saturation controls; compatible recreation.","params":[{"id":"levels","name":"Color Levels","type":"slider","default":8,"min":2,"max":32,"decimals":0},{"id":"contrast","name":"Contrast","type":"slider","default":1.15,"min":0.5,"max":2,"decimals":2},{"id":"saturation","name":"Saturation","type":"slider","default":1.1,"min":0,"max":2,"decimals":2}]}"# }
     #[cfg(sapphire_motion)]
     { r#"{"api":1,"id":"org.effectcraft.compat.rsmb-motion-blur","name":"RSMB 风格方向模糊（非原版）","category":"Blur","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"安卓兼容方向模糊效果；不执行电脑版 RSMB，也不进行原版运动矢量估算。","params":[{"id":"angle","name":"方向角度","type":"slider","default":0,"min":0,"max":360,"sliderMin":0,"sliderMax":360,"decimals":0},{"id":"distance","name":"模糊距离","type":"slider","default":18,"min":0,"max":96,"decimals":0},{"id":"mix","name":"效果强度","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
 };
@@ -43,7 +43,7 @@ pub extern "C" fn ec_alloc(bytes: i32) -> i32 {
 }
 
 fn box_blur(source: &[[f32; 4]], width: usize, height: usize, radius: usize) -> Vec<[f32; 4]> {
-    if width == 0 || height == 0 { return Vec::new(); }
+    if width == 0 || height == 0 || source.len() != width.saturating_mul(height) { return Vec::new(); }
     let radius = radius.min(48);
     let denominator = (radius.saturating_mul(2).saturating_add(1)) as f32;
     let mut horizontal = vec![[0.0_f32; 4]; source.len()];
@@ -83,10 +83,50 @@ fn box_blur(source: &[[f32; 4]], width: usize, height: usize, radius: usize) -> 
     output
 }
 
-fn sample_nearest(source: &[[f32; 4]], width: usize, height: usize, x: f32, y: f32) -> [f32; 4] {
-    let sx = x.round().clamp(0.0, (width.saturating_sub(1)) as f32) as usize;
-    let sy = y.round().clamp(0.0, (height.saturating_sub(1)) as f32) as usize;
-    source[sy * width + sx]
+fn gaussian_blur(source: &[[f32; 4]], width: usize, height: usize, radius: usize) -> Vec<[f32; 4]> {
+    if radius < 3 {
+        return box_blur(source, width, height, radius);
+    }
+    // Three lower-radius box passes approximate a Gaussian kernel while keeping
+    // the renderer dependency-free and predictable on Android CPUs.
+    let pass_radius = ((radius as f32 / 3.0_f32.sqrt()).round() as usize).max(1).min(48);
+    let first = box_blur(source, width, height, pass_radius);
+    let second = box_blur(&first, width, height, pass_radius);
+    box_blur(&second, width, height, pass_radius)
+}
+
+fn normalized_or_pixels(value: f64, extent: usize) -> f32 {
+    let max = extent.saturating_sub(1) as f32;
+    let value = if value.is_finite() { value as f32 } else { 0.5 };
+    if (0.0..=1.0).contains(&value) {
+        value * max
+    } else {
+        value.clamp(0.0, max)
+    }
+}
+
+fn sample_bilinear(source: &[[f32; 4]], width: usize, height: usize, x: f32, y: f32) -> [f32; 4] {
+    let max_x = width.saturating_sub(1) as f32;
+    let max_y = height.saturating_sub(1) as f32;
+    let x = if x.is_finite() { x.clamp(0.0, max_x) } else { 0.0 };
+    let y = if y.is_finite() { y.clamp(0.0, max_y) } else { 0.0 };
+    let x0 = x.floor() as usize;
+    let y0 = y.floor() as usize;
+    let x1 = (x0 + 1).min(width - 1);
+    let y1 = (y0 + 1).min(height - 1);
+    let tx = x - x0 as f32;
+    let ty = y - y0 as f32;
+    let p00 = source[y0 * width + x0];
+    let p10 = source[y0 * width + x1];
+    let p01 = source[y1 * width + x0];
+    let p11 = source[y1 * width + x1];
+    let mut result = [0.0_f32; 4];
+    for channel in 0..4 {
+        let top = p00[channel] + (p10[channel] - p00[channel]) * tx;
+        let bottom = p01[channel] + (p11[channel] - p01[channel]) * tx;
+        result[channel] = top + (bottom - top) * ty;
+    }
+    result
 }
 
 #[cfg(any(sapphire_glow, sapphire_aura))]
@@ -112,7 +152,7 @@ fn render_glow(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f
         let factor = mask * mask;
         highlights.push([pixel[0] * factor, pixel[1] * factor, pixel[2] * factor, alpha * factor]);
     }
-    let glow = box_blur(&highlights, width, height, radius);
+    let glow = gaussian_blur(&highlights, width, height, radius);
     for index in 0..pixels.len() {
         if aura {
             let tint = [params[3] as f32, params[4] as f32, params[5] as f32];
@@ -129,26 +169,56 @@ fn render_glow(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f
 
 #[cfg(sapphire_lensflare)]
 fn render_lensflare(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
-    let cx = params[0] as f32;
-    let cy = params[1] as f32;
+    // Point controls are normalized in the manifest (0..1); accept pixel-space
+    // coordinates too so older saved projects remain usable.
+    let cx = normalized_or_pixels(params[0], width);
+    let cy = normalized_or_pixels(params[1], height);
     let intensity = params[2].clamp(0.0, 2.0) as f32;
     let size = (params[3].clamp(0.08, 1.5) as f32 * width.min(height) as f32).max(2.0);
     let color = [params[4] as f32, params[5] as f32, params[6] as f32];
-    let max_dim = width.max(height) as f32;
+    let image_cx = (width.saturating_sub(1) as f32) * 0.5;
+    let image_cy = (height.saturating_sub(1) as f32) * 0.5;
+    let axis_x = image_cx - cx;
+    let axis_y = image_cy - cy;
+    let axis_len = (axis_x * axis_x + axis_y * axis_y).sqrt();
+    let (axis_x, axis_y) = if axis_len > 1e-4 {
+        (axis_x / axis_len, axis_y / axis_len)
+    } else {
+        (1.0, 0.0)
+    };
+    let ghost_specs = [(1.25_f32, 0.22_f32), (1.72, 0.15), (-0.42, 0.12), (-0.86, 0.08)];
+    let ghosts: Vec<(f32, f32, f32)> = ghost_specs.iter().map(|(position, scale)| {
+        (cx + (image_cx - cx) * position, cy + (image_cy - cy) * position, size * scale)
+    }).collect();
+
     for y in 0..height {
         for x in 0..width {
             let dx = x as f32 - cx;
             let dy = y as f32 - cy;
             let distance = (dx * dx + dy * dy).sqrt();
-            let radial = (-distance * distance / (size * size)).exp();
-            let ring_distance = (distance - size * 0.72).abs();
-            let ring = (-(ring_distance * ring_distance) / (size * size * 0.018).max(1.0)).exp();
             let angle = dy.atan2(dx);
-            let rays = 0.35 + 0.65 * (angle * 6.0).cos().abs().powf(14.0);
-            let ghost = (-((distance - max_dim * 0.22).powi(2)) / (size * size * 0.12).max(1.0)).exp();
-            let amount = (radial * 0.75 + ring * 0.22 + ghost * rays * 0.28) * intensity;
+            let core = (-distance * distance / (size * size * 0.055).max(1.0)).exp();
+            let halo = (-distance * distance / (size * size * 0.72).max(1.0)).exp();
+            let ring_distance = (distance - size * 0.78).abs();
+            let ring = (-(ring_distance * ring_distance) / (size * size * 0.012).max(1.0)).exp();
+            let star = (angle * 4.0).cos().abs().powf(22.0);
+            let along = dx * axis_x + dy * axis_y;
+            let across = -dx * axis_y + dy * axis_x;
+            let streak = (-(across * across) / (size * size * 0.0018).max(1.0)).exp()
+                * (-along.abs() / (size * 2.2).max(1.0)).exp();
+            let mut ghost_energy = 0.0_f32;
+            for (gx, gy, ghost_size) in &ghosts {
+                let gdx = x as f32 - *gx;
+                let gdy = y as f32 - *gy;
+                let r2 = gdx * gdx + gdy * gdy;
+                ghost_energy += (-r2 / (ghost_size * ghost_size * 0.42).max(1.0)).exp();
+            }
+            let amount = (core * 0.62 + halo * 0.12 + ring * 0.2
+                + halo * star * 0.18 + streak * 0.16 + ghost_energy * 0.11) * intensity;
             let index = y * width + x;
-            for channel in 0..3 { pixels[index][channel] += amount * color[channel] * pixels[index][3].max(0.0); }
+            for channel in 0..3 {
+                pixels[index][channel] += amount * color[channel] * pixels[index][3].max(0.0);
+            }
         }
     }
     0
@@ -159,7 +229,7 @@ fn render_blur(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f
     let radius = params[0].round().clamp(1.0, 32.0) as usize;
     let mix = (params[1] / 100.0).clamp(0.0, 1.0) as f32;
     let source = pixels.to_vec();
-    let blurred = box_blur(&source, width, height, radius);
+    let blurred = gaussian_blur(&source, width, height, radius);
     for index in 0..pixels.len() {
         for channel in 0..4 { pixels[index][channel] = source[index][channel] * (1.0 - mix) + blurred[index][channel] * mix; }
     }
@@ -169,8 +239,8 @@ fn render_blur(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f
 #[cfg(sapphire_distort)]
 fn render_distort(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
     let source = pixels.to_vec();
-    let cx = params[0] as f32;
-    let cy = params[1] as f32;
+    let cx = normalized_or_pixels(params[0], width);
+    let cy = normalized_or_pixels(params[1], height);
     let strength = params[2].clamp(-1.5, 1.5) as f32;
     let radius = (params[3].clamp(0.1, 1.5) as f32 * width.min(height) as f32).max(1.0);
     let ripple = params[4].clamp(0.0, 12.0) as f32;
@@ -186,7 +256,7 @@ fn render_distort(pixels: &mut [[f32; 4]], width: usize, height: usize, params: 
             let (sin_angle, cos_angle) = angle.sin_cos();
             let sx = cx + dx * cos_angle - dy * sin_angle;
             let sy = cy + dx * sin_angle + dy * cos_angle;
-            pixels[y * width + x] = sample_nearest(&source, width, height, sx, sy);
+            pixels[y * width + x] = sample_bilinear(&source, width, height, sx, sy);
         }
     }
     0
@@ -228,7 +298,7 @@ fn render_motion(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &
             let mut sum = [0.0_f32; 4];
             for sample in 0..SAMPLES {
                 let t = sample as f32 / (SAMPLES - 1) as f32 - 0.5;
-                let pixel = sample_nearest(&source, width, height, x as f32 + dx * t * 2.0, y as f32 + dy * t * 2.0);
+                let pixel = sample_bilinear(&source, width, height, x as f32 + dx * t * 2.0, y as f32 + dy * t * 2.0);
                 for channel in 0..4 { sum[channel] += pixel[channel] / SAMPLES as f32; }
             }
             let index = y * width + x;
@@ -262,4 +332,45 @@ pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params:
     #[cfg(sapphire_distort)] { render_distort(frame, w, h, values) }
     #[cfg(sapphire_stylize)] { render_stylize(frame, values) }
     #[cfg(sapphire_motion)] { render_motion(frame, w, h, values) }
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::{normalized_or_pixels, sample_bilinear};
+
+    #[test]
+    fn normalized_point_maps_to_frame_center() {
+        assert!((normalized_or_pixels(0.5, 10) - 4.5).abs() < 1e-6);
+        assert!((normalized_or_pixels(0.5, 20) - 9.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn legacy_pixel_point_is_preserved() {
+        assert!((normalized_or_pixels(7.0, 20) - 7.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn bilinear_sampling_interpolates_between_pixels() {
+        let pixels = [
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 0.0, 0.0, 1.0],
+            [0.0, 1.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+        ];
+        let sample = sample_bilinear(&pixels, 2, 2, 0.5, 0.5);
+        assert!((sample[0] - 0.5).abs() < 1e-6);
+        assert!((sample[1] - 0.5).abs() < 1e-6);
+        assert!((sample[2] - 0.25).abs() < 1e-6);
+        assert!((sample[3] - 1.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn bilinear_sampling_clamps_to_frame_edges() {
+        let pixels = [[0.2, 0.3, 0.4, 1.0], [0.8, 0.7, 0.6, 1.0]];
+        let left = sample_bilinear(&pixels, 2, 1, -10.0, 0.0);
+        let right = sample_bilinear(&pixels, 2, 1, 10.0, 0.0);
+        assert!((left[0] - 0.2).abs() < 1e-6);
+        assert!((right[0] - 0.8).abs() < 1e-6);
+    }
 }
