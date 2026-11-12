@@ -59,6 +59,12 @@ def main() -> None:
     import_project = root / "crates/engine/src/cmd/import_project.rs"
     replace_once(
         import_project,
+        "fn import_project(s: &mut Session, p: &Value) -> Result<Value> {",
+        "pub(crate) fn import_project(s: &mut Session, p: &Value) -> Result<Value> {",
+        "allow the ZIP importer to merge an extracted EffectCraft project package",
+    )
+    replace_once(
+        import_project,
         '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx")\n',
         '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") || lower.ends_with(".nv") || lower.ends_with(".zip") || lower.ends_with(".alight") || lower.ends_with(".xml") || lower.ends_with(".aep") || lower.ends_with(".aepx")\n',
         "AE, NodeVideo and project package routing",
