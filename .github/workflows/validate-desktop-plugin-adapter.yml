@@ -182,6 +182,7 @@ jobs:
         run: |
           python3 -m py_compile .github/scripts/add_aep_plugin_placeholders.py
           python3 .github/scripts/add_aep_plugin_placeholders.py
+          cp vendor/effectcraft/crates/aep/tests/it/import/effects.rs effectcraft/crates/aep/tests/it/import/effects.rs
 
       - name: Test AEP and AEPX parser and import regression suite
         working-directory: effectcraft
