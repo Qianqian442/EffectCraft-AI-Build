@@ -82,6 +82,10 @@ jobs:
           unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
           echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
 
+      - name: Fetch CLVK compiler support source dependencies
+        working-directory: third_party/clvk/external/clspv
+        run: python3 utils/fetch_sources.py --deps llvm --shallow
+
       - name: Configure CLVK for Android ARM64 (precompiled SPIR-V mode)
         run: |
           NDK_SYSROOT="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/sysroot"
