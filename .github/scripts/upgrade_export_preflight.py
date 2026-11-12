@@ -54,7 +54,7 @@ new_check = """            let (source_fps, duration_seconds) = app.session.acti
             if !force_export {
                 if let Some(message) = effectcraft_export_device_preflight(
                     check_width, check_height, effective_fps, source_fps, duration_seconds,
-                    format.as_str(), ai_interpolation, ai_upscale
+                    format.as_str(), bitrate_mbps, ai_interpolation, ai_upscale
                 ) {
                     preflight_error = Some(message);
                     warning_open = true;
@@ -213,6 +213,7 @@ fn effectcraft_export_device_preflight(
     source_fps: f64,
     duration_seconds: f64,
     format: &str,
+    bitrate_mbps: f64,
     ai_interpolation: bool,
     ai_upscale: bool,
 ) -> Option<String> {
@@ -287,13 +288,16 @@ fn effectcraft_export_device_preflight(
                 if output.status.success() {
                     let report = String::from_utf8_lossy(&output.stdout);
                     if let Some((_, available)) = effectcraft_engine::sysinfo::parse_df(&report) {
-                        let bitrate = match format {
-                            "h264" => 16_000_000_u64,
-                            "hevc" => 12_000_000_u64,
-                            "av1" => 10_000_000_u64,
-                            "webm" => 12_000_000_u64,
-                            "prores" => 100_000_000_u64,
-                            _ => 16_000_000_u64,
+                        // The manual slider is expressed in Mbps and the render queue
+                        // receives it as kbit/s. Use that exact chosen target in the free-space
+                        // estimate too; ProRes has no manual bitrate slider and uses a conservative
+                        // format/profile estimate.
+                        let bitrate = if format == "prores" {
+                            100_000_000_u64
+                        } else if bitrate_mbps.is_finite() {
+                            (bitrate_mbps.clamp(1.0, 100.0) * 1_000_000.0).round() as u64
+                        } else {
+                            16_000_000_u64
                         };
                         let duration = if duration_seconds.is_finite() { duration_seconds.clamp(1.0, 86_400.0) } else { 1.0 };
                         let scale = if ai_upscale { 1.8 } else { 1.3 };
@@ -313,7 +317,7 @@ fn effectcraft_export_device_preflight(
     }
     #[cfg(not(target_os = "android"))]
     {
-        let _ = (width, height, fps, source_fps, duration_seconds, format, ai_interpolation, ai_upscale);
+        let _ = (width, height, fps, source_fps, duration_seconds, format, bitrate_mbps, ai_interpolation, ai_upscale);
         None
     }
 }
