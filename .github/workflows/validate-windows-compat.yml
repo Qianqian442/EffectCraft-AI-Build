@@ -9,6 +9,7 @@ on:
       - '.github/workflows/validate-windows-compat.yml'
       - 'windows-compat/runtime-manifest.json'
       - 'windows-compat/aexlo-host/**'
+      - 'windows-compat/tools/**'
   workflow_dispatch:
 
 permissions:
@@ -36,6 +37,7 @@ jobs:
       - name: Validate Python patch source
         run: |
           python3 -m py_compile .github/scripts/add_desktop_plugin_package_support.py
+          python3 -m py_compile windows-compat/tools/pe_audit.py
 
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
