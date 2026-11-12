@@ -74,12 +74,24 @@ public final class LanAccountServerAccountFlowTest {
         assertEquals("", registeredUser.getString("wechat"));
         assertEquals(PHOTO_AVATAR, registeredUser.getString("avatar_url"));
 
+        assertFalse("admin password must not be silently replaced after an account exists",
+            LanAccountServer.adoptAdminPasswordIfNoRegisteredUsers(context, "another-admin-pass"));
+        JSONObject stillValidAdmin = call("POST", "/v1/admin/login", "", json(
+            "username", "admin",
+            "password", ADMIN_PASSWORD
+        ));
+        assertEquals("existing admin credential remains valid", 200, status(stillValidAdmin));
+
         JSONObject login = call("POST", "/v1/login", "", json(
             "identifier", "1939023875",
             "password", "account-test-pass"
         ));
         assertEquals("QQ login", 200, status(login));
         assertEquals(userId, body(login).getJSONObject("user").getString("id"));
+
+        JSONObject forbiddenList = call("GET", "/v1/admin/users",
+            body(login).getString("token"), new JSONObject());
+        assertEquals("user token cannot access admin user list", 401, status(forbiddenList));
 
         JSONObject list = call("GET", "/v1/admin/users", adminToken, new JSONObject());
         assertEquals(200, status(list));
