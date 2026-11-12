@@ -189,7 +189,7 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
                 : WinlatorBionicAssetCatalog.protonArm64Ec();
         Path destination = imageFsRoot.resolve("opt").resolve(name);
         deleteTree(destination);
-        Files.createDirectories(destination.getParent());
+        createDirectoriesNoSymlink(privateRoot, destination.getParent());
         Path archive = assets.downloadVerified(spec);
         extractor.extractTarXz(archive, destination);
     }
@@ -209,7 +209,7 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         Path root = containersRoot.resolve(id).normalize();
         if (!root.startsWith(containersRoot)) throw new IOException("container path escapes private runtime root");
         deleteTree(root);
-        Files.createDirectories(root);
+        createDirectoriesNoSymlink(privateRoot, root);
 
         RuntimeAssetInstaller.AssetSpec pattern = architecture == Architecture.X86_64
                 ? WinlatorBionicAssetCatalog.x64ContainerPattern()
@@ -221,8 +221,8 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
                 ? imageFsRoot.resolve("opt/proton-9.0-x86_64")
                 : imageFsRoot.resolve("opt/proton-9.0-arm64ec");
         Container container = new Container(id, architecture, root, wineRoot);
-        Files.createDirectories(container.system32);
-        Files.createDirectories(container.syswow64);
+        createDirectoriesNoSymlink(privateRoot, container.system32);
+        createDirectoriesNoSymlink(privateRoot, container.syswow64);
         installCommonWindowsDlls(container);
         return container;
     }
