@@ -36,10 +36,27 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK and NDK
-        uses: android-actions/setup-android@v3
-        with:
-          ndk-version: 27.2.12479018
+      - name: Configure preinstalled Android SDK
+        shell: bash
+        run: |
+          set +o pipefail
+          SDK_ROOT="/usr/local/lib/android/sdk"
+          SDKMANAGER_DIR="$(dirname "$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)")"
+          test -x "$SDKMANAGER_DIR/sdkmanager"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDKMANAGER_DIR" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER_DIR/sdkmanager" --licenses >/dev/null
+          set -o pipefail
+
+      - name: Install Android build components
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+          echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
       - name: Set up Rust for Android arm64
         uses: dtolnay/rust-toolchain@stable
@@ -47,7 +64,21 @@ jobs:
           targets: aarch64-linux-android
 
       - name: Install cargo-ndk
-        run: cargo install cargo-ndk --locked
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.cargo/bin"
+          ARCHIVE="$RUNNER_TEMP/cargo-ndk-v4.1.2.tgz"
+          if curl -fL --retry 2 --retry-all-errors --retry-delay 3 \
+            "https://github.com/bbqsrc/cargo-ndk/releases/download/v4.1.2/cargo-ndk-x86_64-unknown-linux-musl-v4.1.2.tgz" \
+            -o "$ARCHIVE"; then
+            tar -xzf "$ARCHIVE" --strip-components=1 -C "$HOME/.cargo/bin"
+          else
+            cargo install cargo-ndk --version 4.1.2 --locked
+          fi
+          chmod +x "$HOME/.cargo/bin/cargo-ndk"
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+          cargo ndk -V
 
       - name: Build the native public P2P node
         working-directory: p2p-bridge
