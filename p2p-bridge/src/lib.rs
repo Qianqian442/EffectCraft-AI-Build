@@ -45,6 +45,8 @@ struct AccountRpcRequest {
     token: String,
     #[serde(default)]
     body: String,
+    #[serde(default)]
+    preferred_peer_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -360,10 +362,21 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
         tokio::select! {
             command = commands.recv(), if !is_admin => {
                 if let Some(RpcCommand::Request { request, reply }) = command {
-                    if let Some(peer) = admin_peers.first().copied() {
+                    let preferred = if request.preferred_peer_id.is_empty() {
+                        admin_peers.first().copied()
+                    } else {
+                        PeerId::from_str(&request.preferred_peer_id).ok()
+                            .filter(|peer| admin_peers.contains(peer))
+                    };
+                    if let Some(peer) = preferred {
                         let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer, request);
                         pending_rpc.insert(request_id, reply);
                     } else {
+                        if !request.preferred_peer_id.is_empty() {
+                            if let Ok(peer) = PeerId::from_str(&request.preferred_peer_id) {
+                                swarm.behaviour_mut().kad.get_closest_peers(peer);
+                            }
+                        }
                         deferred_rpc.push_back((request, reply));
                         swarm.behaviour_mut().kad.get_providers(service_key.clone());
                     }
@@ -407,10 +420,7 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
 
                         if !is_admin && info.agent_version == ADMIN_AGENT_VERSION && !admin_peers.contains(&peer_id) {
                             admin_peers.push(peer_id);
-                            while let Some((request, reply)) = deferred_rpc.pop_front() {
-                                let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer_id, request);
-                                pending_rpc.insert(request_id, reply);
-                            }
+                            dispatch_deferred_for_peer(&mut swarm, peer_id, &mut deferred_rpc, &mut pending_rpc);
                             set_snapshot(|state| state.status = "local_admin_account_node_discovered".to_string());
                         }
                         let supports_relay_v2 = info.protocols.iter().any(|protocol| protocol == &RELAY_HOP_PROTOCOL);
@@ -439,17 +449,13 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                     })) => {
                         if !is_admin {
                             for peer_id in providers {
-                                if peer_id != local_peer_id && !admin_peers.contains(&peer_id) {
+                                if peer_id == local_peer_id { continue; }
+                                if !admin_peers.contains(&peer_id) {
                                     admin_peers.push(peer_id);
                                 }
-                            }
-                            if let Some(peer) = admin_peers.first().copied() {
-                                while let Some((request, reply)) = deferred_rpc.pop_front() {
-                                    let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer, request);
-                                    pending_rpc.insert(request_id, reply);
-                                }
-                                if !swarm.is_connected(&peer) {
-                                    let _ = swarm.dial(libp2p::swarm::dial_opts::DialOpts::peer_id(peer).build());
+                                dispatch_deferred_for_peer(&mut swarm, peer_id, &mut deferred_rpc, &mut pending_rpc);
+                                if !swarm.is_connected(&peer_id) {
+                                    let _ = swarm.dial(libp2p::swarm::dial_opts::DialOpts::peer_id(peer_id).build());
                                 }
                             }
                         }
@@ -600,6 +606,26 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
 }
 
 
+
+fn dispatch_deferred_for_peer(
+    swarm: &mut Swarm<EffectCraftBehaviour>,
+    peer_id: PeerId,
+    deferred: &mut VecDeque<(AccountRpcRequest, std_mpsc::Sender<Result<AccountRpcResponse, String>>)>,
+    pending: &mut HashMap<request_response::OutboundRequestId, std_mpsc::Sender<Result<AccountRpcResponse, String>>>,
+) {
+    let count = deferred.len();
+    for _ in 0..count {
+        let Some((request, reply)) = deferred.pop_front() else { break };
+        let matches = request.preferred_peer_id.is_empty()
+            || PeerId::from_str(&request.preferred_peer_id).ok() == Some(peer_id);
+        if matches {
+            let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer_id, request);
+            pending.insert(request_id, reply);
+        } else {
+            deferred.push_back((request, reply));
+        }
+    }
+}
 
 fn start_client_rpc_proxy(command_tx: UnboundedSender<RpcCommand>) {
     let _ = thread::Builder::new()
