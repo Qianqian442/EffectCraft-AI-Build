@@ -12,6 +12,8 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.text.InputType;
 import android.view.Gravity;
 import android.view.View;
@@ -53,6 +55,18 @@ public final class MainActivity extends Activity {
     private Button loginButton;
     private TextView loginStatus;
     private TextView registeredCountView;
+    private final Handler countRefreshHandler = new Handler(Looper.getMainLooper());
+    private final Runnable countRefreshTask = new Runnable() {
+        @Override public void run() {
+            if (isFinishing() || adminToken.isEmpty() || registeredCountView == null) return;
+            requestAsync("GET", "/v1/admin/users?q=", null, true, result -> {
+                if (result != null && registeredCountView != null) {
+                    registeredCountView.setText("当前注册人数：" + result.optInt("registered_count", 0) + " 人");
+                }
+            });
+            countRefreshHandler.postDelayed(this, 15000L);
+        }
+    };
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -214,6 +228,7 @@ public final class MainActivity extends Activity {
         Button logout = button("返回管理员登录");
         logout.setOnClickListener(v -> {
             adminToken = "";
+            countRefreshHandler.removeCallbacks(countRefreshTask);
             getPreferences(MODE_PRIVATE).edit().remove("phone_admin_token").apply();
             showLogin();
         });
@@ -411,6 +426,8 @@ public final class MainActivity extends Activity {
             showLogin();
         });
         setRoot(page);
+        countRefreshHandler.removeCallbacks(countRefreshTask);
+        countRefreshHandler.postDelayed(countRefreshTask, 15000L);
         if (users == null) return;
         for (int i = 0; i < users.length(); i++) {
             JSONObject user = users.optJSONObject(i);
@@ -610,6 +627,7 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        countRefreshHandler.removeCallbacks(countRefreshTask);
         super.onDestroy();
         io.shutdownNow();
     }
