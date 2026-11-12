@@ -19,11 +19,34 @@ def main() -> int:
     parser.add_argument("clvk_source", type=Path)
     root = parser.parse_args().clvk_source
 
+    # Android NDK r26b headers predate VK_KHR_shader_fma. Provide the
+    # extension's official ABI declaration when the SDK header has no definition.
+    header = root / "src/device.hpp"
+    source = header.read_text(encoding="utf-8")
+    vulkan_include = "#include <vulkan/vulkan.h>"
+    fallback = """#ifndef VK_KHR_SHADER_FMA_EXTENSION_NAME
+#define VK_KHR_SHADER_FMA_EXTENSION_NAME "VK_KHR_shader_fma"
+#define VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FMA_FEATURES_KHR ((VkStructureType)1000579000)
+typedef struct VkPhysicalDeviceShaderFmaFeaturesKHR {
+    VkStructureType sType;
+    void *pNext;
+    VkBool32 shaderFmaFloat16;
+    VkBool32 shaderFmaFloat32;
+    VkBool32 shaderFmaFloat64;
+} VkPhysicalDeviceShaderFmaFeaturesKHR;
+#endif
+"""
+    if fallback not in source:
+        if source.count(vulkan_include) != 1:
+            raise SystemExit("device.hpp: expected one Vulkan header include")
+        source = source.replace(vulkan_include, vulkan_include + "\\n\\n" + fallback, 1)
+        header.write_text(source, encoding="utf-8")
+
     replace_once(
         root / "src/device.hpp",
         "    VkPhysicalDeviceShaderFmaFeaturesKHR m_features_shader_fma{};",
         """#ifdef VK_KHR_SHADER_FMA_EXTENSION_NAME
-        VkPhysicalDeviceShaderFmaFeaturesKHR m_features_shader_fma{};
+    VkPhysicalDeviceShaderFmaFeaturesKHR m_features_shader_fma{};
 #endif""",
         "device.hpp shader-FMA feature field",
     )
