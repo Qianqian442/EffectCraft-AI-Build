@@ -159,11 +159,44 @@ jobs:
           cargo build --locked --release --target x86_64-pc-windows-msvc --manifest-path windows-compat/aexlo-host/Cargo.toml
           if (!(Test-Path "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe")) { throw "AEX host worker executable was not produced" }
 
-      - name: Package AE host worker and notices
+      - name: Build the upstream aexlo Noise sample plug-in (Windows x64)
+        run: |
+          cargo build --manifest-path third_party/aexlo/examples/plugins/noise/Cargo.toml --release --target x86_64-pc-windows-msvc
+          if (!(Test-Path "third_party/aexlo/target/x86_64-pc-windows-msvc/release/aexlo_demo_noise.dll")) { throw "aexlo sample AEX DLL was not produced" }
+
+      - name: Smoke-test AE plug-in loading and CPU frame rendering
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force artifacts | Out-Null
-          Copy-Item "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe" "artifacts/"
+          Copy-Item "third_party/aexlo/target/x86_64-pc-windows-msvc/release/aexlo_demo_noise.dll" "artifacts/aexlo_demo_noise.aex"
+          $request = @{
+            cmd = "render"
+            input_png = "third_party/aexlo/fixtures/input.png"
+            output_png = "artifacts/aexlo-demo-noise-render.png"
+            frame = 0
+            fps = 30
+          } | ConvertTo-Json -Compress
+          @($request, '{"cmd":"quit"}') | Set-Content -Encoding ascii "artifacts/worker-requests.jsonl"
+          $hostExe = (Resolve-Path "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe").Path
+          $plugin = (Resolve-Path "artifacts/aexlo_demo_noise.aex").Path
+          $inputFile = (Resolve-Path "artifacts/worker-requests.jsonl").Path
+          $outputFile = Join-Path $PWD "artifacts/worker-output.jsonl"
+          $errorFile = Join-Path $PWD "artifacts/worker-error.log"
+          $process = Start-Process -FilePath $hostExe -ArgumentList @($plugin) -NoNewWindow -Wait -PassThru -RedirectStandardInput $inputFile -RedirectStandardOutput $outputFile -RedirectStandardError $errorFile
+          if ($process.ExitCode -ne 0) { Get-Content $errorFile -ErrorAction SilentlyContinue; throw "aexlo host worker exited with $($process.ExitCode)" }
+          $lines = Get-Content $outputFile
+          if ($lines.Count -lt 2) { throw "aexlo host worker did not return plug-in metadata and render response" }
+          $info = $lines[0] | ConvertFrom-Json
+          $render = $lines[1] | ConvertFrom-Json
+          if (-not $info.ok) { throw "AEX plug-in load failed: $($lines[0])" }
+          if (-not $render.ok) { throw "AEX sample render failed: $($lines[1])" }
+          if (-not (Test-Path "artifacts/aexlo-demo-noise-render.png")) { throw "render output image was not created" }
+          Write-Host "AEX host smoke test passed: $($info.about); output $($render.width)x$($render.height)"
+          $lines | Set-Content -Encoding utf8 "artifacts/worker-output.jsonl"
+
+      - name: Package AE host worker and notices
+        shell: pwsh
+        run: |
           Copy-Item "third_party/aexlo/LICENSE" "artifacts/AEXLO-MIT-LICENSE"
           Get-FileHash "artifacts/effectcraft-aex-host.exe" -Algorithm SHA256 | Format-List | Out-File "artifacts/SHA256.txt"
 
