@@ -68,7 +68,8 @@ jobs:
           _Static_assert(offsetof(struct obstack, chunkfun) == 56, "obstack.chunkfun");
           _Static_assert(offsetof(struct obstack, freefun) == 64, "obstack.freefun");
           _Static_assert(offsetof(struct obstack, extra_arg) == 72, "obstack.extra_arg");
-          _Static_assert(offsetof(struct obstack, use_extra_arg) == 80, "obstack.bitfields");
+          /* C offsetof is not defined for bit-fields; their containing storage
+             starts after extra_arg and the complete ABI struct must be 88 bytes. */
           _Static_assert(sizeof(struct obstack) == 88, "obstack.size");
           EOF
           "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android31-clang" \
