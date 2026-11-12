@@ -450,10 +450,9 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                         if !is_admin {
                             for peer_id in providers {
                                 if peer_id == local_peer_id { continue; }
-                                if !admin_peers.contains(&peer_id) {
-                                    admin_peers.push(peer_id);
-                                }
-                                dispatch_deferred_for_peer(&mut swarm, peer_id, &mut deferred_rpc, &mut pending_rpc);
+                                // DHT provider records are discovery hints, not proof of
+                                // administrator identity. Wait for the Noise-authenticated
+                                // Identify handshake before sending credentials.
                                 if !swarm.is_connected(&peer_id) {
                                     let _ = swarm.dial(libp2p::swarm::dial_opts::DialOpts::peer_id(peer_id).build());
                                 }
