@@ -317,6 +317,9 @@ impl AccountState {
     fn retry(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         self.status.clear();
         if self.token.is_some() {
+            // Save a changed administrator address before verifying the existing token,
+            // so an upgraded LAN account can complete its one-time P2P identity pairing.
+            self.persist(config);
             self.mode = Mode::Checking;
             self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
         } else {
@@ -580,11 +583,12 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 ui.label(&app.account.server_url);
             });
         }),
-        Mode::Unavailable => centered_window(ctx, "无法验证账号", vec2(400.0, 300.0), |ui| {
+        Mode::Unavailable => centered_window(ctx, "无法验证账号", vec2(420.0, 380.0), |ui| {
             ui.label("管理员手机账号节点当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");
-            ui.label("请确认管理员手机上的账号管理版正在运行；跨网络时请检查网络是否允许 P2P 或公共中继连接。");
-            ui.label(format!("服务器地址：{}", app.account.server_url));
-            if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新连接")).clicked() {
+            ui.label("请粘贴管理版“复制管理员节点 ID”得到的完整 p2p://地址；同 Wi-Fi 优先直连，跨网络自动尝试打洞和公共中继。");
+            ui.label("管理员节点地址");
+            ui.text_edit_singleline(&mut app.account.server_url);
+            if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("保存节点地址并重新连接")).clicked() {
                 app.account.retry(config);
             }
             if !app.account.status.is_empty() {
