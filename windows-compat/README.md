@@ -48,6 +48,27 @@ https://ae-plugins.docsforadobe.dev/ppro/other-hosts/
 
 This is a technical limitation, not a reason to delete EffectCraft's desktop plug-in import feature. The existing migration/reimplementation path remains necessary for unsupported plug-ins.
 
+## Improved hybrid backend selection
+
+A newer and more suitable reference has been verified: the Winlator Bionic family (the inspected source is the MIT-licensed `EmuProto/Winlator-Ludashi` branch).
+
+- Source: https://github.com/EmuProto/Winlator-Ludashi/tree/winlator_bionic
+- Inspected revision: `95224ca7db27ae133dbb1578e004b94b86ef8894`
+- Its Android launcher switches between normal x86_64 Wine/Proton containers using Box64/Box86 and Arm64EC containers using FEXCore, with optional WowBox64 for the 32-bit WoW64 path.
+- FEXCore source: https://github.com/FEX-Emu/FEX (MIT; inspected revision `ab135df091d005cc98dfddc56c3dc9c9e4bd501d`).
+
+EffectCraft should adapt this **backend orchestration**, not copy the Winlator UI:
+- x86-64 PE: try the standard Wine + Box64 container; allow the Arm64EC/FEXCore container as a separately tested alternate.
+- x86 PE: try a validated Box86/WoW64 path; use FEXCore or WowBox64 only when the selected Wine/Proton container supports that ABI.
+- ARM64/ARM64EC PE: route to the matching native/Arm64EC container only after checking the actual ABI and imported DLLs.
+- Record backend failures and allow fallback between separate clean Wine prefixes/containers. Do not mix emulator DLLs from different backends in one Wine prefix without validation.
+
+This is an important improvement over a Box64-only proposal. It still does not implement Adobe's AE plug-in host API, and it does not mean every AEX binary works.
+
+## PE architecture routing metadata
+
+The static PE analyser records machine type, imported DLLs, exported symbols and candidate AE entry points. It also marks ARM64EC (`0xA641`) and ARM64X (`0xA64E`) explicitly so the runtime manager can choose an appropriate container. Architecture hints are diagnostic only until a specific Wine prefix + emulator combination passes real plug-in tests.
+
 ## Work now implemented on this branch
 
 - Extend the desktop ZIP import patch to inspect PE headers without executing binaries.
