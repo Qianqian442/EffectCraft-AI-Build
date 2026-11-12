@@ -95,14 +95,10 @@ fn gaussian_blur(source: &[[f32; 4]], width: usize, height: usize, radius: usize
     box_blur(&second, width, height, pass_radius)
 }
 
-fn normalized_or_pixels(value: f64, extent: usize) -> f32 {
+fn frame_pixel(value: f64, extent: usize) -> f32 {
     let max = extent.saturating_sub(1) as f32;
-    let value = if value.is_finite() { value as f32 } else { 0.5 };
-    if (0.0..=1.0).contains(&value) {
-        value * max
-    } else {
-        value.clamp(0.0, max)
-    }
+    let value = if value.is_finite() { value as f32 } else { 0.0 };
+    value.clamp(0.0, max)
 }
 
 fn sample_bilinear(source: &[[f32; 4]], width: usize, height: usize, x: f32, y: f32) -> [f32; 4] {
@@ -171,8 +167,8 @@ fn render_glow(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f
 fn render_lensflare(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
     // Point controls are normalized in the manifest (0..1); accept pixel-space
     // coordinates too so older saved projects remain usable.
-    let cx = normalized_or_pixels(params[0], width);
-    let cy = normalized_or_pixels(params[1], height);
+    let cx = frame_pixel(params[0], width);
+    let cy = frame_pixel(params[1], height);
     let intensity = params[2].clamp(0.0, 2.0) as f32;
     let size = (params[3].clamp(0.08, 1.5) as f32 * width.min(height) as f32).max(2.0);
     let color = [params[4] as f32, params[5] as f32, params[6] as f32];
@@ -337,17 +333,18 @@ pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params:
 
 #[cfg(test)]
 mod tests {
-    use super::{normalized_or_pixels, sample_bilinear};
+    use super::{frame_pixel, sample_bilinear};
 
     #[test]
-    fn normalized_point_maps_to_frame_center() {
-        assert!((normalized_or_pixels(0.5, 10) - 4.5).abs() < 1e-6);
-        assert!((normalized_or_pixels(0.5, 20) - 9.5).abs() < 1e-6);
+    fn host_mapped_frame_pixel_is_not_scaled_twice() {
+        assert!((frame_pixel(7.0, 20) - 7.0).abs() < 1e-6);
+        assert!((frame_pixel(0.5, 20) - 0.5).abs() < 1e-6);
     }
 
     #[test]
-    fn legacy_pixel_point_is_preserved() {
-        assert!((normalized_or_pixels(7.0, 20) - 7.0).abs() < 1e-6);
+    fn frame_pixel_is_clamped_and_non_finite_is_safe() {
+        assert!((frame_pixel(100.0, 20) - 19.0).abs() < 1e-6);
+        assert!((frame_pixel(f64::NAN, 20)).abs() < 1e-6);
     }
 
     #[test]
