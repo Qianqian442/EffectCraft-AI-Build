@@ -67,6 +67,222 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         output
     }
 
+    fn pe_u16(bytes: &[u8], offset: usize) -> Option<u16> {
+        Some(u16::from_le_bytes(bytes.get(offset..offset.checked_add(2)?)?.try_into().ok()?))
+    }
+
+    fn pe_u32(bytes: &[u8], offset: usize) -> Option<u32> {
+        Some(u32::from_le_bytes(bytes.get(offset..offset.checked_add(4)?)?.try_into().ok()?))
+    }
+
+    fn pe_u64(bytes: &[u8], offset: usize) -> Option<u64> {
+        Some(u64::from_le_bytes(bytes.get(offset..offset.checked_add(8)?)?.try_into().ok()?))
+    }
+
+    fn pe_cstr(bytes: &[u8], offset: usize) -> Option<String> {
+        let tail = bytes.get(offset..)?;
+        let end = tail.iter().position(|value| *value == 0)?;
+        if end == 0 { return None; }
+        Some(String::from_utf8_lossy(&tail[..end]).chars().take(160).collect())
+    }
+
+    fn pe_rva_offset(
+        rva: u32,
+        size_of_headers: u32,
+        sections: &[(u32, u32, u32, u32)],
+        file_len: usize,
+    ) -> Option<usize> {
+        let raw_offset = if rva < size_of_headers {
+            rva as u64
+        } else {
+            let mut found = None;
+            for (virtual_address, virtual_size, raw_size, raw_pointer) in sections {
+                let span = (*virtual_size).max(*raw_size);
+                let delta = rva.checked_sub(*virtual_address)?;
+                if rva >= *virtual_address && delta < span {
+                    found = Some((*raw_pointer as u64).checked_add(delta as u64)?);
+                    break;
+                }
+            }
+            found?
+        };
+        let offset = usize::try_from(raw_offset).ok()?;
+        (offset < file_len).then_some(offset)
+    }
+
+    /// Static PE inspection only. This never maps, loads, or executes native code.
+    /// Imported DLLs and exported entry points help select a compatible Wine/Box64 backend
+    /// and determine whether a file resembles an After Effects effect plug-in.
+    fn windows_pe_metadata(bytes: &[u8]) -> Value {
+        if bytes.len() < 0x40 || bytes.get(0..2) != Some(b"MZ") {
+            return json!({ "is_pe": false });
+        }
+        let Some(pe_offset) = pe_u32(bytes, 0x3c).map(|value| value as usize) else {
+            return json!({ "is_pe": false, "parse_error": "invalid PE header offset" });
+        };
+        if bytes.get(pe_offset..pe_offset.saturating_add(4)) != Some(b"PE\0\0") {
+            return json!({ "is_pe": false, "parse_error": "PE signature not found" });
+        }
+        let coff = match pe_offset.checked_add(4) {
+            Some(value) => value,
+            None => return json!({ "is_pe": false, "parse_error": "PE offset overflow" }),
+        };
+        let (Some(machine), Some(section_count), Some(optional_size)) =
+            (pe_u16(bytes, coff), pe_u16(bytes, coff + 2), pe_u16(bytes, coff + 16))
+        else {
+            return json!({ "is_pe": false, "parse_error": "truncated COFF header" });
+        };
+        let optional = match coff.checked_add(20) {
+            Some(value) => value,
+            None => return json!({ "is_pe": false, "parse_error": "optional header offset overflow" }),
+        };
+        let Some(magic) = pe_u16(bytes, optional) else {
+            return json!({ "is_pe": false, "parse_error": "missing optional header" });
+        };
+        let (bits, directory_offset, number_of_directories_offset) = match magic {
+            0x10b => (32u8, optional + 96, optional + 92),
+            0x20b => (64u8, optional + 112, optional + 108),
+            _ => return json!({ "is_pe": false, "parse_error": "unknown PE optional-header format" }),
+        };
+        let size_of_headers = pe_u32(bytes, optional + 60).unwrap_or(0);
+        let subsystem = pe_u16(bytes, optional + 68).unwrap_or(0);
+        let dll_characteristics = pe_u16(bytes, optional + 70).unwrap_or(0);
+        let number_of_directories = pe_u32(bytes, number_of_directories_offset).unwrap_or(0);
+        let section_table = match optional.checked_add(optional_size as usize) {
+            Some(value) => value,
+            None => return json!({ "is_pe": false, "parse_error": "section table offset overflow" }),
+        };
+        let mut sections: Vec<(u32, u32, u32, u32)> = Vec::new();
+        for index in 0..usize::from(section_count).min(96) {
+            let offset = match section_table.checked_add(index.saturating_mul(40)) {
+                Some(value) => value,
+                None => break,
+            };
+            if offset.saturating_add(40) > bytes.len() { break; }
+            sections.push((
+                pe_u32(bytes, offset + 12).unwrap_or(0),
+                pe_u32(bytes, offset + 8).unwrap_or(0),
+                pe_u32(bytes, offset + 16).unwrap_or(0),
+                pe_u32(bytes, offset + 20).unwrap_or(0),
+            ));
+        }
+
+        let mut imported_dlls: Vec<String> = Vec::new();
+        let mut imported_symbols: Vec<String> = Vec::new();
+        if number_of_directories > 1 && directory_offset.saturating_add(16) <= bytes.len() {
+            let import_rva = pe_u32(bytes, directory_offset + 8).unwrap_or(0);
+            if import_rva != 0 {
+                if let Some(mut descriptor) = pe_rva_offset(import_rva, size_of_headers, &sections, bytes.len()) {
+                    for _ in 0..128 {
+                        if descriptor.saturating_add(20) > bytes.len() { break; }
+                        let original_thunk = pe_u32(bytes, descriptor).unwrap_or(0);
+                        let name_rva = pe_u32(bytes, descriptor + 12).unwrap_or(0);
+                        let first_thunk = pe_u32(bytes, descriptor + 16).unwrap_or(0);
+                        if name_rva == 0 && original_thunk == 0 && first_thunk == 0 { break; }
+                        if let Some(name_offset) = pe_rva_offset(name_rva, size_of_headers, &sections, bytes.len()) {
+                            if let Some(name) = pe_cstr(bytes, name_offset) {
+                                if !imported_dlls.iter().any(|old| old.eq_ignore_ascii_case(&name))
+                                    && imported_dlls.len() < 64
+                                {
+                                    imported_dlls.push(name);
+                                }
+                            }
+                        }
+                        let thunk_rva = if original_thunk != 0 { original_thunk } else { first_thunk };
+                        if let Some(mut thunk_offset) = pe_rva_offset(thunk_rva, size_of_headers, &sections, bytes.len()) {
+                            for _ in 0..512 {
+                                let entry = if bits == 64 {
+                                    pe_u64(bytes, thunk_offset)
+                                } else {
+                                    pe_u32(bytes, thunk_offset).map(u64::from)
+                                };
+                                let Some(entry) = entry else { break; };
+                                if entry == 0 { break; }
+                                let ordinal_mask = if bits == 64 { 0x8000_0000_0000_0000 } else { 0x8000_0000 };
+                                if entry & ordinal_mask == 0 {
+                                    if let Some(name_rva) = u32::try_from(entry & 0x7fff_ffff).ok() {
+                                        if let Some(name_offset) = pe_rva_offset(name_rva, size_of_headers, &sections, bytes.len()) {
+                                            if let Some(name) = pe_cstr(bytes, name_offset.saturating_add(2)) {
+                                                if imported_symbols.len() < 256 {
+                                                    imported_symbols.push(name);
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                thunk_offset = match thunk_offset.checked_add(if bits == 64 { 8 } else { 4 }) {
+                                    Some(value) => value,
+                                    None => break,
+                                };
+                            }
+                        }
+                        descriptor = match descriptor.checked_add(20) {
+                            Some(value) => value,
+                            None => break,
+                        };
+                    }
+                }
+            }
+        }
+
+        let mut exports: Vec<String> = Vec::new();
+        if number_of_directories > 0 && directory_offset.saturating_add(8) <= bytes.len() {
+            let export_rva = pe_u32(bytes, directory_offset).unwrap_or(0);
+            if export_rva != 0 {
+                if let Some(export_offset) = pe_rva_offset(export_rva, size_of_headers, &sections, bytes.len()) {
+                    let names_count = pe_u32(bytes, export_offset + 24).unwrap_or(0).min(256);
+                    let names_rva = pe_u32(bytes, export_offset + 32).unwrap_or(0);
+                    if let Some(names_offset) = pe_rva_offset(names_rva, size_of_headers, &sections, bytes.len()) {
+                        for index in 0..names_count as usize {
+                            let slot = match names_offset.checked_add(index.saturating_mul(4)) {
+                                Some(value) => value,
+                                None => break,
+                            };
+                            let Some(name_rva) = pe_u32(bytes, slot) else { break; };
+                            if let Some(name_offset) = pe_rva_offset(name_rva, size_of_headers, &sections, bytes.len()) {
+                                if let Some(name) = pe_cstr(bytes, name_offset) {
+                                    exports.push(name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        let machine_name = match machine {
+            0x014c => "x86",
+            0x8664 => "x86-64",
+            0xaa64 => "ARM64",
+            0x01c4 => "ARM",
+            0x0200 => "IA-64",
+            _ => "unknown",
+        };
+        let subsystem_name = match subsystem {
+            1 => "native",
+            2 => "Windows GUI",
+            3 => "Windows console",
+            9 => "Windows CE GUI",
+            10 => "EFI application",
+            14 => "Xbox",
+            _ => "unknown",
+        };
+        let ae_entrypoints = exports.iter().filter(|name| {
+            matches!(name.as_str(), "PluginDataEntryFunction2" | "PluginDataEntryFunction" | "EffectMain")
+        }).cloned().collect::<Vec<_>>();
+        json!({
+            "is_pe": true,
+            "machine": format!("0x{machine:04x}"),
+            "machine_name": machine_name,
+            "bits": bits,
+            "subsystem": subsystem_name,
+            "is_dll": (dll_characteristics & 0x2000) != 0,
+            "imports": imported_dlls,
+            "imported_symbols_sample": imported_symbols.iter().take(96).collect::<Vec<_>>(),
+            "exports_sample": exports.iter().take(96).collect::<Vec<_>>(),
+            "ae_entrypoint_candidates": ae_entrypoints
+        })
+    }
+
     fn native_binary_info(bytes: &[u8]) -> (&'static str, &'static str) {
         if bytes.len() >= 2 && &bytes[..2] == b"MZ" {
             if bytes.len() >= 0x40 {
@@ -371,6 +587,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     "file": entry_name,
                     "binary_format": binary_format,
                     "architecture": architecture,
+                    "pe_metadata": windows_pe_metadata(&bytes),
                     "strings": embedded_strings.iter().take(64).collect::<Vec<_>>()
                 }));
             }
@@ -477,7 +694,17 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let strings = item.get("strings").and_then(Value::as_array)
             .map(|values| values.iter().filter_map(Value::as_str).take(24).collect::<Vec<_>>().join(" | "))
             .unwrap_or_default();
-        format!("\n[{file}] {format} / {architecture}\n{strings}")
+        let pe = item.get("pe_metadata");
+        let imports = pe.and_then(|value| value.get("imports")).and_then(Value::as_array)
+            .map(|values| values.iter().filter_map(Value::as_str).take(32).collect::<Vec<_>>().join(", "))
+            .unwrap_or_default();
+        let exports = pe.and_then(|value| value.get("exports_sample")).and_then(Value::as_array)
+            .map(|values| values.iter().filter_map(Value::as_str).take(32).collect::<Vec<_>>().join(", "))
+            .unwrap_or_default();
+        let entrypoints = pe.and_then(|value| value.get("ae_entrypoint_candidates")).and_then(Value::as_array)
+            .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "))
+            .unwrap_or_default();
+        format!("\n[{file}] {format} / {architecture}\nWindows DLL imports: {imports}\nExported entry-point candidates: {entrypoints}\nExports: {exports}\n{strings}")
     }).collect::<Vec<_>>().join("\n");
     let mut install_result = json!({
         "installed": installed_wasm,
