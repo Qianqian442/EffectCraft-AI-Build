@@ -848,7 +848,9 @@ fn inspect_desktop_native_file(s: &mut Session, source_path: &str) -> Result<Val
 }
 
 '''
-    marker = "/// " + chr(96) + "effect.plugins.load" + chr(96) + ": load WASM/WAT effect plug-ins directly or from a ZIP archive.\n"
+    # Match the command-doc prefix rather than a version-specific sentence. EffectCraft 0.21.1
+    # describes the original WASM loader differently from later source revisions.
+    marker = "/// " + chr(96) + "effect.plugins.load" + chr(96) + ":"
     source = replace_once(source, marker, helper + marker, "desktop package analyzer insertion")
 
     anchor = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
