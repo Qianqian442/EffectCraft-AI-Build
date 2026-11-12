@@ -91,7 +91,8 @@
     "create isolated Wine prefixes from the matching x86-64 and ARM64EC container patterns; never share one prefix between different ABI backends",
     "launch the x86-64 aexlo worker through Box64+Proton and the x86 worker through a verified 32-bit Wine/WoW64 route",
     "launch and render the AEX sample under both Box64 x86-64 and ARM64EC/FEXCore Wine/Proton containers",
-    "test the same runtime plan on OPPO/Qualcomm and Huawei/Mali-class ARM64 devices"
+    "test the same runtime plan on OPPO/Qualcomm and Huawei/Mali-class ARM64 devices",
+    "evaluate Boxedwine only as a separate GPL-2.0 Android/SDL2 ARM64 port for legacy 32-bit plug-ins; keep it out of the production APK until Android build, 32-bit AEX render and GPL compliance tests pass"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
@@ -226,6 +227,20 @@
         "not a production runtime",
         "does not automatically reconstruct original source or effect algorithms",
         "dynamic traces still require a compatible Wine/Box64/FEX execution environment"
+      ]
+    },
+    {
+      "id": "boxedwine-x86-32",
+      "repository": "https://github.com/danoon2/Boxedwine",
+      "license": "GPL-2.0 (upstream README; audit individual file notices and bundled libraries)",
+      "role": "Separate x86 CPU + Linux-kernel + 32-bit Wine environment, with ARMv8 JIT; candidate for legacy 16/32-bit Windows plug-ins",
+      "status": "developer-only Android porting experiment",
+      "limitations": [
+        "No ready-made upstream Android app build target is documented",
+        "Current upstream target list is Windows, macOS, Linux and Emscripten",
+        "Not a 64-bit AEX execution solution",
+        "Still needs an AE plug-in host ABI such as a compatible 32-bit aexlo host",
+        "GPL-2.0 distribution obligations require a separate legal/source-release review"
       ]
     }
   ],
