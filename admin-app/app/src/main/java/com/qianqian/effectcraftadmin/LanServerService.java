@@ -18,6 +18,8 @@ public final class LanServerService extends Service {
     private PeerHealthServer server;
     private LanPeerDiscovery discovery;
     private Thread worker;
+    private LanAccountServer accountServer;
+    private Thread accountWorker;
 
     @Override public void onCreate() {
         super.onCreate();
@@ -29,6 +31,13 @@ public final class LanServerService extends Service {
             .setOngoing(true)
             .build();
         startForeground(NOTIFICATION_ID, notification);
+
+        accountServer = new LanAccountServer(this);
+        accountWorker = new Thread(accountServer, "EffectCraft-Account-Database-Server");
+        accountWorker.setDaemon(true);
+        accountWorker.start();
+        P2PAccountBridge.start(accountServer);
+        NativeP2P.start(this);
 
         server = new PeerHealthServer();
         worker = new Thread(server, "EffectCraft-P2P-Lightweight-Node");
@@ -76,6 +85,8 @@ public final class LanServerService extends Service {
     @Override public void onDestroy() {
         if (discovery != null) discovery.stop();
         if (server != null) server.stopServer();
+        if (accountServer != null) accountServer.stopServer();
+        NativeP2P.stop();
         getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
             .edit().putBoolean("node_running", false).apply();
         NotificationManager manager = getSystemService(NotificationManager.class);
