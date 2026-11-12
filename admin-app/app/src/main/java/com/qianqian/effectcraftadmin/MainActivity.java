@@ -17,6 +17,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
@@ -653,14 +654,24 @@ public final class MainActivity extends Activity {
         io.execute(() -> {
             HttpURLConnection c = null;
             try {
-                c = (HttpURLConnection) new URL(uri).openConnection();
-                c.setConnectTimeout(5000);
-                c.setReadTimeout(5000);
-                c.setInstanceFollowRedirects(true);
-                try (InputStream in = c.getInputStream()) {
-                    Bitmap bitmap = BitmapFactory.decodeStream(in);
-                    if (bitmap != null) runOnUiThread(() -> view.setImageBitmap(bitmap));
+                Bitmap bitmap;
+                final String localPrefix = "data:image/jpeg;base64,";
+                if (uri.startsWith(localPrefix)) {
+                    // Account avatars selected from the Android Photo Picker are
+                    // compact JPEG data URIs stored directly in the local account DB.
+                    byte[] bytes = Base64.decode(uri.substring(localPrefix.length()), Base64.DEFAULT);
+                    if (bytes.length == 0 || bytes.length > 96 * 1024) return;
+                    bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
+                } else {
+                    c = (HttpURLConnection) new URL(uri).openConnection();
+                    c.setConnectTimeout(5000);
+                    c.setReadTimeout(5000);
+                    c.setInstanceFollowRedirects(true);
+                    try (InputStream in = c.getInputStream()) {
+                        bitmap = BitmapFactory.decodeStream(in);
+                    }
                 }
+                if (bitmap != null) runOnUiThread(() -> view.setImageBitmap(bitmap));
             } catch (Exception ignored) {
                 // Keep the colored placeholder when the optional avatar cannot be loaded.
             } finally {
@@ -670,11 +681,14 @@ public final class MainActivity extends Activity {
     }
 
     private void showUserDetails(JSONObject user) {
+        String avatar = user.optString("avatar_url");
+        String avatarDescription = avatar.startsWith("data:image/")
+            ? "本机相册头像（已压缩保存）" : avatar;
         String message = "名字：" + user.optString("name") +
                 "\nQQ号：" + user.optString("qq") +
                 "\n微信号：" + user.optString("wechat") +
                 "\n注册时间：" + user.optString("created_at") +
-                "\n头像地址：" + user.optString("avatar_url") +
+                "\n头像：" + avatarDescription +
                 "\n封禁截止：" + user.optString("banned_until") +
                 "\n封禁原因：" + user.optString("ban_reason");
         new AlertDialog.Builder(this).setTitle("账号个人信息")
