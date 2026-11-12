@@ -65,6 +65,11 @@ enum RpcCommand {
 
 static RPC_COMMAND_TX: OnceLock<Mutex<Option<UnboundedSender<RpcCommand>>>> = OnceLock::new();
 static CLIENT_RPC_PROXY_STARTED: AtomicBool = AtomicBool::new(false);
+static CLIENT_DATA_DIRECTORY: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+fn client_data_directory() -> &'static Mutex<Option<String>> {
+    CLIENT_DATA_DIRECTORY.get_or_init(|| Mutex::new(None))
+}
 
 fn rpc_command_slot() -> &'static Mutex<Option<UnboundedSender<RpcCommand>>> {
     RPC_COMMAND_TX.get_or_init(|| Mutex::new(None))
@@ -232,6 +237,11 @@ fn build_swarm(key: identity::Keypair, is_admin: bool) -> Result<Swarm<EffectCra
 }
 
 fn start_node(data_directory: &str, is_admin: bool) -> Result<String, String> {
+    if !is_admin {
+        if let Ok(mut saved) = client_data_directory().lock() {
+            *saved = Some(data_directory.to_string());
+        }
+    }
     let directory = Path::new(data_directory).join("effectcraft-p2p");
     let key = load_or_create_identity(&directory)?;
     let peer_id = key.public().to_peer_id().to_string();
@@ -734,6 +744,64 @@ fn dispatch_deferred_for_peer(
     }
 }
 
+fn ensure_client_rpc_sender() -> Result<UnboundedSender<RpcCommand>, String> {
+    if let Some(sender) = current_rpc_command_tx() {
+        return Ok(sender);
+    }
+
+    let directory = client_data_directory().lock()
+        .map_err(|_| "客户端节点路径状态不可用".to_string())?
+        .clone()
+        .ok_or_else(|| "客户端 P2P 节点尚未初始化，请重新打开 EffectCraft".to_string())?;
+
+    // Wait for a failed Swarm thread to finish its cleanup before creating a
+    // replacement. This avoids overlapping two libp2p nodes with one identity.
+    let shutdown_deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < shutdown_deadline {
+        if let Some(sender) = current_rpc_command_tx() {
+            return Ok(sender);
+        }
+        let started = snapshot().lock().map(|state| state.started).unwrap_or(false);
+        if !started { break; }
+        thread::sleep(Duration::from_millis(40));
+    }
+
+    if current_rpc_command_tx().is_none() {
+        let started = snapshot().lock().map(|state| state.started).unwrap_or(false);
+        if !started {
+            start_node(&directory, false)?;
+        }
+    }
+
+    let ready_deadline = Instant::now() + Duration::from_secs(6);
+    while Instant::now() < ready_deadline {
+        if let Some(sender) = current_rpc_command_tx() {
+            return Ok(sender);
+        }
+        let (started, status, last_error) = snapshot().lock()
+            .map(|state| (state.started, state.status.clone(), state.last_error.clone()))
+            .unwrap_or((false, "state_unavailable".to_string(), String::new()));
+        if !started && matches!(status.as_str(), "transport_error" | "runtime_error" | "thread_error" | "rpc_proxy_error") {
+            return Err(format!("P2P 节点自动恢复失败：{status}；{last_error}"));
+        }
+        thread::sleep(Duration::from_millis(60));
+    }
+    Err("P2P 网络节点恢复超时，请确认网络权限后重试".to_string())
+}
+
+fn send_account_rpc(
+    sender: UnboundedSender<RpcCommand>,
+    request: AccountRpcRequest,
+) -> Result<AccountRpcResponse, std_mpsc::SendError<RpcCommand>> {
+    let (reply_tx, reply_rx) = std_mpsc::channel();
+    sender.send(RpcCommand::Request { request, reply: reply_tx })?;
+    Ok(match reply_rx.recv_timeout(Duration::from_secs(38)) {
+        Ok(Ok(response)) => response,
+        Ok(Err(error)) => AccountRpcResponse { status: 503, body: serde_json::json!({"detail": error}).to_string() },
+        Err(_) => AccountRpcResponse { status: 504, body: r#"{"detail":"等待管理员账号节点响应超时"}"#.to_string() },
+    })
+}
+
 fn start_client_rpc_proxy() -> Result<(), String> {
     if CLIENT_RPC_PROXY_STARTED.load(Ordering::Acquire) {
         return Ok(());
@@ -789,27 +857,36 @@ fn serve_client_rpc(mut stream: TcpStream) {
         write_proxy_error(&mut stream, "账号请求接口不受支持".to_string());
         return;
     }
-    let Some(command_tx) = current_rpc_command_tx() else {
-        let state = snapshot_json();
-        write_proxy_error(&mut stream, format!("P2P 网络节点尚未就绪；当前节点状态：{state}"));
-        return;
+    let command_tx = match ensure_client_rpc_sender() {
+        Ok(sender) => sender,
+        Err(error) => {
+            write_proxy_error(&mut stream, format!("P2P 网络节点尚未就绪：{error}"));
+            return;
+        }
     };
-    let (reply_tx, reply_rx) = std_mpsc::channel();
-    if command_tx.send(RpcCommand::Request { request, reply: reply_tx }).is_err() {
-        clear_rpc_command_tx();
-        set_snapshot(|state| {
-            state.started = false;
-            state.status = "command_channel_closed".to_string();
-            state.last_error = "账号请求代理发现 P2P 命令通道已关闭，等待自动恢复".to_string();
-        });
-        let state = snapshot_json();
-        write_proxy_error(&mut stream, format!("P2P 网络节点尚未就绪；节点通道已退出：{state}"));
-        return;
-    }
-    let response = match reply_rx.recv_timeout(Duration::from_secs(38)) {
-        Ok(Ok(response)) => response,
-        Ok(Err(error)) => AccountRpcResponse { status: 503, body: serde_json::json!({"detail": error}).to_string() },
-        Err(_) => AccountRpcResponse { status: 504, body: r#"{"detail":"等待管理员账号节点响应超时"}"#.to_string() },
+    let response = match send_account_rpc(command_tx, request.clone()) {
+        Ok(response) => response,
+        Err(_) => {
+            // Retry once after rebuilding the closed command channel. The
+            // preferred administrator Peer ID remains part of the same request,
+            // so this cannot redirect credentials to a different discovered peer.
+            match ensure_client_rpc_sender() {
+                Ok(recovered) => match send_account_rpc(recovered, request) {
+                    Ok(response) => response,
+                    Err(error) => {
+                        let status = snapshot_json();
+                        AccountRpcResponse {
+                            status: 503,
+                            body: serde_json::json!({"detail": format!("P2P 网络节点自动恢复后仍无法发送账号请求：{error}；{status}")}).to_string(),
+                        }
+                    }
+                },
+                Err(error) => AccountRpcResponse {
+                    status: 503,
+                    body: serde_json::json!({"detail": error}).to_string(),
+                },
+            }
+        }
     };
     if let Ok(serialized) = serde_json::to_string(&response) {
         let _ = writeln!(stream, "{serialized}");
