@@ -103,9 +103,23 @@ final class LanAccountServer implements Runnable {
         if (!p.contains("jwt_secret")) {
             p.edit().putString("jwt_secret", b64(randomBytes(48))).apply();
         }
-        if (!p.contains("admin_hash")) {
-            ensureAdminPassword(context);
-        }
+        // The administrator password is set through the first-run setup screen.
+        // Never generate an undisclosed password in a background service.
+    }
+
+    static boolean hasAdminPassword(Context context) {
+        return context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).contains("admin_hash");
+    }
+
+    static boolean setAdminPassword(Context context, String password) {
+        if (password == null || password.length() < 12 || password.length() > 128) return false;
+        SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        byte[] salt = randomBytes(16);
+        p.edit()
+            .putString("admin_salt", b64(salt))
+            .putString("admin_hash", hashPassword(password, salt))
+            .apply();
+        return true;
     }
 
     private static String randomPassword() {
