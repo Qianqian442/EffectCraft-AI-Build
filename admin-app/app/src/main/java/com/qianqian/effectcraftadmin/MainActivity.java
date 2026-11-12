@@ -103,11 +103,6 @@ public final class MainActivity extends Activity {
         }
     }
 
-    @Override protected void onDestroy() {
-        p2pUiHandler.removeCallbacks(p2pStatusRefresh);
-        super.onDestroy();
-    }
-
     /** Server-authoritative global node switch; never trust a local preference for this control. */
     private void addGlobalNodePanel(LinearLayout page) {
         LinearLayout panel = new LinearLayout(this);
@@ -652,6 +647,8 @@ public final class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        p2pUiHandler.removeCallbacks(p2pStatusRefresh);
+        NativeP2P.stop();
         super.onDestroy();
         io.shutdownNow();
     }
