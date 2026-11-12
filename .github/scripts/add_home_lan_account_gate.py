@@ -144,9 +144,9 @@ impl AccountState {
         if let Some(name) = Self::account_file(config) {
             if let Some(data) = config.and_then(|store| store.read(name)) {
                 if let Ok(saved) = serde_json::from_str::<SavedAccount>(&data) {
-                    if saved.server_url.starts_with("p2p://") || saved.server_url.starts_with("http://") {
-                        self.server_url = saved.server_url;
-                    }
+                    // Upgrade old LAN-only profiles to automatic P2P discovery while
+                    // retaining the login token issued by the administrator phone.
+                    self.server_url = DEFAULT_SERVER.to_string();
                     if !saved.token.is_empty() {
                         self.token = Some(saved.token);
                     }
@@ -525,6 +525,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             });
             ui.separator();
             if app.account.login_mode_register {
+                ui.small("QQ号和微信号至少填写一项；两项都填写也可以。");
                 ui.label("QQ号");
                 ui.text_edit_singleline(&mut app.account.qq);
                 ui.label("微信号");
