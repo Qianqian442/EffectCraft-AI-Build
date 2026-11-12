@@ -7,6 +7,7 @@ on:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_android_gallery_export.py'
+      - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/install_ai_plugin_bridge.py'
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/upgrade_export_preflight.py'
@@ -67,7 +68,8 @@ jobs:
             .github/scripts/patch_export_dialog.py \
             .github/scripts/upgrade_export_preflight.py \
             .github/scripts/integrate_video_ai.py \
-            .github/scripts/add_android_gallery_export.py
+            .github/scripts/add_android_gallery_export.py \
+            .github/scripts/add_qq_project_share.py
 
   build:
     needs: validate-patches
@@ -312,6 +314,14 @@ jobs:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: python3 build-assets/.github/scripts/add_android_gallery_export.py
+
+      - name: Add complete project ZIP sharing to QQ and Android apps
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_qq_project_share.py
+          python3 build-assets/.github/scripts/add_qq_project_share.py
 
 
       - name: Integrate RIFE and Real-ESRGAN into actual export frames
