@@ -30,6 +30,22 @@ if "file_dialog_async" not in frontend:
 # FileDialog::Folder to ACTION_OPEN_DOCUMENT_TREE, then the engine makes a project folder.
 old_collect = '"file.collectFiles" => ("folder", Ask::Save("Collected Files".into())),'
 new_collect = '"file.collectFiles" => ("folder", Ask::Folder),'
+interop_save_mappings = [
+    ('"file.exportAlightMotion" => ("path", Ask::Save("EffectCraft-AlightMotion.xml".into())),',
+     '"file.exportAlightMotion" => ("path", Ask::Save("EffectCraft-AlightMotion.xml".into())),'),
+    ('"file.exportNodeVideo" => ("path", Ask::Save("EffectCraft-NodeVideo.zip".into())),',
+     '"file.exportNodeVideo" => ("path", Ask::Save("EffectCraft-NodeVideo.zip".into())),'),
+    ('"file.exportCapCut" => ("path", Ask::Save("EffectCraft-CapCut.zip".into())),',
+     '"file.exportCapCut" => ("path", Ask::Save("EffectCraft-CapCut.zip".into())),'),
+]
+if "file.exportAlightMotion" not in frontend:
+    if new_collect not in frontend:
+        if old_collect not in frontend:
+            raise SystemExit("Could not find Collect Files picker mapping for interop export.")
+        frontend = frontend.replace(old_collect, new_collect, 1)
+    frontend = frontend.replace(new_collect, new_collect + "\n" + "\n".join(mapping for mapping, _ in interop_save_mappings), 1)
+    frontend_path.write_text(frontend)
+
 if new_collect not in frontend:
     if old_collect not in frontend:
         raise SystemExit("Could not find the Collect Files folder-picker mapping.")
@@ -121,6 +137,9 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     let mut cancel = false;
     let mut save_project_copy = false;
     let mut collect_project_files = false;
+    let mut export_alight_motion = false;
+    let mut export_nodevideo = false;
+    let mut export_capcut = false;
 
     egui::Window::new("导出视频")
         .id(open_id.with("window"))
@@ -202,6 +221,15 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
             if ui.button("只导出工程文件（.ecproj）").clicked() {
                 save_project_copy = true;
             }
+            if ui.button("导出 AM 工程（.xml）").clicked() {
+                export_alight_motion = true;
+            }
+            if ui.button("导出 NodeVideo 工程包（.zip）").clicked() {
+                export_nodevideo = true;
+            }
+            if ui.button("导出 CapCut 桌面工程包（.zip）").clicked() {
+                export_capcut = true;
+            }
             ui.small("QQ 分享建议：完整导出后压缩整个文件夹；接收方解压后导入其中的 .ecproj。");
             ui.add_space(8.0);
             ui.horizontal(|ui| {
@@ -225,6 +253,24 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     }
     if save_project_copy {
         match crate::menus::invoke(app, ui.ctx(), "file.saveCopy", json!({})) {
+            Ok(_) => open = false,
+            Err(error) => app.ui.status = error,
+        }
+    }
+    if export_alight_motion {
+        match crate::menus::invoke(app, ui.ctx(), "file.exportAlightMotion", json!({})) {
+            Ok(_) => open = false,
+            Err(error) => app.ui.status = error,
+        }
+    }
+    if export_nodevideo {
+        match crate::menus::invoke(app, ui.ctx(), "file.exportNodeVideo", json!({})) {
+            Ok(_) => open = false,
+            Err(error) => app.ui.status = error,
+        }
+    }
+    if export_capcut {
+        match crate::menus::invoke(app, ui.ctx(), "file.exportCapCut", json!({})) {
             Ok(_) => open = false,
             Err(error) => app.ui.status = error,
         }
