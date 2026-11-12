@@ -128,25 +128,22 @@ final class LanAccountServer implements Runnable {
     }
 
     @Override public void run() {
+        // The account HTTP endpoint is only a loopback bridge for the manager UI.
+        // Remote users must use the authenticated libp2p request-response channel.
+        // Binding localhost also lets the manager operate over mobile data without Wi-Fi.
         while (running) {
-            String currentIp = getWifiIpv4();
-            if (currentIp.isEmpty()) {
-                boundIp = "";
-                sleepQuietly(2500);
-                continue;
-            }
             try (ServerSocket server = new ServerSocket()) {
                 server.setReuseAddress(true);
-                server.bind(new InetSocketAddress("0.0.0.0", PORT), 32);
+                server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 16);
                 server.setSoTimeout(2500);
                 listener = server;
-                boundIp = currentIp;
-                while (running && currentIp.equals(getWifiIpv4())) {
+                boundIp = "127.0.0.1";
+                while (running) {
                     try {
                         Socket socket = server.accept();
-                        clients.execute(() -> handleClient(socket, currentIp));
+                        clients.execute(() -> handleClient(socket, "127.0.0.1"));
                     } catch (SocketTimeoutException ignored) {
-                        // Re-check the Wi-Fi address periodically.
+                        // Keep the loop responsive to stopServer().
                     }
                 }
             } catch (Exception e) {
