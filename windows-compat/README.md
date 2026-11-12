@@ -183,6 +183,71 @@ Winlator's official project page and source list Wine, Box64/Box86, PRoot, Mesa,
 https://www.winlator.org/
 https://github.com/winebox64/winlator
 
+## Full Wine/Proton runtime packaging breakthrough: Winlator Bionic
+
+A deeper source inspection found that Winlator Bionic already solves the missing **Wine runtime + private root filesystem + per-container architecture switch**. This is more useful than assembling only standalone CPU emulators.
+
+Pinned reference:
+- Repository: https://github.com/EmuProto/Winlator-Ludashi
+- Branch: `winlator_bionic`
+- Commit: `95224ca7db27ae133dbb1578e004b94b86ef8894`
+- Repository Java/source license: MIT. The bundled Wine/Proton, Ubuntu rootfs, FEX, Box, Mesa, DXVK and VKD3D assets have their own upstream licenses; the repository's MIT license does not relicense those components.
+
+### Actual upstream installer and launcher design
+
+The inspected Winlator Bionic source provides concrete implementation files:
+
+- `ImageFsInstaller.java`: downloads the Ubuntu Bionic ImageFS in four parts, verifies its published SHA-256 sidecar, extracts into app-private `files/imagefs`, installs Wine runtimes into `/opt`, and marks ImageFS version 21.
+- `app/build.gradle`: downloads the Wine/Proton 9.0 x86-64 and ARM64EC runtime archives from `winlator3/winlator-extra` and verifies their published SHA-256 sidecars.
+- `ContainerManager.extractContainerPatternFile()`: creates separate x86-64 or ARM64EC Wine prefixes, then adds the matching common DLLs to `system32` and the i386 DLL set to `syswow64`.
+- `GuestProgramLauncherComponent.java`: performs the actual backend split:
+  - x86-64 Proton/Wine container: launch the Windows executable through Android ARM64 `box64`.
+  - ARM64EC Proton/Wine container: launch the ARM64EC Wine executable directly; select `HODLL=libwow64fex.dll` when using FEXCore or `HODLL=wowbox64.dll` when using WowBox64.
+  - FEXCore and WowBox64 DLLs are extracted into the container's `C:\\windows\\system32` directory.
+- `ProcessHelper.java`: starts and supervises the guest process with Android `ProcessBuilder`; basic launch does not require root.
+
+### Pinned upstream runtime assets
+
+The Winlator Bionic commit contains the following exact component assets:
+
+| Asset | Size | Role |
+|---|---:|---|
+| `proton-9.0-x86_64_container_pattern.tzst` | 8.70 MB | x86-64 Wine prefix/container skeleton |
+| `proton-9.0-arm64ec_container_pattern.tzst` | 10.31 MB | ARM64EC Wine prefix/container skeleton |
+| `box64/box64-0.3.7.tzst` | 2.97 MB | Android ARM64 Box64 binary |
+| `fexcore/fexcore-2508.tzst` | 3.42 MB | Arm64EC and WoW64 emulator DLLs |
+| `wowbox64/wowbox64-0.3.7.tzst` | 1.05 MB | Alternative 32-bit WoW64 emulator DLL |
+
+The Wine/Proton runtime archives and the base ImageFS are separate from these small container skeletons. The source build downloads them from:
+
+- ImageFS: `https://gitlab.com/winlator3/winlator-extra/-/raw/main/imagefs/imagefs.txz`
+- ImageFS checksum: `https://gitlab.com/winlator3/winlator-extra/-/raw/main/imagefs/imagefs.txz.sha256sum`
+- Proton x86-64: `https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-x86_64.txz`
+- Proton x86-64 checksum: `https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-x86_64.txz.sha256sum`
+- Proton ARM64EC: `https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-arm64ec.txz`
+- Proton ARM64EC checksum: `https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-arm64ec.txz.sha256sum`
+
+These upstream checksum sidecars should be downloaded and verified before extraction. EffectCraft should download these optional assets once into its private application storage, not inflate the base APK with a full Linux/Wine runtime. Before redistributing any of the upstream archives, produce a package-level SBOM and preserve every included license/NOTICE/source obligation.
+
+### EffectCraft-specific mapping
+
+EffectCraft should reuse the **runtime orchestration**, not Winlator's gaming UI:
+
+1. Inspect the imported PE architecture, imports and exports.
+2. Select a matching Wine/Proton container and a matching aexlo host worker:
+   - x86-64 AEX: x86-64 aexlo worker, x86-64 Proton/Wine, Box64. ARM64EC/FEXCore can be tried as an alternate only after the worker/host ABI passes.
+   - x86 AEX: x86 aexlo worker, compatible 32-bit Wine/WoW64 path, Box86/Box64-BOX32 or Arm64EC/FEXCore+WowBox64. This remains experimental until the x86 worker can load and render under a matching container.
+   - ARM64EC/ARM64X: inspect the module ABI and host requirements; do not assume that PE machine type alone is sufficient.
+3. Extract the selected container skeleton into an isolated EffectCraft private prefix.
+4. Copy the matching aexlo worker and AEX into the prefix; start one supervised worker process per plugin.
+5. Exchange parameter and frame data with the Android app; never load an untrusted Windows plug-in into the EffectCraft main process.
+
+This supplies the previously missing Wine/Proton packaging and launch design. It still does not establish that every AE plug-in works: aexlo's AEGP/SmartFX coverage is incomplete, and device GPU APIs, proprietary codec libraries, plug-in licensing checks, and unsupported Windows APIs must be tested individually.
+
+### No artificial memory budget
+
+EffectCraft will not add a fixed RAM budget, `ulimit`, `RLIMIT_AS`, cgroup memory cap, Box64 guest-memory cap, FEX guest-memory cap, or arbitrary Wine process memory ceiling. Container display/video-memory preferences should use driver defaults unless an individual plugin requires a documented setting. Physical device RAM, Android process management, storage and GPU/driver capabilities remain real system limits.
+
 ## Work now implemented on this branch
 
 - Extend the desktop ZIP import patch to inspect PE headers without executing binaries.
