@@ -74,7 +74,7 @@ public final class SafeRuntimeArchiveExtractorSelfTest {
             makeXzTar(xz, false);
             extractor.extractTarXz(xz, xzRoot);
 
-            check(Files.readString(xzRoot.resolve("usr/bin/wine64")).equals("wine-runtime"),
+            check(new String(Files.readAllBytes(xzRoot.resolve("usr/bin/wine64")), StandardCharsets.UTF_8).equals("wine-runtime"),
                     "XZ TAR file contents must be extracted");
             check(Files.isSymbolicLink(xzRoot.resolve("bin")),
                     "guest-root absolute symlink must be materialized");
@@ -86,7 +86,7 @@ public final class SafeRuntimeArchiveExtractorSelfTest {
             Path zstdRoot = base.resolve("container");
             makeZstdTar(zstd);
             extractor.extractTarZstd(zstd, zstdRoot);
-            check(Files.readString(zstdRoot.resolve("opt/proton/proton")).equals("proton-binary"),
+            check(new String(Files.readAllBytes(zstdRoot.resolve("opt/proton/proton")), StandardCharsets.UTF_8).equals("proton-binary"),
                     "Zstandard TAR file contents must be extracted");
 
             Path badArchive = base.resolve("traversal.txz");
