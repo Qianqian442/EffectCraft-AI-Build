@@ -63,19 +63,20 @@ def audit(path: Path) -> dict:
         ) if name in export_names
     ]
 
+    machine_value = int(header.machine)
     machine = str(header.machine)
+    is_64bit = machine_value in (0x8664, 0xAA64, 0xA641, 0xA64E)
+    # IMAGE_FILE_DLL is the COFF Characteristics bit 0x2000. Use the numeric
+    # PE/COFF ABI value so this tool works across LIEF 0.x and 1.x bindings.
+    coff_characteristics = int(header.characteristics)
     return {
         "file": str(path),
         "size": path.stat().st_size,
         "machine": machine,
-        "machine_value": int(header.machine),
-        "is_64bit": bool(header.machine in (
-            lief.PE.MACHINE_TYPES.AMD64,
-            lief.PE.MACHINE_TYPES.ARM64,
-            getattr(lief.PE.MACHINE_TYPES, "ARM64EC", object()),
-        )),
+        "machine_value": machine_value,
+        "is_64bit": is_64bit,
         "subsystem": str(optional.subsystem) if optional else None,
-        "is_dll": bool(header.has_characteristic(lief.PE.HEADER_CHARACTERISTICS.DLL)),
+        "is_dll": bool(coff_characteristics & 0x2000),
         "entrypoint": int(optional.addressof_entrypoint) if optional else None,
         "sections": sections,
         "imports": imports,
