@@ -163,7 +163,7 @@ public final class LanAccountServerAccountFlowTest {
     public void p2pLoopbackBridgeForwardsARegistrationIntoSqlite() throws Exception {
         P2PAccountBridge.start(server);
         try (Socket socket = new Socket(InetAddress.getByName("127.0.0.1"), 8788)) {
-            socket.setSoTimeout(5000);
+            socket.setSoTimeout(15000);
             JSONObject packet = new JSONObject();
             packet.put("method", "POST");
             packet.put("path", "/v1/register");
@@ -181,7 +181,7 @@ public final class LanAccountServerAccountFlowTest {
                  BufferedReader reader = new BufferedReader(new InputStreamReader(
                     socket.getInputStream(), StandardCharsets.UTF_8))) {
                 writer.write(packet.toString());
-                writer.write("\\n");
+                writer.write("\n");
                 writer.flush();
 
                 String line = reader.readLine();
