@@ -1,0 +1,90 @@
+name: Inspect EffectCraft Wine and ARM64EC Runtime WCP Packages
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/windows-plugin-runtime
+    paths:
+      - '.github/workflows/inspect-wine-runtime-wcp-profiles.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-wine-wcp-inspection-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  inspect-runtime-packages:
+    name: Verify Proton 11, Box64EC, Box64, FEXCore and WoW64 WCP profiles
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out compatibility configuration
+        uses: actions/checkout@v4
+
+      - name: Install archive inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl zstd xz-utils python3 jq file
+
+      - name: Download, verify and inspect pinned WCP packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p wcp-inspection
+          base="https://github.com/The412Banner/Nightlies/releases/download"
+
+          inspect() {
+            local release="$1"
+            local asset="$2"
+            local sha="$3"
+            local size="$4"
+            local id="$5"
+            local dest="wcp-inspection/$id.wcp"
+
+            echo "===== Download $id ====="
+            curl -fL --retry 4 --retry-all-errors "$base/$release/$asset" -o "$dest"
+            test "$(stat -c %s "$dest")" = "$size"
+            echo "$sha  $dest" | sha256sum -c -
+
+            echo "--- archive type and listing ---"
+            file "$dest"
+            if tar --zstd -tf "$dest" > "wcp-inspection/$id.list" 2>/dev/null; then
+              tar --zstd -xOf "$dest" profile.json > "wcp-inspection/$id.profile.json"
+            elif tar -xJf "$dest" -O profile.json > "wcp-inspection/$id.profile.json" 2>/dev/null; then
+              :
+            else
+              echo "Unsupported WCP archive or profile.json missing: $id" >&2
+              tar --list -f "$dest" || true
+              exit 1
+            fi
+            jq -e '.type and .versionName and .versionCode and (.files | type == "array")' "wcp-inspection/$id.profile.json" >/dev/null
+            echo "--- profile.json ---"
+            jq . "wcp-inspection/$id.profile.json"
+          }
+
+          nightly="nightly-20261112-230654"
+          inspect "$nightly" "Box64EC-0.4.5-52db1d07a-experimental.wcp" "5edfbf9f3fe6ab386fd351a359c0053e09653682125f91b7840a75f08a64a138" "1056532" "box64ec-experimental"
+          inspect "$nightly" "Box64-0.4.5-78ffc6f64-Bionic.wcp" "77b0ef38b458c442dca8fc2ce9a4a14406a3ccc7781a701ef6ab199bb1abba98" "2834452" "box64-bionic"
+          inspect "$nightly" "WOWBox64-0.4.5-62de9d50b.wcp" "2d77fb8ea9fc00b8ae4a195b56d569cd8f43530f3a5b27fb55b5b616abe0c0db" "910864" "wowbox64-045"
+
+          stable="FEXCore-2611.1"
+          inspect "$stable" "FEXCore-2611.1.wcp" "60ef9fefd5a01e353d9266ddb2ad50317ff6f526bc0f42a96408651e373fa8b4" "1288148" "fexcore-2611.1"
+
+          layers="bionic-layers-v14-vc0"
+          inspect "$layers" "GE-proton-11.0-7.1-x86_64-v14-vc0.wcp" "3352ab045fe60fd4424a0e56908b3b56195e879f04a2aed510ca0dc9a526a68f" "65990034" "ge-proton-11.0-7.1-x86_64"
+          inspect "$layers" "GE-proton-11.0-7.1-arm64ec-v14-vc0.wcp" "56d937e96370c20dd3112f1475db15a08f3a0847030112b3beea2ca969c0c017" "119937852" "ge-proton-11.0-7.1-arm64ec"
+
+          sha256sum wcp-inspection/*.profile.json > wcp-inspection/PROFILE-SHA256SUMS.txt
+
+      - name: Upload audited WCP profile reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Audited-Winlator-WCP-Profiles
+          path: |
+            wcp-inspection/*.profile.json
+            wcp-inspection/*.list
+            wcp-inspection/PROFILE-SHA256SUMS.txt
+          retention-days: 30
