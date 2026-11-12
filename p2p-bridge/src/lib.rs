@@ -362,20 +362,18 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
         tokio::select! {
             command = commands.recv(), if !is_admin => {
                 if let Some(RpcCommand::Request { request, reply }) = command {
-                    let preferred = if request.preferred_peer_id.is_empty() {
-                        admin_peers.first().copied()
-                    } else {
-                        PeerId::from_str(&request.preferred_peer_id).ok()
-                            .filter(|peer| admin_peers.contains(peer))
-                    };
+                    if request.preferred_peer_id.is_empty() {
+                        let _ = reply.send(Err("必须先固定管理员 Peer ID，保护账号凭据不被冒充节点窃取".to_string()));
+                        continue;
+                    }
+                    let preferred = PeerId::from_str(&request.preferred_peer_id).ok()
+                        .filter(|peer| admin_peers.contains(peer));
                     if let Some(peer) = preferred {
                         let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer, request);
                         pending_rpc.insert(request_id, reply);
                     } else {
-                        if !request.preferred_peer_id.is_empty() {
-                            if let Ok(peer) = PeerId::from_str(&request.preferred_peer_id) {
-                                swarm.behaviour_mut().kad.get_closest_peers(peer);
-                            }
+                        if let Ok(peer) = PeerId::from_str(&request.preferred_peer_id) {
+                            swarm.behaviour_mut().kad.get_closest_peers(peer);
                         }
                         deferred_rpc.push_back((request, reply));
                         swarm.behaviour_mut().kad.get_providers(service_key.clone());
@@ -418,10 +416,16 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                             swarm.behaviour_mut().kad.add_address(&peer_id, address.clone());
                         }
 
-                        if !is_admin && info.agent_version == ADMIN_AGENT_VERSION && !admin_peers.contains(&peer_id) {
+                        let peer_is_pinned = deferred_rpc.iter().any(|(request, _)| {
+                            request.preferred_peer_id == peer_id.to_string()
+                        });
+                        if !is_admin
+                            && (info.agent_version == ADMIN_AGENT_VERSION || peer_is_pinned)
+                            && !admin_peers.contains(&peer_id)
+                        {
                             admin_peers.push(peer_id);
                             dispatch_deferred_for_peer(&mut swarm, peer_id, &mut deferred_rpc, &mut pending_rpc);
-                            set_snapshot(|state| state.status = "local_admin_account_node_discovered".to_string());
+                            set_snapshot(|state| state.status = "authenticated_admin_account_node_discovered".to_string());
                         }
                         let supports_relay_v2 = info.protocols.iter().any(|protocol| protocol == &RELAY_HOP_PROTOCOL);
                         if supports_relay_v2
@@ -636,8 +640,8 @@ fn dispatch_deferred_for_peer(
     let count = deferred.len();
     for _ in 0..count {
         let Some((request, reply)) = deferred.pop_front() else { break };
-        let matches = request.preferred_peer_id.is_empty()
-            || PeerId::from_str(&request.preferred_peer_id).ok() == Some(peer_id);
+        let matches = !request.preferred_peer_id.is_empty()
+            && PeerId::from_str(&request.preferred_peer_id).ok() == Some(peer_id);
         if matches {
             let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer_id, request);
             pending.insert(request_id, reply);
