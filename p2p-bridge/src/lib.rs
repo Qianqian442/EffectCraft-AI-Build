@@ -504,14 +504,35 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                             set_snapshot(|state| state.status = "relay_health_degraded".to_string());
                         }
                     }
+                    SwarmEvent::ExternalAddrConfirmed { address } => {
+                        if is_admin {
+                            // Publish only after AutoNAT/Identify has confirmed a
+                            // genuinely reachable public address.
+                            if authority_advertised {
+                                swarm.behaviour_mut().kad.stop_providing(&service_key);
+                                authority_advertised = false;
+                            }
+                            match swarm.behaviour_mut().kad.start_providing(service_key.clone()) {
+                                Ok(_) => {
+                                    authority_advertised = true;
+                                    set_snapshot(|state| {
+                                        state.status = "admin_authority_advertised_direct".to_string();
+                                        state.last_error = format!("已发布可直连的管理员地址：{address}");
+                                    });
+                                }
+                                Err(error) => set_snapshot(|state| state.last_error = format!("账号权威节点发布失败：{error}")),
+                            }
+                        }
+                    }
                     SwarmEvent::NewListenAddr { address, .. } => {
                         // A phone behind NAT must publish its accepted relay-circuit
-                        // address, not its unusable 0.0.0.0 listener address. The DHT
-                        // provider record carries the peer's available dial addresses.
-                        if is_admin
-                            && !authority_advertised
-                            && address.iter().any(|protocol| matches!(protocol, Protocol::P2pCircuit))
-                        {
+                        // address, not its unusable 0.0.0.0 listener address. Refresh
+                        // the DHT record so it includes the new relay circuit address.
+                        if is_admin && address.iter().any(|protocol| matches!(protocol, Protocol::P2pCircuit)) {
+                            if authority_advertised {
+                                swarm.behaviour_mut().kad.stop_providing(&service_key);
+                                authority_advertised = false;
+                            }
                             match swarm.behaviour_mut().kad.start_providing(service_key.clone()) {
                                 Ok(_) => {
                                     authority_advertised = true;
