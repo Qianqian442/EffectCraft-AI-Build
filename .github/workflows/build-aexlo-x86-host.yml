@@ -1,0 +1,80 @@
+name: Build EffectCraft 32-bit AE Plug-in Host
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/windows-plugin-runtime
+    paths:
+      - 'windows-compat/aexlo-host/**'
+      - '.github/workflows/build-aexlo-x86-host.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-aexlo-x86-host-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  aexlo-x86-host:
+    name: Build 32-bit Windows AE host and sample AEX
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out pinned aexlo source
+        uses: actions/checkout@v4
+        with:
+          repository: potistudio/aexlo
+          ref: 32c3fe399bc7d2deb3e5f9a02c627db50d8e7ff9
+          path: third_party/aexlo
+
+      - name: Check out EffectCraft worker source
+        uses: actions/checkout@v4
+        with:
+          repository: Qianqian442/EffectCraft-AI-Build
+          ref: experiment/windows-plugin-runtime
+          path: effectcraft-compat
+
+      - name: Set up Rust i686 MSVC toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: i686-pc-windows-msvc
+
+      - name: Compile 32-bit AEX host worker
+        shell: pwsh
+        run: |
+          cargo generate-lockfile --manifest-path effectcraft-compat/windows-compat/aexlo-host/Cargo.toml
+          cargo build --locked --release --target i686-pc-windows-msvc --manifest-path effectcraft-compat/windows-compat/aexlo-host/Cargo.toml
+          if (!(Test-Path "effectcraft-compat/windows-compat/aexlo-host/target/i686-pc-windows-msvc/release/effectcraft-aex-host.exe")) { throw "32-bit AE host worker was not produced" }
+
+      - name: Compile upstream sample AEX for 32-bit Windows
+        shell: pwsh
+        run: |
+          cargo build --manifest-path third_party/aexlo/examples/plugins/noise/Cargo.toml --release --target i686-pc-windows-msvc
+          if (!(Test-Path "third_party/aexlo/target/i686-pc-windows-msvc/release/aexlo_demo_noise.dll")) { throw "32-bit sample AEX DLL was not produced" }
+
+      - name: Audit the 32-bit sample PE
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check lief
+          python effectcraft-compat/windows-compat/tools/pe_audit.py third_party/aexlo/target/i686-pc-windows-msvc/release/aexlo_demo_noise.dll --output pe-audit-x86.json
+          $audit = Get-Content pe-audit-x86.json -Raw | ConvertFrom-Json
+          if ([int]$audit.machine_value -ne 332) { throw "Sample plug-in is not an x86 PE image" }
+
+      - name: Package 32-bit host, sample and license
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Copy-Item "effectcraft-compat/windows-compat/aexlo-host/target/i686-pc-windows-msvc/release/effectcraft-aex-host.exe" "artifacts/"
+          Copy-Item "third_party/aexlo/target/i686-pc-windows-msvc/release/aexlo_demo_noise.dll" "artifacts/sample-x86.aex"
+          Copy-Item "third_party/aexlo/LICENSE" "artifacts/AEXLO-MIT-LICENSE"
+          Copy-Item "pe-audit-x86.json" "artifacts/"
+          Get-FileHash "artifacts/effectcraft-aex-host.exe" -Algorithm SHA256 | Format-List | Out-File "artifacts/SHA256.txt"
+
+      - name: Upload 32-bit Windows AEX host
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-AE-Host-Windows-x86
+          path: artifacts/*
+          retention-days: 30
