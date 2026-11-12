@@ -82,22 +82,40 @@ final class P2PAccountBridge {
     private static void handle(Socket socket) {
         try (Socket client = socket) {
             client.setSoTimeout(15000);
-            InputStream in = client.getInputStream();
-            ByteArrayOutputStream packet = new ByteArrayOutputStream();
-            int value;
-            while ((value = in.read()) != -1 && value != '\n') {
-                if (packet.size() >= MAX_PACKET) throw new IllegalArgumentException("请求内容过大");
-                packet.write(value);
+            try {
+                InputStream in = client.getInputStream();
+                ByteArrayOutputStream packet = new ByteArrayOutputStream();
+                int value;
+                while ((value = in.read()) != -1 && value != '\n') {
+                    if (packet.size() >= MAX_PACKET) throw new IllegalArgumentException("请求内容过大");
+                    packet.write(value);
+                }
+                if (value == -1) throw new IllegalArgumentException("账号请求没有以换行符结束");
+                LanAccountServer server = accountServer;
+                if (server == null) throw new IllegalStateException("管理员账号数据库尚未启动");
+                JSONObject response = server.handleP2PRequest(packet.toString(StandardCharsets.UTF_8.name()));
+                writeEnvelope(client.getOutputStream(), response);
+            } catch (Exception error) {
+                Log.w(TAG, "Account RPC packet rejected: " + error.getMessage());
+                try {
+                    JSONObject detail = new JSONObject();
+                    detail.put("detail", error.getMessage() == null ? "账号请求无法处理" : error.getMessage());
+                    JSONObject envelope = new JSONObject();
+                    envelope.put("status", 400);
+                    envelope.put("body", detail.toString());
+                    writeEnvelope(client.getOutputStream(), envelope);
+                } catch (Exception writeError) {
+                    Log.w(TAG, "Could not return account RPC error response: " + writeError.getMessage());
+                }
             }
-            LanAccountServer server = accountServer;
-            if (server == null) throw new IllegalStateException("管理员账号数据库尚未启动");
-            JSONObject response = server.handleP2PRequest(packet.toString(StandardCharsets.UTF_8.name()));
-            byte[] wire = (response.toString() + "\n").getBytes(StandardCharsets.UTF_8);
-            OutputStream out = client.getOutputStream();
-            out.write(wire);
-            out.flush();
         } catch (Exception error) {
-            Log.w(TAG, "Account RPC packet rejected: " + error.getMessage());
+            Log.w(TAG, "Loopback account bridge connection failed: " + error.getMessage());
         }
     }
-}
+
+    private static void writeEnvelope(OutputStream out, JSONObject envelope) throws Exception {
+        byte[] wire = (envelope.toString() + "\n").getBytes(StandardCharsets.UTF_8);
+        out.write(wire);
+        out.flush();
+    }
+}}
