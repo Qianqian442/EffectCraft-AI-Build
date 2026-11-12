@@ -63,6 +63,11 @@ jobs:
           test -s "$EFFECTCRAFT_DIR/assets/looks-compat/bundle.json"
           python3 -c 'import json, pathlib; m=json.loads(pathlib.Path("validation/effectcraft/assets/looks-compat/bundle.json").read_text()); assert m["effects"][0]["id"] == "org.effectcraft.looks.studio"'
 
+      - name: Run renderer coordinate and interpolation unit tests
+        run: |
+          rustc --edition=2024 --test --cfg sapphire_distort .github/scripts/sapphire_compat_pack.rs -o /tmp/sapphire-renderer-tests
+          /tmp/sapphire-renderer-tests
+
       - name: Patch RSMB touch controls and compile-check Android UI
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/vendor/effectcraft
