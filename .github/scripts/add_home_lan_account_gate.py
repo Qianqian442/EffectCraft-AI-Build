@@ -19,7 +19,7 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
 
-const DEFAULT_SERVER: &str = "http://192.168.1.100:8787";
+const DEFAULT_SERVER: &str = "p2p://auto";
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Mode {
@@ -144,7 +144,7 @@ impl AccountState {
         if let Some(name) = Self::account_file(config) {
             if let Some(data) = config.and_then(|store| store.read(name)) {
                 if let Ok(saved) = serde_json::from_str::<SavedAccount>(&data) {
-                    if saved.server_url.starts_with("http://") {
+                    if saved.server_url.starts_with("p2p://") || saved.server_url.starts_with("http://") {
                         self.server_url = saved.server_url;
                     }
                     if !saved.token.is_empty() {
@@ -322,7 +322,10 @@ impl AccountState {
 }
 
 fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
-    let rest = url.strip_prefix("http://").ok_or_else(|| "服务器地址必须使用家庭局域网 http:// 地址".to_string())?;
+    if url.starts_with("p2p://") {
+        return p2p_account_request(method, path, body, token);
+    }
+    let rest = url.strip_prefix("http://").ok_or_else(|| "服务器连接方式无效，请使用 p2p://auto 或家庭局域网 http:// 地址".to_string())?;
     let authority = rest.split('/').next().unwrap_or("");
     let (host, port) = authority.rsplit_once(':').unwrap_or((authority, "80"));
     if host.is_empty() || host.contains(' ') {
@@ -365,6 +368,33 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
         .and_then(|code| code.parse::<u16>().ok()).ok_or_else(|| "服务器响应状态码无效".to_string())?;
     let value = serde_json::from_str::<Value>(response_body).unwrap_or_else(|_| json!({"detail": "服务器返回了无法识别的数据"}));
     Ok(HttpResult { status, body: value })
+}
+
+
+fn p2p_account_request(method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
+    let address = "127.0.0.1:8789".parse::<std::net::SocketAddr>().map_err(|e| e.to_string())?;
+    let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(5))
+        .map_err(|_| "P2P 账号通道尚未就绪，请确认管理员手机已启动账号管理版并保持在线".to_string())?;
+    stream.set_read_timeout(Some(Duration::from_secs(40))).map_err(|e| e.to_string())?;
+    stream.set_write_timeout(Some(Duration::from_secs(5))).map_err(|e| e.to_string())?;
+    let body_text = if body.is_null() { String::new() } else { serde_json::to_string(&body).map_err(|e| e.to_string())? };
+    let packet = json!({
+        "method": method,
+        "path": path,
+        "token": token.unwrap_or(""),
+        "body": body_text
+    });
+    let wire = serde_json::to_vec(&packet).map_err(|e| e.to_string())?;
+    stream.write_all(&wire).map_err(|e| e.to_string())?;
+    stream.write_all(b"\n").map_err(|e| e.to_string())?;
+    stream.flush().map_err(|e| e.to_string())?;
+    let mut bytes = Vec::new();
+    stream.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
+    let envelope: Value = serde_json::from_slice(&bytes).map_err(|e| format!("P2P 账号通道响应格式错误：{e}"))?;
+    let status = envelope.get("status").and_then(Value::as_u64).unwrap_or(503) as u16;
+    let raw_body = envelope.get("body").and_then(Value::as_str).unwrap_or("{\"detail\":\"P2P 账号服务器未返回数据\"}");
+    let response_body = serde_json::from_str::<Value>(raw_body).unwrap_or_else(|_| json!({"detail": "P2P 账号服务器返回了无法识别的数据"}));
+    Ok(HttpResult { status, body: response_body })
 }
 
 fn blocking_overlay(ctx: &egui::Context) {
@@ -479,12 +509,12 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         Mode::Auth => centered_window(ctx, "账号注册 / 登录", vec2(420.0, 570.0), |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("EffectCraft 账号");
-                ui.label("仅连接家中的 Wi-Fi 账号服务器");
+                ui.label("通过 P2P 自动连接管理员手机账号节点");
             });
             ui.separator();
-            ui.label("家庭服务器地址");
+            ui.label("账号节点连接方式");
             ui.text_edit_singleline(&mut app.account.server_url);
-            ui.small("把示例地址替换为家中电脑的局域网 IPv4 地址，例如 http://192.168.1.23:8787");
+            ui.small("默认 p2p://auto：同 Wi-Fi 优先直连，跨网络自动尝试打洞和可用公共中继；也可填写管理员手机的局域网 http://IP:8787 地址。");
             ui.horizontal(|ui| {
                 if ui.selectable_label(!app.account.login_mode_register, "登录").clicked() {
                     app.account.login_mode_register = false;
@@ -535,8 +565,8 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             });
         }),
         Mode::Unavailable => centered_window(ctx, "无法验证账号", vec2(400.0, 300.0), |ui| {
-            ui.label("家中的账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");
-            ui.label("请确认手机和服务器电脑连接同一个家庭 Wi-Fi，且服务器电脑保持开机。");
+            ui.label("管理员手机账号节点当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");
+            ui.label("请确认管理员手机上的账号管理版正在运行；跨网络时请检查网络是否允许 P2P 或公共中继连接。");
             ui.label(format!("服务器地址：{}", app.account.server_url));
             if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新连接")).clicked() {
                 app.account.retry(config);
