@@ -138,6 +138,18 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Client blocks the editor on a ban response or unavailable admin authority",
+        ".github/scripts/add_home_lan_account_gate.py",
+        (
+            "response.status == 423",
+            "self.mode = Mode::Banned",
+            "Mode::Unavailable => centered_window",
+            "Mode::Banned => centered_window",
+            "为防止离线绕过封禁，软件暂时保持锁定",
+            'Duration::from_secs(10)',
+        ),
+    ),
+    (
         "Account page requests register/login/me/profile through the P2P proxy",
         ".github/scripts/add_home_lan_account_gate.py",
         (
