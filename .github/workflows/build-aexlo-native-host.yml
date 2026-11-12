@@ -44,123 +44,36 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          cargo build --locked --release --message-format=json-render-diagnostics -p aexlo-cli --bin aexlo -p aexlo-probe > cargo-artifacts.jsonl
-          if ($LASTEXITCODE -ne 0) {
-            Get-Content cargo-artifacts.jsonl | Select-Object -Last 80
+          $messages = cargo build --locked --release --message-format=json -p aexlo-cli --bin aexlo -p aexlo-probe 2> cargo-build.log
+          $buildExit = $LASTEXITCODE
+          $messages | Set-Content -Encoding utf8 cargo-artifacts.jsonl
+          if ($buildExit -ne 0) {
+            Get-Content cargo-build.log | Select-Object -Last 80
             throw "AEXLO native host or probe build failed."
           }
-          $artifacts = @()
-          foreach ($line in Get-Content cargo-artifacts.jsonl) {
+          $probeDll = $null
+          $artifactTargets = @()
+          foreach ($line in $messages) {
             try { $msg = $line | ConvertFrom-Json -ErrorAction Stop } catch { continue }
-            if ($msg.reason -eq 'compiler-artifact') { $artifacts += $msg }
-          }
-          $probe = $artifacts | Where-Object {
-            $_.target.name -eq 'aexlo_probe' -and $_.target.crate_types -contains 'cdylib'
-          } | Select-Object -Last 1
-          $dll = $probe.filenames | Where-Object { $_ -match '\\.dll
-
-      - name: Verify the host loads the original native plug-in and enumerates parameters
-        working-directory: aexlo
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $hostExe = Join-Path $PWD 'target/release/aexlo.exe'
-          $plugin = Join-Path $PWD 'target/release/aexlo_probe.dll'
-          if (!(Test-Path $hostExe)) { throw "AEXLO host executable missing: $hostExe" }
-          if (!(Test-Path $plugin)) { throw "Native AE test plug-in missing: $plugin" }
-          & $hostExe about $plugin
-          if ($LASTEXITCODE -ne 0) { throw "AEXLO could not load the original Windows plug-in (about)." }
-          $params = & $hostExe params $plugin 2>&1 | Out-String
-          if ($LASTEXITCODE -ne 0) { throw "AEXLO could not enumerate native AE parameters." }
-          $params | Tee-Object -FilePath native-plugin-parameters.txt
-          foreach ($name in @('Gain', 'Invert', 'Mode', 'Tint', 'Angle', 'Center')) {
-            if ($params -notmatch [regex]::Escape($name)) {
-              throw "Native AE parameter not exposed by host: $name"
+            if ($msg.reason -ne 'compiler-artifact') { continue }
+            $artifactTargets += $msg.target.name
+            if ($msg.target.name -eq 'aexlo_probe' -and $msg.target.crate_types -contains 'cdylib') {
+              $candidate = $msg.filenames | Where-Object { $_.EndsWith('.dll') } | Select-Object -First 1
+              if ($candidate) { $probeDll = $candidate }
             }
           }
-
-      - name: Render a frame through the original plug-in entry point
-        working-directory: aexlo
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $hostExe = Join-Path $PWD 'target/release/aexlo.exe'
-          $plugin = Join-Path $PWD 'target/release/aexlo_probe.dll'
-          $output = Join-Path $PWD 'native-plugin-render.png'
-          & $hostExe render $plugin --output $output
-          if ($LASTEXITCODE -ne 0) { throw "Native AE plug-in render failed." }
-          if (!(Test-Path $output) -or (Get-Item $output).Length -lt 100) {
-            throw "Native AE plug-in produced no valid PNG output."
-          }
-
-      - name: Verify the persistent AEXLO worker protocol
-        working-directory: aexlo
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $hostExe = Join-Path $PWD 'target/release/aexlo.exe'
-          @'
-          import json, subprocess, sys
-          exe = sys.argv[1]
-          p = subprocess.Popen([exe, "worker"], stdin=subprocess.PIPE,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                               text=True, encoding="utf-8")
-          ready_line = p.stdout.readline()
-          if not ready_line:
-              raise SystemExit("AEXLO worker did not announce readiness")
-          ready = json.loads(ready_line)
-          if ready.get("event") != "ready":
-              raise SystemExit(f"Unexpected worker startup event: {ready}")
-          p.stdin.write(json.dumps({"op": "shutdown", "id": 1}) + "\\n")
-          p.stdin.flush()
-          response_line = p.stdout.readline()
-          if not response_line:
-              raise SystemExit("AEXLO worker did not answer shutdown")
-          response = json.loads(response_line)
-          if response.get("id") != 1 or response.get("ok") is not True:
-              raise SystemExit(f"Unexpected worker shutdown response: {response}")
-          if p.wait(timeout=10) != 0:
-              raise SystemExit("AEXLO worker did not exit cleanly")
-          print("AEXLO worker protocol: ready / shutdown passed")
-          '@ | Set-Content -Encoding utf8 worker_smoke.py
-          python worker_smoke.py $hostExe
-
-      - name: Package the native host prototype and verification evidence
-        working-directory: aexlo
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          New-Item -ItemType Directory -Force host-package | Out-Null
-          Copy-Item target/release/aexlo.exe host-package/
-          Copy-Item target/release/aexlo_probe.dll host-package/
-          Copy-Item native-plugin-parameters.txt host-package/
-          Copy-Item native-plugin-render.png host-package/
-          @'
-          This package contains the AEXLO Windows x64 host prototype and an AE SDK test plug-in.
-          It proves native Windows plug-in loading, parameter enumeration and CPU rendering on Windows.
-          It is NOT an Android runtime and does NOT prove Windows .aex can run directly on Android.
-          Android integration still requires a Windows compatibility layer (Wine + Box64) and
-          per-plugin verification of AE suites, UI callbacks, GPU paths and arbitrary data.
-          '@ | Set-Content -Encoding utf8 host-package/README.txt
-
-      - name: Upload the native Windows host prototype
-        uses: actions/upload-artifact@v4
-        with:
-          name: EffectCraft-AE-Original-AEX-Host-Windows-x64
-          path: aexlo/host-package/
-          if-no-files-found: error
-          retention-days: 14
- } | Select-Object -First 1
-          if (!$dll) {
+          if (!$probeDll) {
             $found = Get-ChildItem -Path target/release -Recurse -Filter '*aexlo_probe*.dll' -File | Select-Object -First 1
-            if ($found) { $dll = $found.FullName }
+            if ($found) { $probeDll = $found.FullName }
           }
-          if (!$dll -or !(Test-Path $dll)) {
-            throw "Cargo did not produce the aexlo_probe cdylib. Artifact targets: $($artifacts.target.name -join ', ')"
+          if (!$probeDll -or !(Test-Path $probeDll)) {
+            throw "Cargo did not produce the aexlo_probe cdylib. Built targets: $($artifactTargets -join ', ')"
           }
-          Copy-Item $dll (Join-Path $PWD 'target/release/aexlo_probe.dll') -Force
-          if (!(Test-Path 'target/release/aexlo.exe')) { throw 'AEXLO CLI executable missing after successful Cargo build.' }
-          Write-Host "Native AE probe built: $dll"
+          if (!(Test-Path 'target/release/aexlo.exe')) {
+            throw 'AEXLO CLI executable missing after successful Cargo build.'
+          }
+          Copy-Item $probeDll (Join-Path $PWD 'target/release/aexlo_probe.dll') -Force
+          Write-Host "Native AE probe built from: $probeDll"
 
       - name: Verify the host loads the original native plug-in and enumerates parameters
         working-directory: aexlo
