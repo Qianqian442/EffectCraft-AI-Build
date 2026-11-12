@@ -68,7 +68,11 @@
     "real sample plug-in compatibility tests",
     "independent backend smoke tests: Box64 x86_64, Box86/WoW64 x86, FEXCore Arm64EC containers",
     "PE architecture routing tests including x86-64, x86, ARM64EC and ARM64X test fixtures",
-    "separate Wine prefixes for different emulator backends; do not mix incompatible emulator DLL sets"
+    "separate Wine prefixes for different emulator backends; do not mix incompatible emulator DLL sets",
+    "build and run the aexlo Windows x64 worker under both Wine+Box64 and Arm64EC Wine+FEXCore container variants",
+    "test sample AEX plug-ins from real x86-64 Windows distributions and compare output/parameters against After Effects references",
+    "implement or explicitly report missing AEGP, sequence, mask, text, camera, composite and GPU host features",
+    "supervise one isolated worker process per native plug-in and verify crash/timeout recovery"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
@@ -114,5 +118,17 @@
         "Native ARM64 runtime if the host/plugin ABI is actually ARM64"
       ]
     }
-  ]
+  ],
+  "ae_plugin_host": {
+    "name": "aexlo",
+    "repository": "https://github.com/potistudio/aexlo",
+    "revision": "32c3fe399bc7d2deb3e5f9a02c627db50d8e7ff9",
+    "license": "MIT",
+    "role": "Windows x64 After Effects Effect API host shim; run as an isolated PE worker inside Wine/Box64 or Arm64EC Wine/FEXCore",
+    "reported_effect_api_coverage": "89% of listed Effect API suites",
+    "reported_aegp_coverage": "11% of listed AEGP suites",
+    "upstream_status": "heavy development; incomplete suites and features remain",
+    "platform_note": "upstream targets Windows x64 and macOS arm64; Windows x64 worker must run under the Android Windows compatibility container",
+    "bridge_source": "windows-compat/aexlo-host"
+  }
 }
