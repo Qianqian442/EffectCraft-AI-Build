@@ -377,16 +377,15 @@ fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<
 
 fn p2p_account_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
     let peer_spec = url.strip_prefix("p2p://").unwrap_or("auto");
-    let preferred_peer_id = if peer_spec.is_empty() || peer_spec == "auto" {
-        String::new()
-    } else {
-        if peer_spec.len() < 30 || peer_spec.len() > 120
-            || !peer_spec.bytes().all(|c| c.is_ascii_alphanumeric())
-        {
-            return Err("管理员节点 ID 不正确。请填写 p2p://auto 或 p2p:// 后接管理版显示的节点 ID。".to_string());
-        }
-        peer_spec.to_string()
-    };
+    if peer_spec.is_empty() || peer_spec == "auto" {
+        return Err("已完成自动发现入口，但为保护账号密码，必须先填写管理员管理版复制的 p2p://节点ID；固定后以后会自动连接，不会每次审批。".to_string());
+    }
+    if peer_spec.len() < 30 || peer_spec.len() > 120
+        || !peer_spec.bytes().all(|c| c.is_ascii_alphanumeric())
+    {
+        return Err("管理员节点 ID 不正确。请填写 p2p:// 后接管理版复制的完整节点 ID。".to_string());
+    }
+    let preferred_peer_id = peer_spec.to_string();
     let address = "127.0.0.1:8789".parse::<std::net::SocketAddr>().map_err(|e| e.to_string())?;
     let mut stream = TcpStream::connect_timeout(&address, Duration::from_secs(5))
         .map_err(|_| "P2P 账号通道尚未就绪，请确认管理员手机已启动账号管理版并保持在线".to_string())?;
@@ -530,7 +529,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             ui.separator();
             ui.label("账号节点连接方式");
             ui.text_edit_singleline(&mut app.account.server_url);
-            ui.small("填写 p2p://auto 自动发现，或填写 p2p://管理员节点ID 固定核验管理员身份。节点 ID 可在管理版复制；首次配对后自动连接，不需逐次审批。");
+            ui.small("请首次填写管理版复制的完整 p2p://管理员节点ID。为防止假节点窃取密码，未固定管理员身份前不会发送账号密码；保存后以后自动连接，无需逐次审批。");
             ui.horizontal(|ui| {
                 if ui.selectable_label(!app.account.login_mode_register, "登录").clicked() {
                     app.account.login_mode_register = false;
