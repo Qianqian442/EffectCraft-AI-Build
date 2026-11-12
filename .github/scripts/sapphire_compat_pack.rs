@@ -127,7 +127,7 @@ fn sample_bilinear(source: &[[f32; 4]], width: usize, height: usize, x: f32, y: 
 
 #[cfg(any(sapphire_glow, sapphire_aura))]
 fn render_glow(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], aura: bool) -> i32 {
-    let radius = params[0].round().clamp(1.0, 64.0) as usize;
+    let radius = (params[0].max(0.0) * _scale.max(0.0)).round().clamp(1.0, 64.0) as usize;
     let (intensity, threshold) = if aura {
         (params[1].clamp(0.0, 2.0), params[2].clamp(0.05, 0.98))
     } else {
@@ -165,12 +165,11 @@ fn render_glow(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f
 
 #[cfg(sapphire_lensflare)]
 fn render_lensflare(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
-    // Point controls are normalized in the manifest (0..1); accept pixel-space
-    // coordinates too so older saved projects remain usable.
+    // The EffectCraft host has already mapped the layer-relative point to frame pixels.
     let cx = frame_pixel(params[0], width);
     let cy = frame_pixel(params[1], height);
     let intensity = params[2].clamp(0.0, 2.0) as f32;
-    let size = (params[3].clamp(0.08, 1.5) as f32 * width.min(height) as f32).max(2.0);
+    let size = (params[3].clamp(0.08, 1.5) as f32 * width.min(height) as f32 * _scale.max(0.0) as f32).max(2.0);
     let color = [params[4] as f32, params[5] as f32, params[6] as f32];
     let image_cx = (width.saturating_sub(1) as f32) * 0.5;
     let image_cy = (height.saturating_sub(1) as f32) * 0.5;
@@ -222,7 +221,7 @@ fn render_lensflare(pixels: &mut [[f32; 4]], width: usize, height: usize, params
 
 #[cfg(sapphire_blur)]
 fn render_blur(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
-    let radius = params[0].round().clamp(1.0, 32.0) as usize;
+    let radius = (params[0].max(0.0) * _scale.max(0.0)).round().clamp(1.0, 32.0) as usize;
     let mix = (params[1] / 100.0).clamp(0.0, 1.0) as f32;
     let source = pixels.to_vec();
     let blurred = gaussian_blur(&source, width, height, radius);
@@ -235,8 +234,8 @@ fn render_blur(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f
 #[cfg(sapphire_distort)]
 fn render_distort(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
     let source = pixels.to_vec();
-    let cx = normalized_or_pixels(params[0], width);
-    let cy = normalized_or_pixels(params[1], height);
+    let cx = frame_pixel(params[0], width);
+    let cy = frame_pixel(params[1], height);
     let strength = params[2].clamp(-1.5, 1.5) as f32;
     let radius = (params[3].clamp(0.1, 1.5) as f32 * width.min(height) as f32).max(1.0);
     let ripple = params[4].clamp(0.0, 12.0) as f32;
