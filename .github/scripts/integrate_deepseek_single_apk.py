@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import os
+import re
+import runpy
+import sys
 from pathlib import Path
 
 def once(text: str, old: str, new: str, label: str) -> str:
@@ -10,6 +13,13 @@ def once(text: str, old: str, new: str, label: str) -> str:
         raise SystemExit(f"{label}: expected exactly one anchor, found {n}")
     return text.replace(old, new, 1)
 
+def replace_java_method(source: str, signature: str, body: str) -> str:
+    pattern = re.compile(r"(?m)^    " + re.escape(signature) + r" \{.*?^    \}", re.S)
+    updated, count = pattern.subn(body, source, count=1)
+    if count != 1:
+        raise SystemExit(f"Could not safely replace Java bridge method: {signature}")
+    return updated
+
 def main() -> None:
     effectcraft = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     builder = Path(os.environ["ARTCRAFT_DIR"]).resolve()
@@ -17,24 +27,39 @@ def main() -> None:
     repo = Path(__file__).resolve().parents[2]
     plugin_src = repo / "android-ai-plugin" / "app" / "src" / "main" / "java" / "com" / "artcraft" / "effectcraft" / "aiassistant"
     catalog_src = repo / "android-ai-plugin" / "gradle" / "libs.versions.toml"
-    for required in (effectcraft / "crates/ui-egui", builder / "lib/build-common.sh",
-                     builder / "lib/android_project.py", builder / "templates/android/SafActivity.java",
-                     llama / "examples/llama.android/lib/build.gradle.kts",
-                     plugin_src / "InferenceService.kt", plugin_src / "PluginManagerActivity.kt",
-                     catalog_src):
+    legacy_bridge = repo / ".github" / "scripts" / "install_ai_plugin_bridge.py"
+    for required in (
+        effectcraft / "crates/ui-egui",
+        builder / "lib/build-common.sh",
+        builder / "lib/android_project.py",
+        builder / "templates/android/SafActivity.java",
+        llama / "examples/llama.android/lib/build.gradle.kts",
+        llama / "examples/llama.android/lib/src/main/cpp/CMakeLists.txt",
+        llama / "examples/llama.android/lib/src/main/cpp/logging.h",
+        llama / "examples/llama.android/lib/src/main/cpp/ai_chat.cpp",
+        plugin_src / "InferenceService.kt",
+        plugin_src / "PluginManagerActivity.kt",
+        catalog_src,
+        legacy_bridge,
+    ):
         if not required.exists():
             raise SystemExit(f"Required integrated DeepSeek build input is missing: {required}")
 
-    # 1) Copy the plugin's model manager and inference service into the host APK's Java/Kotlin tree.
+    # Reuse the already-tested host UI/JNI wiring, then replace its package installer IPC
+    # with an in-process service binding. This preserves the existing assistant state wiring.
+    sys.argv = [str(legacy_bridge)]
+    runpy.run_path(str(legacy_bridge), run_name="__main__")
+
+    # Stage the Kotlin model manager and inference service beside the generated NativeActivity.
     common = builder / "lib/build-common.sh"
     c = common.read_text(encoding="utf-8")
     import_anchor = "from pathlib import Path\nimport re, shutil, sys, tomllib"
-    c = once(c, import_anchor, "from pathlib import Path\nimport os\nimport re, shutil, sys, tomllib",
-             "build-common Python environment import")
-    java_anchor = """        (java_dir / f"{saf['activity']}.java").write_text(java_src)
+    if "EFFECTCRAFT_DEEPSEEK_SINGLE_APK_V1" not in c:
+        c = once(c, import_anchor, "from pathlib import Path\nimport os\nimport re, shutil, sys, tomllib",
+                 "build-common Python environment import")
+        java_anchor = """        (java_dir / f"{saf['activity']}.java").write_text(java_src)
 """
-    java_add = java_anchor + """        # EFFECTCRAFT_DEEPSEEK_SINGLE_APK_V1: package the local inference service and model manager
-        # as Kotlin classes in the same application package; no companion APK is installed.
+        java_add = java_anchor + """        # EFFECTCRAFT_DEEPSEEK_SINGLE_APK_V1: both Kotlin components live in the host APK.
         ai_source = Path(os.environ["EFFECTCRAFT_AI_SOURCE"])
         ai_dir = java_dir / "aiassistant"
         ai_dir.mkdir(parents=True, exist_ok=True)
@@ -44,35 +69,70 @@ def main() -> None:
                 raise SystemExit(f"Missing embedded DeepSeek source: {source_file}")
             (ai_dir / ai_file).write_bytes(source_file.read_bytes())
 """
-    if "EFFECTCRAFT_DEEPSEEK_SINGLE_APK_V1" not in c:
         c = once(c, java_anchor, java_add, "launcher Kotlin source staging")
-    common.write_text(c, encoding="utf-8")
+        common.write_text(c, encoding="utf-8")
 
-    # 2) Patch the Android project generator: Kotlin plugin, llama.cpp library module,
-    # version catalog, dependencies, and in-app Activity/Service manifest declarations.
+    # Make llama.cpp's Android library compatible with the host app's API 28 minimum and
+    # the mobile memory target already chosen for this project.
+    lib_gradle = llama / "examples/llama.android/lib/build.gradle.kts"
+    lg = lib_gradle.read_text(encoding="utf-8")
+    if "minSdk = 33" in lg:
+        lib_gradle.write_text(lg.replace("minSdk = 33", "minSdk = 28", 1), encoding="utf-8")
+    elif "minSdk = 28" not in lg:
+        raise SystemExit("Unexpected llama.cpp Android library minSdk; refusing an unsafe patch.")
+
+    logging = llama / "examples/llama.android/lib/src/main/cpp/logging.h"
+    log_text = logging.read_text(encoding="utf-8")
+    old_log = """static inline int ai_should_log(int prio) {
+    return __android_log_is_loggable(prio, LOG_TAG, LOG_MIN_LEVEL);
+}"""
+    new_log = """static inline int ai_should_log(int prio) {
+#if defined(__ANDROID_API__) && __ANDROID_API__ >= 30
+    return __android_log_is_loggable(prio, LOG_TAG, LOG_MIN_LEVEL);
+#else
+    return prio >= LOG_MIN_LEVEL;
+#endif
+}"""
+    if old_log in log_text:
+        logging.write_text(log_text.replace(old_log, new_log, 1), encoding="utf-8")
+    elif "defined(__ANDROID_API__) && __ANDROID_API__ >= 30" not in log_text:
+        raise SystemExit("Unexpected llama.cpp Android logging helper; refusing an unsafe compatibility patch.")
+
+    ai_cpp = llama / "examples/llama.android/lib/src/main/cpp/ai_chat.cpp"
+    ai_text = ai_cpp.read_text(encoding="utf-8")
+    for old, new in (
+        ("constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;", "constexpr int   DEFAULT_CONTEXT_SIZE    = 1536;"),
+        ("constexpr int   BATCH_SIZE              = 512;", "constexpr int   BATCH_SIZE              = 128;"),
+    ):
+        if old in ai_text:
+            ai_text = ai_text.replace(old, new, 1)
+        elif new not in ai_text:
+            raise SystemExit(f"Could not safely tune llama.cpp mobile setting: {old}")
+    ai_cpp.write_text(ai_text, encoding="utf-8")
+
+    # Patch the generated Android Gradle project to compile Kotlin and the llama.cpp
+    # Android library as an internal module in the same signed APK.
     generator = builder / "lib/android_project.py"
     g = generator.read_text(encoding="utf-8")
     if "import os\n" not in g:
         g = once(g, "import re\n", "import os\nimport re\n", "Android generator os import")
 
-    manifest_anchor = '    application = android_meta.get("application") or {}\n'
-    manifest_add = """    existing_permissions = {item.get("name") for item in _as_list(android_meta.get("uses_permission"))}
-    for required_permission in ("android.permission.INTERNET", "android.permission.ACCESS_NETWORK_STATE"):
-        if required_permission not in existing_permissions:
-            lines.append(f'    <uses-permission android:name="{required_permission}" />')
-
-""" + manifest_anchor
-    if "com.artcraft.effectcraft.aiassistant.InferenceService" not in g:
-        g = once(g, manifest_anchor, manifest_add, "manifest network permission insertion")
-
     app_end = '    lines.append("    </application>")\n'
-    app_add = """    # DeepSeek is part of this APK. These internal components share the host app's
-    # private files directory, so the model manager and inference service use the same GGUF.
+    app_add = """    # Local DeepSeek manager and inference service are private components inside this APK.
     lines.append('        <activity android:name="com.artcraft.effectcraft.aiassistant.PluginManagerActivity" android:exported="false" android:label="EffectCraft DeepSeek 模型管理" />')
     lines.append('        <service android:name="com.artcraft.effectcraft.aiassistant.InferenceService" android:exported="false" />')
 """ + app_end
-    if "PluginManagerActivity" not in g:
+    if "com.artcraft.effectcraft.aiassistant.PluginManagerActivity" not in g:
         g = once(g, app_end, app_add, "integrated DeepSeek manifest components")
+
+    # Remove no-longer-needed package installer / external package visibility declarations
+    # which the legacy bridge added before the single-APK decision.
+    for line in (
+        "        '    <uses-permission android:name=\"android.permission.REQUEST_INSTALL_PACKAGES\" />',\n",
+        "        '    <queries><package android:name=\"com.artcraft.effectcraft.aiassistant\" /></queries>',\n",
+        "        '    <permission android:name=\"com.artcraft.effectcraft.permission.BIND_AI_PLUGIN\" android:protectionLevel=\"signature\" />',\n",
+    ):
+        g = g.replace(line, "")
 
     plugins_old = """plugins {{
     id 'com.android.application' version '{GRADLE_PLUGIN_VERSION}'
@@ -105,7 +165,7 @@ project(':ai-runtime').projectDir = file('{_groovy(str(Path(os.environ["LLAMA_CP
         g = once(g, settings_anchor, settings_add, "llama.cpp Android library module inclusion")
 
     gradle_dir_anchor = '    gradle_dir.mkdir(parents=True, exist_ok=True)\n'
-    catalog_copy = gradle_dir_anchor + """    # The llama.cpp library uses Gradle's version catalog for its Android/Kotlin plugins.
+    catalog_copy = gradle_dir_anchor + """    # The embedded llama.cpp module uses the version catalog for its Kotlin/AGP plugins.
     catalog_source = Path(os.environ["EFFECTCRAFT_AI_CATALOG"])
     catalog_target = gradle_dir / "gradle" / "libs.versions.toml"
     catalog_target.parent.mkdir(parents=True, exist_ok=True)
@@ -120,77 +180,44 @@ project(':ai-runtime').projectDir = file('{_groovy(str(Path(os.environ["LLAMA_CP
         g = once(g, gradle_dir_anchor, catalog_copy, "embedded runtime version catalog")
     generator.write_text(g, encoding="utf-8")
 
-    # 3) Add the internal service bridge to the existing NativeActivity template.
+    # Replace external companion-package calls with explicit, in-process Android service calls.
     java = builder / "templates/android/SafActivity.java"
     j = java.read_text(encoding="utf-8")
-    class_anchor = "public final class __CLASS__ extends NativeActivity {\n"
-    imports = [
-        "import android.content.ComponentName;",
-        "import android.content.ServiceConnection;",
-        "import android.os.IBinder;",
-        "import android.os.Message;",
-        "import android.os.Messenger;",
-        "import android.os.RemoteException;",
-        "import android.os.Handler;",
-        "import android.os.Looper;",
-        "import java.lang.ref.WeakReference;",
-        "import java.util.concurrent.ConcurrentHashMap;",
-        "import java.util.concurrent.ConcurrentLinkedQueue;",
-        "import com.artcraft.effectcraft.aiassistant.InferenceService;",
-        "import com.artcraft.effectcraft.aiassistant.PluginManagerActivity;",
-    ]
-    insertion = ""
-    for line in imports:
-        if line not in j:
-            insertion += line + "\n"
-    if insertion:
-        j = once(j, "import android.app.NativeActivity;\n",
-                 "import android.app.NativeActivity;\n" + insertion,
-                 "internal AI service imports")
-
-    fields = r'''
-    // EFFECTCRAFT_DEEPSEEK_SINGLE_APK_V1
-    private static volatile WeakReference<__CLASS__> aiHost = new WeakReference<>(null);
-    private static final int AI_GENERATE = 1;
-    private static final int AI_RESPONSE = 2;
-    private final ConcurrentLinkedQueue<Bundle> aiPending = new ConcurrentLinkedQueue<>();
-    private final ConcurrentHashMap<String, String> aiResponses = new ConcurrentHashMap<>();
-    private Messenger aiService;
-    private boolean aiBinding;
-
-    private final Handler aiReplyHandler = new Handler(Looper.getMainLooper()) {
-        @Override public void handleMessage(Message message) {
-            if (message.what == AI_RESPONSE && message.getData() != null) {
-                Bundle data = message.getData();
-                String id = data.getString("requestId", "");
-                if (!id.isEmpty()) aiResponses.put(id, data.getString("response", "ERROR: 本地 AI 没有返回内容。"));
+    j = replace_java_method(j, "public static boolean isAiPluginInstalled()",
+        """    public static boolean isAiPluginInstalled() {
+        return aiActivity.get() != null;
+    }""")
+    j = replace_java_method(j, "public static void openAiPluginImport()",
+        """    public static void openAiPluginImport() {
+        openAiPluginManager();
+    }""")
+    j = replace_java_method(j, "public static void openAiPluginManager()",
+        """    public static void openAiPluginManager() {
+        __CLASS__ activity = aiActivity.get();
+        if (activity == null) return;
+        activity.runOnUiThread(() -> {
+            try {
+                activity.startActivity(new Intent(activity, PluginManagerActivity.class));
+            } catch (Exception error) {
+                Log.e(TAG, "Could not open the built-in DeepSeek model manager.", error);
             }
+        });
+    }""")
+    j = replace_java_method(j, "private boolean ensureAiBound()",
+        """    private boolean ensureAiBound() {
+        if (aiService != null || aiBinding) return true;
+        Intent intent = new Intent(this, InferenceService.class);
+        try {
+            aiBinding = bindService(intent, aiConnection, Context.BIND_AUTO_CREATE);
+        } catch (Exception error) {
+            Log.e(TAG, "Could not bind the in-app DeepSeek service.", error);
+            aiBinding = false;
         }
-    };
-    private final Messenger aiReplyMessenger = new Messenger(aiReplyHandler);
-    private final ServiceConnection aiConnection = new ServiceConnection() {
-        @Override public void onServiceConnected(ComponentName name, IBinder binder) {
-            aiService = new Messenger(binder);
-            aiBinding = true;
-            flushAiRequests();
-        }
-        @Override public void onServiceDisconnected(ComponentName name) {
-            aiService = null; aiBinding = false;
-        }
-        @Override public void onBindingDied(ComponentName name) {
-            aiService = null; aiBinding = false;
-        }
-        @Override public void onNullBinding(ComponentName name) {
-            aiService = null; aiBinding = false;
-        }
-    };
-
-    public static boolean isAiPluginInstalled() {
-        return aiHost.get() != null;
-    }
-
-    public static boolean submitAiPrompt(String requestId, String prompt) {
-        __CLASS__ activity = aiHost.get();
+        return aiBinding;
+    }""")
+    j = replace_java_method(j, "public static boolean submitAiPrompt(String requestId, String prompt)",
+        """    public static boolean submitAiPrompt(String requestId, String prompt) {
+        __CLASS__ activity = aiActivity.get();
         if (activity == null || requestId == null || requestId.isEmpty() || prompt == null || prompt.trim().isEmpty()) return false;
         Bundle data = new Bundle();
         data.putString("requestId", requestId);
@@ -203,113 +230,23 @@ project(':ai-runtime').projectDir = file('{_groovy(str(Path(os.environ["LLAMA_CP
             activity.flushAiRequests();
         }
         return true;
-    }
-
-    public static String pollAiResponse(String requestId) {
-        __CLASS__ activity = aiHost.get();
-        return activity == null ? null : activity.aiResponses.remove(requestId);
-    }
-
-    public static void openAiPluginImport() { openAiPluginManager(); }
-
-    public static void openAiPluginManager() {
-        __CLASS__ activity = aiHost.get();
-        if (activity == null) return;
-        activity.runOnUiThread(() -> {
-            try {
-                activity.startActivity(new Intent(activity, PluginManagerActivity.class));
-            } catch (Exception error) {
-                Log.e(TAG, "Could not open the built-in DeepSeek model manager.", error);
-            }
-        });
-    }
-
-    private boolean ensureAiBound() {
-        if (aiService != null || aiBinding) return true;
-        Intent intent = new Intent(this, InferenceService.class);
-        try {
-            aiBinding = bindService(intent, aiConnection, Context.BIND_AUTO_CREATE);
-        } catch (Exception error) {
-            Log.e(TAG, "Could not bind the in-app DeepSeek service.", error);
-            aiBinding = false;
-        }
-        return aiBinding;
-    }
-
-    private void flushAiRequests() {
-        if (aiService == null) return;
-        Bundle data;
-        while ((data = aiPending.poll()) != null) {
-            Message message = Message.obtain(null, AI_GENERATE);
-            message.setData(data);
-            message.replyTo = aiReplyMessenger;
-            try {
-                aiService.send(message);
-            } catch (RemoteException error) {
-                String id = data.getString("requestId", "");
-                if (!id.isEmpty()) aiResponses.put(id, "ERROR: 本地 DeepSeek 服务连接中断，请重试。");
-                aiService = null;
-                aiBinding = false;
-                break;
-            }
-        }
-    }
-
-    private void initEmbeddedAi() {
-        aiHost = new WeakReference<>(this);
-        ensureAiBound();
-    }
-
-    private void cleanupEmbeddedAi() {
-        if (aiHost.get() == this) aiHost = new WeakReference<>(null);
-        if (aiBinding) {
-            try { unbindService(aiConnection); } catch (Exception ignored) {}
-            aiBinding = false;
-            aiService = null;
-        }
-        aiPending.clear();
-    }
-
-'''
-    if "EFFECTCRAFT_DEEPSEEK_SINGLE_APK_V1" not in j:
-        j = once(j, class_anchor, class_anchor + fields, "internal AI host/service API")
-
-    on_create = "        super.onCreate(savedInstanceState);\n"
-    if "initEmbeddedAi();" not in j:
-        j = once(j, on_create, on_create + "        initEmbeddedAi();\n", "embedded AI initialization")
-
-    resume_anchor = """    @Override
-    protected void onNewIntent(Intent intent) {
-"""
-    resume_hook = """    @Override
-    protected void onResume() {
-        super.onResume();
-        ensureAiBound();
-    }
-
-"""
-    if "protected void onResume()" not in j:
-        j = once(j, resume_anchor, resume_hook + resume_anchor, "embedded AI service reconnect lifecycle")
-
-    destroy_anchor = "    protected void onDestroy() {\n"
-    if "cleanupEmbeddedAi();" not in j:
-        j = once(j, destroy_anchor, destroy_anchor + "        cleanupEmbeddedAi();\n", "embedded AI lifecycle cleanup")
+    }""")
     java.write_text(j, encoding="utf-8")
 
-    # 4) Use the existing assistant UI but describe the now-internal model manager, not ZIP import.
+    # Remove the "import companion plugin" control from the in-app assistant. Model management
+    # remains as an in-app screen; the user never imports a ZIP or installs another APK.
     assistant = repo / ".github/scripts/ai_assistant_plugin.rs"
     a = assistant.read_text(encoding="utf-8")
-    replacements = [
+    text_replacements = (
         ("你好！我是 EffectCraft AI 助手。导入 DeepSeek AI 插件 ZIP 并准备本地模型后，即可在这里离线对话。",
-         "你好！我是 EffectCraft 内置 DeepSeek AI 助手。首次使用时，请在模型管理中下载本地模型，完成后即可离线对话。"),
+         "你好！我是 EffectCraft 内置 DeepSeek AI 助手。首次使用时，在模型管理中下载本地模型后即可离线对话。"),
         ('ui.label("DeepSeek 本地推理 · 插件通过 ZIP 导入");',
          'ui.label("DeepSeek 本地推理 · 已集成在当前 APK");'),
         ('ui.small("AI 插件已导入；首次使用请先准备模型。");',
          'ui.small("内置 AI 引擎已就绪；首次使用请先下载模型。");'),
         ('ui.colored_label(Color32::from_rgb(210, 145, 35), "尚未导入 DeepSeek AI 插件 ZIP。");',
          'ui.colored_label(Color32::from_rgb(210, 145, 35), "正在初始化内置 DeepSeek AI 引擎…");'),
-        ('if ui.button("导入 AI 插件").clicked() {\n                    import_plugin = true;\n                }\n                ',
-         ''),
+        ('if ui.button("导入 AI 插件").clicked() {\n                    import_plugin = true;\n                }\n                ', ''),
         ('state.notice = "请选择 DeepSeek AI 插件 ZIP。随后 Android 会显示一次系统安装确认。".into();',
          'state.notice = "已打开 APK 内置的 DeepSeek 模型管理。".into();'),
         ('state.notice = "已请求打开 AI 插件的模型管理界面。".into()',
@@ -324,27 +261,29 @@ project(':ai-runtime').projectDir = file('{_groovy(str(Path(os.environ["LLAMA_CP
          'Err("请在 Android 版 EffectCraft 中打开本地模型管理。".into())'),
         ('Err("AI 插件模型管理仅在 Android 版本中启用。".into())',
          'Err("DeepSeek 本地模型管理仅在 Android 版本中启用。".into())'),
-    ]
-    for old, new in replacements:
+    )
+    for old, new in text_replacements:
         if old in a:
             a = a.replace(old, new, 1)
     a = a.replace('    let mut import_plugin = false;\n', '', 1)
     import_block = """    if import_plugin {
         match open_ai_plugin_import() {
             Ok(()) => {
-                state.notice = "已打开 APK 内置的 DeepSeek 模型管理。".into();
+                state.notice = "请选择 DeepSeek AI 插件 ZIP。随后 Android 会显示一次系统安装确认。".into();
             }
             Err(error) => state.notice = error,
         }
     }
 """
-    if import_block in a:
-        a = a.replace(import_block, "", 1)
+    a = a.replace(import_block, "", 1)
+    if 'ui.button("导入 AI 插件")' in a or "请先点击“导入 AI 插件”" in a:
+        raise SystemExit("AI assistant still contains a companion-plugin import path; refusing to claim single-APK integration.")
     assistant.write_text(a, encoding="utf-8")
 
-    print("DeepSeek companion UI, model manager, and inference service are now staged inside the main APK.")
-    print("The standalone ZIP-import/install bridge is no longer used by the main APK.")
-    print("The approximately 1.02 GB GGUF model remains a one-time in-app download; inference remains local/offline.")
+    print("DeepSeek model manager and inference service are staged inside the main APK.")
+    print("The host binds to its own in-process Android service; no companion APK/ZIP is needed.")
+    print("The approximately 1.02 GB GGUF model remains a one-time download inside the APK's app-private storage.")
+    print("Inference remains local/offline after the model download.")
 
 if __name__ == "__main__":
     main()
