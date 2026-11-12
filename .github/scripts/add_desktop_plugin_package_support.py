@@ -25,6 +25,371 @@ def patch_effect_loader(root: Path) -> None:
         return
 
     helper = r'''
+fn readable_plugin_strings(bytes: &[u8]) -> Vec<String> {
+    fn push_run(output: &mut Vec<String>, run: &mut Vec<u8>) {
+        if run.len() >= 4 && output.len() < 160 {
+            let value = String::from_utf8_lossy(run).trim().to_string();
+            if !value.is_empty() && !output.contains(&value) {
+                output.push(value.chars().take(180).collect());
+            }
+        }
+        run.clear();
+    }
+    let mut output = Vec::new();
+    let mut ascii = Vec::new();
+    for byte in bytes.iter().copied() {
+        if (0x20..=0x7e).contains(&byte) { ascii.push(byte); }
+        else { push_run(&mut output, &mut ascii); }
+    }
+    push_run(&mut output, &mut ascii);
+    let mut wide = Vec::new();
+    for pair in bytes.chunks_exact(2) {
+        let unit = u16::from_le_bytes([pair[0], pair[1]]);
+        if (0x20..=0x7e).contains(&unit) { wide.push(unit as u8); }
+        else { push_run(&mut output, &mut wide); }
+    }
+    push_run(&mut output, &mut wide);
+    output
+}
+
+fn pe_u16(bytes: &[u8], offset: usize) -> Option<u16> {
+    Some(u16::from_le_bytes(bytes.get(offset..offset.checked_add(2)?)?.try_into().ok()?))
+}
+
+fn pe_u32(bytes: &[u8], offset: usize) -> Option<u32> {
+    Some(u32::from_le_bytes(bytes.get(offset..offset.checked_add(4)?)?.try_into().ok()?))
+}
+
+fn pe_u64(bytes: &[u8], offset: usize) -> Option<u64> {
+    Some(u64::from_le_bytes(bytes.get(offset..offset.checked_add(8)?)?.try_into().ok()?))
+}
+
+fn pe_cstr(bytes: &[u8], offset: usize) -> Option<String> {
+    let tail = bytes.get(offset..)?;
+    let end = tail.iter().position(|value| *value == 0)?;
+    if end == 0 { return None; }
+    Some(String::from_utf8_lossy(&tail[..end]).chars().take(160).collect())
+}
+
+fn pe_rva_offset(
+    rva: u32,
+    size_of_headers: u32,
+    sections: &[(u32, u32, u32, u32)],
+    file_len: usize,
+) -> Option<usize> {
+    let raw_offset = if rva < size_of_headers {
+        rva as u64
+    } else {
+        let mut found = None;
+        for (virtual_address, _virtual_size, raw_size, raw_pointer) in sections {
+            let Some(delta) = rva.checked_sub(*virtual_address) else { continue; };
+            // Only map bytes that are present in the file. Virtual zero-fill section tails
+            // do not have an on-disk offset and must never be parsed as PE structures.
+            if delta < *raw_size {
+                found = Some((*raw_pointer as u64).checked_add(delta as u64)?);
+                break;
+            }
+        }
+        found?
+    };
+    let offset = usize::try_from(raw_offset).ok()?;
+    (offset < file_len).then_some(offset)
+}
+
+/// Static PE inspection only. This never maps, loads, or executes native code.
+/// Imported DLLs and exported entry points help select a compatible Wine/Box64 backend
+/// and determine whether a file resembles an After Effects effect plug-in.
+fn windows_pe_metadata(bytes: &[u8]) -> Value {
+    if bytes.len() < 0x40 || bytes.get(0..2) != Some(b"MZ") {
+        return json!({ "is_pe": false });
+    }
+    let Some(pe_offset) = pe_u32(bytes, 0x3c).map(|value| value as usize) else {
+        return json!({ "is_pe": false, "parse_error": "invalid PE header offset" });
+    };
+    if bytes.get(pe_offset..pe_offset.saturating_add(4)) != Some(b"PE\0\0") {
+        return json!({ "is_pe": false, "parse_error": "PE signature not found" });
+    }
+    let coff = match pe_offset.checked_add(4) {
+        Some(value) => value,
+        None => return json!({ "is_pe": false, "parse_error": "PE offset overflow" }),
+    };
+    let (Some(machine), Some(section_count), Some(optional_size)) =
+        (pe_u16(bytes, coff), pe_u16(bytes, coff + 2), pe_u16(bytes, coff + 16))
+    else {
+        return json!({ "is_pe": false, "parse_error": "truncated COFF header" });
+    };
+    let optional = match coff.checked_add(20) {
+        Some(value) => value,
+        None => return json!({ "is_pe": false, "parse_error": "optional header offset overflow" }),
+    };
+    let Some(magic) = pe_u16(bytes, optional) else {
+        return json!({ "is_pe": false, "parse_error": "missing optional header" });
+    };
+    let (bits, directory_offset, number_of_directories_offset) = match magic {
+        0x10b => (32u8, optional + 96, optional + 92),
+        0x20b => (64u8, optional + 112, optional + 108),
+        _ => return json!({ "is_pe": false, "parse_error": "unknown PE optional-header format" }),
+    };
+    let size_of_headers = pe_u32(bytes, optional + 60).unwrap_or(0);
+    let subsystem = pe_u16(bytes, optional + 68).unwrap_or(0);
+    let coff_characteristics = pe_u16(bytes, coff + 18).unwrap_or(0);
+    let number_of_directories = pe_u32(bytes, number_of_directories_offset).unwrap_or(0);
+    let section_table = match optional.checked_add(optional_size as usize) {
+        Some(value) => value,
+        None => return json!({ "is_pe": false, "parse_error": "section table offset overflow" }),
+    };
+    let mut sections: Vec<(u32, u32, u32, u32)> = Vec::new();
+    for index in 0..usize::from(section_count).min(96) {
+        let offset = match section_table.checked_add(index.saturating_mul(40)) {
+            Some(value) => value,
+            None => break,
+        };
+        if offset.saturating_add(40) > bytes.len() { break; }
+        sections.push((
+            pe_u32(bytes, offset + 12).unwrap_or(0),
+            pe_u32(bytes, offset + 8).unwrap_or(0),
+            pe_u32(bytes, offset + 16).unwrap_or(0),
+            pe_u32(bytes, offset + 20).unwrap_or(0),
+        ));
+    }
+
+    let mut imported_dlls: Vec<String> = Vec::new();
+    let mut imported_symbols: Vec<String> = Vec::new();
+    if number_of_directories > 1 && directory_offset.saturating_add(16) <= bytes.len() {
+        let import_rva = pe_u32(bytes, directory_offset + 8).unwrap_or(0);
+        if import_rva != 0 {
+            if let Some(mut descriptor) = pe_rva_offset(import_rva, size_of_headers, &sections, bytes.len()) {
+                for _ in 0..128 {
+                    if descriptor.saturating_add(20) > bytes.len() { break; }
+                    let original_thunk = pe_u32(bytes, descriptor).unwrap_or(0);
+                    let name_rva = pe_u32(bytes, descriptor + 12).unwrap_or(0);
+                    let first_thunk = pe_u32(bytes, descriptor + 16).unwrap_or(0);
+                    if name_rva == 0 && original_thunk == 0 && first_thunk == 0 { break; }
+                    if let Some(name_offset) = pe_rva_offset(name_rva, size_of_headers, &sections, bytes.len()) {
+                        if let Some(name) = pe_cstr(bytes, name_offset) {
+                            if !imported_dlls.iter().any(|old| old.eq_ignore_ascii_case(&name))
+                                && imported_dlls.len() < 64
+                            {
+                                imported_dlls.push(name);
+                            }
+                        }
+                    }
+                    let thunk_rva = if original_thunk != 0 { original_thunk } else { first_thunk };
+                    if let Some(mut thunk_offset) = pe_rva_offset(thunk_rva, size_of_headers, &sections, bytes.len()) {
+                        for _ in 0..512 {
+                            let entry = if bits == 64 {
+                                pe_u64(bytes, thunk_offset)
+                            } else {
+                                pe_u32(bytes, thunk_offset).map(u64::from)
+                            };
+                            let Some(entry) = entry else { break; };
+                            if entry == 0 { break; }
+                            let ordinal_mask = if bits == 64 { 0x8000_0000_0000_0000 } else { 0x8000_0000 };
+                            if entry & ordinal_mask == 0 {
+                                if let Some(name_rva) = u32::try_from(entry & 0x7fff_ffff).ok() {
+                                    if let Some(name_offset) = pe_rva_offset(name_rva, size_of_headers, &sections, bytes.len()) {
+                                        if let Some(name) = pe_cstr(bytes, name_offset.saturating_add(2)) {
+                                            if imported_symbols.len() < 256 {
+                                                imported_symbols.push(name);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            thunk_offset = match thunk_offset.checked_add(if bits == 64 { 8 } else { 4 }) {
+                                Some(value) => value,
+                                None => break,
+                            };
+                        }
+                    }
+                    descriptor = match descriptor.checked_add(20) {
+                        Some(value) => value,
+                        None => break,
+                    };
+                }
+            }
+        }
+    }
+
+    let mut exports: Vec<String> = Vec::new();
+    if number_of_directories > 0 && directory_offset.saturating_add(8) <= bytes.len() {
+        let export_rva = pe_u32(bytes, directory_offset).unwrap_or(0);
+        if export_rva != 0 {
+            if let Some(export_offset) = pe_rva_offset(export_rva, size_of_headers, &sections, bytes.len()) {
+                let names_count = pe_u32(bytes, export_offset + 24).unwrap_or(0).min(256);
+                let names_rva = pe_u32(bytes, export_offset + 32).unwrap_or(0);
+                if let Some(names_offset) = pe_rva_offset(names_rva, size_of_headers, &sections, bytes.len()) {
+                    for index in 0..names_count as usize {
+                        let slot = match names_offset.checked_add(index.saturating_mul(4)) {
+                            Some(value) => value,
+                            None => break,
+                        };
+                        let Some(name_rva) = pe_u32(bytes, slot) else { break; };
+                        if let Some(name_offset) = pe_rva_offset(name_rva, size_of_headers, &sections, bytes.len()) {
+                            if let Some(name) = pe_cstr(bytes, name_offset) {
+                                exports.push(name);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let machine_name = match machine {
+        0x014c => "x86",
+        0x8664 => "x86-64",
+        0xaa64 => "ARM64",
+                        0xa641 => "ARM64EC",
+                        0xa64e => "ARM64X",
+        0x01c4 => "ARM",
+        0x0200 => "IA-64",
+        _ => "unknown",
+    };
+    let subsystem_name = match subsystem {
+        1 => "native",
+        2 => "Windows GUI",
+        3 => "Windows console",
+        9 => "Windows CE GUI",
+        10 => "EFI application",
+        14 => "Xbox",
+        _ => "unknown",
+    };
+    let ae_entrypoints = exports.iter().filter(|name| {
+        matches!(name.as_str(), "PluginDataEntryFunction2" | "PluginDataEntryFunction" | "EffectMain")
+    }).cloned().collect::<Vec<_>>();
+    json!({
+        "is_pe": true,
+        "machine": format!("0x{machine:04x}"),
+        "machine_name": machine_name,
+        "bits": bits,
+        "subsystem": subsystem_name,
+        "is_dll": (coff_characteristics & 0x2000) != 0,
+        "imports": imported_dlls,
+        "imported_symbols_sample": imported_symbols.iter().take(96).collect::<Vec<_>>(),
+        "exports_sample": exports.iter().take(96).collect::<Vec<_>>(),
+        "ae_entrypoint_candidates": ae_entrypoints
+    })
+}
+
+fn native_binary_info(bytes: &[u8]) -> (&'static str, &'static str) {
+    if bytes.len() >= 2 && &bytes[..2] == b"MZ" {
+        if bytes.len() >= 0x40 {
+            let offset = u32::from_le_bytes([bytes[0x3c], bytes[0x3d], bytes[0x3e], bytes[0x3f]]) as usize;
+            if let Some(header) = bytes.get(offset..offset.saturating_add(6)) {
+                if header.len() >= 6 && &header[..4] == b"PE\0\0" {
+                    let machine = u16::from_le_bytes([header[4], header[5]]);
+                    let arch = match machine {
+                        0x014c => "x86",
+                        0x8664 => "x86-64",
+                        0xaa64 => "ARM64",
+                        0xa641 => "ARM64EC",
+                        0xa64e => "ARM64X",
+                        0x01c4 => "ARM",
+                        0x0200 => "IA-64",
+                        _ => "unknown PE architecture",
+                    };
+                    return ("Windows PE", arch);
+                }
+            }
+        }
+        return ("Windows MZ executable/DLL", "architecture not resolved");
+    }
+    if bytes.len() >= 20 && &bytes[..4] == b"\x7fELF" {
+        let machine = if bytes[5] == 2 {
+            u16::from_be_bytes([bytes[18], bytes[19]])
+        } else {
+            u16::from_le_bytes([bytes[18], bytes[19]])
+        };
+        let arch = match machine {
+            3 => "x86",
+            40 => "ARM",
+            62 => "x86-64",
+            183 => "AArch64",
+            243 => "RISC-V",
+            _ => "unknown ELF architecture",
+        };
+        return ("ELF", arch);
+    }
+    if bytes.len() >= 4 {
+        let magic = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        return match magic {
+            0xfeedface => ("Mach-O", "32-bit big-endian"),
+            0xcefaedfe => ("Mach-O", "32-bit little-endian"),
+            0xfeedfacf => ("Mach-O", "64-bit big-endian"),
+            0xcffaedfe => ("Mach-O", "64-bit little-endian"),
+            0xcafebabe | 0xbebafeca | 0xcafebabf | 0xbfbafeca => ("Mach-O universal/fat", "multiple architectures"),
+            _ => ("unknown/native data", "architecture not resolved"),
+        };
+    }
+    ("unknown/native data", "architecture not resolved")
+}
+
+// Match only effects for which this APK actually ships an Android reimplementation.
+// Probe both package paths and readable strings embedded in native plug-in binaries.
+fn desktop_native_compatibility(source: &str, probe: &str) -> Option<Value> {
+    let token = probe.to_ascii_lowercase()
+        .replace('_', "")
+        .replace('-', "")
+        .replace(' ', "")
+        .replace('.', "");
+    let (effect_id, effect_name, note) = if token.contains("rsmb") {
+        ("org.effectcraft.compat.rsmb-motion-blur", "RSMB 风格方向模糊（非原版）",
+         "安卓方向模糊兼容效果；不是原厂 RSMB 运动矢量估算")
+    } else if token.contains("sglowaura") || token.contains("sapphireglowaura") || token.contains("glowaura") {
+        ("org.effectcraft.sapphire.compat.glow-aura", "Sapphire-style Glow Aura",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else if token.contains("sglow") || token.contains("sapphireglow") {
+        ("org.effectcraft.sapphire.compat.glow", "Sapphire-style Glow",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else if token.contains("slensflare") || token.contains("sapphirelensflare") {
+        ("org.effectcraft.sapphire.compat.lensflare", "Sapphire-style LensFlare",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else if token.contains("sblur") || token.contains("sapphireblur") {
+        ("org.effectcraft.sapphire.compat.blur", "Sapphire-style Blur",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else if token.contains("sdistort") || token.contains("sapphiredistort") {
+        ("org.effectcraft.sapphire.compat.distort", "Sapphire-style Distort",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else if token.contains("sstylize") || token.contains("sapphirestylize") {
+        ("org.effectcraft.sapphire.compat.stylize", "Sapphire-style Stylize",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else if token.contains("sglint") || token.contains("sapphireglint") {
+        ("org.effectcraft.sapphire.compat.glint", "Sapphire-style Glint",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else if token.contains("srays") || token.contains("sapphirerays") {
+        ("org.effectcraft.sapphire.compat.rays", "Sapphire-style Rays",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else if token.contains("shalftone") || token.contains("sapphirehalftone") {
+        ("org.effectcraft.sapphire.compat.halftone", "Sapphire-style HalfTone",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else if token.contains("spixelsort") || token.contains("sapphirepixelsort") {
+        ("org.effectcraft.sapphire.compat.pixelsort", "Sapphire-style PixelSort",
+         "EffectCraft 兼容重实现；不是原厂 Sapphire")
+    } else {
+        return None;
+    };
+    Some(json!({
+        "source": source,
+        "effect_id": effect_id,
+        "effect_name": effect_name,
+        "note": note
+    }))
+}
+
+fn push_unique_native_mapping(mappings: &mut Vec<Value>, mapping: Value) {
+    let source = mapping.get("source").cloned();
+    let effect_id = mapping.get("effect_id").cloned();
+    // Keep separate source files visible even when several files map to the same Android
+    // effect module (for example, a plug-in binary plus an auxiliary native component).
+    if !mappings.iter().any(|existing| {
+        existing.get("source") == source.as_ref()
+            && existing.get("effect_id") == effect_id.as_ref()
+    }) {
+        mappings.push(mapping);
+    }
+}
+
+
 // EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_PACKAGE_IMPORT_V1
 /// Inspect a desktop plug-in ZIP and install only formats EffectCraft can safely host.
 /// Native .aex/.dll/.ofx binaries are preserved for analysis but are never executed.
