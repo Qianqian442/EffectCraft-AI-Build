@@ -5,9 +5,13 @@ This native module is the shared peer transport for the Android account manager 
 ## Included in this transport milestone
 
 - persistent per-install Ed25519 libp2p identity in app-private storage;
+- distinct admin-authority and normal-client startup roles (only the manager advertises the admin-authority DHT provider key);
+- identify-protocol filtering so only peers that explicitly announce Circuit Relay v2 `hop` are asked for relay reservations;
+- listen-address push updates so peers learn fresh direct and reserved relay addresses;
 - TCP and QUIC transports with authenticated Noise encryption and Yamux multiplexing;
 - same-Wi-Fi peer discovery using mDNS;
 - public Kademlia DHT bootstrap and dynamic peer sampling;
+- administrator discovery via a dedicated DHT provider key; ordinary client phones do not advertise themselves as account authorities;
 - Circuit Relay v2 reservation probes and a rolling relay candidate pool;
 - multiple accepted relay reservations; discovery/probing is batched, but accepted relays are not limited to two;
 - periodic ping health signals, failed-node cooldown, and repeated DHT discovery;
@@ -17,7 +21,7 @@ DHT bootstrap peers are discovery infrastructure, not automatically relays. A pe
 
 ## Not yet complete
 
-This transport crate does not yet implement the EffectCraft account request/response protocol, administrator-signed account event replication, user-facing peer pairing, or main-APK registration/login routing over P2P. Those pieces must be connected before cross-network account registration and login can be called complete. Public relay availability is opportunistic and cannot be guaranteed.
+This transport crate now separates admin-authority discovery from relay discovery, but it does not yet implement the authenticated EffectCraft account request/response protocol, administrator-signed account event replication, user-facing peer pairing, or main-APK registration/login routing over P2P. Those pieces must be connected before cross-network account registration and login can be called complete. Public relay availability is opportunistic and cannot be guaranteed.
 
 ## Android build
 
