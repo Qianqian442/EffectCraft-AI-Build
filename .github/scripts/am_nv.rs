@@ -104,7 +104,9 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
         }
         std::fs::write(&destination, &bytes).map_err(|e| err(format!("Cannot save {name}: {e}")))?;
         let lower = name.to_ascii_lowercase();
-        if lower.ends_with(".nv") {
+        if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
+            project_file = Some(destination);
+        } else if lower.ends_with(".nv") {
             project_file = Some(destination);
         } else if project_file.is_none() && (lower.ends_with(".xml") || lower.ends_with(".alight")) {
             project_file = Some(destination);
@@ -658,6 +660,9 @@ pub fn import_path(s: &mut Session, path: &str) -> Result<J> {
     } else {
         path.to_string()
     };
+    if matches!(ext(&actual).as_str(), "ecproj" | "ecprojx") {
+        return super::import_project::import_project(s, &json!({"path": actual}));
+    }
     let bytes = match std::fs::read(&actual) {
         Ok(bytes) => bytes,
         Err(_) => s.services.read_file(&actual).map_err(|e| err(format!("Cannot read selected project file: {e}")))?,
