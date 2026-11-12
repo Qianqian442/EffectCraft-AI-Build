@@ -875,11 +875,11 @@ fn serve_client_rpc(mut stream: TcpStream) {
             match ensure_client_rpc_sender() {
                 Ok(recovered) => match send_account_rpc(recovered, request) {
                     Ok(response) => response,
-                    Err(error) => {
+                    Err(_) => {
                         let status = snapshot_json();
                         AccountRpcResponse {
                             status: 503,
-                            body: serde_json::json!({"detail": format!("P2P 网络节点自动恢复后仍无法发送账号请求：{error}；{status}")}).to_string(),
+                            body: serde_json::json!({"detail": format!("P2P 网络节点自动恢复后仍无法发送账号请求；当前状态：{status}")}).to_string(),
                         }
                     }
                 },
