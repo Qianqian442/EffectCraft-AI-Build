@@ -4801,7 +4801,7 @@ fn current_time_indicator(app: &mut EffectcraftApp, g: &Rw) {
     }
 }
 
-/// The footer: scroll bars and render time.
+/// The footer: scroll bars and render time; the Modes column is on by default, so no footer toggle is needed.
 fn footer_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Rw) -> Rect {
     let t = g.tl.t;
     let rect = g.tl.rect;
