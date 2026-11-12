@@ -15,6 +15,7 @@ on:
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
+      - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/add_chroma_key_effect.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   pull_request:
@@ -27,6 +28,7 @@ on:
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
+      - '.github/scripts/add_qq_project_share.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
@@ -132,6 +134,18 @@ jobs:
             ln -s "$GITHUB_WORKSPACE/effectcraft" artcraft/source/effectcraft
           fi
           python3 .github/scripts/patch_export_dialog.py
+
+      - name: Validate Android complete-project QQ share bridge
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: |
+          python3 -m py_compile .github/scripts/add_android_gallery_export.py .github/scripts/add_qq_project_share.py
+          python3 .github/scripts/add_android_gallery_export.py
+          python3 .github/scripts/add_qq_project_share.py
+          grep -F 'EFFECTCRAFT_SHARE_FILEPROVIDER_V1' artcraft/lib/android_project.py
+          grep -F 'shareProjectPackage' artcraft/templates/android/SafActivity.java
+          grep -F 'share_project_package' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
 
       - name: Validate the original AE menu and connect AEP/AEPX to Import Project
         env:
