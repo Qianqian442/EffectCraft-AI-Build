@@ -25,6 +25,8 @@ use libp2p::{
 use tokio::time::{interval, MissedTickBehavior};
 
 const DHT_PROTOCOL: StreamProtocol = StreamProtocol::new("/ipfs/kad/1.0.0");
+const RELAY_HOP_PROTOCOL: StreamProtocol = StreamProtocol::new("/libp2p/circuit/relay/0.2.0/hop");
+const ADMIN_SERVICE_KEY: &[u8] = b"/effectcraft/account-authorities/v1";
 const BOOTSTRAP_PEERS: [&str; 4] = [
     "QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
     "QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
@@ -51,6 +53,7 @@ struct EffectCraftBehaviour {
 #[derive(Default)]
 struct NetworkSnapshot {
     started: bool,
+    role: String,
     peer_id: String,
     status: String,
     discovered_peers: usize,
@@ -79,8 +82,9 @@ fn json_escape(value: &str) -> String {
 fn snapshot_json() -> String {
     match snapshot().lock() {
         Ok(state) => format!(
-            "{{\"started\":{},\"peerId\":\"{}\",\"status\":\"{}\",\"discoveredPeers\":{},\"relayCandidates\":{},\"activeRelays\":{},\"directPeers\":{},\"lastError\":\"{}\"}}",
+            "{{\"started\":{},\"role\":\"{}\",\"peerId\":\"{}\",\"status\":\"{}\",\"discoveredPeers\":{},\"relayCandidates\":{},\"activeRelays\":{},\"directPeers\":{},\"lastError\":\"{}\"}}",
             state.started,
+            json_escape(&state.role),
             json_escape(&state.peer_id),
             json_escape(&state.status),
             state.discovered_peers,
@@ -133,10 +137,12 @@ fn build_swarm(key: identity::Keypair) -> Result<Swarm<EffectCraftBehaviour>, Bo
                 mdns,
                 autonat: autonat::Behaviour::new(peer_id, autonat::Config::default()),
                 dcutr: dcutr::Behaviour::new(peer_id),
-                identify: identify::Behaviour::new(identify::Config::new(
-                    "/effectcraft/p2p/1.0.0".to_string(),
-                    keypair.public(),
-                )),
+                identify: identify::Behaviour::new(
+                    identify::Config::new(
+                        "/effectcraft/p2p/1.0.0".to_string(),
+                        keypair.public(),
+                    ).with_push_listen_addr_updates(true),
+                ),
                 ping: ping::Behaviour::new(ping::Config::new()),
             })
         })?
@@ -144,7 +150,7 @@ fn build_swarm(key: identity::Keypair) -> Result<Swarm<EffectCraftBehaviour>, Bo
     Ok(swarm)
 }
 
-fn start_node(data_directory: &str) -> Result<String, String> {
+fn start_node(data_directory: &str, is_admin: bool) -> Result<String, String> {
     let directory = Path::new(data_directory).join("effectcraft-p2p");
     let key = load_or_create_identity(&directory)?;
     let peer_id = key.public().to_peer_id().to_string();
@@ -155,6 +161,7 @@ fn start_node(data_directory: &str) -> Result<String, String> {
             return Ok(state.peer_id.clone());
         }
         state.started = true;
+        state.role = if is_admin { "admin_authority" } else { "client" }.to_string();
         state.peer_id = peer_id.clone();
         state.status = "starting".to_string();
         state.last_error.clear();
@@ -178,7 +185,7 @@ fn start_node(data_directory: &str) -> Result<String, String> {
                     return;
                 }
             };
-            runtime.block_on(run_node(key));
+            runtime.block_on(run_node(key, is_admin));
         })
     {
         set_snapshot(|state| {
@@ -193,7 +200,7 @@ fn start_node(data_directory: &str) -> Result<String, String> {
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeStart(
+pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeStartAdmin(
     mut env: JNIEnv,
     _class: JClass,
     directory: JString,
@@ -202,7 +209,7 @@ pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeStart(
         Ok(value) => value.to_string_lossy().into_owned(),
         Err(error) => return new_java_string(&mut env, format!("ERROR:{error}")),
     };
-    match start_node(&directory) {
+    match start_node(&directory, true) {
         Ok(peer_id) => new_java_string(&mut env, peer_id),
         Err(error) => new_java_string(&mut env, format!("ERROR:{error}")),
     }
@@ -217,7 +224,7 @@ pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeStatus
 }
 
 #[no_mangle]
-pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeStart(
+pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeStartClient(
     mut env: JNIEnv,
     _class: JClass,
     directory: JString,
@@ -226,7 +233,7 @@ pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeStart(
         Ok(value) => value.to_string_lossy().into_owned(),
         Err(error) => return new_java_string(&mut env, format!("ERROR:{error}")),
     };
-    match start_node(&directory) {
+    match start_node(&directory, false) {
         Ok(peer_id) => new_java_string(&mut env, peer_id),
         Err(error) => new_java_string(&mut env, format!("ERROR:{error}")),
     }
@@ -247,7 +254,7 @@ fn new_java_string(env: &mut JNIEnv, value: String) -> jstring {
     }
 }
 
-async fn run_node(key: identity::Keypair) {
+async fn run_node(key: identity::Keypair, is_admin: bool) {
     let local_peer_id = key.public().to_peer_id();
     let mut swarm = match build_swarm(key) {
         Ok(swarm) => swarm,
@@ -277,6 +284,12 @@ async fn run_node(key: identity::Keypair) {
     }
     let _ = swarm.behaviour_mut().kad.bootstrap();
     swarm.behaviour_mut().kad.get_closest_peers(PeerId::random());
+    let service_key = kad::RecordKey::new(ADMIN_SERVICE_KEY);
+    if is_admin {
+        let _ = swarm.behaviour_mut().kad.start_providing(service_key.clone());
+    } else {
+        swarm.behaviour_mut().kad.get_providers(service_key.clone());
+    }
 
     let mut candidate_queue: VecDeque<(PeerId, Multiaddr)> = VecDeque::new();
     let mut candidate_addresses: HashMap<PeerId, Multiaddr> = HashMap::new();
@@ -324,9 +337,46 @@ async fn run_node(key: identity::Keypair) {
                     SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Mdns(mdns::Event::Discovered(peers))) => {
                         for (peer_id, address) in peers {
                             swarm.behaviour_mut().kad.add_address(&peer_id, address.clone());
+                            candidate_addresses.insert(peer_id, address.clone().with(Protocol::P2p(peer_id)));
                             if !swarm.is_connected(&peer_id) && !attempting.contains(&peer_id) {
-                                let dial_address = address.with(Protocol::P2p(peer_id));
-                                let _ = swarm.dial(dial_address);
+                                let _ = swarm.dial(address.with(Protocol::P2p(peer_id)));
+                            }
+                        }
+                    }
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Identify(identify::Event::Received { peer_id, info, .. })) => {
+                        for address in &info.listen_addrs {
+                            swarm.behaviour_mut().kad.add_address(&peer_id, address.clone());
+                        }
+
+                        let supports_relay_v2 = info.protocols.iter().any(|protocol| protocol == &RELAY_HOP_PROTOCOL);
+                        if supports_relay_v2
+                            && attempting.contains(&peer_id)
+                            && !active_relays.contains(&peer_id)
+                            && !listener_peers.values().any(|known| *known == peer_id)
+                        {
+                            if let Some(address) = candidate_addresses.get(&peer_id).cloned() {
+                                match swarm.listen_on(address.with(Protocol::P2pCircuit)) {
+                                    Ok(listener_id) => { listener_peers.insert(listener_id, peer_id); }
+                                    Err(error) => {
+                                        attempting.remove(&peer_id);
+                                        failed_until.insert(peer_id, Instant::now() + FAILED_RELAY_COOLDOWN);
+                                        set_snapshot(|state| state.last_error = format!("relay reservation start: {error}"));
+                                    }
+                                }
+                            }
+                        } else if !supports_relay_v2 {
+                            attempting.remove(&peer_id);
+                        }
+                    }
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
+                        result: kad::QueryResult::GetProviders(Ok(kad::GetProvidersOk::FoundProviders { providers, .. })),
+                        ..
+                    })) => {
+                        if !is_admin {
+                            for peer_id in providers {
+                                if peer_id != local_peer_id && !swarm.is_connected(&peer_id) {
+                                    let _ = swarm.dial(libp2p::swarm::dial_opts::DialOpts::peer_id(peer_id).build());
+                                }
                             }
                         }
                     }
@@ -345,21 +395,7 @@ async fn run_node(key: identity::Keypair) {
                             set_snapshot(|state| state.status = "relay_health_degraded".to_string());
                         }
                     }
-                    SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                        if let Some(address) = candidate_addresses.get(&peer_id).cloned() {
-                            let relay_address = address.with(Protocol::P2pCircuit);
-                            match swarm.listen_on(relay_address) {
-                                Ok(listener_id) => {
-                                    listener_peers.insert(listener_id, peer_id);
-                                }
-                                Err(error) => {
-                                    attempting.remove(&peer_id);
-                                    failed_until.insert(peer_id, Instant::now() + FAILED_RELAY_COOLDOWN);
-                                    set_snapshot(|state| state.last_error = format!("relay reservation start: {error}"));
-                                }
-                            }
-                        }
-                    }
+                    SwarmEvent::ConnectionEstablished { .. } => {}
                     SwarmEvent::ListenerError { listener_id, error } => {
                         if let Some(peer_id) = listener_peers.remove(&listener_id) {
                             attempting.remove(&peer_id);
@@ -395,6 +431,9 @@ async fn run_node(key: identity::Keypair) {
             _ = discovery_tick.tick() => {
                 let _ = swarm.behaviour_mut().kad.bootstrap();
                 swarm.behaviour_mut().kad.get_closest_peers(PeerId::random());
+                if !is_admin {
+                    swarm.behaviour_mut().kad.get_providers(service_key.clone());
+                }
             }
             _ = health_tick.tick() => {
                 // Probe candidates in batches to protect mobile radio/battery. Accepted relays
