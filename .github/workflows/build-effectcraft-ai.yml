@@ -778,10 +778,10 @@ jobs:
           LAUNCHER_SRC="source/effectcraft/apps/effectcraft-android/src/lib.rs"
           test -s "$LAUNCHER_SRC"
           P2P_ACTIVITY="source/effectcraft/apps/effectcraft-android/java/com/artcraft/effectcraft/EffectCraftActivity.java"
-          P2P_NATIVE="source/effectcraft/apps/effectcraft-android/jniLibs/arm64-v8a/libeffectcraft_p2p.so"
           test -s "$P2P_ACTIVITY"
           grep -Fq "NativeP2P.start(this)" "$P2P_ACTIVITY"
-          test -s "$P2P_NATIVE"
+          # The builder stores jniLibs in its generated Android template directory,
+          # not under apps/effectcraft-android. Verify the actual packaged .so below.
           echo "Verified the main EffectCraft Android launcher starts the native P2P transport."
           grep -Fq "EFFECTCRAFT_ANDROID_WASM_PLUGIN_AUTOLOAD_V1" "$LAUNCHER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_BUILTIN_EFFECTS_V1" "$LAUNCHER_SRC"
