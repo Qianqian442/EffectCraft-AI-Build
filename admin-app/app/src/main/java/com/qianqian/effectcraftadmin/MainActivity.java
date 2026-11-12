@@ -73,7 +73,8 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         firstAdminPassword = LanAccountServer.ensureAdminPassword(this);
         if (isNodeServerEnabled()) {
-            startNodeServerService();
+            try { startNodeServerService(); }
+            catch (RuntimeException ignored) { /* The login screen will keep the server error visible. */ }
         }
         p2pUiHandler.postDelayed(p2pStatusRefresh, 2500);
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
