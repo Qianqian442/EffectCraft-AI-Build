@@ -853,8 +853,7 @@ fn inspect_desktop_native_file(s: &mut Session, source_path: &str) -> Result<Val
 
     anchor = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
-    replacement = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
-    if let Some(path) = str_p(p, "path") {
+    replacement = '''    if let Some(path) = str_p(p, "path") {
         let extension = Path::new(path).extension().and_then(|value| value.to_str()).unwrap_or_default();
         if extension.eq_ignore_ascii_case("zip") {
             return install_desktop_plugin_archive(s, path);
@@ -865,6 +864,7 @@ fn inspect_desktop_native_file(s: &mut Session, source_path: &str) -> Result<Val
             return inspect_desktop_native_file(s, path);
         }
     }
+    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
     source = replace_once(source, anchor, replacement, "ZIP route to desktop package installer")
     path.write_text(source, encoding="utf-8")
