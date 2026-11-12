@@ -30,7 +30,7 @@ use std::{
 
 use egui::{pos2, vec2};
 use serde_json::{Value, json};
-use zip::ZipArchive;
+use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 use crate::EffectcraftApp;
 
@@ -48,6 +48,7 @@ struct Pending {
     native_count: usize,
     total_bytes: u64,
     entries: usize,
+    temporary_archive: bool,
 }
 
 struct ScanResult {
@@ -92,13 +93,52 @@ impl Default for State {
     }
 }
 
-/// Called after the Android file picker returns. Only ZIPs containing desktop-native plug-ins
-/// open the migration dialog; ordinary WASM/WAT/script ZIPs keep their existing import path.
+/// Called after the Android file picker returns. ZIP bundles containing native plug-ins and
+/// standalone desktop binaries use the same migration flow. Ordinary WASM/WAT/script ZIPs keep
+/// their existing import path.
 pub(crate) fn offer(app: &mut EffectcraftApp, path: &str) -> bool {
-    if !Path::new(path).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip")) {
-        return false;
-    }
-    let Some(pending) = inspect_archive(path) else {
+    let source = Path::new(path);
+    let is_zip = source.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip"));
+    let pending = if is_zip {
+        inspect_archive(path)
+    } else {
+        let extension = source.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_ascii_lowercase();
+        let source_name = source.file_name().map(|v| v.to_string_lossy().into_owned()).unwrap_or_default();
+        if !is_native(&source_name, &extension) {
+            return false;
+        }
+        let file_name = if source_name.is_empty() { "desktop-plugin.aex".to_string() } else { source_name };
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_zip = std::env::temp_dir().join(format!("effectcraft-desktop-plugin-{stamp}.zip"));
+        let mut input = match File::open(path) {
+            Ok(file) => file,
+            Err(_) => return false,
+        };
+        let output = match File::create(&temp_zip) {
+            Ok(file) => file,
+            Err(_) => return false,
+        };
+        let mut writer = ZipWriter::new(output);
+        if writer.start_file(&file_name, SimpleFileOptions::default()).is_err()
+            || std::io::copy(&mut input, &mut writer).is_err()
+            || writer.finish().is_err()
+        {
+            let _ = std::fs::remove_file(&temp_zip);
+            return false;
+        }
+        let temp_path = temp_zip.to_string_lossy().into_owned();
+        let Some(mut pending) = inspect_archive(&temp_path) else {
+            let _ = std::fs::remove_file(&temp_zip);
+            return false;
+        };
+        pending.file_name = file_name;
+        pending.temporary_archive = true;
+        Some(pending)
+    };
+    let Some(pending) = pending else {
         return false;
     };
     app.plugin_migration = State {
@@ -179,6 +219,7 @@ fn inspect_archive(path: &str) -> Option<Pending> {
         native_count,
         total_bytes,
         entries,
+        temporary_archive: false,
     })
 }
 
@@ -374,11 +415,17 @@ fn finalize(state: &mut State, app: &mut EffectcraftApp) {
     let Some(finalizing) = state.finalizing.take() else { return };
     // The archive has already been decompressed and checked off the UI thread. The original
     // EffectCraft loader performs the actual validation, registration and persistent install.
+    let pending = finalizing.pending;
+    let temporary_archive = pending.temporary_archive;
+    let temporary_path = pending.path.clone();
     let installed = app.session.execute(
         "effect.plugins.load",
-        json!({"path": finalizing.pending.path}),
+        json!({"path": pending.path}),
     ).map_err(|e| e.to_string());
-    state.done = Some(result_from_import(finalizing.pending, finalizing.scan, installed));
+    if temporary_archive {
+        let _ = std::fs::remove_file(temporary_path);
+    }
+    state.done = Some(result_from_import(pending, finalizing.scan, installed));
 }
 
 pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {
@@ -491,6 +538,20 @@ pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {
 
 
 def patch(root: Path) -> None:
+    # Add ZIP support at workspace scope: the UI inspects bundles and wraps standalone native
+    # desktop binaries into a one-entry temporary ZIP for the same safe import pipeline.
+    workspace_manifest = root / "Cargo.toml"
+    workspace_source = workspace_manifest.read_text(encoding="utf-8")
+    zip_dependency = 'zip = { version = "7.4.0", default-features = false, features = ["deflate"] }\n'
+    if zip_dependency.strip() not in workspace_source:
+        workspace_source = once(
+            workspace_source,
+            'image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }\n',
+            'image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }\n' + zip_dependency,
+            "workspace ZIP dependency",
+        )
+        workspace_manifest.write_text(workspace_source, encoding="utf-8")
+
     ui = root / "crates/ui-egui"
     manifest = ui / "Cargo.toml"
     source = manifest.read_text(encoding="utf-8")
