@@ -280,8 +280,16 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                 // is generic (for example, a bundle named simply "Plugin.aex").
                 if ["json", "xml", "txt", "md", "toml", "plist", "rsrc", "r", "rc", "strings", "manifest", "yaml", "yml", "ini", "config", "pdb", "map"].contains(&extension.as_str()) {
                     let metadata = String::from_utf8_lossy(&bytes);
-                    if let Some(mapping) = desktop_native_compatibility(&entry_name, &metadata) {
+                    let metadata_strings = readable_plugin_strings(&bytes);
+                    let metadata_probe = format!("{}\n{}", metadata, metadata_strings.join("\n"));
+                    if let Some(mapping) = desktop_native_compatibility(&entry_name, &metadata_probe) {
                         push_unique_native_mapping(&mut native_mappings, mapping);
+                    }
+                    if !metadata_strings.is_empty() {
+                        native_metadata.push(json!({
+                            "file": entry_name,
+                            "strings": metadata_strings.iter().take(64).collect::<Vec<_>>()
+                        }));
                     }
                 }
                 asset_names.push(destination_name);
