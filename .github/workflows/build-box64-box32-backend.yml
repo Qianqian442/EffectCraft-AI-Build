@@ -1,0 +1,79 @@
+name: Build EffectCraft Box64 32-bit ELF Support
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/windows-plugin-runtime
+    paths:
+      - '.github/workflows/build-box64-box32-backend.yml'
+      - 'windows-compat/runtime-manifest.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-box64-box32-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  box64-box32-android:
+    name: Build Android ARM64 Box64 with x86 32-bit ELF support
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out compatibility configuration
+        uses: actions/checkout@v4
+
+      - name: Check out pinned Box64 source
+        uses: actions/checkout@v4
+        with:
+          repository: ptitSeb/box64
+          ref: 4dbba1300a8d74c7c385f0d8a4e453c740622f9f
+          path: third_party/box64
+          submodules: recursive
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build make python3 wget unzip file zstd
+
+      - name: Install Android NDK r26b
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -O "$RUNNER_TEMP/android-ndk.zip"
+          unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
+
+      - name: Configure Box64 with BOX32
+        run: |
+          NDK_COMPILER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android31-clang"
+          cmake -S third_party/box64 -B build/box64-box32-android-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="$NDK_COMPILER" \
+            -DANDROID=1 -DARM64=1 -DARM_DYNAREC=1 -DBAD_SIGNAL=1 \
+            -DBOX32=ON -DBOX32_BINFMT=OFF \
+            -DNO_CONF_INSTALL=ON -DNO_LIB_INSTALL=ON \
+            -DCMAKE_INSTALL_PREFIX="$PWD/stage/box64-box32"
+
+      - name: Compile Box64 with 32-bit x86 ELF support
+        run: |
+          cmake --build build/box64-box32-android-arm64 --parallel 2
+          test -s build/box64-box32-android-arm64/box64
+          file build/box64-box32-android-arm64/box64
+          grep -R -Fq 'BOX32' build/box64-box32-android-arm64/CMakeCache.txt
+          mkdir -p stage/box64-box32/usr/bin
+          install -m 0755 build/box64-box32-android-arm64/box64 stage/box64-box32/usr/bin/box64
+          cp third_party/box64/LICENSE stage/box64-box32/BOX64-LICENSE
+
+      - name: Package and checksum Box64 BOX32
+        run: |
+          mkdir -p artifacts
+          tar --zstd -cf artifacts/box64-box32-android-arm64.tar.zst -C stage/box64-box32 .
+          sha256sum artifacts/box64-box32-android-arm64.tar.zst > artifacts/box64-box32-android-arm64.tar.zst.sha256
+
+      - name: Upload Box64 BOX32 runtime component
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Box64-BOX32-Android-ARM64
+          path: artifacts/*
+          retention-days: 30
