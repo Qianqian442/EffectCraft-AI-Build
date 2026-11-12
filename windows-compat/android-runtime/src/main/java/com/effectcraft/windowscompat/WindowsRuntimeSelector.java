@@ -28,7 +28,7 @@ public final class WindowsRuntimeSelector {
 
     public enum Confidence {
         CANDIDATE_NOT_YET_RUNTIME_TESTED,
-        HOST_WORKER_BUILD_CONFIRMED,
+        HOST_WORKER_COMPILED_RUNTIME_UNTESTED,
         MANUAL_ABI_REVIEW_REQUIRED,
         UNSUPPORTED_WITH_CURRENT_AEX_HOSTS
     }
@@ -87,7 +87,7 @@ public final class WindowsRuntimeSelector {
                 break;
             case IMAGE_FILE_MACHINE_I386:
                 addArm64EcFex(plans, "effectcraft-aex-host-x86.exe",
-                        Confidence.HOST_WORKER_BUILD_CONFIRMED);
+                        Confidence.HOST_WORKER_COMPILED_RUNTIME_UNTESTED);
                 addArm64EcWow(plans, "effectcraft-aex-host-x86.exe",
                         Confidence.HOST_WORKER_BUILD_CONFIRMED);
                 addBox64Box32(plans, "effectcraft-aex-host-x86.exe");
