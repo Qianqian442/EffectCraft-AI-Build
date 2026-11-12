@@ -93,6 +93,14 @@ GPU path: the first integration should force aexlo's CPU rendering path unless a
 
 ## Additional open-source fallbacks found
 
+### Box64 BOX32 for 32-bit x86 Linux userland
+
+Box64 itself has a `BOX32=ON` build option that adds 32-bit x86 ELF support inside the 64-bit ARM64 Box64 process. This is different from 32-bit Windows PE support: it can run the 32-bit Linux/Wine side of a WoW64 configuration, but Wine must still provide the Windows PE loader and 32-bit Windows API implementation.
+
+A separate Android NDK CI build now compiles this optional variant with `BOX32=ON` and `BOX32_BINFMT=OFF`. The latter avoids trying to install Linux `binfmt_misc` rules on Android. It is an additional runtime artifact; it does not replace the standard Box64 build or FEXCore's Arm64EC/WoW64 path.
+
+Upstream source and CMake options: https://github.com/ptitSeb/box64
+
 ### QEMU linux-user as a third CPU backend
 
 Pinned source reference: https://www.qemu.org/docs/master/user/
