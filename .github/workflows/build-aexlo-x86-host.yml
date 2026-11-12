@@ -7,6 +7,7 @@ on:
       - experiment/windows-plugin-runtime
     paths:
       - 'windows-compat/aexlo-host/**'
+      - 'windows-compat/tools/**'
       - '.github/workflows/build-aexlo-x86-host.yml'
 
 permissions:
