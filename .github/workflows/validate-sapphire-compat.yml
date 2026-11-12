@@ -92,8 +92,9 @@ jobs:
           cargo check -p effectcraft-ui-egui
 
       - name: Parse Android APK workflow YAML with location details
-        shell: ruby
+        shell: bash
         run: |
+          ruby <<'RUBY'
           require "yaml"
           begin
             YAML.parse_file(".github/workflows/build-effectcraft-ai.yml")
@@ -104,3 +105,4 @@ jobs:
             warn "YAML line: #{error.line}, column: #{error.column}"
             raise
           end
+          RUBY
