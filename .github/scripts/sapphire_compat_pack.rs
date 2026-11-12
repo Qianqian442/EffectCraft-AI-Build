@@ -134,8 +134,8 @@ fn sample_bilinear(source: &[[f32; 4]], width: usize, height: usize, x: f32, y: 
 }
 
 #[cfg(any(sapphire_glow, sapphire_aura))]
-fn render_glow(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], aura: bool) -> i32 {
-    let radius = (params[0].max(0.0) * _scale.max(0.0)).round().clamp(1.0, 64.0) as usize;
+fn render_glow(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], aura: bool, scale: f64) -> i32 {
+    let radius = (params[0].max(0.0) * scale.max(0.0)).round().clamp(1.0, 64.0) as usize;
     let (intensity, threshold) = if aura {
         (params[1].clamp(0.0, 2.0), params[2].clamp(0.05, 0.98))
     } else {
@@ -172,12 +172,12 @@ fn render_glow(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f
 }
 
 #[cfg(sapphire_lensflare)]
-fn render_lensflare(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
+fn render_lensflare(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], scale: f64) -> i32 {
     // The EffectCraft host has already mapped the layer-relative point to frame pixels.
     let cx = frame_pixel(params[0], width);
     let cy = frame_pixel(params[1], height);
     let intensity = params[2].clamp(0.0, 2.0) as f32;
-    let size = (params[3].clamp(0.08, 1.5) as f32 * width.min(height) as f32 * _scale.max(0.0) as f32).max(2.0);
+    let size = (params[3].clamp(0.08, 1.5) as f32 * width.min(height) as f32 * scale.max(0.0) as f32).max(2.0);
     let color = [params[4] as f32, params[5] as f32, params[6] as f32];
     let image_cx = (width.saturating_sub(1) as f32) * 0.5;
     let image_cy = (height.saturating_sub(1) as f32) * 0.5;
@@ -228,8 +228,8 @@ fn render_lensflare(pixels: &mut [[f32; 4]], width: usize, height: usize, params
 }
 
 #[cfg(sapphire_blur)]
-fn render_blur(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
-    let radius = (params[0].max(0.0) * _scale.max(0.0)).round().clamp(1.0, 32.0) as usize;
+fn render_blur(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], scale: f64) -> i32 {
+    let radius = (params[0].max(0.0) * scale.max(0.0)).round().clamp(1.0, 32.0) as usize;
     let mix = (params[1] / 100.0).clamp(0.0, 1.0) as f32;
     let source = pixels.to_vec();
     let blurred = gaussian_blur(&source, width, height, radius);
@@ -566,10 +566,10 @@ pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params:
     let frame = unsafe { std::slice::from_raw_parts_mut(pixels as *mut [f32; 4], count) };
     let w = width as usize;
     let h = height as usize;
-    #[cfg(sapphire_glow)] { render_glow(frame, w, h, values, false) }
-    #[cfg(sapphire_aura)] { render_glow(frame, w, h, values, true) }
-    #[cfg(sapphire_lensflare)] { render_lensflare(frame, w, h, values) }
-    #[cfg(sapphire_blur)] { render_blur(frame, w, h, values) }
+    #[cfg(sapphire_glow)] { render_glow(frame, w, h, values, false, _scale) }
+    #[cfg(sapphire_aura)] { render_glow(frame, w, h, values, true, _scale) }
+    #[cfg(sapphire_lensflare)] { render_lensflare(frame, w, h, values, _scale) }
+    #[cfg(sapphire_blur)] { render_blur(frame, w, h, values, _scale) }
     #[cfg(sapphire_distort)] { render_distort(frame, w, h, values) }
     #[cfg(sapphire_stylize)] { render_stylize(frame, values) }
     #[cfg(sapphire_motion)] { render_motion(frame, w, h, values) }
