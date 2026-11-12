@@ -55,9 +55,13 @@
   "memory_policy": {
     "application_imposed_ram_limit": false,
     "rlimit_as": false,
+    "rlimit_data": false,
     "cgroup_memory_limit": false,
     "box64_artificial_memory_cap": false,
-    "allocation_policy": "OS-and-device-managed; no fixed app-level cap"
+    "qemu_guest_ram_cap": false,
+    "fex_guest_ram_cap": false,
+    "clvk_memory_pool_cap": false,
+    "allocation_policy": "No fixed application-level RAM budget; allocations are governed by available OS/device memory and driver limits"
   },
   "required_before_apk_distribution": [
     "per-package SBOM and license review",
@@ -72,7 +76,13 @@
     "build and run the aexlo Windows x64 worker under both Wine+Box64 and Arm64EC Wine+FEXCore container variants",
     "test sample AEX plug-ins from real x86-64 Windows distributions and compare output/parameters against After Effects references",
     "implement or explicitly report missing AEGP, sequence, mask, text, camera, composite and GPU host features",
-    "supervise one isolated worker process per native plug-in and verify crash/timeout recovery"
+    "supervise one isolated worker process per native plug-in and verify crash/timeout recovery",
+    "test Android rootfs extraction and direct guest process launching without root on OPPO/Qualcomm and Huawei/Mali-class devices",
+    "test QEMU x86_64 Linux-user Wine fallback against the same PE host worker used by Box64",
+    "test clvk OpenCL path only through a real Wine OpenCL ICD bridge and representative plug-in kernels; report unsupported OpenCL extensions",
+    "run LIEF independently against the Rust PE importer and compare machine/import/export results",
+    "use Qiling only in a development analysis harness to trace Windows API calls; do not ship it in the APK by default",
+    "keep no application-level memory limits in all runtime backends"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
@@ -130,5 +140,99 @@
     "upstream_status": "heavy development; incomplete suites and features remain",
     "platform_note": "upstream targets Windows x64 and macOS arm64; Windows x64 worker must run under the Android Windows compatibility container",
     "bridge_source": "windows-compat/aexlo-host"
-  }
+  },
+  "alternative_backends": [
+    {
+      "id": "qemu-x86_64-linux-user",
+      "repository": "https://gitlab.com/qemu-project/qemu",
+      "version": "11.1.3 (Termux Android package recipe)",
+      "license": "GPL-2.0",
+      "role": "Third execution fallback for x86-64 Linux Wine binaries on Android ARM64; it translates Linux ELF execution, not Windows PE directly",
+      "android_recipe": "https://github.com/termux/termux-packages/blob/master/packages/qemu-system-x86-64-headless/build.sh",
+      "target": "x86_64-linux-user",
+      "limitations": [
+        "requires a compatible x86-64 Wine/glibc rootfs",
+        "slower than dynarec backends in expected workloads",
+        "must bundle and audit runtime shared-library dependencies"
+      ]
+    },
+    {
+      "id": "clvk-opencl-vulkan",
+      "repository": "https://github.com/kpet/clvk",
+      "revision": "5aa061c93c2d5a53b591e646ad359f2e5408b794",
+      "license": "Apache-2.0",
+      "role": "Optional Android ARM64 OpenCL 3.0 implementation layered on Vulkan, for plug-ins whose OpenCL usage can be bridged through Wine",
+      "android_build": "Android NDK arm64-v8a supported upstream",
+      "limitations": [
+        "compiler-disabled build supports only precompiled SPIR-V paths",
+        "full runtime OpenCL C compilation needs clspv/LLVM",
+        "Wine OpenCL ICD bridge to Android ARM64 driver is unverified",
+        "does not implement CUDA"
+      ]
+    },
+    {
+      "id": "qiling-analysis",
+      "repository": "https://github.com/qilingframework/qiling",
+      "license": "GPL-2.0-or-later",
+      "role": "Development-only PE/API emulation and dynamic instrumentation to identify imported Windows APIs and missing host shims",
+      "limitations": [
+        "Python tooling, not suitable as the main frame-rendering runtime",
+        "not an AE host; still needs AE SDK suite shims",
+        "keep outside shipping APK unless GPL and size implications are intentionally accepted"
+      ]
+    },
+    {
+      "id": "lief-pe-analysis",
+      "repository": "https://github.com/lief-project/LIEF",
+      "license": "Apache-2.0",
+      "role": "Independent robust PE/COFF parser for validating imports, exports, sections, symbols and machine architecture",
+      "limitations": [
+        "analysis/parsing only; does not execute Windows code or provide Windows APIs"
+      ]
+    }
+  ],
+  "rootfs_strategy": {
+    "primary_reference": "https://github.com/brunodev85/winlator-app",
+    "method": "Extract a verified compressed Wine/glibc rootfs into EffectCraft's private files directory; launch Box64 directly with explicit LD_LIBRARY_PATH and BOX64_LD_LIBRARY_PATH, following Winlator's Android RootFS and GuestProgramLauncher pattern",
+    "no_root_required": true,
+    "proot_optional": {
+      "repository": "https://github.com/termux/proot",
+      "license": "GPL-2.0",
+      "role": "Optional path redirection and chroot-like rootfs view where the direct launcher is insufficient"
+    },
+    "rootfs_manager": {
+      "repository": "https://github.com/termux/proot-distro",
+      "role": "Reference for rootfs bootstrap, architecture selection and QEMU user-mode handling"
+    }
+  },
+  "graphics_backends": [
+    {
+      "id": "wine-opengl-mesa",
+      "role": "OpenGL compatibility through selected Mesa driver path (Zink/Turnip/VirGL where supported)",
+      "status": "candidate; target-GPU tests required"
+    },
+    {
+      "id": "dxvk",
+      "role": "Direct3D 9/10/11 to Vulkan translation",
+      "license": "MIT",
+      "status": "candidate; per-GPU testing required"
+    },
+    {
+      "id": "vkd3d-proton",
+      "role": "Direct3D 12 to Vulkan translation",
+      "license": "LGPL-2.1-or-later",
+      "status": "candidate; per-GPU testing required"
+    },
+    {
+      "id": "clvk",
+      "role": "OpenCL 3.0 on Vulkan for compatible OpenCL plug-ins",
+      "license": "Apache-2.0",
+      "status": "experimental; Wine bridge and runtime compiler need verification"
+    },
+    {
+      "id": "cuda",
+      "role": "CUDA plug-in execution",
+      "status": "not currently solved for ordinary Android GPUs"
+    }
+  ]
 }
