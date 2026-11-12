@@ -284,7 +284,7 @@ async fn run_node(key: identity::Keypair, is_admin: bool) {
     }
     let _ = swarm.behaviour_mut().kad.bootstrap();
     swarm.behaviour_mut().kad.get_closest_peers(PeerId::random());
-    let service_key = kad::RecordKey::new(ADMIN_SERVICE_KEY);
+    let service_key = kad::RecordKey::new(&ADMIN_SERVICE_KEY);
     if is_admin {
         let _ = swarm.behaviour_mut().kad.start_providing(service_key.clone());
     } else {
