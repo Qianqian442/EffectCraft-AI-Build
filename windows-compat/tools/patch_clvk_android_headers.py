@@ -39,7 +39,7 @@ typedef struct VkPhysicalDeviceShaderFmaFeaturesKHR {
     if fallback not in source:
         if source.count(vulkan_include) != 1:
             raise SystemExit("device.hpp: expected one Vulkan header include")
-        source = source.replace(vulkan_include, vulkan_include + "\\n\\n" + fallback, 1)
+        source = source.replace(vulkan_include, vulkan_include + "\n\n" + fallback, 1)
         header.write_text(source, encoding="utf-8")
 
     replace_once(
