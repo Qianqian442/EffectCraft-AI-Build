@@ -49,6 +49,31 @@ jobs:
         run: |
           python3 windows-compat/tools/patch_box64_obstack_compat.py third_party/box64
 
+      - name: Verify obstack ABI structure layout for Android AArch64
+        run: |
+          cat > "$RUNNER_TEMP/obstack_layout_check.c" <<'EOF'
+          #include <stddef.h>
+          #include "box64_obstack_compat.h"
+          _Static_assert(offsetof(struct _obstack_chunk, limit) == 0, "chunk.limit");
+          _Static_assert(offsetof(struct _obstack_chunk, prev) == 8, "chunk.prev");
+          _Static_assert(offsetof(struct _obstack_chunk, contents) == 16, "chunk.contents");
+          _Static_assert(sizeof(struct _obstack_chunk) == 24, "chunk.size");
+          _Static_assert(offsetof(struct obstack, chunk_size) == 0, "obstack.chunk_size");
+          _Static_assert(offsetof(struct obstack, chunk) == 8, "obstack.chunk");
+          _Static_assert(offsetof(struct obstack, object_base) == 16, "obstack.object_base");
+          _Static_assert(offsetof(struct obstack, next_free) == 24, "obstack.next_free");
+          _Static_assert(offsetof(struct obstack, chunk_limit) == 32, "obstack.chunk_limit");
+          _Static_assert(offsetof(struct obstack, temp) == 40, "obstack.temp");
+          _Static_assert(offsetof(struct obstack, alignment_mask) == 48, "obstack.alignment_mask");
+          _Static_assert(offsetof(struct obstack, chunkfun) == 56, "obstack.chunkfun");
+          _Static_assert(offsetof(struct obstack, freefun) == 64, "obstack.freefun");
+          _Static_assert(offsetof(struct obstack, extra_arg) == 72, "obstack.extra_arg");
+          _Static_assert(offsetof(struct obstack, use_extra_arg) == 80, "obstack.bitfields");
+          _Static_assert(sizeof(struct obstack) == 88, "obstack.size");
+          EOF
+          "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android31-clang" \
+            -std=c11 -Wall -Werror -Ithird_party/box64/src/include -fsyntax-only "$RUNNER_TEMP/obstack_layout_check.c"
+
       - name: Configure Box64 with BOX32
         run: |
           NDK_COMPILER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android31-clang"
