@@ -4,12 +4,14 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
@@ -43,7 +45,6 @@ public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private static final String DEFAULT_SERVER = "http://127.0.0.1:8787";
     private String server = DEFAULT_SERVER;
-    private LanAccountServer localAccountServer;
     private String firstAdminPassword;
     private String adminToken = "";
     private LinearLayout root;
@@ -66,12 +67,9 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         firstAdminPassword = LanAccountServer.ensureAdminPassword(this);
-        localAccountServer = new LanAccountServer(this);
-        Thread accountWorker = new Thread(localAccountServer, "EffectCraft-Local-Account-Database");
-        accountWorker.setDaemon(true);
-        accountWorker.start();
-        P2PAccountBridge.start(localAccountServer);
-        NativeP2P.start(this);
+        Intent authorityService = new Intent(this, LanServerService.class);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(authorityService);
+        else startService(authorityService);
         p2pUiHandler.postDelayed(p2pStatusRefresh, 2500);
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
@@ -601,7 +599,6 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         p2pUiHandler.removeCallbacks(p2pStatusRefresh);
-        NativeP2P.stop();
         super.onDestroy();
         io.shutdownNow();
     }
