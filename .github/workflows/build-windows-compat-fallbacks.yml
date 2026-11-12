@@ -8,6 +8,7 @@ on:
     paths:
       - 'windows-compat/runtime-manifest.json'
       - '.github/workflows/build-windows-compat-fallbacks.yml'
+      - '.github/scripts/**'
 
 permissions:
   contents: read
@@ -85,6 +86,48 @@ jobs:
       - name: Fetch CLVK compiler support source dependencies
         working-directory: third_party/clvk/external/clspv
         run: python3 utils/fetch_sources.py --deps llvm --shallow
+
+      - name: Guard optional shader-FMA feature unavailable in Android NDK Vulkan headers
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          header = Path("third_party/clvk/src/device.hpp")
+          source = Path("third_party/clvk/src/device.cpp")
+          h = header.read_text()
+          s = source.read_text()
+
+          old_h = "    VkPhysicalDeviceShaderFmaFeaturesKHR m_features_shader_fma{};"
+          new_h = """#ifdef VK_KHR_SHADER_FMA_EXTENSION_NAME
+              VkPhysicalDeviceShaderFmaFeaturesKHR m_features_shader_fma{};
+          #endif"""
+          old_s1 = """    m_features_shader_fma.sType =
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FMA_FEATURES_KHR;"""
+          new_s1 = """#ifdef VK_KHR_SHADER_FMA_EXTENSION_NAME
+              m_features_shader_fma.sType =
+                  VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SHADER_FMA_FEATURES_KHR;
+          #endif"""
+          old_s2 = """            VER_EXT_FEAT(0, VK_KHR_SHADER_FMA_EXTENSION_NAME,
+                         m_features_shader_fma),"""
+          new_s2 = """#ifdef VK_KHR_SHADER_FMA_EXTENSION_NAME
+              VER_EXT_FEAT(0, VK_KHR_SHADER_FMA_EXTENSION_NAME,
+                           m_features_shader_fma),
+          #endif"""
+
+          for label, text, old, new in (
+              ("device.hpp", h, old_h, new_h),
+              ("device.cpp sType", s, old_s1, new_s1),
+              ("device.cpp feature chain", s, old_s2, new_s2),
+          ):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected one shader-FMA use, found {count}")
+
+          header.write_text(h.replace(old_h, new_h, 1))
+          s = s.replace(old_s1, new_s1, 1).replace(old_s2, new_s2, 1)
+          source.write_text(s)
+          print("CLVK shader-FMA remains enabled with new headers and is omitted when Android headers lack the extension.")
+          PY
 
       - name: Configure CLVK for Android ARM64 (precompiled SPIR-V mode)
         run: |
