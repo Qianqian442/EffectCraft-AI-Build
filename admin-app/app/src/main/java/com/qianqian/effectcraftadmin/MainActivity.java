@@ -25,6 +25,7 @@ import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -59,6 +60,7 @@ public final class MainActivity extends Activity {
     private TextView loginStatus;
     private TextView p2pStatusView;
     private String serviceStartError = "";
+    private boolean serverToggleChanging = false;
     private final Handler p2pUiHandler = new Handler(Looper.getMainLooper());
     private final Runnable p2pStatusRefresh = new Runnable() {
         @Override public void run() {
@@ -70,13 +72,8 @@ public final class MainActivity extends Activity {
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         firstAdminPassword = LanAccountServer.ensureAdminPassword(this);
-        Intent authorityService = new Intent(this, LanServerService.class);
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(authorityService);
-            else startService(authorityService);
-        } catch (RuntimeException error) {
-            serviceStartError = "后台账号服务启动失败：" + error.getClass().getSimpleName()
-                + (error.getMessage() == null ? "" : " · " + error.getMessage());
+        if (isNodeServerEnabled()) {
+            startNodeServerService();
         }
         p2pUiHandler.postDelayed(p2pStatusRefresh, 2500);
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
@@ -115,6 +112,61 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private boolean isNodeServerEnabled() {
+        return getPreferences(MODE_PRIVATE).getBoolean("node_server_enabled", true);
+    }
+
+    private void startNodeServerService() {
+        Intent authorityService = new Intent(this, LanServerService.class);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(authorityService);
+            else startService(authorityService);
+            serviceStartError = "";
+        } catch (RuntimeException error) {
+            serviceStartError = "后台账号服务启动失败：" + error.getClass().getSimpleName()
+                + (error.getMessage() == null ? "" : " · " + error.getMessage());
+            throw error;
+        }
+    }
+
+    private void setNodeServerEnabled(boolean enabled, Switch control) {
+        if (serverToggleChanging) return;
+        boolean previous = isNodeServerEnabled();
+        try {
+            getPreferences(MODE_PRIVATE).edit().putBoolean("node_server_enabled", enabled).apply();
+            if (enabled) {
+                startNodeServerService();
+                toast("账号服务器已开启，正在启动 P2P 节点");
+            } else {
+                stopService(new Intent(this, LanServerService.class));
+                toast("账号服务器已关闭，其他手机暂时不能注册或登录");
+            }
+            if (p2pStatusView != null) p2pStatusView.setText(readP2PStatus());
+        } catch (RuntimeException error) {
+            getPreferences(MODE_PRIVATE).edit().putBoolean("node_server_enabled", previous).apply();
+            serverToggleChanging = true;
+            control.setChecked(previous);
+            serverToggleChanging = false;
+            toast("切换服务器失败：" + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage()));
+        }
+    }
+
+    private void addNodeServerToggle(LinearLayout parent) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = text("账号服务器开关", 14, true);
+        row.addView(label, new LinearLayout.LayoutParams(0, dp(48), 1));
+        Switch control = new Switch(this);
+        control.setTextOn("开启");
+        control.setTextOff("关闭");
+        control.setChecked(isNodeServerEnabled());
+        control.setOnCheckedChangeListener((button, enabled) -> setNodeServerEnabled(enabled, control));
+        row.addView(control, new LinearLayout.LayoutParams(-2, dp(48)));
+        parent.addView(row);
+        parent.addView(text("开启：本机 SQLite 账号库和加密 P2P 节点对外服务；关闭：停止节点与账号服务。", 11, false));
+    }
+
     /** The administrator phone is the account authority; P2P carries authenticated account RPC. */
     private void addGlobalNodePanel(LinearLayout page) {
         LinearLayout panel = new LinearLayout(this);
@@ -123,6 +175,7 @@ public final class MainActivity extends Activity {
         panel.setBackground(rounded(Color.WHITE));
         panel.addView(text("管理员手机账号节点", 16, true));
         panel.addView(text("账号数据保存在本机 SQLite；用户注册、登录、资料修改和封禁状态均由本机校验。", 12, false));
+        addNodeServerToggle(panel);
         p2pStatusView = text(readP2PStatus(), 11, false);
         p2pStatusView.setTextColor(Color.rgb(75, 84, 98));
         panel.addView(p2pStatusView);
@@ -229,6 +282,7 @@ public final class MainActivity extends Activity {
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
         page.addView(text("本机账号管理：账号数据库保存在这部管理员手机上。", 14, false));
         page.addView(text("其他用户无需与管理员处于同一 Wi-Fi；主 APK 自动发现本机节点，并通过加密 P2P 通道注册、登录和核验封禁状态。", 13, false));
+        addNodeServerToggle(page);
         page.addView(text("服务器地址", 13, true));
         serverInput = field("服务器地址由管理版自动配置", false);
         serverInput.setText(server);
