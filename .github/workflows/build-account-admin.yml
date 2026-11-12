@@ -99,6 +99,27 @@ jobs:
           path: ~/.android/debug.keystore
           key: effectcraft-admin-debug-signing-v1-${{ github.repository_id }}
 
+      - name: Ensure the restored debug signing key exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [[ ! -s "$HOME/.android/debug.keystore" ]]; then
+            echo "No cached account-manager signing key was found; creating the first persistent key."
+            keytool -genkeypair -v \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000 \
+              -dname "CN=EffectCraft Account Admin, OU=Android, O=EffectCraft, C=US"
+          fi
+          test -s "$HOME/.android/debug.keystore"
+          keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
+          echo "Persistent admin APK signing key is ready."
+
       - name: Build admin APK
         env:
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
@@ -114,6 +135,24 @@ jobs:
           unzip -t EffectCraft-Account-Admin.apk
           file EffectCraft-Account-Admin.apk
           ls -lh EffectCraft-Account-Admin.apk
+
+      - name: Verify APK signer matches persistent admin key
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="EffectCraft-Account-Admin.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/admin-apk-signature.txt"
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey > "$RUNNER_TEMP/admin-key-certificate.txt"
+          EXPECTED="$(awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-key-certificate.txt")"
+          ACTUAL="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-apk-signature.txt")"
+          echo "Persistent key certificate SHA-256: $EXPECTED"
+          echo "APK signer certificate SHA-256:    $ACTUAL"
+          test -n "$EXPECTED" && test -n "$ACTUAL"
+          test "$EXPECTED" = "$ACTUAL" || {
+            echo "APK is not signed with the persistent account-manager key." >&2
+            exit 1
+          }
 
       # Explicitly save the debug signing identity after the first successful
       # build so future admin APK updates use the same certificate.
