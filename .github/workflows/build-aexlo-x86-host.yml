@@ -63,6 +63,36 @@ jobs:
           $audit = Get-Content pe-audit-x86.json -Raw | ConvertFrom-Json
           if ([int]$audit.machine_value -ne 332) { throw "Sample plug-in is not an x86 PE image" }
 
+      - name: Smoke-test 32-bit AEX host load and CPU rendering
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Copy-Item "third_party/aexlo/target/i686-pc-windows-msvc/release/aexlo_demo_noise.dll" "artifacts/sample-x86.aex"
+          $request = @{
+            cmd = "render"
+            input_png = "third_party/aexlo/fixtures/input.png"
+            output_png = "artifacts/aexlo-demo-noise-x86-render.png"
+            frame = 0
+            fps = 30
+          } | ConvertTo-Json -Compress
+          @($request, '{"cmd":"quit"}') | Set-Content -Encoding ascii "artifacts/worker-requests-x86.jsonl"
+          $hostExe = (Resolve-Path "effectcraft-compat/windows-compat/aexlo-host/target/i686-pc-windows-msvc/release/effectcraft-aex-host.exe").Path
+          $plugin = (Resolve-Path "artifacts/sample-x86.aex").Path
+          $inputFile = (Resolve-Path "artifacts/worker-requests-x86.jsonl").Path
+          $outputFile = Join-Path $PWD "artifacts/worker-output-x86.jsonl"
+          $errorFile = Join-Path $PWD "artifacts/worker-error-x86.log"
+          $process = Start-Process -FilePath $hostExe -ArgumentList @($plugin) -NoNewWindow -Wait -PassThru -RedirectStandardInput $inputFile -RedirectStandardOutput $outputFile -RedirectStandardError $errorFile
+          if ($process.ExitCode -ne 0) { Get-Content $errorFile -ErrorAction SilentlyContinue; throw "x86 AEX host worker exited with $($process.ExitCode)" }
+          $lines = Get-Content $outputFile
+          if ($lines.Count -lt 2) { throw "x86 AEX host worker did not return metadata and render response" }
+          $info = $lines[0] | ConvertFrom-Json
+          $render = $lines[1] | ConvertFrom-Json
+          if (-not $info.ok) { throw "x86 AEX plug-in load failed: $($lines[0])" }
+          if (-not $render.ok) { throw "x86 AEX sample render failed: $($lines[1])" }
+          if (-not (Test-Path "artifacts/aexlo-demo-noise-x86-render.png")) { throw "x86 AEX sample output image was not created" }
+          Write-Host "32-bit AEX host smoke test passed: $($info.about); output $($render.width)x$($render.height)"
+          $lines | Set-Content -Encoding utf8 "artifacts/worker-output-x86.jsonl"
+
       - name: Package 32-bit host, sample and license
         shell: pwsh
         run: |
