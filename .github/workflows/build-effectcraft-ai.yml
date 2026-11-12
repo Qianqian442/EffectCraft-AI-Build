@@ -1062,13 +1062,7 @@ jobs:
           files: release/effectcraft-0.21.1.apk
           draft: false
           prerelease: true
- "$APK_ENTRIES") > "$P2P_DEX_STRINGS"
-          grep -Fq "NativeP2P" "$P2P_DEX_STRINGS"
-          rm -f "$P2P_DEX_STRINGS"
-          rm -f "$APK_ENTRIES"
-          echo "Verified APK contains DEX, RIFE 4.6, Real-ESRGAN x4 and Android native worker; DeepSeek GGUF is excluded from the host APK."
-          echo "Verified APK: $APK ($SIZE bytes)"
-          sha256sum "$APK"
+
 
       - name: Verify APK signature, Android manifest and alignment
         if: success()
