@@ -66,7 +66,7 @@ def main() -> None:
     replace_once(
         import_project,
         '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx")\n',
-        '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") || lower.ends_with(".nv") || lower.ends_with(".zip") || lower.ends_with(".alight") || lower.ends_with(".xml") || lower.ends_with(".aep") || lower.ends_with(".aepx")\n',
+        '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") || lower.ends_with(".nv") || lower.ends_with(".zip") || lower.ends_with(".alight") || lower.ends_with(".xml") || lower.ends_with(".aep") || lower.ends_with(".aepx") || lower.ends_with(".json")\n',
         "AE, NodeVideo and project package routing",
     )
     replace_once(
@@ -78,7 +78,7 @@ def main() -> None:
     replace_once(
         import_project,
         '"{path (.ecproj or .ecprojx)} — merges the project into a folder named after the file; returns {folder, items, comps, rootComps, primaryComp (the only root comp, else null), missingMedia, warnings}"',
-        '"{path (.ecproj/.ecprojx/.nv/.zip/.xml/.alight)} — imports into a new project folder and reports missing media or unsupported features"',
+        '"{path (.ecproj/.ecprojx/.nv/.zip/.xml/.alight/.json)} — imports into a new project folder and reports missing media or unsupported features"',
         "project import command format documentation",
     )
 
@@ -94,7 +94,7 @@ def main() -> None:
     replace_once(
         frontend,
         '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx"])),',
-        '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "xml", "alight", "aep", "aepx"])),',
+        '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "xml", "alight", "aep", "aepx", "json"])),',
         "original Import Project picker formats",
     )
 
@@ -166,8 +166,8 @@ def main() -> None:
     if "id == \"file.importProject\"" not in aep_losses.read_text(encoding="utf-8"):
         raise SystemExit("The unified AEP import is not guarded against silent loss")
     print("Unified Import Project AEP/AEPX picks now use the same dry-run and user loss-confirmation dialog.")
-    print("Installed Alight Motion XML and NodeVideo .nv / ZIP project import.")
-    print("The existing EffectCraft Project import control now routes .aep/.aepx, .nv/.zip and AM XML; the dedicated AE menu stays available.")
+    print("Installed Alight Motion XML, NodeVideo .nv, CapCut draft_content.json and ZIP project import.")
+    print("The existing EffectCraft Project import control now routes .aep/.aepx, .nv/.zip, AM XML and CapCut JSON; the dedicated AE menu stays available.")
     print("Unsupported effects, 3D conversions and missing media are reported to the user.")
 
 
