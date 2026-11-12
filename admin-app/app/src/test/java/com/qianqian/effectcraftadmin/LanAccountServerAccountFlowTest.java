@@ -16,6 +16,12 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.RuntimeEnvironment;
 import org.robolectric.annotation.Config;
 
+import java.io.BufferedReader;
+import java.io.InputStreamReader;
+import java.io.OutputStreamWriter;
+import java.net.InetAddress;
+import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.UUID;
@@ -151,6 +157,44 @@ public final class LanAccountServerAccountFlowTest {
         ));
         assertEquals("profile update after unban", 200, status(profile));
         assertEquals("Profile Updated", body(profile).getJSONObject("user").getString("name"));
+    }
+
+    @Test
+    public void p2pLoopbackBridgeForwardsARegistrationIntoSqlite() throws Exception {
+        P2PAccountBridge.start(server);
+        try (Socket socket = new Socket(InetAddress.getByName("127.0.0.1"), 8788)) {
+            socket.setSoTimeout(5000);
+            JSONObject packet = new JSONObject();
+            packet.put("method", "POST");
+            packet.put("path", "/v1/register");
+            packet.put("token", "");
+            packet.put("body", json(
+                "qq", "1987654321",
+                "wechat", "",
+                "name", "Loopback Bridge",
+                "password", "bridge-test-pass",
+                "avatar_url", PHOTO_AVATAR
+            ).toString());
+
+            try (OutputStreamWriter writer = new OutputStreamWriter(
+                    socket.getOutputStream(), StandardCharsets.UTF_8);
+                 BufferedReader reader = new BufferedReader(new InputStreamReader(
+                    socket.getInputStream(), StandardCharsets.UTF_8))) {
+                writer.write(packet.toString());
+                writer.write("\\n");
+                writer.flush();
+
+                String line = reader.readLine();
+                assertNotNull("P2P loopback bridge should return a response", line);
+                JSONObject envelope = new JSONObject(line);
+                assertEquals(200, envelope.getInt("status"));
+                JSONObject response = new JSONObject(envelope.getString("body"));
+                assertFalse(response.getString("token").isEmpty());
+                assertEquals("1987654321", response.getJSONObject("user").getString("qq"));
+            }
+        } finally {
+            P2PAccountBridge.stop();
+        }
     }
 
     @Test
