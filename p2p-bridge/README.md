@@ -10,7 +10,8 @@ This native module is the shared peer transport for the Android account manager 
 - listen-address push updates so peers learn fresh direct and reserved relay addresses;
 - TCP and QUIC transports with authenticated Noise encryption and Yamux multiplexing;
 - same-Wi-Fi peer discovery using mDNS;
-- public Kademlia DHT bootstrap and dynamic peer sampling;
+- public Kademlia DHT bootstrap and repeated closest-peer sampling keyed to this node's own Peer ID (the standard AutoRelay discovery approach);
+- Identify protocol filtering for `/libp2p/circuit/relay/0.2.0/hop` because public Relay v2 peers do not necessarily publish a dedicated relay-provider record;
 - administrator discovery via a dedicated DHT provider key; ordinary client phones do not advertise themselves as account authorities;
 - Circuit Relay v2 reservation probes and a rolling relay candidate pool;
 - multiple accepted relay reservations; discovery/probing is batched, but accepted relays are not limited to two;
