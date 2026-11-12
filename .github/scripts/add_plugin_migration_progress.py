@@ -215,6 +215,22 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
             if items.len() > 16 { lines.push(format!("另有 {} 项效果映射。", items.len() - 16)); }
         }
     }
+    if let Some(items) = value.get("desktop_native_metadata").and_then(Value::as_array) {
+        let mut shown = 0usize;
+        for item in items.iter().take(8) {
+            let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑插件");
+            let strings = item.get("strings").and_then(Value::as_array)
+                .map(|values| values.iter().filter_map(Value::as_str).take(8).collect::<Vec<_>>().join(" | "))
+                .unwrap_or_default();
+            if !strings.is_empty() {
+                lines.push(format!("原插件元数据/参数线索 [{file}]：{strings}"));
+                shown += 1;
+            }
+        }
+        if shown > 0 {
+            lines.push("以上字符串是静态分析线索，不代表已生成可调参数控件；需要针对对应效果继续移植。".into());
+        }
+    }
     let has_rsmb_compatibility = value
         .get("desktop_native_compatibility_matches")
         .and_then(Value::as_array)
