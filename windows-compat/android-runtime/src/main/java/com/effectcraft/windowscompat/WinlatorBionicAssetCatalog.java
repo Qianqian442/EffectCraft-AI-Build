@@ -58,7 +58,35 @@ public final class WinlatorBionicAssetCatalog {
                 "downloads/proton-9.0-arm64ec-container-pattern.tzst");
     }
 
+    /** Current pinned Android Box64 WCP (0.4.5, built from ptitSeb/box64@4dbba1300). */
     public static RuntimeAssetInstaller.AssetSpec box64() {
+        return wcpAsset("box64-0.4.5-4dbba1300",
+                "https://github.com/Xnick417x/winlator-nightly-wcp/releases/download/box64-nightly-0.4.5-4dbba1300/Box64-0.4.5-4dbba1300.wcp",
+                "9e8e6cda22cecf6c975ebc7d4521a2e08565f4287a479e9db53fcd2850883256",
+                2901992,
+                "downloads/box64-0.4.5-4dbba1300.wcp");
+    }
+
+    /** Current pinned Android ARM64EC/WoW64 FEXCore WCP (2611). */
+    public static RuntimeAssetInstaller.AssetSpec fexCore() {
+        return wcpAsset("fexcore-2611-ab135df09",
+                "https://github.com/Xnick417x/winlator-nightly-wcp/releases/download/fex-nightly-2611-ab135df09/FEXCore-2611-ab135df09.wcp",
+                "6a8ad93996147fc23d9dd4c541b84b03c19f11911db431f6d155b5b15f9a9c86",
+                1104420,
+                "downloads/fexcore-2611-ab135df09.wcp");
+    }
+
+    /** Current pinned Android ARM64EC/WoW64 alternative WCP (0.4.5). */
+    public static RuntimeAssetInstaller.AssetSpec wowBox64() {
+        return wcpAsset("wowbox64-0.4.5-4dbba1300",
+                "https://github.com/Xnick417x/winlator-nightly-wcp/releases/download/wowbox64-nightly-0.4.5-4dbba1300/WOWBox64-0.4.5-4dbba1300.wcp",
+                "6037af9cc15bf036eb77077423806798e043cf81370dea40cc9ae17d60a09d39",
+                910648,
+                "downloads/wowbox64-0.4.5-4dbba1300.wcp");
+    }
+
+    /** Older known-good packages retained as fallback during compatibility testing. */
+    public static RuntimeAssetInstaller.AssetSpec box64Legacy() {
         return gitAsset("box64-0.3.7",
                 "box64/box64-0.3.7.tzst",
                 "32c8a016de8368c68090c27e6de91389f927cc04",
@@ -66,7 +94,7 @@ public final class WinlatorBionicAssetCatalog {
                 "downloads/box64-0.3.7.tzst");
     }
 
-    public static RuntimeAssetInstaller.AssetSpec fexCore() {
+    public static RuntimeAssetInstaller.AssetSpec fexCoreLegacy() {
         return gitAsset("fexcore-2508",
                 "fexcore/fexcore-2508.tzst",
                 "9cde1a54074e183ef627c1d1a18a943cff622c86",
@@ -74,12 +102,24 @@ public final class WinlatorBionicAssetCatalog {
                 "downloads/fexcore-2508.tzst");
     }
 
-    public static RuntimeAssetInstaller.AssetSpec wowBox64() {
+    public static RuntimeAssetInstaller.AssetSpec wowBox64Legacy() {
         return gitAsset("wowbox64-0.3.7",
                 "wowbox64/wowbox64-0.3.7.tzst",
                 "807702ccb71c7ee5c0983f02e5217517cb3caf95",
                 1049978,
                 "downloads/wowbox64-0.3.7.tzst");
+    }
+
+    private static RuntimeAssetInstaller.AssetSpec wcpAsset(
+            String id, String url, String sha256, long size, String destination) {
+        return new RuntimeAssetInstaller.AssetSpec(
+                id,
+                List.of(URI.create(url)),
+                null,
+                RuntimeAssetInstaller.DigestKind.SHA256_SIDECAR,
+                sha256,
+                size,
+                Paths.get(destination));
     }
 
     private static RuntimeAssetInstaller.AssetSpec sha256Asset(
