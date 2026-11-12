@@ -1,0 +1,65 @@
+name: Verify EffectCraft account manager update signature
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/verify-admin-signature-compat.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compare-signing-certificate:
+    name: Compare Build 154 and Build 156 APK certificates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Configure Android build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          set +o pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          set -o pipefail
+          "$SDKMANAGER" --install "platform-tools" "build-tools;35.0.0"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+
+      - name: Download the installed-version candidate and repaired build
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/admin-signature-check"
+          curl -fL --retry 4 --retry-all-errors \
+            "https://github.com/Qianqian442/EffectCraft-AI-Build/releases/download/account-admin-154/EffectCraft-Account-Admin.apk" \
+            -o "$RUNNER_TEMP/admin-signature-check/build-154.apk"
+          curl -fL --retry 4 --retry-all-errors \
+            "https://github.com/Qianqian442/EffectCraft-AI-Build/releases/download/account-admin-156/EffectCraft-Account-Admin.apk" \
+            -o "$RUNNER_TEMP/admin-signature-check/build-156.apk"
+          test -s "$RUNNER_TEMP/admin-signature-check/build-154.apk"
+          test -s "$RUNNER_TEMP/admin-signature-check/build-156.apk"
+
+      - name: Compare APK signing certificates
+        shell: bash
+        run: |
+          set -euo pipefail
+          TOOL="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          OLD="$RUNNER_TEMP/admin-signature-check/build-154.apk"
+          NEW="$RUNNER_TEMP/admin-signature-check/build-156.apk"
+          "$TOOL" verify --verbose --print-certs "$OLD" > "$RUNNER_TEMP/admin-signature-check/old.txt"
+          "$TOOL" verify --verbose --print-certs "$NEW" > "$RUNNER_TEMP/admin-signature-check/new.txt"
+          OLD_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/old.txt")"
+          NEW_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/new.txt")"
+          test -n "$OLD_CERT" && test -n "$NEW_CERT"
+          echo "Build 154 signer SHA-256: $OLD_CERT"
+          echo "Build 156 signer SHA-256: $NEW_CERT"
+          if [[ "$OLD_CERT" != "$NEW_CERT" ]]; then
+            echo "::error::Build 156 is not signed with the installed Build 154 certificate. Do not install it over Build 154."
+            exit 1
+          fi
+          echo "Certificate match confirmed: Build 156 can be installed as an in-place update without uninstalling Build 154."
