@@ -792,9 +792,9 @@ fn ensure_client_rpc_sender() -> Result<UnboundedSender<RpcCommand>, String> {
 fn send_account_rpc(
     sender: UnboundedSender<RpcCommand>,
     request: AccountRpcRequest,
-) -> Result<AccountRpcResponse, std_mpsc::SendError<RpcCommand>> {
+) -> Result<AccountRpcResponse, ()> {
     let (reply_tx, reply_rx) = std_mpsc::channel();
-    sender.send(RpcCommand::Request { request, reply: reply_tx })?;
+    sender.send(RpcCommand::Request { request, reply: reply_tx }).map_err(|_| ())?;
     Ok(match reply_rx.recv_timeout(Duration::from_secs(38)) {
         Ok(Ok(response)) => response,
         Ok(Err(error)) => AccountRpcResponse { status: 503, body: serde_json::json!({"detail": error}).to_string() },
