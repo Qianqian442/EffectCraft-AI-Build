@@ -84,12 +84,22 @@ fn stop_node() {
     let sender = rpc_command_slot().lock().ok().and_then(|mut slot| slot.take());
     if let Some(sender) = sender {
         let _ = sender.send(RpcCommand::Shutdown);
+        let deadline = Instant::now() + Duration::from_secs(3);
+        while Instant::now() < deadline {
+            let stopped = snapshot().lock().map(|state| !state.started).unwrap_or(true);
+            if stopped { return; }
+            thread::sleep(Duration::from_millis(20));
+        }
+        set_snapshot(|state| {
+            state.last_error = "P2P 节点停止确认超时；后台线程正在退出".to_string();
+        });
     } else {
         set_snapshot(|state| {
             state.started = false;
             state.status = "stopped".to_string();
             state.active_relays = 0;
             state.direct_peers = 0;
+            state.relay_candidates = 0;
         });
     }
 }
