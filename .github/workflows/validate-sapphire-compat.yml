@@ -63,10 +63,15 @@ jobs:
           test -s "$EFFECTCRAFT_DIR/assets/looks-compat/bundle.json"
           python3 -c 'import json, pathlib; m=json.loads(pathlib.Path("validation/effectcraft/assets/looks-compat/bundle.json").read_text()); assert m["effects"][0]["id"] == "org.effectcraft.looks.studio"'
 
-      - name: Run renderer coordinate and interpolation unit tests
+      - name: Run coordinate and per-effect renderer smoke tests
+        shell: bash
         run: |
-          rustc --edition=2024 --test --cfg sapphire_distort .github/scripts/sapphire_compat_pack.rs -o /tmp/sapphire-renderer-tests
-          /tmp/sapphire-renderer-tests
+          set -euo pipefail
+          for EFFECT in glow aura lensflare blur distort stylize glint rays halftone pixelsort; do
+            echo "Testing renderer: $EFFECT"
+            rustc --edition=2024 --test --cfg "sapphire_$EFFECT" .github/scripts/sapphire_compat_pack.rs -o "/tmp/sapphire-$EFFECT-tests"
+            "/tmp/sapphire-$EFFECT-tests"
+          done
 
       - name: Patch RSMB touch controls and compile-check Android UI
         env:
