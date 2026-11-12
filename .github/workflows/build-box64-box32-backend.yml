@@ -10,6 +10,7 @@ on:
       - 'windows-compat/runtime-manifest.json'
       - 'windows-compat/tools/patch_box64_obstack_compat.py'
       - 'windows-compat/tools/patch_box64_signal32_bionic.py'
+      - 'windows-compat/tools/patch_box64_threads32_bionic.py'
 
 permissions:
   contents: read
@@ -50,6 +51,7 @@ jobs:
         run: |
           python3 windows-compat/tools/patch_box64_obstack_compat.py third_party/box64
           python3 windows-compat/tools/patch_box64_signal32_bionic.py third_party/box64
+          python3 windows-compat/tools/patch_box64_threads32_bionic.py third_party/box64
 
       - name: Verify obstack ABI structure layout for Android AArch64
         run: |
