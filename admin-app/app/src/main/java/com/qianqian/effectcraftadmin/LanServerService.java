@@ -15,7 +15,7 @@ import android.os.IBinder;
 public final class LanServerService extends Service {
     private static final String CHANNEL_ID = "effectcraft_p2p_node";
     private static final int NOTIFICATION_ID = 8787;
-    private PeerHealthServer server;
+    private LanAccountServer server;
     private LanPeerDiscovery discovery;
     private Thread worker;
 
@@ -24,14 +24,14 @@ public final class LanServerService extends Service {
         createNotificationChannel();
         Notification notification = new Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-            .setContentTitle("EffectCraft 手机节点")
-            .setContentText("正在启动网络节点并发现附近设备")
+            .setContentTitle("EffectCraft 账号主服务器")
+            .setContentText("正在启动本机账号服务和自动节点发现")
             .setOngoing(true)
             .build();
         startForeground(NOTIFICATION_ID, notification);
 
-        server = new PeerHealthServer();
-        worker = new Thread(server, "EffectCraft-P2P-Lightweight-Node");
+        server = new LanAccountServer(getApplicationContext());
+        worker = new Thread(server, "EffectCraft-Phone-Account-Master");
         worker.setDaemon(true);
         worker.start();
 
@@ -43,14 +43,15 @@ public final class LanServerService extends Service {
     }
 
     private void updateNotification() {
-        String ip = PeerHealthServer.getWifiIpv4();
-        int count = LanPeerDiscovery.getSavedPeers(this).length();
+        String ip = LanAccountServer.getWifiIpv4();
+        int peers = LanPeerDiscovery.getSavedPeers(this).length();
+        int accounts = LanAccountServer.getRegisteredCount(this);
         String status = ip.isEmpty()
-            ? "等待连接 Wi-Fi · 附近节点 " + count + " 台"
-            : ip + ":" + LanPeerDiscovery.PORT + " · 附近节点 " + count + " 台";
+            ? "等待连接 Wi-Fi · 已注册账号 " + accounts + " 人"
+            : ip + ":" + LanAccountServer.PORT + " · 账号 " + accounts + " 人 · 附近节点 " + peers + " 台";
         Notification notification = new Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_upload_done)
-            .setContentTitle("EffectCraft 网络节点运行中")
+            .setContentTitle("EffectCraft 账号主服务器运行中")
             .setContentText(status)
             .setOngoing(true)
             .build();
@@ -63,7 +64,7 @@ public final class LanServerService extends Service {
             NotificationChannel channel = new NotificationChannel(
                 CHANNEL_ID, "EffectCraft 手机节点", NotificationManager.IMPORTANCE_LOW
             );
-            channel.setDescription("保持用户主动启用的轻量网络节点运行");
+            channel.setDescription("管理员手机作为账号数据库主服务器，并自动发现可连接的 EffectCraft 设备");
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
         }
