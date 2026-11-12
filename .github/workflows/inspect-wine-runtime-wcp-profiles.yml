@@ -53,10 +53,12 @@ jobs:
             file "$dest"
             if tar --zstd -tf "$dest" > "wcp-inspection/$id.list" 2>/dev/null; then
               tar --zstd -xOf "$dest" profile.json > "wcp-inspection/$id.profile.json"
-            elif tar -xJf "$dest" -O profile.json > "wcp-inspection/$id.profile.json" 2>/dev/null; then
-              :
+            elif xz -t "$dest" >/dev/null 2>&1; then
+              tar -xJf "$dest" -O profile.json > "wcp-inspection/$id.profile.json"
+              tar -tJf "$dest" > "wcp-inspection/$id.list"
             else
               echo "Unsupported WCP archive or profile.json missing: $id" >&2
+              file "$dest"
               tar --list -f "$dest" || true
               exit 1
             fi
