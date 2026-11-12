@@ -193,8 +193,7 @@ public final class WinlatorContentPackageInstaller {
         }
         Path parent = destination.getParent();
         if (parent == null) throw new IOException("package destination has no parent");
-        Files.createDirectories(parent);
-        rejectSymlinkParents(privateRoot, parent);
+        createDirectoriesNoSymlink(privateRoot, parent);
         Path temporary = destination.resolveSibling(destination.getFileName() + ".installing");
         Files.deleteIfExists(temporary);
         try {
@@ -227,6 +226,24 @@ public final class WinlatorContentPackageInstaller {
         } catch (IOException | RuntimeException failure) {
             Files.deleteIfExists(temporary);
             throw failure;
+        }
+    }
+
+    private static void createDirectoriesNoSymlink(Path root, Path path) throws IOException {
+        Path normalizedRoot = root.toAbsolutePath().normalize();
+        Path normalized = path.toAbsolutePath().normalize();
+        if (!normalized.startsWith(normalizedRoot)) throw new IOException("path escapes private runtime root");
+        if (Files.isSymbolicLink(normalizedRoot)) throw new IOException("private runtime root is a symbolic link");
+        Path current = normalizedRoot;
+        for (Path part : normalizedRoot.relativize(normalized)) {
+            current = current.resolve(part);
+            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(current) || !Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException("unsafe package directory component: " + current);
+                }
+            } else {
+                Files.createDirectory(current);
+            }
         }
     }
 
