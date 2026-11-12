@@ -1,0 +1,35 @@
+name: Validate EffectCraft Account and Ban System
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'admin-app/**'
+      - 'p2p-bridge/**'
+      - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/add_account_avatar_picker.py'
+      - '.github/scripts/validate_account_system_contract.py'
+      - '.github/workflows/validate-account-system-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  account-system-contract:
+    name: Validate account, ban, P2P and server-switch contracts
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile contract checker
+        run: python3 -m py_compile .github/scripts/validate_account_system_contract.py
+
+      - name: Verify account-system implementation contracts
+        run: python3 .github/scripts/validate_account_system_contract.py
