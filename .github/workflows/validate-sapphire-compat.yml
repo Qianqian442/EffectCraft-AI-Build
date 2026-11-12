@@ -53,7 +53,7 @@ jobs:
         run: |
           mkdir -p "$EFFECTCRAFT_DIR"
           python3 .github/scripts/build_sapphire_compat_pack.py
-          test "$(find "$EFFECTCRAFT_DIR/assets/sapphire-compat" -maxdepth 1 -name '*.wasm' | wc -l)" -eq 6
+          test "$(find "$EFFECTCRAFT_DIR/assets/sapphire-compat" -maxdepth 1 -name '*.wasm' | wc -l)" -eq 10
           test -s "$EFFECTCRAFT_DIR/assets/sapphire-compat/bundle.json"
           python3 .github/scripts/build_rsmb_compat.py
           test -s "$EFFECTCRAFT_DIR/assets/rsmb-compat/ec_rsmb_motion_blur.wasm"
