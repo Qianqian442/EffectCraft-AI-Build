@@ -7,9 +7,11 @@
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fs,
+    io::{BufRead, BufReader, Write},
+    net::{SocketAddr, TcpListener, TcpStream},
     path::Path,
     str::FromStr,
-    sync::{Mutex, OnceLock},
+    sync::{mpsc as std_mpsc, Mutex, OnceLock},
     thread,
     time::{Duration, Instant},
 };
@@ -19,14 +21,44 @@ use libp2p::{
     autonat,
     core::{Multiaddr, multiaddr::Protocol, transport::ListenerId},
     dcutr, identify, identity, kad, mdns, noise, ping, relay, tcp,
+    request_response::{self, ProtocolSupport, Message as RpcMessage},
     swarm::{NetworkBehaviour, Swarm, SwarmEvent, StreamProtocol},
     SwarmBuilder, yamux, PeerId,
 };
-use tokio::time::{interval, MissedTickBehavior};
+use serde::{Deserialize, Serialize};
+use tokio::{sync::mpsc::{self, UnboundedReceiver, UnboundedSender}, time::{interval, MissedTickBehavior}};
 
 const DHT_PROTOCOL: StreamProtocol = StreamProtocol::new("/ipfs/kad/1.0.0");
 const RELAY_HOP_PROTOCOL: StreamProtocol = StreamProtocol::new("/libp2p/circuit/relay/0.2.0/hop");
+const ACCOUNT_RPC_PROTOCOL: StreamProtocol = StreamProtocol::new("/effectcraft/account-api/1.0.0");
 const ADMIN_SERVICE_KEY: &[u8] = b"/effectcraft/account-authorities/v1";
+const CLIENT_RPC_PROXY: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8789);
+const ADMIN_ACCOUNT_BRIDGE: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8788);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AccountRpcRequest {
+    method: String,
+    path: String,
+    #[serde(default)]
+    token: String,
+    #[serde(default)]
+    body: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct AccountRpcResponse {
+    status: u16,
+    body: String,
+}
+
+enum RpcCommand {
+    Request {
+        request: AccountRpcRequest,
+        reply: std_mpsc::Sender<Result<AccountRpcResponse, String>>,
+    },
+}
+
+static RPC_COMMAND_TX: OnceLock<UnboundedSender<RpcCommand>> = OnceLock::new();
 const BOOTSTRAP_PEERS: [&str; 4] = [
     "QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
     "QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
@@ -48,6 +80,7 @@ struct EffectCraftBehaviour {
     dcutr: dcutr::Behaviour,
     identify: identify::Behaviour,
     ping: ping::Behaviour,
+    account_rpc: request_response::json::Behaviour<AccountRpcRequest, AccountRpcResponse>,
 }
 
 #[derive(Default)]
@@ -144,6 +177,10 @@ fn build_swarm(key: identity::Keypair) -> Result<Swarm<EffectCraftBehaviour>, Bo
                     ).with_push_listen_addr_updates(true),
                 ),
                 ping: ping::Behaviour::new(ping::Config::new()),
+                account_rpc: request_response::json::Behaviour::<AccountRpcRequest, AccountRpcResponse>::new(
+                    [(ACCOUNT_RPC_PROTOCOL, ProtocolSupport::Full)],
+                    request_response::Config::default(),
+                ),
             })
         })?
         .build();
@@ -167,6 +204,8 @@ fn start_node(data_directory: &str, is_admin: bool) -> Result<String, String> {
         state.last_error.clear();
     }
 
+    let (command_tx, command_rx) = mpsc::unbounded_channel::<RpcCommand>();
+    let _ = RPC_COMMAND_TX.set(command_tx.clone());
     if let Err(error) = thread::Builder::new()
         .name("effectcraft-p2p".to_string())
         .spawn(move || {
@@ -185,7 +224,7 @@ fn start_node(data_directory: &str, is_admin: bool) -> Result<String, String> {
                     return;
                 }
             };
-            runtime.block_on(run_node(key, is_admin));
+            runtime.block_on(run_node(key, is_admin, command_rx));
         })
     {
         set_snapshot(|state| {
@@ -196,6 +235,9 @@ fn start_node(data_directory: &str, is_admin: bool) -> Result<String, String> {
         return Err(format!("start peer network thread: {error}"));
     }
 
+    if !is_admin {
+        start_client_rpc_proxy(command_tx);
+    }
     Ok(peer_id)
 }
 
@@ -254,7 +296,7 @@ fn new_java_string(env: &mut JNIEnv, value: String) -> jstring {
     }
 }
 
-async fn run_node(key: identity::Keypair, is_admin: bool) {
+async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: UnboundedReceiver<RpcCommand>) {
     let local_peer_id = key.public().to_peer_id();
     let mut swarm = match build_swarm(key) {
         Ok(swarm) => swarm,
@@ -297,6 +339,9 @@ async fn run_node(key: identity::Keypair, is_admin: bool) {
     let mut active_relays: HashSet<PeerId> = HashSet::new();
     let mut listener_peers: HashMap<ListenerId, PeerId> = HashMap::new();
     let mut failed_until: HashMap<PeerId, Instant> = HashMap::new();
+    let mut admin_peers: Vec<PeerId> = Vec::new();
+    let mut deferred_rpc: VecDeque<(AccountRpcRequest, std_mpsc::Sender<Result<AccountRpcResponse, String>>)> = VecDeque::new();
+    let mut pending_rpc: HashMap<request_response::OutboundRequestId, std_mpsc::Sender<Result<AccountRpcResponse, String>>> = HashMap::new();
 
     let mut discovery_tick = interval(DISCOVERY_INTERVAL);
     discovery_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -312,6 +357,17 @@ async fn run_node(key: identity::Keypair, is_admin: bool) {
 
     loop {
         tokio::select! {
+            command = commands.recv(), if !is_admin => {
+                if let Some(RpcCommand::Request { request, reply }) = command {
+                    if let Some(peer) = admin_peers.first().copied() {
+                        let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer, request);
+                        pending_rpc.insert(request_id, reply);
+                    } else {
+                        deferred_rpc.push_back((request, reply));
+                        swarm.behaviour_mut().kad.get_providers(service_key.clone());
+                    }
+                }
+            }
             event = futures::StreamExt::next(&mut swarm) => {
                 let Some(event) = event else { continue };
                 match event {
@@ -374,11 +430,50 @@ async fn run_node(key: identity::Keypair, is_admin: bool) {
                     })) => {
                         if !is_admin {
                             for peer_id in providers {
-                                if peer_id != local_peer_id && !swarm.is_connected(&peer_id) {
-                                    let _ = swarm.dial(libp2p::swarm::dial_opts::DialOpts::peer_id(peer_id).build());
+                                if peer_id != local_peer_id && !admin_peers.contains(&peer_id) {
+                                    admin_peers.push(peer_id);
+                                }
+                            }
+                            if let Some(peer) = admin_peers.first().copied() {
+                                while let Some((request, reply)) = deferred_rpc.pop_front() {
+                                    let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer, request);
+                                    pending_rpc.insert(request_id, reply);
+                                }
+                                if !swarm.is_connected(&peer) {
+                                    let _ = swarm.dial(libp2p::swarm::dial_opts::DialOpts::peer_id(peer).build());
                                 }
                             }
                         }
+                    }
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::AccountRpc(request_response::Event::Message { peer, message, .. })) => {
+                        match message {
+                            RpcMessage::Request { request, channel } => {
+                                let response = if is_admin {
+                                    forward_to_local_account_service(&request)
+                                } else {
+                                    AccountRpcResponse { status: 403, body: r#"{\"detail\":\"该节点不是管理员账号服务器\"}"#.to_string() }
+                                };
+                                let _ = swarm.behaviour_mut().account_rpc.send_response(channel, response);
+                                set_snapshot(|state| {
+                                    state.status = if is_admin { "account_rpc_serving" } else { "account_rpc_rejected" }.to_string();
+                                    state.last_error.clear();
+                                });
+                                let _ = peer;
+                            }
+                            RpcMessage::Response { request_id, response } => {
+                                if let Some(reply) = pending_rpc.remove(&request_id) {
+                                    let _ = reply.send(Ok(response));
+                                }
+                            }
+                        }
+                    }
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::AccountRpc(request_response::Event::OutboundFailure { request_id, error, .. })) => {
+                        if let Some(reply) = pending_rpc.remove(&request_id) {
+                            let _ = reply.send(Err(format!("账号节点请求失败：{error}")));
+                        }
+                    }
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::AccountRpc(request_response::Event::InboundFailure { error, .. })) => {
+                        set_snapshot(|state| state.last_error = format!("账号请求接收失败：{error}"));
                     }
                     SwarmEvent::Behaviour(EffectCraftBehaviourEvent::RelayClient(
                         relay::client::Event::ReservationReqAccepted { relay_peer_id, .. }
@@ -395,7 +490,11 @@ async fn run_node(key: identity::Keypair, is_admin: bool) {
                             set_snapshot(|state| state.status = "relay_health_degraded".to_string());
                         }
                     }
-                    SwarmEvent::ConnectionEstablished { .. } => {}
+                    SwarmEvent::ConnectionEstablished { peer_id, .. } => {
+                        if admin_peers.contains(&peer_id) {
+                            set_snapshot(|state| state.status = "admin_account_node_connected".to_string());
+                        }
+                    }
                     SwarmEvent::ListenerError { listener_id, error } => {
                         if let Some(peer_id) = listener_peers.remove(&listener_id) {
                             attempting.remove(&peer_id);
@@ -469,6 +568,101 @@ async fn run_node(key: identity::Keypair, is_admin: bool) {
             }
         }
     }
+}
+
+
+
+fn start_client_rpc_proxy(command_tx: UnboundedSender<RpcCommand>) {
+    let _ = thread::Builder::new()
+        .name("effectcraft-account-rpc-proxy".to_string())
+        .spawn(move || {
+            let listener = match TcpListener::bind(CLIENT_RPC_PROXY) {
+                Ok(listener) => listener,
+                Err(error) => {
+                    set_snapshot(|state| state.last_error = format!("account RPC localhost proxy: {error}"));
+                    return;
+                }
+            };
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        let tx = command_tx.clone();
+                        let _ = thread::Builder::new().name("effectcraft-account-rpc-call".to_string()).spawn(move || {
+                            serve_client_rpc(stream, tx);
+                        });
+                    }
+                    Err(error) => set_snapshot(|state| state.last_error = format!("account RPC proxy accept: {error}")),
+                }
+            }
+        });
+}
+
+fn serve_client_rpc(mut stream: TcpStream, command_tx: UnboundedSender<RpcCommand>) {
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(8)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(40)));
+    let clone = match stream.try_clone() {
+        Ok(s) => s,
+        Err(e) => { write_proxy_error(&mut stream, e.to_string()); return; }
+    };
+    let mut line = String::new();
+    if BufReader::new(clone).read_line(&mut line).is_err() || line.len() > 1_200_000 {
+        write_proxy_error(&mut stream, "请求数据读取失败或超过限制".to_string());
+        return;
+    }
+    let request: AccountRpcRequest = match serde_json::from_str(&line) {
+        Ok(request) => request,
+        Err(error) => { write_proxy_error(&mut stream, format!("账号请求格式错误：{error}")); return; }
+    };
+    if !matches!(request.method.as_str(), "GET" | "POST" | "PUT" | "DELETE") || !request.path.starts_with("/v1/") {
+        write_proxy_error(&mut stream, "账号请求接口不受支持".to_string());
+        return;
+    }
+    let (reply_tx, reply_rx) = std_mpsc::channel();
+    if command_tx.send(RpcCommand::Request { request, reply: reply_tx }).is_err() {
+        write_proxy_error(&mut stream, "P2P 网络节点尚未就绪".to_string());
+        return;
+    }
+    let response = match reply_rx.recv_timeout(Duration::from_secs(38)) {
+        Ok(Ok(response)) => response,
+        Ok(Err(error)) => AccountRpcResponse { status: 503, body: serde_json::json!({"detail": error}).to_string() },
+        Err(_) => AccountRpcResponse { status: 504, body: r#"{"detail":"等待管理员账号节点响应超时"}"#.to_string() },
+    };
+    if let Ok(serialized) = serde_json::to_string(&response) {
+        let _ = writeln!(stream, "{serialized}");
+        let _ = stream.flush();
+    }
+}
+
+fn write_proxy_error(stream: &mut TcpStream, detail: String) {
+    let response = AccountRpcResponse { status: 503, body: serde_json::json!({"detail": detail}).to_string() };
+    if let Ok(serialized) = serde_json::to_string(&response) {
+        let _ = writeln!(stream, "{serialized}");
+        let _ = stream.flush();
+    }
+}
+
+fn forward_to_local_account_service(request: &AccountRpcRequest) -> AccountRpcResponse {
+    let mut stream = match TcpStream::connect_timeout(&ADMIN_ACCOUNT_BRIDGE, Duration::from_secs(5)) {
+        Ok(stream) => stream,
+        Err(error) => return AccountRpcResponse { status: 503, body: serde_json::json!({"detail": format!("管理员手机账号服务未启动：{error}")}).to_string() },
+    };
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(10)));
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(5)));
+    let line = match serde_json::to_string(request) {
+        Ok(line) => line,
+        Err(error) => return AccountRpcResponse { status: 400, body: serde_json::json!({"detail": error.to_string()}).to_string() },
+    };
+    if writeln!(stream, "{line}").is_err() || stream.flush().is_err() {
+        return AccountRpcResponse { status: 503, body: r#"{"detail":"无法转发到管理员账号服务"}"#.to_string() };
+    }
+    let mut response = String::new();
+    if BufReader::new(stream).read_line(&mut response).is_err() {
+        return AccountRpcResponse { status: 503, body: r#"{"detail":"管理员账号服务未返回响应"}"#.to_string() };
+    }
+    serde_json::from_str(&response).unwrap_or_else(|error| AccountRpcResponse {
+        status: 502,
+        body: serde_json::json!({"detail": format!("管理员账号服务响应格式错误：{error}")}).to_string(),
+    })
 }
 
 #[cfg(test)]
