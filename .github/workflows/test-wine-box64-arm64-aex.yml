@@ -172,10 +172,12 @@ jobs:
           for src in "$wine_root/lib/wine/x86_64-windows" "$wine_root/lib/wine/i386-windows"; do
             test -d "$src"
           done
-          find "$wine_root/lib/wine/x86_64-windows" -maxdepth 1 -type f \
-            ! -iname 'tabtip.exe' ! -iname 'icu.dll' -exec cp -n {} "$prefix/drive_c/windows/system32/" \\
-          find "$wine_root/lib/wine/i386-windows" -maxdepth 1 -type f \
-            ! -iname 'tabtip.exe' ! -iname 'icu.dll' -exec cp -n {} "$prefix/drive_c/windows/syswow64/" \\
+          while IFS= read -r -d '' file; do
+            cp -n "$file" "$prefix/drive_c/windows/system32/"
+          done < <(find "$wine_root/lib/wine/x86_64-windows" -maxdepth 1 -type f ! -iname 'tabtip.exe' ! -iname 'icu.dll' -print0)
+          while IFS= read -r -d '' file; do
+            cp -n "$file" "$prefix/drive_c/windows/syswow64/"
+          done < <(find "$wine_root/lib/wine/i386-windows" -maxdepth 1 -type f ! -iname 'tabtip.exe' ! -iname 'icu.dll' -print0)
           test -x "$wine_root/bin/wine64"
           file "$wine_root/bin/wine64"
 
@@ -214,7 +216,7 @@ jobs:
           plugin_win="$(to_wine_path "$plugin")"
           input_win="$(to_wine_path "$input")"
           output_win="$(to_wine_path "$output")"
-          python3 - <<'PY'
+          INPUT_WIN="$input_win" OUTPUT_WIN="$output_win" python3 - <<'PY'
           import json, os
           payload = {
               "cmd": "render",
