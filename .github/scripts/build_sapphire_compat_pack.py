@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -21,6 +22,50 @@ VARIANTS = {
     "pixelsort": "org.effectcraft.sapphire.compat.pixelsort",
 }
 
+EXPECTED_FLATTENED_PARAMS = {
+    "glow": 3, "aura": 7, "lensflare": 8, "blur": 2, "distort": 5,
+    "stylize": 3, "glint": 30, "rays": 31, "halftone": 18, "pixelsort": 20,
+}
+PARAM_WIDTH = {"slider": 1, "angle": 1, "checkbox": 1, "popup": 1, "point": 2, "color": 4}
+
+def parse_and_validate_manifest(source_text: str, name: str, effect_id: str) -> dict:
+    pattern = rf'#\[cfg\({re.escape("sapphire_" + name)}\)\]\s*\{{\s*r#"(.*?)"#\s*\}}'
+    match = re.search(pattern, source_text, re.DOTALL)
+    if not match:
+        raise SystemExit(f"Missing Rust manifest block for {name}")
+    try:
+        manifest = json.loads(match.group(1))
+    except json.JSONDecodeError as error:
+        raise SystemExit(f"Invalid JSON manifest for {name}: {error}") from error
+    if manifest.get("api") != 1 or manifest.get("id") != effect_id:
+        raise SystemExit(f"Manifest identity/API mismatch for {name}")
+    params = manifest.get("params")
+    if not isinstance(params, list) or not params:
+        raise SystemExit(f"Manifest parameters missing for {name}")
+    ids = [param.get("id") for param in params]
+    if any(not isinstance(item, str) or not item for item in ids) or len(ids) != len(set(ids)):
+        raise SystemExit(f"Parameter IDs must be non-empty and unique for {name}")
+    flattened = 0
+    for param in params:
+        kind = param.get("type")
+        if kind not in PARAM_WIDTH:
+            raise SystemExit(f"Unsupported parameter type {kind!r} in {name}")
+        if kind == "slider":
+            minimum, maximum, default = param.get("min"), param.get("max"), param.get("default")
+            if not all(isinstance(value, (int, float)) for value in (minimum, maximum, default)):
+                raise SystemExit(f"Slider requires numeric min/max/default in {name}: {param.get('id')}")
+            if minimum > maximum or not minimum <= default <= maximum:
+                raise SystemExit(f"Slider bounds/default invalid in {name}: {param.get('id')}")
+        if kind == "popup":
+            options = param.get("options")
+            if not isinstance(options, list) or not options:
+                raise SystemExit(f"Popup requires options in {name}: {param.get('id')}")
+        flattened += PARAM_WIDTH[kind]
+    expected = EXPECTED_FLATTENED_PARAMS[name]
+    if flattened != expected:
+        raise SystemExit(f"{name} flattens to {flattened} values; renderer expects {expected}")
+    return manifest
+
 def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     source = Path(__file__).with_name("sapphire_compat_pack.rs")
@@ -31,7 +76,9 @@ def main() -> None:
     rustc = os.environ.get("RUSTC", "rustc")
 
     records = []
+    source_text = source.read_text(encoding="utf-8")
     for name, effect_id in VARIANTS.items():
+        parse_and_validate_manifest(source_text, name, effect_id)
         target = output / f"ec_sapphire_{name}.wasm"
         command = [
             rustc, "--edition=2024", "--target=wasm32-unknown-unknown",
@@ -58,7 +105,7 @@ def main() -> None:
 
     bundle = {
         "name": "EffectCraft Sapphire-compatible effects",
-        "version": "1.4.0",
+        "version": "2.0.0",
         "format": "EffectCraft sandboxed WebAssembly effect modules",
         "desktop_binary_support": False,
         "effects": records,
