@@ -18,13 +18,13 @@ const MANIFEST: &str = {
     #[cfg(sapphire_motion)]
     { r#"{"api":1,"id":"org.effectcraft.compat.rsmb-motion-blur","name":"RSMB 风格方向模糊（非原版）","category":"Blur","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"安卓兼容方向模糊效果；不执行电脑版 RSMB，也不进行原版运动矢量估算。","params":[{"id":"angle","name":"方向角度","type":"slider","default":0,"min":0,"max":360,"sliderMin":0,"sliderMax":360,"decimals":0},{"id":"distance","name":"模糊距离","type":"slider","default":18,"min":0,"max":96,"decimals":0},{"id":"mix","name":"效果强度","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
     #[cfg(sapphire_glint)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.glint","name":"Sapphire-style Glint","category":"Light","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Android recreation mapped to the documented S_Glint threshold, ray-family, color and compositing controls; not the proprietary desktop plug-in.","params":[{"id":"threshold","name":"Threshold","type":"slider","default":0.7,"min":0,"max":1.5,"decimals":2},{"id":"brightness_x","name":"Brightness X","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"brightness_y","name":"Brightness Y","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"brightness_diag1","name":"Brightness Diag1","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"brightness_diag2","name":"Brightness Diag2","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"color","name":"Scale Colors","type":"color","default":[1,1,1,1]},{"id":"threshold_add_color","name":"Threshold Add Color","type":"color","default":[0,0,0,1]},{"id":"threshold_blur","name":"Threshold Blur","type":"slider","default":0.0896,"min":0,"max":64,"decimals":2},{"id":"size","name":"Size","type":"slider","default":2,"min":0,"max":128,"decimals":2},{"id":"size_x","name":"Size X","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"size_y","name":"Size Y","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"size_diag1","name":"Size Diag1","type":"slider","default":0.75,"min":0,"max":4,"decimals":2},{"id":"size_diag2","name":"Size Diag2","type":"slider","default":0.75,"min":0,"max":4,"decimals":2},{"id":"size_red","name":"Size Red","type":"slider","default":0.5,"min":0,"max":4,"decimals":2},{"id":"size_green","name":"Size Green","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"size_blue","name":"Size Blue","type":"slider","default":1.5,"min":0,"max":4,"decimals":2},{"id":"blur_glint","name":"Blur Glint","type":"slider","default":0,"min":0,"max":64,"decimals":2},{"id":"hue_shift","name":"Hue Shift","type":"slider","default":0,"min":-1,"max":1,"decimals":2},{"id":"affect_alpha","name":"Affect Alpha","type":"slider","default":0,"min":0,"max":2,"decimals":2},{"id":"glint_from_alpha","name":"Glint From Alpha","type":"slider","default":0,"min":0,"max":1,"decimals":2},{"id":"glint_under_source","name":"Glint Under Source","type":"checkbox","default":false},{"id":"source_opacity","name":"Source Opacity","type":"slider","default":1,"min":0,"max":1,"decimals":2},{"id":"bg_brightness","name":"Background Brightness","type":"slider","default":1,"min":0,"max":3,"decimals":2},{"id":"expand_borders","name":"Expand Borders","type":"checkbox","default":false},{"id":"swap_diagonals","name":"Swap Diagonals","type":"checkbox","default":false},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.glint","name":"Sapphire-style Glint","category":"Light","version":"1.2.0","author":"EffectCraft Compatibility Layer","description":"Android recreation mapped to documented S_Glint threshold, independent ray families, RGB ray lengths and compositing controls; not the proprietary desktop plug-in.","params":[{"id":"threshold","name":"Threshold","type":"slider","default":0.7,"min":0,"max":1.5,"decimals":2},{"id":"brightness_x","name":"Brightness X","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"brightness_y","name":"Brightness Y","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"brightness_diag1","name":"Brightness Diag1","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"brightness_diag2","name":"Brightness Diag2","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"color","name":"Scale Colors","type":"color","default":[1,1,1,1]},{"id":"threshold_add_color","name":"Threshold Add Color","type":"color","default":[0,0,0,1]},{"id":"threshold_blur","name":"Threshold Blur","type":"slider","default":0.0896,"min":0,"max":64,"decimals":2},{"id":"size","name":"Size","type":"slider","default":2,"min":0,"max":128,"decimals":2},{"id":"size_x","name":"Size X","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"size_y","name":"Size Y","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"size_diag1","name":"Size Diag1","type":"slider","default":0.75,"min":0,"max":4,"decimals":2},{"id":"size_diag2","name":"Size Diag2","type":"slider","default":0.75,"min":0,"max":4,"decimals":2},{"id":"size_red","name":"Size Red","type":"slider","default":0.5,"min":0,"max":4,"decimals":2},{"id":"size_green","name":"Size Green","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"size_blue","name":"Size Blue","type":"slider","default":1.5,"min":0,"max":4,"decimals":2},{"id":"blur_glint","name":"Blur Glint","type":"slider","default":0,"min":0,"max":64,"decimals":2},{"id":"hue_shift","name":"Hue Shift","type":"slider","default":0,"min":-1,"max":1,"decimals":2},{"id":"affect_alpha","name":"Affect Alpha","type":"slider","default":0,"min":0,"max":2,"decimals":2},{"id":"glint_from_alpha","name":"Glint From Alpha","type":"slider","default":0,"min":0,"max":1,"decimals":2},{"id":"glint_under_source","name":"Glint Under Source","type":"checkbox","default":false},{"id":"source_opacity","name":"Source Opacity","type":"slider","default":1,"min":0,"max":1,"decimals":2},{"id":"swap_diagonals","name":"Swap Diagonals","type":"checkbox","default":false},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
     #[cfg(sapphire_rays)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.rays","name":"Sapphire-style Rays","category":"Light","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Android recreation mapped to S_Rays light/dark, center, ray-length, channel, color and quality controls; optional host inputs remain a documented gap.","params":[{"id":"effect","name":"Effect","type":"popup","default":0,"options":["Light Rays","Dark Rays"]},{"id":"center","name":"Center","type":"point","default":[0.5,0.5]},{"id":"rays_length","name":"Rays Length","type":"slider","default":0.25,"min":-5,"max":3,"decimals":2},{"id":"length_red","name":"Length Red","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"length_green","name":"Length Green","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"length_blue","name":"Length Blue","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"reverse_rays","name":"Reverse Rays","type":"slider","default":0,"min":0,"max":1,"decimals":2},{"id":"rays_brightness","name":"Rays Brightness","type":"slider","default":3,"min":0,"max":8,"decimals":2},{"id":"rays_darkness","name":"Rays Darkness","type":"slider","default":3,"min":0,"max":8,"decimals":2},{"id":"blur_rays","name":"Blur Rays","type":"slider","default":0,"min":0,"max":64,"decimals":2},{"id":"blur_rays_rel_x","name":"Blur Rays Rel X","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"blur_rays_rel_y","name":"Blur Rays Rel Y","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"rays_color","name":"Rays Color","type":"color","default":[1,1,1,1]},{"id":"rays_color_dark","name":"Rays Color Dark","type":"color","default":[0,0,0,1]},{"id":"bias_outer_bright","name":"Bias Outer Bright","type":"slider","default":0,"min":0,"max":1,"decimals":2},{"id":"rays_res","name":"Rays Res","type":"popup","default":0,"options":["Full","Half","Quarter"]},{"id":"threshold","name":"Threshold","type":"slider","default":0.5,"min":0,"max":1.5,"decimals":2},{"id":"threshold_add_color","name":"Threshold Add Color","type":"color","default":[0,0,0,1]},{"id":"rays_from_alpha","name":"Rays From Alpha","type":"slider","default":0,"min":0,"max":1,"decimals":2},{"id":"use_source_chroma","name":"Use Source Chroma","type":"slider","default":1,"min":0,"max":1,"decimals":2},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.rays","name":"Sapphire-style Rays","category":"Light","version":"1.2.0","author":"EffectCraft Compatibility Layer","description":"Android recreation mapped to S_Rays light/dark mode, center, signed ray length, channel lengths, reverse rays, brightness bias, blur and resolution controls.","params":[{"id":"effect","name":"Effect","type":"popup","default":0,"options":["Light Rays","Dark Rays"]},{"id":"center","name":"Center","type":"point","default":[0.5,0.5]},{"id":"rays_length","name":"Rays Length","type":"slider","default":0.25,"min":-5,"max":3,"decimals":2},{"id":"length_red","name":"Length Red","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"length_green","name":"Length Green","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"length_blue","name":"Length Blue","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"reverse_rays","name":"Reverse Rays","type":"slider","default":0,"min":0,"max":1,"decimals":2},{"id":"rays_brightness","name":"Rays Brightness","type":"slider","default":3,"min":0,"max":8,"decimals":2},{"id":"rays_darkness","name":"Rays Darkness","type":"slider","default":3,"min":0,"max":8,"decimals":2},{"id":"blur_rays","name":"Blur Rays","type":"slider","default":0,"min":0,"max":64,"decimals":2},{"id":"blur_rays_rel_x","name":"Blur Rays Rel X","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"blur_rays_rel_y","name":"Blur Rays Rel Y","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"rays_color","name":"Rays Color","type":"color","default":[1,1,1,1]},{"id":"rays_color_dark","name":"Rays Color Dark","type":"color","default":[0,0,0,1]},{"id":"bias_outer_bright","name":"Bias Outer Bright","type":"slider","default":0,"min":0,"max":1,"decimals":2},{"id":"rays_res","name":"Rays Res","type":"popup","default":0,"options":["Full","Half","Quarter"]},{"id":"threshold","name":"Threshold","type":"slider","default":0.5,"min":0,"max":1.5,"decimals":2},{"id":"threshold_add_color","name":"Threshold Add Color","type":"color","default":[0,0,0,1]},{"id":"rays_from_alpha","name":"Rays From Alpha","type":"slider","default":0,"min":0,"max":1,"decimals":2},{"id":"use_source_chroma","name":"Use Source Chroma","type":"slider","default":1,"min":0,"max":1,"decimals":2},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
     #[cfg(sapphire_halftone)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.halftone","name":"Sapphire-style HalfTone","category":"Stylize","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Antialiased mobile halftone mapped to S_HalfTone dots, frequency, angle, shape, sharpness, source smoothing and two-color controls.","params":[{"id":"dots","name":"Dots","type":"popup","default":0,"options":["Black","White"]},{"id":"dots_frequency","name":"Dots Frequency","type":"slider","default":50,"min":1,"max":200,"decimals":2},{"id":"dots_angle","name":"Dots Angle","type":"angle","default":30},{"id":"dots_rel_width","name":"Dots Rel Width","type":"slider","default":1,"min":0.01,"max":4,"decimals":2},{"id":"dots_sharpness","name":"Dots Sharpness","type":"slider","default":4,"min":0,"max":32,"decimals":2},{"id":"dots_lighten","name":"Dots Lighten","type":"slider","default":0,"min":-1,"max":1,"decimals":2},{"id":"smooth_source","name":"Smooth Source","type":"slider","default":0,"min":0,"max":64,"decimals":2},{"id":"color1","name":"Color1","type":"color","default":[1,1,1,1]},{"id":"color0","name":"Color0","type":"color","default":[0,0,0,1]},{"id":"dots_shift","name":"Dots Shift","type":"point","default":[0,0]},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.halftone","name":"Sapphire-style HalfTone","category":"Stylize","version":"1.2.0","author":"EffectCraft Compatibility Layer","description":"Antialiased mobile halftone mapped to documented S_HalfTone black/white dots, frequency, angle, width, sharpness, lighten, source smoothing, colors and pattern shift.","params":[{"id":"dots","name":"Dots","type":"popup","default":0,"options":["Black","White"]},{"id":"dots_frequency","name":"Dots Frequency","type":"slider","default":50,"min":1,"max":200,"decimals":2},{"id":"dots_angle","name":"Dots Angle","type":"angle","default":30},{"id":"dots_rel_width","name":"Dots Rel Width","type":"slider","default":1,"min":0.01,"max":4,"decimals":2},{"id":"dots_sharpness","name":"Dots Sharpness","type":"slider","default":4,"min":0,"max":32,"decimals":2},{"id":"dots_lighten","name":"Dots Lighten","type":"slider","default":0,"min":-1,"max":1,"decimals":2},{"id":"smooth_source","name":"Smooth Source","type":"slider","default":0,"min":0,"max":64,"decimals":2},{"id":"color1","name":"Color1","type":"color","default":[1,1,1,1]},{"id":"color0","name":"Color0","type":"color","default":[0,0,0,1]},{"id":"dots_shift","name":"Dots Shift","type":"point","default":[0,0]},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
     #[cfg(sapphire_pixelsort)]
-    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.pixelsort","name":"Sapphire-style PixelSort","category":"Stylize","version":"1.1.0","author":"EffectCraft Compatibility Layer","description":"Android recreation with Linear, Radial and Circular path sorting, threshold segments and keyframeable geometry controls.","params":[{"id":"effect","name":"Effect","type":"popup","default":0,"options":["Linear","Radial","Circular"]},{"id":"threshold","name":"Threshold","type":"slider","default":0.5,"min":0,"max":1.5,"decimals":2},{"id":"sort_angle","name":"Sort Angle","type":"angle","default":0},{"id":"center","name":"Center","type":"point","default":[0.5,0.5]},{"id":"radial_start_angle","name":"Radial Start Angle","type":"angle","default":0},{"id":"degrees_sorted","name":"Degrees Sorted","type":"slider","default":360,"min":0,"max":360,"decimals":0},{"id":"inner_radius","name":"Inner Radius","type":"slider","default":0.1,"min":0,"max":1,"decimals":2},{"id":"ray_length","name":"Ray Length","type":"slider","default":0.8,"min":0,"max":3,"decimals":2},{"id":"vary_radius","name":"Vary Radius","type":"slider","default":0.1,"min":0,"max":1,"decimals":2},{"id":"circular_start_angle","name":"Circular Start Angle","type":"angle","default":0},{"id":"circular_degrees_sorted","name":"Circular Degrees Sorted","type":"slider","default":270,"min":0,"max":360,"decimals":0},{"id":"circle_center","name":"Circle Center","type":"point","default":[0.5,0.5]},{"id":"vary_start","name":"Vary Start","type":"slider","default":0.15,"min":0,"max":1,"decimals":2},{"id":"min_length","name":"Minimum Segment","type":"slider","default":4,"min":2,"max":256,"decimals":0},{"id":"max_length","name":"Maximum Segment","type":"slider","default":48,"min":2,"max":1024,"decimals":0},{"id":"sort_by","name":"Sort By","type":"popup","default":0,"options":["Luminance","Red","Green","Blue"]},{"id":"reverse","name":"Reverse","type":"checkbox","default":false},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.pixelsort","name":"Sapphire-style PixelSort","category":"Stylize","version":"1.2.0","author":"EffectCraft Compatibility Layer","description":"Android recreation of S_PixelSort linear, radial and circular scan paths with keyframeable centers, angles, ranges, chunk size and variation.","params":[{"id":"effect","name":"Effect","type":"popup","default":0,"options":["Linear","Radial","Circular"]},{"id":"threshold","name":"Threshold","type":"slider","default":0.5,"min":0,"max":1.5,"decimals":2},{"id":"sort_angle","name":"Sort Angle","type":"angle","default":0},{"id":"center","name":"Center","type":"point","default":[0.5,0.5]},{"id":"radial_start_angle","name":"Radial Start Angle","type":"angle","default":0},{"id":"degrees_sorted","name":"Degrees Sorted","type":"slider","default":360,"min":0,"max":360,"decimals":0},{"id":"inner_radius","name":"Inner Radius","type":"slider","default":0.1,"min":0,"max":1,"decimals":2},{"id":"ray_length","name":"Ray Length","type":"slider","default":0.8,"min":0,"max":3,"decimals":2},{"id":"vary_radius","name":"Vary Radius","type":"slider","default":0.1,"min":0,"max":1,"decimals":2},{"id":"circular_start_angle","name":"Circular Start Angle","type":"angle","default":0},{"id":"circular_degrees_sorted","name":"Circular Degrees Sorted","type":"slider","default":270,"min":0,"max":360,"decimals":0},{"id":"circle_center","name":"Circle Center","type":"point","default":[0.5,0.5]},{"id":"vary_start","name":"Vary Start","type":"slider","default":0.15,"min":0,"max":1,"decimals":2},{"id":"min_length","name":"Minimum Segment","type":"slider","default":4,"min":2,"max":256,"decimals":0},{"id":"max_length","name":"Maximum Segment","type":"slider","default":48,"min":2,"max":1024,"decimals":0},{"id":"sort_by","name":"Sort By","type":"popup","default":0,"options":["Luminance","Red","Green","Blue"]},{"id":"reverse","name":"Reverse","type":"checkbox","default":false},{"id":"mix","name":"Mix","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
 };
 
 thread_local! {
@@ -326,155 +326,305 @@ fn straight_luminance(pixel: [f32; 4]) -> f32 {
     0.2126 * red + 0.7152 * green + 0.0722 * blue
 }
 
+fn hue_rotate_rgb(rgb: [f32; 3], shift: f32) -> [f32; 3] {
+    if shift.abs() < 1e-6 { return rgb; }
+    let y = 0.299 * rgb[0] + 0.587 * rgb[1] + 0.114 * rgb[2];
+    let i = 0.596 * rgb[0] - 0.275 * rgb[1] - 0.321 * rgb[2];
+    let q = 0.212 * rgb[0] - 0.523 * rgb[1] + 0.311 * rgb[2];
+    let angle = shift * std::f32::consts::TAU;
+    let (sn, cs) = angle.sin_cos();
+    let ri = i * cs - q * sn;
+    let rq = i * sn + q * cs;
+    [
+        y + 0.956 * ri + 0.621 * rq,
+        y - 0.272 * ri - 0.647 * rq,
+        y - 1.106 * ri + 1.703 * rq,
+    ]
+}
+
 #[cfg(sapphire_glint)]
 fn render_glint(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], scale: f64) -> i32 {
     let threshold = params[0].clamp(0.0, 1.5) as f32;
-    let intensity = params[1].clamp(0.0, 3.0) as f32;
-    let size = (params[2].max(1.0) * scale.max(0.0)).clamp(1.0, 96.0) as f32;
-    let spikes = params[3].round().clamp(2.0, 8.0) as usize;
-    let rotation = (params[4] as f32).to_radians();
-    let color = [params[5] as f32, params[6] as f32, params[7] as f32];
-    let mix = (params[9] / 100.0).clamp(0.0, 1.0) as f32;
-    if intensity <= 0.0 || mix <= 0.0 { return 0; }
+    let brightness = [params[1] as f32, params[2] as f32, params[3] as f32, params[4] as f32];
+    let tint = [params[5] as f32, params[6] as f32, params[7] as f32];
+    let threshold_add = [params[9] as f32, params[10] as f32, params[11] as f32];
+    let threshold_blur = (params[13].max(0.0) * scale.max(0.0)).clamp(0.0, 48.0) as usize;
+    let base_size = (params[14].max(0.0) * scale.max(0.0)).clamp(0.0, 128.0) as f32;
+    let axis_size = [
+        params[15].max(0.0) as f32,
+        params[16].max(0.0) as f32,
+        params[17].max(0.0) as f32,
+        params[18].max(0.0) as f32,
+    ];
+    let channel_size = [params[19].max(0.0) as f32, params[20].max(0.0) as f32, params[21].max(0.0) as f32];
+    let blur_glint = (params[22].max(0.0) * scale.max(0.0)).clamp(0.0, 64.0) as usize;
+    let hue_shift = params[23] as f32;
+    let affect_alpha = params[24].clamp(0.0, 2.0) as f32;
+    let glint_from_alpha = params[25].clamp(0.0, 1.0) as f32;
+    let glint_under_source = params[26] >= 0.5;
+    let source_opacity = params[27].clamp(0.0, 1.0) as f32;
+    let swap_diagonals = params[28] >= 0.5;
+    let mix = (params[29] / 100.0).clamp(0.0, 1.0) as f32;
+    if base_size <= 0.0 || mix <= 0.0 || brightness.iter().all(|value| *value <= 0.0) { return 0; }
+
     let source = pixels.to_vec();
+    let threshold_input = if threshold_blur > 0 {
+        gaussian_blur(&source, width, height, threshold_blur)
+    } else {
+        source.clone()
+    };
     let mut highlights = Vec::with_capacity(source.len());
-    for px in &source {
-        let weight = smoothstep(threshold, threshold + 0.18, straight_luminance(*px));
+    for px in &threshold_input {
+        let luma = straight_luminance(*px);
+        let signal = luma * (1.0 - glint_from_alpha) + px[3].clamp(0.0, 1.0) * glint_from_alpha;
+        let threshold_shift = threshold_add[0] * (px[0] / px[3].max(1e-6))
+            + threshold_add[1] * (px[1] / px[3].max(1e-6))
+            + threshold_add[2] * (px[2] / px[3].max(1e-6));
+        let weight = smoothstep(threshold + threshold_shift, threshold + threshold_shift + 0.16, signal);
         highlights.push([px[0] * weight, px[1] * weight, px[2] * weight, px[3] * weight]);
     }
-    const STEPS: usize = 6;
+
+    let mut glint_layer = vec![[0.0_f32; 4]; source.len()];
+    let mut angles = [0.0_f32, std::f32::consts::FRAC_PI_2, std::f32::consts::FRAC_PI_4, -std::f32::consts::FRAC_PI_4];
+    let mut axis_brightness = brightness;
+    let mut sizes = axis_size;
+    if swap_diagonals {
+        angles.swap(2, 3);
+        axis_brightness.swap(2, 3);
+        sizes.swap(2, 3);
+    }
+    const STEPS: usize = 8;
     for y in 0..height {
         for x in 0..width {
             let mut star = [0.0_f32; 3];
-            for axis in 0..spikes {
-                let angle = rotation + axis as f32 * std::f32::consts::PI / spikes as f32;
-                let (sn, cs) = angle.sin_cos();
+            for axis in 0..4 {
+                if axis_brightness[axis] <= 0.0 || sizes[axis] <= 0.0 { continue; }
+                let (sn, cs) = angles[axis].sin_cos();
+                let ray_length = base_size * sizes[axis];
                 for step in 1..=STEPS {
-                    let distance = size * step as f32 / STEPS as f32;
-                    let attenuation = (-(distance / size.max(1.0)) * 2.0).exp()
-                        / (STEPS as f32 * spikes as f32 * 2.0);
+                    let distance = ray_length * step as f32 / STEPS as f32;
+                    let attenuation = (-(distance / ray_length.max(1.0)) * 2.2).exp()
+                        * axis_brightness[axis] / (STEPS as f32 * 2.0);
                     for sign in [-1.0_f32, 1.0_f32] {
-                        let sample = sample_bilinear(
-                            &highlights, width, height,
-                            x as f32 + cs * distance * sign,
-                            y as f32 + sn * distance * sign,
-                        );
-                        for channel in 0..3 { star[channel] += sample[channel] * attenuation; }
+                        for channel in 0..3 {
+                            let channel_distance = distance * channel_size[channel].max(0.0);
+                            let sample = sample_bilinear(
+                                &highlights, width, height,
+                                x as f32 + cs * channel_distance * sign,
+                                y as f32 + sn * channel_distance * sign,
+                            );
+                            star[channel] += sample[channel] * attenuation;
+                        }
                     }
                 }
             }
+            let rotated = hue_rotate_rgb([
+                star[0] * tint[0],
+                star[1] * tint[1],
+                star[2] * tint[2],
+            ], hue_shift);
             let idx = y * width + x;
-            for channel in 0..3 {
-                let contribution = star[channel] * intensity * color[channel];
-                pixels[idx][channel] = source[idx][channel] * (1.0 - mix)
-                    + (source[idx][channel] + contribution) * mix;
-            }
-            pixels[idx][3] = source[idx][3];
+            glint_layer[idx] = [rotated[0], rotated[1], rotated[2], rotated.iter().copied().fold(0.0_f32, f32::max)];
         }
+    }
+    let glint_layer = if blur_glint > 0 {
+        gaussian_blur(&glint_layer, width, height, blur_glint)
+    } else {
+        glint_layer
+    };
+    for idx in 0..pixels.len() {
+        let src = source[idx];
+        let glint = glint_layer[idx];
+        let glint_alpha = (glint[3] * affect_alpha).clamp(0.0, 1.0);
+        let behind = if glint_under_source { (1.0 - src[3].clamp(0.0, 1.0)) } else { 1.0 };
+        let src_rgb = [
+            src[0] * source_opacity,
+            src[1] * source_opacity,
+            src[2] * source_opacity,
+        ];
+        let result = [
+            src_rgb[0] + glint[0] * behind,
+            src_rgb[1] + glint[1] * behind,
+            src_rgb[2] + glint[2] * behind,
+        ];
+        for c in 0..3 { pixels[idx][c] = src[c] * (1.0 - mix) + result[c] * mix; }
+        pixels[idx][3] = (src[3] * (1.0 - mix) + (src[3] * source_opacity + glint_alpha) * mix).clamp(0.0, 1.0);
     }
     0
 }
 
 #[cfg(sapphire_rays)]
-fn render_rays(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
-    let cx = frame_pixel(params[0], width);
-    let cy = frame_pixel(params[1], height);
-    let threshold = params[2].clamp(0.0, 1.5) as f32;
-    let intensity = params[3].clamp(0.0, 3.0) as f32;
-    let length = params[4].clamp(0.0, 1.0) as f32;
-    let color = [params[5] as f32, params[6] as f32, params[7] as f32];
-    let mix = (params[9] / 100.0).clamp(0.0, 1.0) as f32;
-    if intensity <= 0.0 || length <= 0.0 || mix <= 0.0 { return 0; }
+fn render_rays(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], scale: f64) -> i32 {
+    let dark_mode = params[0].round() >= 1.0;
+    let cx = frame_pixel(params[1], width);
+    let cy = frame_pixel(params[2], height);
+    let rays_length = params[3] as f32;
+    let channel_length = [params[4] as f32, params[5] as f32, params[6] as f32];
+    let reverse = params[7].clamp(0.0, 1.0) as f32;
+    let brightness = params[8].clamp(0.0, 8.0) as f32;
+    let darkness = params[9].clamp(0.0, 8.0) as f32;
+    let blur_radius = (params[10].max(0.0) * scale.max(0.0)
+        * ((params[11].max(0.0) + params[12].max(0.0)) * 0.5).clamp(0.0, 4.0))
+        .clamp(0.0, 64.0) as usize;
+    let ray_color = [params[13] as f32, params[14] as f32, params[15] as f32];
+    let dark_color = [params[17] as f32, params[18] as f32, params[19] as f32];
+    let bias = params[21].clamp(0.0, 1.0) as f32;
+    let resolution = params[22].round().clamp(0.0, 2.0) as usize;
+    let threshold = params[23].clamp(0.0, 1.5) as f32;
+    let threshold_add = [params[24] as f32, params[25] as f32, params[26] as f32];
+    let from_alpha = params[28].clamp(0.0, 1.0) as f32;
+    let use_chroma = params[29].clamp(0.0, 1.0) as f32;
+    let mix = (params[30] / 100.0).clamp(0.0, 1.0) as f32;
+    if rays_length.abs() < 1e-4 || mix <= 0.0 || (if dark_mode { darkness } else { brightness }) <= 0.0 { return 0; }
+
     let source = pixels.to_vec();
-    let mut highlights = Vec::with_capacity(source.len());
+    let mut light_map = Vec::with_capacity(source.len());
+    let mut dark_map = Vec::with_capacity(source.len());
     for px in &source {
-        let weight = smoothstep(threshold, threshold + 0.2, straight_luminance(*px));
-        highlights.push([px[0] * weight, px[1] * weight, px[2] * weight, px[3] * weight]);
+        let alpha = px[3].clamp(0.0, 1.0);
+        let luma = straight_luminance(*px);
+        let signal = luma * (1.0 - from_alpha) + alpha * from_alpha;
+        let threshold_shift = threshold_add[0] * (px[0] / alpha.max(1e-6))
+            + threshold_add[1] * (px[1] / alpha.max(1e-6))
+            + threshold_add[2] * (px[2] / alpha.max(1e-6));
+        let local_threshold = (threshold + threshold_shift).clamp(0.0, 1.5);
+        let light = smoothstep(local_threshold, local_threshold + 0.18, signal);
+        let dark = smoothstep(local_threshold, local_threshold + 0.18, 1.0 - signal);
+        let rgb = [
+            px[0] * use_chroma + luma * alpha * (1.0 - use_chroma),
+            px[1] * use_chroma + luma * alpha * (1.0 - use_chroma),
+            px[2] * use_chroma + luma * alpha * (1.0 - use_chroma),
+        ];
+        light_map.push([rgb[0] * light, rgb[1] * light, rgb[2] * light, alpha * light]);
+        dark_map.push([dark * alpha, dark * alpha, dark * alpha, alpha * dark]);
     }
-    const SAMPLES: usize = 20;
+    let max_dim = width.max(height) as f32;
+    let ray_distance = rays_length.abs() * max_dim;
+    let steps_base = match resolution { 1 => 16, 2 => 8, _ => 32 };
+    let signed = rays_length.signum();
+    let mut ray_layer = vec![[0.0_f32; 4]; source.len()];
     for y in 0..height {
         for x in 0..width {
             let dx = cx - x as f32;
             let dy = cy - y as f32;
-            let mut ray = [0.0_f32; 3];
-            for sample_index in 0..SAMPLES {
-                let t = sample_index as f32 / (SAMPLES - 1) as f32 * length;
-                let sample = sample_bilinear(
-                    &highlights, width, height,
-                    x as f32 + dx * t, y as f32 + dy * t,
-                );
-                let attenuation = (1.0 - t * 0.45) / SAMPLES as f32;
-                for channel in 0..3 { ray[channel] += sample[channel] * attenuation; }
+            let mut accum = [0.0_f32; 3];
+            let mut accum_dark = 0.0_f32;
+            for direction in 0..=1 {
+                let direction_weight = if direction == 0 { 1.0 } else { reverse };
+                if direction_weight <= 0.0 { continue; }
+                for channel in 0..3 {
+                    let distance = ray_distance * channel_length[channel].max(0.0);
+                    for step in 0..steps_base {
+                        let t = step as f32 / (steps_base - 1).max(1) as f32;
+                        let ray_t = signed * t * distance;
+                        let sign = if direction == 0 { 1.0 } else { -1.0 };
+                        let sample = sample_bilinear(
+                            if dark_mode { &dark_map } else { &light_map },
+                            width, height,
+                            x as f32 + dx * ray_t / ray_distance.max(1.0) * sign,
+                            y as f32 + dy * ray_t / ray_distance.max(1.0) * sign,
+                        );
+                        let fade = if bias < 0.5 {
+                            (1.0 - t).powf((0.5 - bias) * 4.0 + 0.01)
+                        } else {
+                            t.powf((bias - 0.5) * 4.0 + 0.01)
+                        };
+                        let weight = fade * direction_weight / steps_base as f32;
+                        if dark_mode {
+                            accum_dark += sample[0] * weight;
+                        } else {
+                            accum[channel] += sample[channel] * weight;
+                        }
+                    }
+                }
             }
             let idx = y * width + x;
-            for channel in 0..3 {
-                let contribution = ray[channel] * intensity * color[channel];
-                pixels[idx][channel] = source[idx][channel] * (1.0 - mix)
-                    + (source[idx][channel] + contribution) * mix;
+            if dark_mode {
+                ray_layer[idx] = [
+                    -accum_dark * darkness * dark_color[0],
+                    -accum_dark * darkness * dark_color[1],
+                    -accum_dark * darkness * dark_color[2],
+                    accum_dark * darkness,
+                ];
+            } else {
+                ray_layer[idx] = [
+                    accum[0] * brightness * ray_color[0],
+                    accum[1] * brightness * ray_color[1],
+                    accum[2] * brightness * ray_color[2],
+                    accum.iter().copied().fold(0.0_f32, f32::max) * brightness,
+                ];
             }
-            pixels[idx][3] = source[idx][3];
         }
+    }
+    let ray_layer = if blur_radius > 0 {
+        gaussian_blur(&ray_layer, width, height, blur_radius)
+    } else { ray_layer };
+    for idx in 0..pixels.len() {
+        for channel in 0..3 {
+            let result = if dark_mode {
+                (source[idx][channel] + ray_layer[idx][channel]).max(0.0)
+            } else {
+                source[idx][channel] + ray_layer[idx][channel]
+            };
+            pixels[idx][channel] = source[idx][channel] * (1.0 - mix) + result * mix;
+        }
+        pixels[idx][3] = source[idx][3];
     }
     0
 }
 
 #[cfg(sapphire_halftone)]
 fn render_halftone(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], scale: f64) -> i32 {
-    let cell = (params[0].max(1.0) * scale.max(0.0)).clamp(1.0, 48.0) as f32;
-    let angle = (params[1] as f32).to_radians();
-    let contrast = params[2].clamp(0.25, 2.5) as f32;
-    let softness = params[3].clamp(0.0, 0.5) as f32;
-    let mode = params[4].round().clamp(0.0, 1.0) as usize;
-    let mix = (params[5] / 100.0).clamp(0.0, 1.0) as f32;
+    let white_dots = params[0].round() >= 1.0;
+    let frequency = params[1].max(1.0) as f32;
+    let angle = (params[2] as f32).to_radians();
+    let relative_width = params[3].clamp(0.01, 4.0) as f32;
+    let sharpness = params[4].max(0.0) as f32;
+    let lighten = params[5] as f32;
+    let smooth_source = (params[6].max(0.0) * scale.max(0.0)).clamp(0.0, 48.0) as usize;
+    let color1 = [params[7] as f32, params[8] as f32, params[9] as f32];
+    let color0 = [params[11] as f32, params[12] as f32, params[13] as f32];
+    let shift_x = params[15] as f32;
+    let shift_y = params[16] as f32;
+    let mix = (params[17] / 100.0).clamp(0.0, 1.0) as f32;
+    if mix <= 0.0 { return 0; }
     let source = pixels.to_vec();
+    let filtered = if smooth_source > 0 {
+        gaussian_blur(&source, width, height, smooth_source)
+    } else {
+        source.clone()
+    };
+    let cell = (width.max(height) as f32 / frequency.max(1.0) * scale.max(0.0)).clamp(1.0, 128.0);
     let (sn, cs) = angle.sin_cos();
     let half = cell * 0.5;
     let cx = width as f32 * 0.5;
     let cy = height as f32 * 0.5;
+    let edge_width = (cell / (sharpness * 4.0 + 1.0)).clamp(0.25, cell * 0.5);
     for y in 0..height {
         for x in 0..width {
-            let px = x as f32 - cx;
-            let py = y as f32 - cy;
+            let px = x as f32 - cx - shift_x;
+            let py = y as f32 - cy - shift_y;
             let fx = px * cs + py * sn;
             let fy = -px * sn + py * cs;
             let gx = (fx / cell).floor();
             let gy = (fy / cell).floor();
             let local_x = fx - (gx + 0.5) * cell;
             let local_y = fy - (gy + 0.5) * cell;
-            let screen_r = (local_x * local_x + local_y * local_y).sqrt();
-            let sx = ((gx + 0.5) * cell * cs - (gy + 0.5) * cell * sn + cx)
+            let sx = ((gx + 0.5) * cell * cs - (gy + 0.5) * cell * sn + cx + shift_x)
                 .clamp(0.0, width.saturating_sub(1) as f32);
-            let sy = ((gx + 0.5) * cell * sn + (gy + 0.5) * cell * cs + cy)
+            let sy = ((gx + 0.5) * cell * sn + (gy + 0.5) * cell * cs + cy + shift_y)
                 .clamp(0.0, height.saturating_sub(1) as f32);
-            let sample = sample_bilinear(&source, width, height, sx, sy);
+            let sample = sample_bilinear(&filtered, width, height, sx, sy);
             let alpha = sample[3].max(1e-6);
-            let rgb = [
-                (sample[0] / alpha).clamp(0.0, 1.0),
-                (sample[1] / alpha).clamp(0.0, 1.0),
-                (sample[2] / alpha).clamp(0.0, 1.0),
-            ];
-            let dot = |ink: f32, phase: f32| {
-                let radius = ink.clamp(0.0, 1.0).sqrt() * half * 0.95;
-                let edge = (screen_r - radius) / (softness * cell + 0.55).max(0.55);
-                1.0 - smoothstep(-1.0, 1.0, edge + phase)
-            };
-            let output_rgb = if mode == 0 {
-                let luma = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
-                let ink = dot(1.0 - ((luma - 0.5) * contrast + 0.5).clamp(0.0, 1.0), 0.0);
-                [1.0 - ink, 1.0 - ink, 1.0 - ink]
-            } else {
-                let cyan = dot(1.0 - rgb[0], 0.0);
-                let magenta = dot(1.0 - rgb[1], 0.12);
-                let yellow = dot(1.0 - rgb[2], 0.24);
-                [
-                    (1.0 - cyan) * (1.0 - yellow),
-                    (1.0 - magenta) * (1.0 - yellow),
-                    (1.0 - cyan) * (1.0 - magenta),
-                ]
-            };
+            let luma = (straight_luminance(sample) + lighten).clamp(0.0, 1.0);
+            let ink = if white_dots { luma } else { 1.0 - luma };
+            let radius = ink.sqrt() * half * 0.96;
+            let screen_radius = (((local_x / relative_width).powi(2) + local_y.powi(2)).sqrt());
+            let dot = 1.0 - smoothstep(radius - edge_width, radius + edge_width, screen_radius);
+            let (dot_color, bg_color) = if white_dots { (color1, color0) } else { (color0, color1) };
             let idx = y * width + x;
             for channel in 0..3 {
-                let out = output_rgb[channel] * source[idx][3];
+                let out = (bg_color[channel] * (1.0 - dot) + dot_color[channel] * dot) * source[idx][3];
                 pixels[idx][channel] = source[idx][channel] * (1.0 - mix) + out * mix;
             }
             pixels[idx][3] = source[idx][3];
@@ -484,59 +634,150 @@ fn render_halftone(pixels: &mut [[f32; 4]], width: usize, height: usize, params:
 }
 
 #[cfg(sapphire_pixelsort)]
-fn render_pixelsort(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
-    let threshold = params[0].clamp(0.0, 1.5) as f32;
-    let min_length = params[1].round().clamp(2.0, 256.0) as usize;
-    let max_length = params[2].round().clamp(2.0, 512.0) as usize;
-    let vertical = params[3].round() >= 1.0;
-    let sort_channel = params[4].round().clamp(0.0, 3.0) as usize;
-    let reverse = params[5] >= 0.5;
-    let mix = (params[6] / 100.0).clamp(0.0, 1.0) as f32;
-    if mix <= 0.0 { return 0; }
-    let source = pixels.to_vec();
-    let mut sorted = source.clone();
-    let major = if vertical { width } else { height };
-    let minor = if vertical { height } else { width };
-    for line in 0..major {
-        let mut cursor = 0usize;
-        while cursor < minor {
-            let idx = |v: usize| if vertical { v * width + line } else { line * width + v };
-            while cursor < minor && straight_luminance(source[idx(cursor)]) < threshold {
-                cursor += 1;
-            }
-            let start = cursor;
-            while cursor < minor && straight_luminance(source[idx(cursor)]) >= threshold {
-                cursor += 1;
-            }
-            let end = cursor;
-            if end.saturating_sub(start) < min_length { continue; }
-            let key = |px: &[f32; 4]| -> f32 {
-                let alpha = px[3].max(1e-6);
-                match sort_channel {
-                    1 => px[0] / alpha,
-                    2 => px[1] / alpha,
-                    3 => px[2] / alpha,
-                    _ => straight_luminance(*px),
+fn sort_pixel_path(
+    path: &[usize],
+    source: &[[f32; 4]],
+    sorted: &mut [[f32; 4]],
+    threshold: f32,
+    min_length: usize,
+    max_length: usize,
+    sort_channel: usize,
+    reverse: bool,
+) {
+    let key = |px: &[f32; 4]| -> f32 {
+        let alpha = px[3].max(1e-6);
+        match sort_channel {
+            1 => px[0] / alpha,
+            2 => px[1] / alpha,
+            3 => px[2] / alpha,
+            _ => straight_luminance(*px),
+        }
+    };
+    let mut cursor = 0usize;
+    while cursor < path.len() {
+        while cursor < path.len() && straight_luminance(source[path[cursor]]) < threshold {
+            cursor += 1;
+        }
+        let start = cursor;
+        while cursor < path.len() && straight_luminance(source[path[cursor]]) >= threshold {
+            cursor += 1;
+        }
+        let end = cursor;
+        if end.saturating_sub(start) < min_length { continue; }
+        let mut chunk_start = start;
+        while chunk_start < end {
+            let chunk_end = (chunk_start + max_length).min(end);
+            if chunk_end - chunk_start >= min_length {
+                let mut segment: Vec<[f32; 4]> = path[chunk_start..chunk_end].iter().map(|index| source[*index]).collect();
+                segment.sort_by(|a,b| {
+                    let order = key(a).total_cmp(&key(b));
+                    if reverse { order.reverse() } else { order }
+                });
+                for (offset, pixel) in segment.into_iter().enumerate() {
+                    sorted[path[chunk_start + offset]] = pixel;
                 }
-            };
-            let mut chunk_start = start;
-            while chunk_start < end {
-                let chunk_end = (chunk_start + max_length).min(end);
-                if chunk_end - chunk_start >= min_length {
-                    let mut segment: Vec<[f32; 4]> =
-                        (chunk_start..chunk_end).map(|v| source[idx(v)]).collect();
-                    segment.sort_by(|a, b| {
-                        let order = key(a).total_cmp(&key(b));
-                        if reverse { order.reverse() } else { order }
-                    });
-                    for (offset, pixel) in segment.into_iter().enumerate() {
-                        sorted[idx(chunk_start + offset)] = pixel;
-                    }
-                }
-                chunk_start = chunk_end;
             }
+            chunk_start = chunk_end;
         }
     }
+}
+
+#[cfg(sapphire_pixelsort)]
+fn render_pixelsort(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
+    let pattern = params[0].round().clamp(0.0, 2.0) as usize;
+    let threshold = params[1].clamp(0.0, 1.5) as f32;
+    let sort_angle = (params[2] as f32).to_radians();
+    let center = (frame_pixel(params[3], width), frame_pixel(params[4], height));
+    let radial_start = (params[5] as f32).to_radians();
+    let radial_degrees = params[6].clamp(0.0, 360.0) as f32;
+    let inner_radius = params[7].clamp(0.0, 1.0) as f32;
+    let ray_length = params[8].clamp(0.0, 3.0) as f32;
+    let vary_radius = params[9].clamp(0.0, 1.0) as f32;
+    let circular_start = (params[10] as f32).to_radians();
+    let circular_degrees = params[11].clamp(0.0, 360.0) as f32;
+    let circle_center = (frame_pixel(params[12], width), frame_pixel(params[13], height));
+    let vary_start = params[14].clamp(0.0, 1.0) as f32;
+    let min_length = params[15].round().clamp(2.0, 256.0) as usize;
+    let max_length = params[16].round().clamp(min_length as f64, 1024.0) as usize;
+    let sort_channel = params[17].round().clamp(0.0, 3.0) as usize;
+    let reverse = params[18] >= 0.5;
+    let mix = (params[19] / 100.0).clamp(0.0, 1.0) as f32;
+    if mix <= 0.0 { return 0; }
+
+    let source = pixels.to_vec();
+    let mut sorted = source.clone();
+    let max_radius = (((width as f32).powi(2) + (height as f32).powi(2)).sqrt() * 0.5).max(1.0);
+    let chunk_limit = ((ray_length * width.max(height) as f32).round() as usize).clamp(min_length, max_length);
+
+    if pattern == 0 {
+        let (sn, cs) = sort_angle.sin_cos();
+        let normal_extent = width as f32 * sn.abs() + height as f32 * cs.abs();
+        let line_count = normal_extent.ceil() as usize + 2;
+        let normal_min = -(width as f32 * sn.abs() + height as f32 * cs.abs()) * 0.5;
+        let mut lines: Vec<Vec<(f32, usize)>> = (0..line_count).map(|_| Vec::new()).collect();
+        for y in 0..height {
+            for x in 0..width {
+                let normal = -(x as f32) * sn + y as f32 * cs;
+                let line = ((normal - normal_min).round() as usize).min(line_count - 1);
+                let along = x as f32 * cs + y as f32 * sn;
+                lines[line].push((along, y * width + x));
+            }
+        }
+        for line in &mut lines {
+            line.sort_by(|a,b| a.0.total_cmp(&b.0));
+            let path: Vec<usize> = line.iter().map(|entry| entry.1).collect();
+            sort_pixel_path(&path, &source, &mut sorted, threshold, min_length, chunk_limit, sort_channel, reverse);
+        }
+    } else if pattern == 1 {
+        let ray_count = ((max_radius * 2.0).ceil() as usize).clamp(64, 2048);
+        let span = radial_degrees / 360.0;
+        for ray in 0..ray_count {
+            let u = ray as f32 / ray_count as f32;
+            if u > span { continue; }
+            let angle = radial_start + u * std::f32::consts::TAU;
+            let (sn, cs) = angle.sin_cos();
+            let edge_x = if cs > 1e-6 { (width as f32 - 1.0 - center.0) / cs } else if cs < -1e-6 { -center.0 / cs } else { f32::INFINITY };
+            let edge_y = if sn > 1e-6 { (height as f32 - 1.0 - center.1) / sn } else if sn < -1e-6 { -center.1 / sn } else { f32::INFINITY };
+            let edge = edge_x.min(edge_y).max(0.0);
+            let variation = (u * 97.31).sin() * vary_radius * max_radius * 0.25;
+            let start_radius = (inner_radius * max_radius + variation).clamp(0.0, edge);
+            let mut path = Vec::new();
+            let mut distance = start_radius;
+            while distance <= edge {
+                let x = center.0 + cs * distance;
+                let y = center.1 + sn * distance;
+                let ix = x.round().clamp(0.0, width.saturating_sub(1) as f32) as usize;
+                let iy = y.round().clamp(0.0, height.saturating_sub(1) as f32) as usize;
+                path.push(iy * width + ix);
+                distance += 1.0;
+            }
+            sort_pixel_path(&path, &source, &mut sorted, threshold, min_length, chunk_limit, sort_channel, reverse);
+        }
+    } else {
+        let start_radius = inner_radius * max_radius;
+        let mut radius = start_radius.max(1.0);
+        while radius <= max_radius {
+            let sample_count = (std::f32::consts::TAU * radius).ceil().clamp(16.0, 16384.0) as usize;
+            let span = circular_degrees / 360.0;
+            let phase = (radius * 12.9898).sin() * vary_start * 0.25;
+            let mut path = Vec::new();
+            for i in 0..sample_count {
+                let u = i as f32 / sample_count as f32;
+                if u > span { continue; }
+                let angle = circular_start + phase + u * std::f32::consts::TAU;
+                let x = circle_center.0 + angle.cos() * radius;
+                let y = circle_center.1 + angle.sin() * radius;
+                if x >= 0.0 && x < width as f32 && y >= 0.0 && y < height as f32 {
+                    let ix = x.round().clamp(0.0, width.saturating_sub(1) as f32) as usize;
+                    let iy = y.round().clamp(0.0, height.saturating_sub(1) as f32) as usize;
+                    path.push(iy * width + ix);
+                }
+            }
+            sort_pixel_path(&path, &source, &mut sorted, threshold, min_length, chunk_limit, sort_channel, reverse);
+            radius += 1.0;
+        }
+    }
+
     for i in 0..pixels.len() {
         for channel in 0..4 {
             pixels[i][channel] = source[i][channel] * (1.0 - mix) + sorted[i][channel] * mix;
@@ -556,10 +797,10 @@ pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params:
         #[cfg(sapphire_distort)] { 5 }
         #[cfg(sapphire_stylize)] { 3 }
         #[cfg(sapphire_motion)] { 3 }
-        #[cfg(sapphire_glint)] { 10 }
-        #[cfg(sapphire_rays)] { 10 }
-        #[cfg(sapphire_halftone)] { 6 }
-        #[cfg(sapphire_pixelsort)] { 7 }
+        #[cfg(sapphire_glint)] { 30 }
+        #[cfg(sapphire_rays)] { 31 }
+        #[cfg(sapphire_halftone)] { 18 }
+        #[cfg(sapphire_pixelsort)] { 20 }
     };
     if nparams < needed { return 1; }
     let values = unsafe { std::slice::from_raw_parts(params as *const f64, nparams as usize) };
@@ -574,7 +815,7 @@ pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params:
     #[cfg(sapphire_stylize)] { render_stylize(frame, values) }
     #[cfg(sapphire_motion)] { render_motion(frame, w, h, values) }
     #[cfg(sapphire_glint)] { render_glint(frame, w, h, values, _scale) }
-    #[cfg(sapphire_rays)] { render_rays(frame, w, h, values) }
+    #[cfg(sapphire_rays)] { render_rays(frame, w, h, values, _scale) }
     #[cfg(sapphire_halftone)] { render_halftone(frame, w, h, values, _scale) }
     #[cfg(sapphire_pixelsort)] { render_pixelsort(frame, w, h, values) }
 }
