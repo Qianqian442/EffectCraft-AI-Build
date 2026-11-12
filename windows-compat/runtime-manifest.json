@@ -82,7 +82,9 @@
     "test clvk OpenCL path only through a real Wine OpenCL ICD bridge and representative plug-in kernels; report unsupported OpenCL extensions",
     "run LIEF independently against the Rust PE importer and compare machine/import/export results",
     "use Qiling only in a development analysis harness to trace Windows API calls; do not ship it in the APK by default",
-    "keep no application-level memory limits in all runtime backends"
+    "keep no application-level memory limits in all runtime backends",
+    "test the BOX32-enabled Box64 runtime with 32-bit x86 Linux ELF fixtures and a matching 32-bit Wine/WoW64 prefix",
+    "test the 32-bit aexlo Windows host worker inside a matching Box86/Box64-WoW64/FEXCore container before claiming 32-bit AEX execution support"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
@@ -188,6 +190,24 @@
       "role": "Independent robust PE/COFF parser for validating imports, exports, sections, symbols and machine architecture",
       "limitations": [
         "analysis/parsing only; does not execute Windows code or provide Windows APIs"
+      ]
+    },
+    {
+      "id": "box64-box32",
+      "repository": "https://github.com/ptitSeb/box64",
+      "revision": "4dbba1300a8d74c7c385f0d8a4e453c740622f9f",
+      "license": "MIT",
+      "role": "Optional Box64 build with BOX32=ON, supporting 32-bit x86 Linux ELF programs inside the 64-bit ARM64 Box64 process",
+      "build_options": [
+        "ANDROID=1",
+        "ARM64=1",
+        "ARM_DYNAREC=1",
+        "BOX32=ON",
+        "BOX32_BINFMT=OFF"
+      ],
+      "limitations": [
+        "supports 32-bit Linux ELF userland, not Windows PE by itself",
+        "still requires a compatible 32-bit Wine/WoW64 configuration to host 32-bit Windows AEX plug-ins"
       ]
     }
   ],
