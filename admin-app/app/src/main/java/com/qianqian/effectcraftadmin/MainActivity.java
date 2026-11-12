@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
+import android.content.Intent;
+import android.os.Build;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -39,7 +41,7 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private static final String DEFAULT_SERVER = BuildConfig.ACCOUNT_API_URL;
+    private static final String DEFAULT_SERVER = "http://127.0.0.1:8787";
     private String server = DEFAULT_SERVER;
     private String adminToken = "";
     private LinearLayout root;
@@ -50,101 +52,98 @@ public final class MainActivity extends Activity {
     private EditText searchInput;
     private Button loginButton;
     private TextView loginStatus;
+    private TextView registeredCountView;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-        String savedServer = getPreferences(MODE_PRIVATE).getString("server", "");
-        server = savedServer.startsWith("https://") ? trimServer(savedServer) : trimServer(DEFAULT_SERVER);
-        adminToken = savedServer.startsWith("https://")
-            ? getPreferences(MODE_PRIVATE).getString("admin_token", "") : "";
-        if (!adminToken.isEmpty()) {
-            showConnecting("正在连接云端账号服务并恢复管理员登录…");
+        server = DEFAULT_SERVER;
+        adminToken = getPreferences(MODE_PRIVATE).getString("phone_admin_token", "");
+        boolean needsSetup = !LanAccountServer.hasAdminPassword(this);
+        Intent service = new Intent(this, LanServerService.class);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(service);
+            else startService(service);
+        } catch (Exception e) {
+            toast("账号主服务器启动失败：" + e.getMessage());
+        }
+        if (needsSetup) {
+            showInitialAdminSetup();
+        } else if (!adminToken.isEmpty()) {
+            showConnecting("正在连接本机账号主服务器并恢复管理员登录…");
             loadUsers("");
         } else {
             showLogin();
         }
     }
 
-    /** Server-authoritative global node switch; never trust a local preference for this control. */
+    private void showInitialAdminSetup() {
+        LinearLayout form = new LinearLayout(this);
+        form.setOrientation(LinearLayout.VERTICAL);
+        form.setPadding(dp(8), dp(4), dp(8), dp(4));
+        form.addView(text("首次启动请设置管理员密码，至少12位。密码只保存在这部手机的本地安全存储中。", 13, false));
+        EditText first = field("设置管理员密码（至少12位）", true);
+        EditText second = field("再次输入管理员密码", true);
+        form.addView(first);
+        form.addView(second);
+        AlertDialog dialog = new AlertDialog.Builder(this)
+            .setTitle("设置本机管理员密码")
+            .setView(form)
+            .setPositiveButton("保存密码", null)
+            .create();
+        dialog.setCancelable(false);
+        dialog.show();
+        dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+            String one = first.getText().toString();
+            String two = second.getText().toString();
+            if (one.length() < 12) { first.setError("密码至少12位"); return; }
+            if (!one.equals(two)) { second.setError("两次密码不一致"); return; }
+            if (!LanAccountServer.setAdminPassword(this, one)) { first.setError("密码设置失败，请重试"); return; }
+            dialog.dismiss();
+            showLogin();
+            toast("管理员密码已设置，请妥善保存");
+        });
+    }
+
     private void addGlobalNodePanel(LinearLayout page) {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(10));
         panel.setBackground(rounded(Color.WHITE));
-        panel.addView(text("全局节点网络控制", 16, true));
-        TextView status = text("正在读取云端节点网络状态…", 13, false);
+        panel.addView(text("管理员手机主服务器", 16, true));
+        boolean running = getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
+            .getBoolean("node_running", false);
+        String ip = LanAccountServer.getWifiIpv4();
+        int total = LanAccountServer.getRegisteredCount(this);
+        panel.addView(text("当前注册人数：" + total + " 人（包含已封禁账号）", 15, true));
+        panel.addView(text("本机局域网地址：" + (ip.isEmpty() ? "未连接 Wi-Fi" : ip + ":" + LanAccountServer.PORT), 12, false));
+        TextView status = text("主服务器状态：" + (running ? "运行中" : "未运行"), 13, false);
         panel.addView(status);
-        TextView count = text("在线节点：读取中", 12, false);
-        panel.addView(count);
-        Button toggle = button("读取中…");
-        toggle.setEnabled(false);
+        panel.addView(text("普通账号/设备连接申请：验证通过后自动接入，无需管理员逐个批准。", 12, false));
+        panel.addView(text("跨网连接：局域网直连 → P2P/NAT 穿透 → 多公共中继自动切换（中继传输仍需接入和验证）。", 11, false));
+        Button toggle = button(running ? "停止本机账号主服务器" : "启动本机账号主服务器");
         panel.addView(toggle, new LinearLayout.LayoutParams(-1, dp(46)));
-        TextView note = text("关闭后由云端拒绝新的节点会话并断开现有会话；开启后允许节点重新连接。", 11, false);
-        note.setTextColor(Color.rgb(95, 103, 115));
-        panel.addView(note);
+        toggle.setOnClickListener(v -> {
+            Intent intent = new Intent(this, LanServerService.class);
+            if (getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE).getBoolean("node_running", false)) {
+                stopService(intent);
+                status.setText("主服务器状态：正在停止");
+                toggle.setText("启动本机账号主服务器");
+            } else {
+                try {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent);
+                    else startService(intent);
+                    status.setText("主服务器状态：正在启动");
+                    toggle.setText("停止本机账号主服务器");
+                } catch (Exception e) { toast("启动失败：" + e.getMessage()); }
+            }
+        });
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = dp(10);
         page.addView(panel, params);
-
-        final boolean[] enabled = new boolean[]{true};
-        requestAsync("GET", "/v1/admin/network", null, true, result -> {
-            if (result == null) {
-                status.setText("云端总开关暂不可用：请先部署最新账号服务");
-                toggle.setText("重新读取状态");
-                toggle.setEnabled(true);
-                toggle.setOnClickListener(v -> addGlobalNodePanel((LinearLayout) panel.getParent()));
-                return;
-            }
-            JSONObject network = result.optJSONObject("network");
-            if (network == null) {
-                status.setText("云端返回的节点状态格式不正确");
-                return;
-            }
-            enabled[0] = network.optBoolean("enabled", false);
-            status.setText(enabled[0] ? "状态：已开启 · 允许跨地区节点连接" : "状态：已关闭 · 节点连接已被云端阻止");
-            toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
-            toggle.setEnabled(true);
-            requestAsync("GET", "/v1/admin/network/nodes", null, true, nodesResult -> {
-                if (nodesResult != null) {
-                    JSONArray nodes = nodesResult.optJSONArray("nodes");
-                    count.setText("在线节点会话：" + (nodes == null ? 0 : nodes.length()));
-                } else {
-                    count.setText("在线节点会话：暂时无法读取");
-                }
-            });
-            toggle.setOnClickListener(v -> {
-                boolean next = !enabled[0];
-                toggle.setEnabled(false);
-                toggle.setText(next ? "正在开启…" : "正在关闭…");
-                JSONObject body = new JSONObject();
-                try { body.put("enabled", next); } catch (Exception ignored) {}
-                requestAsync("POST", "/v1/admin/network", body, true, changed -> {
-                    if (changed == null) {
-                        toggle.setEnabled(true);
-                        toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
-                        status.setText("操作未确认；云端状态可能未改变，请重新读取");
-                        return;
-                    }
-                    JSONObject updated = changed.optJSONObject("network");
-                    if (updated == null) {
-                        toggle.setEnabled(true);
-                        status.setText("服务器返回状态异常，请重新读取");
-                        return;
-                    }
-                    enabled[0] = updated.optBoolean("enabled", false);
-                    status.setText(enabled[0] ? "状态：已开启 · 允许节点重新连接" : "状态：已关闭 · 云端已阻止节点会话");
-                    toggle.setText(enabled[0] ? "关闭全部服务器节点" : "开启全部服务器节点");
-                    toggle.setEnabled(true);
-                    count.setText(enabled[0] ? "节点正在尝试重新连接" : "在线节点会话已要求断开");
-                    toast(enabled[0] ? "已开启跨地区节点网络" : "已关闭跨地区节点网络");
-                });
-            });
-        });
     }
-
     private int dp(float value) {
         return (int) (value * getResources().getDisplayMetrics().density + 0.5f);
     }
@@ -205,17 +204,17 @@ public final class MainActivity extends Activity {
         page.addView(text("Ae账号管理", 24, true), new LinearLayout.LayoutParams(-1, dp(56)));
         TextView status = text(message, 15, false);
         page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
-        page.addView(text("正在通过 HTTPS 连接云端账号服务；不需要其他用户与管理设备处于同一 Wi-Fi。", 12, false));
+        page.addView(text("正在连接管理员手机本地账号数据库。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
-            showConnecting("正在重新连接云端账号服务…");
+            showConnecting("正在重新连接本机账号主服务器…");
             loadUsers("");
         });
         page.addView(retry, new LinearLayout.LayoutParams(-1, dp(48)));
         Button logout = button("返回管理员登录");
         logout.setOnClickListener(v -> {
             adminToken = "";
-            getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
+            getPreferences(MODE_PRIVATE).edit().remove("phone_admin_token").apply();
             showLogin();
         });
         page.addView(logout, new LinearLayout.LayoutParams(-1, dp(48)));
@@ -226,38 +225,38 @@ public final class MainActivity extends Activity {
         LinearLayout page = column();
         TextView title = text("EffectCraft 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
-        page.addView(text("云端账号管理：不同地区、不同网络的用户可以注册和登录。", 14, false));
-        page.addView(text("管理设备只需能访问 Cloudflare HTTPS 服务，不需要保持开机供其他用户连接。", 13, false));
-        page.addView(text("主 APK 用户端自动加入节点网络；本管理版只负责账号管理、封禁解禁和全局节点开关。", 13, false));
+        page.addView(text("管理员手机是唯一账号主服务器，注册资料、密码摘要、登录状态和封禁记录保存在本机。", 14, false));
+        page.addView(text("请保持管理版运行并允许后台活动；本机离线时，其他手机无法向主服务器验证账号。", 13, false));
         page.addView(text("服务器地址", 13, true));
-        serverInput = field("服务器地址由管理版自动配置", false);
-        serverInput.setText(server);
+        serverInput = field("本机回环地址", false);
+        serverInput.setText(DEFAULT_SERVER);
+        serverInput.setEnabled(false);
         page.addView(serverInput);
         page.addView(text("管理员账号", 13, true));
         usernameInput = field("admin", false);
         usernameInput.setText("admin");
         page.addView(usernameInput);
         page.addView(text("管理员密码", 13, true));
-        passwordInput = field("输入云端管理员密码", true);
+        passwordInput = field("输入本机管理员密码", true);
         page.addView(passwordInput);
         loginButton = button("登录管理后台");
         page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
-        loginStatus = text("请输入云端 Worker HTTPS 地址和管理员密码", 12, false);
+        loginStatus = text("账号主服务器运行在本机，管理员账号固定为 admin。", 12, false);
         loginStatus.setTextColor(Color.rgb(95, 103, 115));
         page.addView(loginStatus, new LinearLayout.LayoutParams(-1, dp(36)));
         loginButton.setOnClickListener(v -> doAdminLogin());
-        page.addView(text("管理员账号固定为 admin。管理员密码由云端 Worker 的 ADMIN_PASSWORD 密钥设置。", 12, false));
+        page.addView(text("管理员密码由首次启动时设置；不是 GitHub 或云服务密码。", 12, false));
         setRoot(page);
     }
 
     private void doAdminLogin() {
-        server = trimServer(serverInput.getText().toString());
+        server = DEFAULT_SERVER;
         String user = usernameInput.getText().toString().trim();
         // The generated admin password contains no spaces. Ignore accidental
         // leading/trailing whitespace added by mobile clipboard or IME input.
         String pass = passwordInput.getText().toString().trim();
-        if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) {
-            toast("请填写服务器地址、管理员账号和密码");
+        if (user.isEmpty() || pass.isEmpty()) {
+            toast("请填写管理员账号和密码");
             return;
         }
         JSONObject body = new JSONObject();
@@ -266,7 +265,7 @@ public final class MainActivity extends Activity {
             loginButton.setEnabled(false);
             loginButton.setText("正在验证…");
         }
-        if (loginStatus != null) loginStatus.setText("正在连接云端 HTTPS 服务并验证管理员密码…");
+        if (loginStatus != null) loginStatus.setText("正在连接本机账号主服务器并验证管理员密码…");
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
             if (result == null) {
                 if (loginButton != null) {
@@ -278,8 +277,8 @@ public final class MainActivity extends Activity {
             }
             try {
                 adminToken = result.getString("token");
-                getPreferences(MODE_PRIVATE).edit().putString("server", server).putString("admin_token", adminToken).apply();
-                showConnecting("密码验证成功，正在读取账号列表…");
+                getPreferences(MODE_PRIVATE).edit().putString("phone_admin_token", adminToken).apply();
+                showConnecting("密码验证成功，正在读取本机账号列表…");
                 loadUsers("");
             } catch (Exception e) {
                 toast("管理员登录返回数据不正确");
@@ -307,9 +306,10 @@ public final class MainActivity extends Activity {
             HttpURLConnection c = null;
             try {
                 URL url = new URL(server + path);
-                if (!"https".equalsIgnoreCase(url.getProtocol()) ||
-                    url.getHost() == null || !url.getHost().endsWith(".workers.dev")) {
-                    throw new java.io.IOException("请填写完整的 HTTPS workers.dev 地址");
+                if (!"http".equalsIgnoreCase(url.getProtocol()) ||
+                    !("127.0.0.1".equals(url.getHost()) || "localhost".equalsIgnoreCase(url.getHost())) ||
+                    url.getPort() != LanAccountServer.PORT) {
+                    throw new java.io.IOException("账号管理只能连接本机 127.0.0.1:8787");
                 }
                 c = (HttpURLConnection) url.openConnection();
                 c.setRequestMethod(method);
@@ -342,7 +342,7 @@ public final class MainActivity extends Activity {
                     if ((code == 401 || code == 403) && auth) {
                         adminToken = "";
                         error = "管理员登录已失效：" + error;
-                        getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
+                        getPreferences(MODE_PRIVATE).edit().remove("phone_admin_token").apply();
                     }
                 }
             } catch (Exception e) {
@@ -373,11 +373,11 @@ public final class MainActivity extends Activity {
                 showLogin();
                 return;
             }
-            showUsers(result.optJSONArray("users"));
+            showUsers(result.optJSONArray("users"), result.optInt("registered_count", 0));
         });
     }
 
-    private void showUsers(JSONArray users) {
+    private void showUsers(JSONArray users, int registeredCount) {
         LinearLayout page = column();
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
@@ -388,6 +388,8 @@ public final class MainActivity extends Activity {
         top.addView(refresh);
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
+        registeredCountView = text("当前注册人数：" + registeredCount + " 人", 17, true);
+        page.addView(registeredCountView, new LinearLayout.LayoutParams(-1, dp(42)));
         addGlobalNodePanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
