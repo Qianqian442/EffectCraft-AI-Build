@@ -63,17 +63,18 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Compile and test Winlator Bionic runtime selector
+      - name: Set up Gradle for Android runtime module
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build and run Android runtime module tests
         run: |
-          mkdir -p build/windows-runtime-selector
-          javac -d build/windows-runtime-selector \
-            windows-compat/android-runtime/src/main/java/com/effectcraft/windowscompat/WindowsRuntimeSelector.java \
-            windows-compat/android-runtime/src/main/java/com/effectcraft/windowscompat/RuntimeAssetInstaller.java \
-            windows-compat/android-runtime/src/main/java/com/effectcraft/windowscompat/WinlatorBionicAssetCatalog.java \
-            windows-compat/android-runtime/src/test/java/com/effectcraft/windowscompat/WindowsRuntimeSelectorSelfTest.java \
-            windows-compat/android-runtime/src/test/java/com/effectcraft/windowscompat/RuntimeAssetInstallerSelfTest.java
-          java -ea -cp build/windows-runtime-selector com.effectcraft.windowscompat.WindowsRuntimeSelectorSelfTest
-          java -ea -cp build/windows-runtime-selector com.effectcraft.windowscompat.RuntimeAssetInstallerSelfTest
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          gradle -p windows-compat/android-runtime testDebugUnitTest assembleRelease --no-daemon
 
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
