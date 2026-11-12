@@ -15,6 +15,10 @@ VARIANTS = {
     "blur": "org.effectcraft.sapphire.compat.blur",
     "distort": "org.effectcraft.sapphire.compat.distort",
     "stylize": "org.effectcraft.sapphire.compat.stylize",
+    "glint": "org.effectcraft.sapphire.compat.glint",
+    "rays": "org.effectcraft.sapphire.compat.rays",
+    "halftone": "org.effectcraft.sapphire.compat.halftone",
+    "pixelsort": "org.effectcraft.sapphire.compat.pixelsort",
 }
 
 def main() -> None:
@@ -54,7 +58,7 @@ def main() -> None:
 
     bundle = {
         "name": "EffectCraft Sapphire-compatible effects",
-        "version": "1.3.0",
+        "version": "1.4.0",
         "format": "EffectCraft sandboxed WebAssembly effect modules",
         "desktop_binary_support": False,
         "effects": records,
