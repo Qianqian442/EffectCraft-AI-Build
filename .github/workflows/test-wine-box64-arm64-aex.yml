@@ -1,0 +1,241 @@
+name: Test EffectCraft AEX Host on ARM64 with Wine and Box64
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/windows-plugin-runtime
+    paths:
+      - 'windows-compat/aexlo-host/**'
+      - 'windows-compat/runtime-manifest.json'
+      - '.github/workflows/test-wine-box64-arm64-aex.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-wine-box64-arm64-aex-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-windows-aex-worker:
+    name: Build Windows x64 AEX host and sample plug-in
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out compatibility code
+        uses: actions/checkout@v4
+
+      - name: Check out pinned aexlo source
+        uses: actions/checkout@v4
+        with:
+          repository: potistudio/aexlo
+          ref: 32c3fe399bc7d2deb3e5f9a02c627db50d8e7ff9
+          path: third_party/aexlo
+
+      - name: Set up Rust Windows x64 toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Build Windows x64 AEX host worker
+        run: |
+          cargo build --locked --release --target x86_64-pc-windows-msvc --manifest-path windows-compat/aexlo-host/Cargo.toml
+          cargo build --release --target x86_64-pc-windows-msvc --manifest-path third_party/aexlo/examples/plugins/noise/Cargo.toml
+          if (!(Test-Path "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe")) { throw "AEX host worker missing" }
+          if (!(Test-Path "third_party/aexlo/target/x86_64-pc-windows-msvc/release/aexlo_demo_noise.dll")) { throw "AEX sample plug-in missing" }
+
+      - name: Package cross-architecture AEX smoke test inputs
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Copy-Item "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe" "artifacts/"
+          Copy-Item "third_party/aexlo/target/x86_64-pc-windows-msvc/release/aexlo_demo_noise.dll" "artifacts/sample.aex"
+          Copy-Item "third_party/aexlo/fixtures/input.png" "artifacts/input.png"
+          Copy-Item "third_party/aexlo/LICENSE" "artifacts/AEXLO-MIT-LICENSE"
+
+      - name: Upload Windows AEX test inputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Windows-x64-AEX-Test-Inputs
+          path: artifacts/*
+          retention-days: 7
+
+  run-wine-box64-on-arm64:
+    name: Run Windows AEX host through ARM64 Box64 and Proton
+    needs: build-windows-aex-worker
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - name: Check out compatibility configuration
+        uses: actions/checkout@v4
+
+      - name: Download Windows AEX test inputs
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-Windows-x64-AEX-Test-Inputs
+          path: test-inputs
+
+      - name: Check out pinned Box64 source
+        uses: actions/checkout@v4
+        with:
+          repository: ptitSeb/box64
+          ref: 4dbba1300a8d74c7c385f0d8a4e453c740622f9f
+          path: third_party/box64
+          submodules: recursive
+
+      - name: Install ARM64 Box64 build tools and guest rootfs tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build build-essential curl xz-utils zstd file python3 libx11-dev libxext-dev libxrender-dev libxrandr-dev libxfixes-dev libxi-dev libxinerama-dev libxcursor-dev libxcomposite-dev libxdamage-dev libxkbcommon-dev libgl1-mesa-dev libvulkan-dev libepoxy-dev libbsd-dev libcap-dev libdrm-dev
+
+      - name: Build native Linux ARM64 Box64
+        run: |
+          cmake -S third_party/box64 -B build/box64-linux-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DARM64=1 -DARM_DYNAREC=1 \
+            -DNO_CONF_INSTALL=ON -DNO_LIB_INSTALL=ON
+          cmake --build build/box64-linux-arm64 --parallel 2
+          test -s build/box64-linux-arm64/box64
+          file build/box64-linux-arm64/box64
+
+      - name: Download and verify Winlator Bionic ImageFS
+        run: |
+          set -euo pipefail
+          mkdir -p imagefs work
+          base="https://gitlab.com/winlator3/winlator-extra/-/raw/main/imagefs"
+          for part in 00 01 02 03; do
+            curl -fL --retry 3 "$base/imagefs.txz.$part" -o "work/imagefs.txz.$part"
+          done
+          cat work/imagefs.txz.00 work/imagefs.txz.01 work/imagefs.txz.02 work/imagefs.txz.03 > work/imagefs.txz
+          curl -fL --retry 3 "$base/imagefs.txz.sha256sum" -o work/imagefs.txz.sha256sum
+          python3 - <<'PY'
+          import hashlib, re
+          from pathlib import Path
+          data = Path("work/imagefs.txz").read_bytes()
+          sidecar = Path("work/imagefs.txz.sha256sum").read_text()
+          match = re.search(r"(?i)\b([0-9a-f]{64})\b", sidecar)
+          assert match, "ImageFS SHA-256 sidecar is invalid"
+          actual = hashlib.sha256(data).hexdigest()
+          assert actual.lower() == match.group(1).lower(), f"ImageFS SHA-256 mismatch: {actual}"
+          print(f"ImageFS verified: {len(data)} bytes")
+          PY
+          tar -xJf work/imagefs.txz -C imagefs
+
+      - name: Download and verify Proton x86-64
+        run: |
+          set -euo pipefail
+          base="https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton"
+          curl -fL --retry 3 "$base/proton-9.0-x86_64.txz" -o work/proton-9.0-x86_64.txz
+          curl -fL --retry 3 "$base/proton-9.0-x86_64.txz.sha256sum" -o work/proton-9.0-x86_64.txz.sha256sum
+          python3 - <<'PY'
+          import hashlib, re
+          from pathlib import Path
+          data = Path("work/proton-9.0-x86_64.txz").read_bytes()
+          sidecar = Path("work/proton-9.0-x86_64.txz.sha256sum").read_text()
+          match = re.search(r"(?i)\b([0-9a-f]{64})\b", sidecar)
+          assert match, "Proton SHA-256 sidecar is invalid"
+          actual = hashlib.sha256(data).hexdigest()
+          assert actual.lower() == match.group(1).lower(), f"Proton SHA-256 mismatch: {actual}"
+          print(f"Proton verified: {len(data)} bytes")
+          PY
+          mkdir -p imagefs/opt/proton-9.0-x86_64
+          tar -xJf work/proton-9.0-x86_64.txz -C imagefs/opt/proton-9.0-x86_64
+
+      - name: Download and verify x86-64 Wine prefix pattern
+        run: |
+          set -euo pipefail
+          url="https://raw.githubusercontent.com/EmuProto/Winlator-Ludashi/95224ca7db27ae133dbb1578e004b94b86ef8894/app/src/main/assets/proton-9.0-x86_64_container_pattern.tzst"
+          curl -fL --retry 3 "$url" -o work/proton-9.0-x86_64_container_pattern.tzst
+          python3 - <<'PY'
+          import hashlib
+          from pathlib import Path
+          data = Path("work/proton-9.0-x86_64_container_pattern.tzst").read_bytes()
+          expected_size = 8698674
+          expected_blob = "c7a6ed5972f6a357ed033da88b5de0dc5eaaf468"
+          assert len(data) == expected_size, f"container pattern size mismatch: {len(data)}"
+          actual_blob = hashlib.sha1(f"blob {len(data)}\0".encode() + data).hexdigest()
+          assert actual_blob == expected_blob, f"container pattern git blob mismatch: {actual_blob}"
+          print("Pinned Proton x86-64 container pattern verified.")
+          PY
+          mkdir -p container
+          tar --zstd -xf work/proton-9.0-x86_64_container_pattern.tzst -C container
+
+      - name: Install Box64 and Wine prefix common DLLs
+        run: |
+          set -euo pipefail
+          mkdir -p imagefs/usr/bin
+          install -m 0755 build/box64-linux-arm64/box64 imagefs/usr/bin/box64
+          wine_root="$PWD/imagefs/opt/proton-9.0-x86_64"
+          prefix="$PWD/container/.wine"
+          mkdir -p "$prefix/drive_c/windows/system32" "$prefix/drive_c/windows/syswow64"
+          for src in "$wine_root/lib/wine/x86_64-windows" "$wine_root/lib/wine/i386-windows"; do
+            test -d "$src"
+          done
+          find "$wine_root/lib/wine/x86_64-windows" -maxdepth 1 -type f \
+            ! -iname 'tabtip.exe' ! -iname 'icu.dll' -exec cp -n {} "$prefix/drive_c/windows/system32/" \\
+          find "$wine_root/lib/wine/i386-windows" -maxdepth 1 -type f \
+            ! -iname 'tabtip.exe' ! -iname 'icu.dll' -exec cp -n {} "$prefix/drive_c/windows/syswow64/" \\
+          test -x "$wine_root/bin/wine64"
+          file "$wine_root/bin/wine64"
+
+      - name: Smoke-test Proton under ARM64 Box64
+        env:
+          BOX64_DYNAREC: "1"
+          BOX64_NOBANNER: "1"
+          BOX64_NORCFILES: "1"
+          BOX64_LD_LIBRARY_PATH: ${{ github.workspace }}/imagefs/lib/x86_64-linux-gnu:${{ github.workspace }}/imagefs/usr/lib/x86_64-linux-gnu:${{ github.workspace }}/imagefs/usr/lib
+          WINEPREFIX: ${{ github.workspace }}/container/.wine
+          WINEDEBUG: "-all"
+          AEXLO_DISABLE_GPU: "1"
+        run: |
+          set -euo pipefail
+          imagefs="$PWD/imagefs"
+          wine64="$imagefs/opt/proton-9.0-x86_64/bin/wine64"
+          "$imagefs/usr/bin/box64" "$wine64" --version
+
+      - name: Run real Windows AEX worker and render a sample frame
+        env:
+          BOX64_DYNAREC: "1"
+          BOX64_NOBANNER: "1"
+          BOX64_NORCFILES: "1"
+          BOX64_LD_LIBRARY_PATH: ${{ github.workspace }}/imagefs/lib/x86_64-linux-gnu:${{ github.workspace }}/imagefs/usr/lib/x86_64-linux-gnu:${{ github.workspace }}/imagefs/usr/lib
+          WINEPREFIX: ${{ github.workspace }}/container/.wine
+          WINEDEBUG: "-all"
+          AEXLO_DISABLE_GPU: "1"
+        run: |
+          set -euo pipefail
+          worker="$(realpath test-inputs/effectcraft-aex-host.exe)"
+          plugin="$(realpath test-inputs/sample.aex)"
+          input="$(realpath test-inputs/input.png)"
+          output="$PWD/aex-render-output.png"
+          to_wine_path() { printf 'Z:%s' "$(realpath "$1" | sed 's,/,\\,g')"; }
+          worker_win="$(to_wine_path "$worker")"
+          plugin_win="$(to_wine_path "$plugin")"
+          input_win="$(to_wine_path "$input")"
+          output_win="$(to_wine_path "$output")"
+          python3 - <<'PY'
+          import json, os
+          payload = {
+              "cmd": "render",
+              "input_png": os.environ["INPUT_WIN"],
+              "output_png": os.environ["OUTPUT_WIN"],
+              "frame": 0,
+              "fps": 30
+          }
+          with open("worker-requests.jsonl", "w", encoding="utf-8") as handle:
+              handle.write(json.dumps(payload) + "\n")
+              handle.write(json.dumps({"cmd":"quit"}) + "\n")
+          PY
+          BOX64_DYNAREC=1 "$PWD/imagefs/usr/bin/box64" "$PWD/imagefs/opt/proton-9.0-x86_64/bin/wine64" "$worker_win" "$plugin_win" < worker-requests.jsonl > worker-output.jsonl 2> worker-error.log
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          lines = [line for line in Path("worker-output.jsonl").read_text().splitlines() if line.strip()]
+          assert len(lines) >= 2, f"expected host metadata + render response, got {lines}"
+          info, render = json.loads(lines[0]), json.loads(lines[1])
+          assert info.get("ok"), info
+          assert render.get("ok"), render
+          assert Path("aex-render-output.png").is_file(), "AEX render output PNG missing"
+          print(f"ARM64 Box64 + Proton AEX smoke test passed: {render['width']}x{render['height']}")
+          PY
