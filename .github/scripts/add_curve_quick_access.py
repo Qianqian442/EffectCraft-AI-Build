@@ -499,13 +499,13 @@ def patch_mobile_shortcut_layout(root: Path) -> None:
         ),
         (
             "pos2(footer.min.x + 8.0, footer.center().y - keyframe_height * 0.5)",
-            "pos2(footer.min.x + 228.0, footer.center().y - keyframe_height * 0.5)",
-            "Keyframe shortcut horizontal position",
+            "pos2(footer.min.x + 8.0, footer.center().y - keyframe_height * 0.5)",
+            "Keep keyframe shortcut at the left of the footer",
         ),
         (
             "pos2(footer.min.x + 128.0, footer.min.y + 3.0)",
-            "pos2(footer.min.x + 348.0, footer.min.y + 3.0)",
-            "Timeline switch label horizontal position",
+            "pos2(footer.min.x + 128.0, footer.min.y + 3.0)",
+            "Keep timeline switch label beside the keyframe shortcut",
         ),
     ]
     changed = False
