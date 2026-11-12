@@ -10,6 +10,7 @@ name = "effectcraft_p2p"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
+futures = "0.3"
 jni = "0.21.1"
 libp2p = { version = "=0.57.1", default-features = false, features = [
   "autonat", "dcutr", "dns", "ed25519", "identify", "kad", "macros",
