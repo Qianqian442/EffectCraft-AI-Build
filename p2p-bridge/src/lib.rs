@@ -867,9 +867,11 @@ fn serve_client_rpc(mut stream: TcpStream) {
     let response = match send_account_rpc(command_tx, request.clone()) {
         Ok(response) => response,
         Err(_) => {
-            // Retry once after rebuilding the closed command channel. The
-            // preferred administrator Peer ID remains part of the same request,
-            // so this cannot redirect credentials to a different discovered peer.
+            // Remove the dead sender first. ensure_client_rpc_sender then waits
+            // for run_node cleanup before rebuilding the Swarm with the same key.
+            clear_rpc_command_tx();
+            // The preferred administrator Peer ID remains in the original request,
+            // so recovery cannot redirect credentials to another discovered peer.
             match ensure_client_rpc_sender() {
                 Ok(recovered) => match send_account_rpc(recovered, request) {
                     Ok(response) => response,
