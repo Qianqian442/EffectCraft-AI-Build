@@ -542,8 +542,8 @@ def patch(root: Path) -> None:
     # desktop binaries into a one-entry temporary ZIP for the same safe import pipeline.
     workspace_manifest = root / "Cargo.toml"
     workspace_source = workspace_manifest.read_text(encoding="utf-8")
-    zip_dependency = 'zip = { version = "7.4.0", default-features = false, features = ["deflate"] }\n'
-    if zip_dependency.strip() not in workspace_source:
+    zip_dependency = 'zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }\n'
+    if not any(line.strip().startswith("zip = {") for line in workspace_source.splitlines()):
         workspace_source = once(
             workspace_source,
             'image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }\n',
@@ -559,6 +559,26 @@ def patch(root: Path) -> None:
                   "image = { workspace = true }\nzip = { workspace = true }\n",
                   "UI ZIP reader dependency")
     manifest.write_text(source, encoding="utf-8")
+
+    # Keep the checked-in lockfile aligned when the upstream build uses --locked.
+    lock_path = root / "Cargo.lock"
+    lock_source = lock_path.read_text(encoding="utf-8")
+    package_start = lock_source.find('name = "effectcraft-ui-egui"\nversion = "0.21.1"\ndependencies = [')
+    if package_start < 0:
+        raise SystemExit("Could not locate effectcraft-ui-egui in Cargo.lock")
+    package_end = lock_source.find("\n]\n", package_start)
+    if package_end < 0:
+        raise SystemExit("Could not locate effectcraft-ui-egui dependencies in Cargo.lock")
+    dependency_block = lock_source[package_start:package_end]
+    if '"zip 9.1.3"' not in dependency_block:
+        dependency_block = once(
+            dependency_block,
+            ' "web-time",',
+            ' "web-time",\n "zip 9.1.3",',
+            "Cargo.lock UI ZIP dependency",
+        )
+        lock_source = lock_source[:package_start] + dependency_block + lock_source[package_end:]
+        lock_path.write_text(lock_source, encoding="utf-8")
 
     lib = ui / "src/lib.rs"
     source = lib.read_text(encoding="utf-8")
