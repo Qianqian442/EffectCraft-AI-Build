@@ -43,7 +43,7 @@ if "file.exportAlightMotion" not in frontend:
         if old_collect not in frontend:
             raise SystemExit("Could not find Collect Files picker mapping for interop export.")
         frontend = frontend.replace(old_collect, new_collect, 1)
-    frontend = frontend.replace(new_collect, new_collect + "\\n" + "\\n".join(mapping for mapping, _ in interop_save_mappings), 1)
+    frontend = frontend.replace(new_collect, new_collect + "\n" + "\n".join(mapping for mapping, _ in interop_save_mappings), 1)
     frontend_path.write_text(frontend)
 
 if new_collect not in frontend:
