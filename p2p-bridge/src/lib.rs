@@ -278,7 +278,7 @@ async fn run_node(key: identity::Keypair) {
             event = futures::StreamExt::next(&mut swarm) => {
                 let Some(event) = event else { continue };
                 match event {
-                    SwarmEvent::Behaviour(BehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
                         result: kad::QueryResult::GetClosestPeers(Ok(result)),
                         ..
                     })) => {
@@ -297,7 +297,7 @@ async fn run_node(key: identity::Keypair) {
                             state.relay_candidates = candidate_queue.len() + attempting.len() + active_relays.len();
                         });
                     }
-                    SwarmEvent::Behaviour(BehaviourEvent::Mdns(mdns::Event::Discovered(peers))) => {
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Mdns(mdns::Event::Discovered(peers))) => {
                         for (peer_id, address) in peers {
                             swarm.behaviour_mut().kad.add_address(&peer_id, address.clone());
                             if !swarm.is_connected(&peer_id) && !attempting.contains(&peer_id) {
@@ -306,7 +306,7 @@ async fn run_node(key: identity::Keypair) {
                             }
                         }
                     }
-                    SwarmEvent::Behaviour(BehaviourEvent::RelayClient(
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::RelayClient(
                         relay::client::Event::ReservationReqAccepted { relay_peer_id, .. }
                     )) => {
                         attempting.remove(&relay_peer_id);
@@ -316,7 +316,7 @@ async fn run_node(key: identity::Keypair) {
                             state.status = "public_relays_connected".to_string();
                         });
                     }
-                    SwarmEvent::Behaviour(BehaviourEvent::Ping(event)) => {
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Ping(event)) => {
                         if event.result.is_err() && active_relays.contains(&event.peer) {
                             set_snapshot(|state| state.status = "relay_health_degraded".to_string());
                         }
