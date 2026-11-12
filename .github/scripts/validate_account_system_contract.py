@@ -135,6 +135,9 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             'data:image/jpeg;base64,',
             'AvatarTarget::Register',
             'AvatarTarget::Profile',
+            'rfd = { path = "../../vendor/rfd", default-features = false }',
+            'pollster = "0.4"',
+            'reader.limits(limits);',
         ),
     ),
     (
