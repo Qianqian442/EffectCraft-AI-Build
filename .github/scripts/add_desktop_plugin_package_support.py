@@ -446,7 +446,7 @@ def patch_toolbar(root: Path) -> None:
     old_button = '''                if popup.button("DeepSeek AI 插件 ZIP").clicked() {
                     import_ai = true;
                 }
-                popup.label("电脑版 AE 原生插件 .aex 不能直接在 Android 运行");'''
+                popup.label("电脑版 .aex/.dll/.ofx 单文件和插件 ZIP 可直接选择；安卓端会分析并匹配兼容效果");'''
     new_button = '''                if popup.button("DeepSeek AI 插件 ZIP").clicked() {
                     import_ai = true;
                 }
