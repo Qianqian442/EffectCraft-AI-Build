@@ -23,7 +23,7 @@ use std::{
 
 use egui::{pos2, Id, Order};
 use serde_json::{json, Value};
-use zip::ZipArchive;
+use zip::{ZipArchive, ZipWriter, write::SimpleFileOptions};
 
 use crate::EffectcraftApp;
 
@@ -58,25 +58,60 @@ struct ScanReport {
 /// Called when the existing effect.plugins.load picker returns a ZIP. Only desktop
 /// archives containing native plug-in binaries are diverted into the migration dialog.
 pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool {
-    if !Path::new(path).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip")) {
+    // The migration dialog calls the same original loader after its scan. While the dialog is
+    // active, let that internal call pass straight through instead of opening itself again.
+    if app.plugin_import.is_some() {
         return false;
     }
-    let Ok(file) = File::open(path) else { return false };
-    let Ok(mut archive) = ZipArchive::new(file) else { return false };
-    let mut native_count = 0usize;
-    for index in 0..archive.len() {
-        let Ok(entry) = archive.by_index(index) else { continue };
-        if entry.is_dir() { continue; }
-        let Ok(entry_name) = entry.name() else { continue };
-        let entry_name = entry_name.into_owned();
-        let name = entry_name.to_ascii_lowercase();
-        let extension = Path::new(&entry_name).extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase();
-        let is_native = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
-            || name.contains(".plugin/") || name.contains(".ofx.bundle/");
-        if is_native { native_count += 1; }
-    }
-    if native_count == 0 { return false; }
-    app.plugin_import = Some(ImportState::Confirm { path: path.to_string(), native_count });
+    let source = Path::new(path);
+    let is_zip = source.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip"));
+    let import_path = if is_zip {
+        let Ok(file) = File::open(path) else { return false };
+        let Ok(mut archive) = ZipArchive::new(file) else { return false };
+        let mut native_count = 0usize;
+        for index in 0..archive.len() {
+            let Ok(entry) = archive.by_index(index) else { continue };
+            if entry.is_dir() { continue; }
+            let Ok(entry_name) = entry.name() else { continue };
+            let entry_name = entry_name.into_owned();
+            let name = entry_name.to_ascii_lowercase();
+            let extension = Path::new(&entry_name).extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase();
+            let is_native = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
+                || name.contains(".plugin/") || name.contains(".ofx.bundle/");
+            if is_native { native_count += 1; }
+        }
+        if native_count == 0 { return false; }
+        (path.to_string(), native_count)
+    } else {
+        // Also accept a single native desktop plug-in file from the Android picker.
+        let extension = source.extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase();
+        if !["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str()) {
+            return false;
+        }
+        let Ok(metadata) = std::fs::metadata(path) else { return false };
+        if metadata.len() == 0 || metadata.len() > MAX_ENTRY_BYTES { return false; }
+        let Some(file_name) = source.file_name().map(|v| v.to_string_lossy().into_owned()) else { return false };
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_path = std::env::temp_dir().join(format!("effectcraft-desktop-plugin-{stamp}.zip"));
+        let Ok(mut input) = File::open(path) else { return false };
+        let Ok(output) = File::create(&temp_path) else { return false };
+        let mut writer = ZipWriter::new(output);
+        if writer.start_file(&file_name, SimpleFileOptions::default()).is_err()
+            || std::io::copy(&mut input, &mut writer).is_err()
+            || writer.finish().is_err()
+        {
+            let _ = std::fs::remove_file(&temp_path);
+            return false;
+        }
+        (temp_path.to_string_lossy().into_owned(), 1)
+    };
+    app.plugin_import = Some(ImportState::Confirm {
+        path: import_path.0,
+        native_count: import_path.1,
+    });
     true
 }
 
@@ -176,6 +211,33 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
     if assets > 0 { lines.push(format!("另行保存素材/源码 {assets} 个。")); }
     if matched > 0 {
         lines.push(format!("匹配到 {matched} 个内置兼容效果。它们是兼容重实现/近似效果，不是原厂 AE 插件。"));
+        if let Some(items) = value.get("desktop_native_compatibility_matches").and_then(Value::as_array) {
+            for item in items.iter().take(16) {
+                let source = item.get("source").and_then(Value::as_str).unwrap_or("电脑插件");
+                let effect = item.get("effect_name").and_then(Value::as_str).unwrap_or("安卓兼容效果");
+                lines.push(format!("{source} → {effect}"));
+            }
+            if items.len() > 16 { lines.push(format!("另有 {} 项效果映射。", items.len() - 16)); }
+        }
+    }
+    if let Some(items) = value.get("desktop_native_metadata").and_then(Value::as_array) {
+        let mut shown = 0usize;
+        for item in items.iter().take(8) {
+            let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑插件");
+            let binary_format = item.get("binary_format").and_then(Value::as_str).unwrap_or("原生文件");
+            let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("架构未知");
+            lines.push(format!("原生文件 [{file}]：{binary_format} / {architecture}"));
+            let strings = item.get("strings").and_then(Value::as_array)
+                .map(|values| values.iter().filter_map(Value::as_str).take(8).collect::<Vec<_>>().join(" | "))
+                .unwrap_or_default();
+            if !strings.is_empty() {
+                lines.push(format!("元数据/参数文字线索：{strings}"));
+            }
+            shown += 1;
+        }
+        if shown > 0 {
+            lines.push("以上字符串是静态分析线索，不代表已生成可调参数控件；需要针对对应效果继续移植。".into());
+        }
     }
     let has_rsmb_compatibility = value
         .get("desktop_native_compatibility_matches")
@@ -334,7 +396,13 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             Ok(scan) => {
                 // The existing importer validates and installs each supported module through
                 // the original sandboxed Wasmi/script routes. 100% is displayed only after it returns.
-                match crate::menus::invoke(app, ctx, "effect.plugins.load", json!({"path": path})) {
+                let temporary_archive = Path::new(&path).file_name()
+                    .is_some_and(|name| name.to_string_lossy().starts_with("effectcraft-desktop-plugin-"));
+                let import_result = crate::menus::invoke(app, ctx, "effect.plugins.load", json!({"path": path.clone()}));
+                if temporary_archive {
+                    let _ = std::fs::remove_file(&path);
+                }
+                match import_result {
                     Ok(value) => {
                         let (title, message, success) = result_summary(&scan, &value);
                         if success {
@@ -441,6 +509,26 @@ def main() -> None:
     if "zip = { workspace = true }" not in source:
         source = replace_once(source, "web-time = { workspace = true }\n", "web-time = { workspace = true }\nzip = { workspace = true }\n", "ZIP scan dependency")
         cargo_path.write_text(source, encoding="utf-8")
+
+    # The APK workflow uses Cargo.lock with --locked; record the UI crate's new ZIP dependency.
+    lock_path = root / "Cargo.lock"
+    lock_source = lock_path.read_text(encoding="utf-8")
+    package_start = lock_source.find('name = "effectcraft-ui-egui"\nversion = "0.21.1"\ndependencies = [')
+    if package_start < 0:
+        raise SystemExit("Could not locate effectcraft-ui-egui in Cargo.lock")
+    package_end = lock_source.find("\n]\n", package_start)
+    if package_end < 0:
+        raise SystemExit("Could not locate effectcraft-ui-egui dependency list in Cargo.lock")
+    dependency_block = lock_source[package_start:package_end]
+    if '"zip 9.1.3"' not in dependency_block:
+        dependency_block = replace_once(
+            dependency_block,
+            ' "web-time",',
+            ' "web-time",\n "zip 9.1.3",',
+            "Cargo.lock UI ZIP dependency",
+        )
+        lock_source = lock_source[:package_start] + dependency_block + lock_source[package_end:]
+        lock_path.write_text(lock_source, encoding="utf-8")
 
     print("Added the draggable AE migration confirmation, real ZIP scan progress, 100% completion state, and final OK result window.")
     print("Only archives containing native desktop plug-in files enter this flow; ordinary WASM/WAT ZIP imports keep the original path.")
