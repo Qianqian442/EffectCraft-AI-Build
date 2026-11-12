@@ -447,7 +447,7 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                     }
                     SwarmEvent::Behaviour(EffectCraftBehaviourEvent::AccountRpc(request_response::Event::Message { peer, message, .. })) => {
                         match message {
-                            RpcMessage::Request { request, channel } => {
+                            RpcMessage::Request { request, channel, .. } => {
                                 let response = if is_admin {
                                     forward_to_local_account_service(&request)
                                 } else {
