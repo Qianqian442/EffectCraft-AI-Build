@@ -249,7 +249,7 @@ public final class MainActivity extends Activity {
             new AlertDialog.Builder(this)
                 .setTitle("本机管理员初始密码")
                 .setMessage("这是本机账号数据库生成的唯一初始管理员密码。请先复制并妥善保存，后续登录需要使用它：\\n\\n" + password)
-                .setPositiveButton("我已保存", null)
+                .setPositiveButton("我已保存", (dialog, which) -> LanAccountServer.acknowledgeAdminPasswordSaved(this))
                 .setCancelable(false)
                 .show();
         }
