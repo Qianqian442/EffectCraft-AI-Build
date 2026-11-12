@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/build-box64-box32-backend.yml'
       - 'windows-compat/runtime-manifest.json'
+      - 'windows-compat/tools/patch_box64_obstack_compat.py'
 
 permissions:
   contents: read
@@ -43,6 +44,10 @@ jobs:
           wget -q https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -O "$RUNNER_TEMP/android-ndk.zip"
           unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
           echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
+
+      - name: Patch the missing GNU obstack header for Bionic
+        run: |
+          python3 windows-compat/tools/patch_box64_obstack_compat.py third_party/box64
 
       - name: Configure Box64 with BOX32
         run: |
