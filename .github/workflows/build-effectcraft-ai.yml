@@ -22,6 +22,7 @@ on:
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
+      - '.github/scripts/add_aep_plugin_placeholders.py'
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
@@ -386,6 +387,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_am_nv_project_import.py
           python3 build-assets/.github/scripts/add_am_nv_project_import.py
+
+      - name: Preserve unmapped original AE plug-ins and their AEP parameter data
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_aep_plugin_placeholders.py
+          python3 build-assets/.github/scripts/add_aep_plugin_placeholders.py
 
       - name: Add Simplified Chinese, Puppet shortcut, project grouping and single-item keyframes
         env:
