@@ -19,7 +19,7 @@ public final class WindowsRuntimeSelectorSelfTest {
         var x86 = WindowsRuntimeSelector.candidates(
                 WindowsRuntimeSelector.IMAGE_FILE_MACHINE_I386,
                 WindowsRuntimeSelector.Preference.AUTO);
-        check(x86.size() == 3, "x86 must have FEX, WowBox64 and Box64-BOX32 paths");
+        check(x86.size() == 4, "x86 must have FEX, WowBox64, Box64-BOX32 and Boxedwine candidates");
         check(x86.get(0).hostWorker.equals("effectcraft-aex-host-x86.exe"),
                 "x86 must select x86 AEX host");
         check(x86.get(0).hodll.equals("libwow64fex.dll"),
@@ -30,6 +30,14 @@ public final class WindowsRuntimeSelectorSelfTest {
                 WindowsRuntimeSelector.Preference.WOWBOX64_FIRST);
         check(preferred.get(0).backendId.equals("arm64ec-proton-wowbox64"),
                 "preference must move WowBox64 path first");
+        var boxedwinePreferred = WindowsRuntimeSelector.candidates(
+                WindowsRuntimeSelector.IMAGE_FILE_MACHINE_I386,
+                WindowsRuntimeSelector.Preference.BOXEDWINE_FIRST);
+        check(boxedwinePreferred.get(0).backendId.equals("boxedwine-x86-32"),
+                "Boxedwine must be selectable as a separate legacy x86 fallback");
+        check(boxedwinePreferred.get(0).confidence
+                == WindowsRuntimeSelector.Confidence.ANDROID_PORT_REQUIRED,
+                "Boxedwine must not be marked Android-ready before porting");
 
         var arm64ec = WindowsRuntimeSelector.candidates(
                 WindowsRuntimeSelector.IMAGE_FILE_MACHINE_ARM64EC,
