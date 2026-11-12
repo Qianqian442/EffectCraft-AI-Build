@@ -1,4 +1,5 @@
 name: Validate main APK workflow and P2P integration
+# Runs on changes to the Android build and its source integrator.
 
 on:
   push:
