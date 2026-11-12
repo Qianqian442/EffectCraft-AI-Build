@@ -47,9 +47,7 @@ if [[ "$APP" == "effectcraft" ]]; then
     P2P_CRATE="$ROOT/$SRC/p2p-bridge"
     [[ -f "$P2P_CRATE/Cargo.toml" ]] || fail "EffectCraft P2P crate is missing at $P2P_CRATE"
     cargo ndk -V >/dev/null 2>&1 || fail "cargo-ndk is required for the P2P native library"
-    say 3 "Building EffectCraft encrypted P2P transport (arm64-v8a)..."
-    (cd "$P2P_CRATE" && cargo ndk -t arm64-v8a -o "$ANDROID_DIR/jniLibs" build --release)
-    test -s "$ANDROID_DIR/jniLibs/arm64-v8a/libeffectcraft_p2p.so" || fail "P2P native library was not produced"
+    # Do not build the P2P .so here: build-common.sh clears jniLibs later.
 
     python3 - "$ANDROID_DIR" "$P2P_CRATE/android/NativeP2P.java" <<'PY'
 from pathlib import Path
@@ -110,6 +108,30 @@ fi
 
 '''
         source = replace_once(source, anchor, block + anchor, "P2P build insertion point")
+        builder_script.write_text(source, encoding="utf-8")
+
+    # The upstream builder removes ANDROID_DIR/jniLibs and rebuilds the main
+    # launcher library after the early Java integration block. Add P2P only after
+    # that native build, so both .so files survive into Gradle packaging.
+    source = builder_script.read_text(encoding="utf-8")
+    native_marker = "EFFECTCRAFT_PUBLIC_P2P_NATIVE_AFTER_LAUNCHER_V1"
+    native_block = r'''# EFFECTCRAFT_PUBLIC_P2P_NATIVE_AFTER_LAUNCHER_V1
+if [[ "$APP" == "effectcraft" ]]; then
+    P2P_CRATE="$ROOT/$SRC/p2p-bridge"
+    [[ -f "$P2P_CRATE/Cargo.toml" ]] || fail "EffectCraft P2P crate is missing at $P2P_CRATE"
+    say 3 "Adding EffectCraft encrypted P2P transport to Android JNI libraries (arm64-v8a)..."
+    (cd "$P2P_CRATE" && cargo ndk -t arm64-v8a -P "$MIN_SDK" -o "$ANDROID_DIR/jniLibs" build --release)
+    test -s "$ANDROID_DIR/jniLibs/arm64-v8a/libeffectcraft_p2p.so" || fail "P2P native library was not produced after the launcher build"
+fi
+
+'''
+    if native_marker not in source:
+        source = replace_once(
+            source,
+            'GRADLE_JDK="$(find_gradle_jdk || true)"',
+            native_block + 'GRADLE_JDK="$(find_gradle_jdk || true)"',
+            "P2P native library post-launcher insertion point",
+        )
         builder_script.write_text(source, encoding="utf-8")
 
     print(f"Prepared shared P2P transport at {target_crate}")
