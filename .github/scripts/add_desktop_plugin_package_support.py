@@ -185,7 +185,7 @@ fn archive_desktop_plugin_folder(s: &mut Session, folder_path: &str) -> Result<O
                 .map_err(|error| bad(CMD, format!("无法读取原插件属性：{error}")))?;
             let format = if extension == "aex" || extension == "dll" || extension == "prm" || extension == "8bf" {
                 "desktop native binary"
-            } else if extension == "ofx" || extension == "so" || extension == "dylib" || in_macos_bundle_executable {
+            } else if extension == "ofx" || extension == "so" || extension == "dylib" || in_native_bundle_executable {
                 "native shared library"
             } else { "native plugin data" };
             native.push(json!({
