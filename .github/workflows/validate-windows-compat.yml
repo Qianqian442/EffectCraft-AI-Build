@@ -7,7 +7,8 @@ on:
     paths:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/workflows/validate-windows-compat.yml'
-      - 'windows-compat/**'
+      - 'windows-compat/runtime-manifest.json'
+      - 'windows-compat/aexlo-host/**'
   workflow_dispatch:
 
 permissions:
