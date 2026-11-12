@@ -5,34 +5,43 @@
     "arm64-v8a"
   ],
   "primary_backend": {
-    "id": "winlator-wine-box64",
+    "id": "winlator-bionic-hybrid",
     "components": [
       {
-        "name": "Winlator Android runtime patterns",
-        "repository": "https://github.com/brunodev85/winlator-app",
-        "revision": "2c33741d50c5daab0521a098be5c969f63b9e887",
-        "license": "LGPL-2.1",
-        "role": "Android rootfs, Wine environment and guest-process lifecycle reference"
+        "name": "Winlator Bionic Android orchestration reference",
+        "repository": "https://github.com/EmuProto/Winlator-Ludashi",
+        "revision": "95224ca7db27ae133dbb1578e004b94b86ef8894",
+        "ref": "winlator_bionic",
+        "license": "MIT (repository license; audit bundled assets separately)",
+        "role": "Android process orchestration for standard Box64/Box86 Wine containers and Arm64EC FEXCore/WowBox64 containers"
       },
       {
         "name": "Wine",
         "repository": "https://gitlab.winehq.org/wine/wine",
         "revision": "7384c8babcaa411a0014bf223068a633d7bfa899",
         "license": "LGPL-2.1-or-later",
-        "role": "Windows API and PE/DLL loader compatibility"
+        "role": "Windows PE/DLL loader and Windows API compatibility"
       },
       {
         "name": "Box64",
         "repository": "https://github.com/ptitSeb/box64",
         "revision": "4dbba1300a8d74c7c385f0d8a4e453c740622f9f",
         "license": "MIT",
-        "role": "x86-64 Linux user-space instruction translation on ARM64"
+        "role": "x86-64 Linux user-space dynamic translation for standard Wine containers"
       },
       {
         "name": "Box86",
         "repository": "https://github.com/ptitSeb/box86",
+        "revision": "bb716a2a6576cc06da811bf55e31e2f6f03b7596",
         "license": "MIT",
-        "role": "Optional 32-bit x86 execution path; exact Wine/WoW64 configuration must be validated"
+        "role": "optional 32-bit x86 Linux user-space emulator for compatible Wine configurations"
+      },
+      {
+        "name": "FEXCore",
+        "repository": "https://github.com/FEX-Emu/FEX",
+        "revision": "ab135df091d005cc98dfddc56c3dc9c9e4bd501d",
+        "license": "MIT",
+        "role": "alternate x86-64/32-bit execution backend in supported Arm64EC Wine/Proton containers"
       }
     ]
   },
@@ -41,7 +50,7 @@
     "repository": "https://github.com/AndreRH/hangover",
     "revision": "56e385b7ff490edd281b288f420677093563560b",
     "license": "LGPL-2.1",
-    "role": "Alternative ARM64 Wine path using emulator DLLs; not yet selected for Android integration"
+    "role": "alternative ARM64 Wine emulator-DLL approach; retain only if it passes separate Android and plug-in ABI tests"
   },
   "memory_policy": {
     "application_imposed_ram_limit": false,
@@ -56,12 +65,54 @@
     "corresponding source and license notices for all LGPL/GPL components",
     "Windows PE loader smoke tests",
     "AE SDK ABI host coverage report",
-    "real sample plug-in compatibility tests"
+    "real sample plug-in compatibility tests",
+    "independent backend smoke tests: Box64 x86_64, Box86/WoW64 x86, FEXCore Arm64EC containers",
+    "PE architecture routing tests including x86-64, x86, ARM64EC and ARM64X test fixtures",
+    "separate Wine prefixes for different emulator backends; do not mix incompatible emulator DLL sets"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
     "No claim that arbitrary AE AEX plug-ins are fully hosted",
     "No claim that all AE SmartFX or AEGP suites are implemented",
     "No claim of unlimited physical memory or GPU resources"
+  ],
+  "backend_selection": [
+    {
+      "pe_machine": "0x8664",
+      "architecture": "x86-64",
+      "candidates": [
+        "Wine+Box64 x86_64 container",
+        "Arm64EC Wine/Proton + FEXCore container"
+      ]
+    },
+    {
+      "pe_machine": "0x014c",
+      "architecture": "x86",
+      "candidates": [
+        "Wine + Box86/WoW64 if supported",
+        "Arm64EC Wine/Proton + FEXCore or WowBox64 where configured"
+      ]
+    },
+    {
+      "pe_machine": "0xA641",
+      "architecture": "ARM64EC",
+      "candidates": [
+        "Arm64EC Wine/Proton container; verify PE and imported ABI before selection"
+      ]
+    },
+    {
+      "pe_machine": "0xA64E",
+      "architecture": "ARM64X",
+      "candidates": [
+        "Manual compatibility review; do not assume ARM64EC compatibility"
+      ]
+    },
+    {
+      "pe_machine": "0xAA64",
+      "architecture": "ARM64",
+      "candidates": [
+        "Native ARM64 runtime if the host/plugin ABI is actually ARM64"
+      ]
+    }
   ]
 }
