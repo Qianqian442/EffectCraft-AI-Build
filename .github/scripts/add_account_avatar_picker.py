@@ -320,7 +320,7 @@ fn encode_avatar_file(path: &std::path::Path) -> Result<(String, String), String
     }
 
 '''
-    source = replace_once(source, "    fn send(&mut self, action: Action, method: &str, path: &str, body: Value, token: Option<&str>, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n", methods + "    fn send(&mut self, action: Action, method: &str, path: &str, body: Value, token: Option<&str>, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n", "avatar picker methods")
+    source = replace_once(source, "    fn send(&mut self, action: Action, method: &str, path: &str, body: Value, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n", methods + "    fn send(&mut self, action: Action, method: &str, path: &str, body: Value, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n", "avatar picker methods")
     source = replace_once(
         source,
         "    app.account.poll(config);\n",
