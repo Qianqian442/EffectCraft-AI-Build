@@ -16,16 +16,22 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 
 def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"])
+    account_path = root / "crates/ui-egui/src/account.rs"
+    if not account_path.is_file():
+        raise SystemExit("Run add_home_lan_account_gate.py before this account patch.")
+    source = account_path.read_text(encoding="utf-8")
+    # The active product architecture uses the administrator phone as the
+    # source of truth. Never replace its P2P account API with a cloud database,
+    # even when an old CI variable is still configured.
+    if 'const DEFAULT_SERVER: &str = "p2p://auto";' in source:
+        print("P2P administrator-authority mode retained; cloud account override skipped.")
+        return
+
     api_url = os.environ.get("AE_ACCOUNT_API_URL", "").strip().rstrip("/")
     if not api_url.startswith("https://") or not api_url.endswith(".workers.dev"):
         raise SystemExit(
             "Set repository variable AE_ACCOUNT_API_URL to the deployed HTTPS workers.dev URL before building."
         )
-
-    account_path = root / "crates/ui-egui/src/account.rs"
-    if not account_path.is_file():
-        raise SystemExit("Run add_home_lan_account_gate.py before this cloud-account patch.")
-    source = account_path.read_text(encoding="utf-8")
 
     source = replace_once(
         source,
