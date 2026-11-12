@@ -37,6 +37,65 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     const MAX_ASSET_BYTES: u64 = 32 * 1024 * 1024;
     const MAX_NATIVE_BYTES: u64 = 64 * 1024 * 1024;
 
+    // Match only effects for which this APK actually ships an Android reimplementation.
+    // Probe both package paths and readable strings embedded in native plug-in binaries.
+    fn desktop_native_compatibility(source: &str, probe: &str) -> Option<Value> {
+        let token = probe.to_ascii_lowercase()
+            .replace('_', "")
+            .replace('-', "")
+            .replace(' ', "")
+            .replace('.', "");
+        let (effect_id, effect_name, note) = if token.contains("rsmb") {
+            ("org.effectcraft.compat.rsmb-motion-blur", "RSMB 风格方向模糊（非原版）",
+             "安卓方向模糊兼容效果；不是原厂 RSMB 运动矢量估算")
+        } else if token.contains("sglowaura") || token.contains("sapphireglowaura") || token.contains("glowaura") {
+            ("org.effectcraft.sapphire.compat.glow-aura", "Sapphire-style Glow Aura",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else if token.contains("sglow") || token.contains("sapphireglow") {
+            ("org.effectcraft.sapphire.compat.glow", "Sapphire-style Glow",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else if token.contains("slensflare") || token.contains("sapphirelensflare") {
+            ("org.effectcraft.sapphire.compat.lensflare", "Sapphire-style LensFlare",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else if token.contains("sblur") || token.contains("sapphireblur") {
+            ("org.effectcraft.sapphire.compat.blur", "Sapphire-style Blur",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else if token.contains("sdistort") || token.contains("sapphiredistort") {
+            ("org.effectcraft.sapphire.compat.distort", "Sapphire-style Distort",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else if token.contains("sstylize") || token.contains("sapphirestylize") {
+            ("org.effectcraft.sapphire.compat.stylize", "Sapphire-style Stylize",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else if token.contains("sglint") || token.contains("sapphireglint") {
+            ("org.effectcraft.sapphire.compat.glint", "Sapphire-style Glint",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else if token.contains("srays") || token.contains("sapphirerays") {
+            ("org.effectcraft.sapphire.compat.rays", "Sapphire-style Rays",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else if token.contains("shalftone") || token.contains("sapphirehalftone") {
+            ("org.effectcraft.sapphire.compat.halftone", "Sapphire-style HalfTone",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else if token.contains("spixelsort") || token.contains("sapphirepixelsort") {
+            ("org.effectcraft.sapphire.compat.pixelsort", "Sapphire-style PixelSort",
+             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+        } else {
+            return None;
+        };
+        Some(json!({
+            "source": source,
+            "effect_id": effect_id,
+            "effect_name": effect_name,
+            "note": note
+        }))
+    }
+
+    fn push_unique_native_mapping(mappings: &mut Vec<Value>, mapping: Value) {
+        let effect_id = mapping.get("effect_id").cloned();
+        if !mappings.iter().any(|existing| existing.get("effect_id") == effect_id.as_ref()) {
+            mappings.push(mapping);
+        }
+    }
+
     let cfg = s.config.clone()
         .ok_or_else(|| bad(CMD, "当前会话没有可写的插件目录"))?;
     let root = cfg.dir()
@@ -185,6 +244,14 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     .map_err(|error| bad(CMD, format!("无法创建素材目录：{error}")))?;
                 std::fs::write(assets_dir.join(&destination_name), &bytes)
                     .map_err(|error| bad(CMD, format!("无法保存素材 {file_name}：{error}")))?;
+                // Read common package manifests for effect identifiers when the binary filename
+                // is generic (for example, a bundle named simply "Plugin.aex").
+                if ["json", "xml", "txt", "md", "toml", "plist", "yaml", "yml"].contains(&extension.as_str()) {
+                    let metadata = String::from_utf8_lossy(&bytes);
+                    if let Some(mapping) = desktop_native_compatibility(&entry_name, &metadata) {
+                        push_unique_native_mapping(&mut native_mappings, mapping);
+                    }
+                }
                 asset_names.push(destination_name);
             }
             "native" => {
@@ -193,50 +260,13 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                 std::fs::write(originals_dir.join(&destination_name), &bytes)
                     .map_err(|error| bad(CMD, format!("无法保存原始插件 {file_name}：{error}")))?;
                 native_names.push(destination_name);
-                // Map common desktop plug-in filenames to compatible recreations
-                // already bundled with this EffectCraft APK.
-                let token = entry_name.to_ascii_lowercase()
-                    .replace('_', "")
-                    .replace('-', "")
-                    .replace(' ', "");
-                let mapping = if token.contains("rsmb") {
-                    Some(("org.effectcraft.compat.rsmb-motion-blur",
-                          "RSMB 风格方向模糊（非原版）",
-                          "安卓方向模糊兼容效果；不是原厂 RSMB 运动矢量估算"))
-                } else if token.contains("sglowaura") || token.contains("sapphireglowaura") {
-                    Some(("org.effectcraft.sapphire.compat.glow-aura",
-                          "Sapphire-style Glow Aura",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("sglow") || token.contains("sapphireglow") {
-                    Some(("org.effectcraft.sapphire.compat.glow",
-                          "Sapphire-style Glow",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("slensflare") || token.contains("sapphirelensflare") {
-                    Some(("org.effectcraft.sapphire.compat.lensflare",
-                          "Sapphire-style LensFlare",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("sblur") || token.contains("sapphireblur") {
-                    Some(("org.effectcraft.sapphire.compat.blur",
-                          "Sapphire-style Blur",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("sdistort") || token.contains("sapphiredistort") {
-                    Some(("org.effectcraft.sapphire.compat.distort",
-                          "Sapphire-style Distort",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else if token.contains("sstylize") || token.contains("sapphirestylize") {
-                    Some(("org.effectcraft.sapphire.compat.stylize",
-                          "Sapphire-style Stylize",
-                          "EffectCraft 兼容重实现；不是原厂 Sapphire"))
-                } else {
-                    None
-                };
-                if let Some((effect_id, effect_name, note)) = mapping {
-                    native_mappings.push(json!({
-                        "source": entry_name,
-                        "effect_id": effect_id,
-                        "effect_name": effect_name,
-                        "note": note
-                    }));
+                // A few AE plug-ins keep their effect identifiers in the binary rather than
+                // the filename. Probe readable embedded strings as a second, non-executing signal.
+                let embedded_text = String::from_utf8_lossy(&bytes);
+                if let Some(mapping) = desktop_native_compatibility(&entry_name, &entry_name)
+                    .or_else(|| desktop_native_compatibility(&entry_name, &embedded_text))
+                {
+                    push_unique_native_mapping(&mut native_mappings, mapping);
                 }
             }
             _ => {}
