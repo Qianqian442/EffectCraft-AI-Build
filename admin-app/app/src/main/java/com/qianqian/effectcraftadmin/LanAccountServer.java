@@ -335,7 +335,25 @@ final class LanAccountServer implements Runnable {
         String path = target.split("\\?", 2)[0];
         String query = target.contains("?") ? target.substring(target.indexOf('?') + 1) : "";
         if (method.equals("GET") && path.equals("/health")) {
-            JSONObject ok = new JSONObject(); ok.put("ok", true); ok.put("service", "EffectCraft Android Home Account Server"); return ok;
+            // Opening the database here forces SQLiteOpenHelper to create/upgrade
+            // the schema before the Activity enables administrator login.
+            try (Cursor check = db.getReadableDatabase().rawQuery("PRAGMA quick_check", null)) {
+                if (!check.moveToFirst() || !"ok".equalsIgnoreCase(check.getString(0))) {
+                    return error(503, "本机 SQLite 数据库完整性检查未通过", "", "");
+                }
+            }
+            SharedPreferences secrets = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            if (secrets.getString("admin_salt", "").isEmpty()
+                || secrets.getString("admin_hash", "").isEmpty()
+                || secrets.getString("jwt_secret", "").isEmpty()) {
+                return error(503, "本机管理员凭据尚未初始化", "", "");
+            }
+            JSONObject ok = new JSONObject();
+            ok.put("ok", true);
+            ok.put("ready", true);
+            ok.put("database", "ready");
+            ok.put("service", "EffectCraft Android Home Account Server");
+            return ok;
         }
         if (method.equals("POST") && path.equals("/v1/register")) return register(body);
         if (method.equals("POST") && path.equals("/v1/login")) return login(body);
@@ -556,6 +574,14 @@ final class LanAccountServer implements Runnable {
 
     private boolean verifyAdminPassword(String candidate) {
         SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        return verifyPassword(candidate, p.getString("admin_salt", ""), p.getString("admin_hash", ""));
+    }
+
+    /** Local diagnostic only: checks the entered value against this install's stored verifier.
+     * It never changes the password, token secret, or SQLite account database.
+     */
+    static boolean verifyAdminPasswordOnDevice(Context context, String candidate) {
+        SharedPreferences p = context.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
         return verifyPassword(candidate, p.getString("admin_salt", ""), p.getString("admin_hash", ""));
     }
 
