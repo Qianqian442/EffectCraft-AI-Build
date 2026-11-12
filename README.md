@@ -37,29 +37,38 @@ The APK workflow downloads these pinned/identified model assets, verifies their 
 
 The Android workflow targets EffectCraft 0.21.1 and applies the patches in `.github/scripts/` before compiling the arm64 APK. A successful Actions run publishes one standalone `.apk` file in the GitHub Release. Do not install files downloaded from the Actions **Artifacts** area: GitHub wraps those downloads in ZIP archives. A queued or running workflow is not a completed APK build.
 
-## Shared accounts across different Wi-Fi networks
+## Phone-hosted account authority (current target architecture)
 
-The account system uses **Cloudflare Workers + D1** as a hosted account endpoint and shared database. This avoids renting or maintaining a VPS and avoids requiring the administrator's phone to stay online as a server. Each EffectCraft phone can use its own Wi-Fi or mobile-data connection; all devices contact the same HTTPS account API, so registration, login, profile changes, bans, and unbans share one account state.
+The standalone administrator APK is the only account authority. It hosts the account API on the administrator phone and stores the SQLite account database locally. Registration, login, profile changes, password verification, bans, and unbans are evaluated against this database. A cloud VPS or hosted account database is not required.
 
-This is **not direct Wi-Fi-to-Wi-Fi bridging**. Wi-Fi only connects a phone to its local router. Phones in different homes cannot reach one another using Wi-Fi alone because routers, NAT, and firewalls isolate private networks. A publicly reachable coordination point is required for cross-network account synchronization; here that point is the existing Cloudflare account, not a user-managed VPS.
+The administrator app starts a foreground service for the phone-hosted account API. Android must show its persistent notification while the service is active. The administrator phone must remain powered, connected to a network, and allowed to run in the background for remote account operations to work.
 
-### Deployment and APK sequence
+The administrator home screen displays the total registered account count from `SELECT COUNT(*)`, including banned accounts. Pending connection/device joins are not counted as accounts. A registered account is counted once regardless of how many devices it uses.
 
-The `Deploy Ae Cloud Account API` workflow applies the D1 schema, deploys the Worker, configures its runtime secrets, checks `/health`, saves the resulting Worker URL as the repository variable `AE_ACCOUNT_API_URL`, and then starts builds for both the EffectCraft main APK and the standalone account-admin APK.
+Ordinary device connection requests are automatically admitted after the connection identity and account authorization checks pass. There is no per-device manual approval queue. This does not grant administrator rights, bypass login, or permit banned accounts to connect.
 
-Required GitHub Actions repository secrets (never put their values in source code or chat):
+## Cross-network connection order
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
-- `JWT_SECRET` (at least 32 characters)
-- `ADMIN_PASSWORD` (at least 12 characters)
+1. Same Wi-Fi: discover and connect directly to the administrator phone.
+2. Different networks: attempt peer-to-peer direct connection and NAT hole punching.
+3. If direct connection fails: discover multiple independent public Circuit Relay v2 peers, reserve more than one relay where possible, and use the healthiest available relay.
+4. If the active relay fails or becomes congested: fail over to another reserved relay. Do not duplicate every account request across all relays.
 
-Cloudflare Workers, D1, and Durable Objects have free-plan limits. This avoids VPS rental, but it is not a promise of unlimited or permanently free usage. Test the deployed endpoint on the intended networks before distributing the APKs.
+Relays are transport only. They must forward end-to-end encrypted streams and must not store account records, passwords, JWT signing secrets, or ban authority. The administrator phone remains the sole source of truth. Peer identities use per-install keys; connections are admitted automatically only after cryptographic authentication and account authorization.
 
-## Phone-to-phone P2P development status
+## Free public relay limitations and security
 
-The standalone account-admin APK now contains an opt-in local node screen. Its first milestone starts the phone-hosted account listener, advertises a stable device identity fingerprint through Android NSD/mDNS, discovers other EffectCraft nodes on the same Wi-Fi, displays their private IPv4 addresses, and performs a local health check.
+Free public relays are best-effort community infrastructure: availability, speed, geographic reach, bandwidth quotas, and uptime are not guaranteed. The client should maintain a small healthy relay set, measure reachability/latency, use bounded retries and backoff, and clearly report when no relay is reachable. Do not hard-code an unverified public relay as the only route.
 
-This is **local discovery only**. It does not yet replicate accounts between phones or connect phones across different Wi-Fi networks. The next milestones are trusted peer pairing, signed account event replication, anti-entropy synchronization, and libp2p AutoNAT/DCUtR with volunteer phone relays for networks where direct hole punching fails.
+Public relays can observe connection metadata such as peer identifiers, IP addresses visible to the relay, timing, and data volume. They must not be able to read or modify account payloads. End-to-end encryption and authentication are mandatory before cross-network relay traffic is enabled.
 
-Do not delete the existing Cloudflare secrets, D1 database, or cloud-account build configuration while this migration is in progress. The main APK account client and the administrator client still use the existing account API until P2P replication is implemented and verified. The P2P admin-node page is experimental and must not be described as production cross-network account synchronization.
+## Implementation status
+
+- Phone-hosted SQLite account service: Android-side implementation in progress.
+- QQ or WeChat as the single required registration identifier: included in the phone account API schema/validation.
+- Admin registered-account counter: sourced from the local database and refreshed while the admin account screen is open.
+- Automatic connection admission: the protocol policy is automatic after cryptographic identity and account-status checks; the relay/device protocol still needs integration.
+- LAN discovery: an existing Android NSD/mDNS discovery milestone is present.
+- P2P/NAT traversal and multi-relay Circuit Relay v2 transport: design target only; not yet implemented or proven by cross-network device testing.
+
+Do not describe the multi-relay or cross-network path as operational until the main APK and administrator APK both build, the encrypted relay transport is integrated, and real phones on different Wi-Fi/mobile networks pass the acceptance tests.
