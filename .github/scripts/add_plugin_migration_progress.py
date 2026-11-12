@@ -224,13 +224,16 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
         let mut shown = 0usize;
         for item in items.iter().take(8) {
             let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑插件");
+            let binary_format = item.get("binary_format").and_then(Value::as_str).unwrap_or("原生文件");
+            let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("架构未知");
+            lines.push(format!("原生文件 [{file}]：{binary_format} / {architecture}"));
             let strings = item.get("strings").and_then(Value::as_array)
                 .map(|values| values.iter().filter_map(Value::as_str).take(8).collect::<Vec<_>>().join(" | "))
                 .unwrap_or_default();
             if !strings.is_empty() {
-                lines.push(format!("原插件元数据/参数线索 [{file}]：{strings}"));
-                shown += 1;
+                lines.push(format!("元数据/参数文字线索：{strings}"));
             }
+            shown += 1;
         }
         if shown > 0 {
             lines.push("以上字符串是静态分析线索，不代表已生成可调参数控件；需要针对对应效果继续移植。".into());
