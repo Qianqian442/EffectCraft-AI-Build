@@ -13,6 +13,7 @@ import android.os.IBinder;
  * this node and discovers nearby EffectCraft nodes on the current Wi-Fi.
  */
 public final class LanServerService extends Service {
+    static final String SETTINGS_PREFS = "effectcraft_admin_settings";
     private static final String CHANNEL_ID = "effectcraft_p2p_node";
     private static final int NOTIFICATION_ID = 8787;
     private PeerHealthServer server;
@@ -31,6 +32,13 @@ public final class LanServerService extends Service {
             .setOngoing(true)
             .build();
         startForeground(NOTIFICATION_ID, notification);
+
+        if (!isNodeServerEnabled()) {
+            getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
+                .edit().putBoolean("node_running", false).apply();
+            stopSelf();
+            return;
+        }
 
         accountServer = new LanAccountServer(this);
         accountWorker = new Thread(accountServer, "EffectCraft-Account-Database-Server");
@@ -78,7 +86,16 @@ public final class LanServerService extends Service {
         }
     }
 
+    private boolean isNodeServerEnabled() {
+        return getSharedPreferences(SETTINGS_PREFS, MODE_PRIVATE)
+            .getBoolean("node_server_enabled", true);
+    }
+
     @Override public int onStartCommand(Intent intent, int flags, int startId) {
+        if (!isNodeServerEnabled()) {
+            stopSelf(startId);
+            return START_NOT_STICKY;
+        }
         return START_STICKY;
     }
 
