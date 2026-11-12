@@ -86,7 +86,7 @@ final class LanAccountServer implements Runnable {
 
     static String ensureAdminPassword(Context context) {
         SharedPreferences p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        if (p.contains("admin_hash")) return null;
+        if (p.contains("admin_hash")) return p.getString("admin_initial_password_pending", null);
         String password = randomPassword();
         byte[] salt = randomBytes(16);
         String hash = hashPassword(password, salt);
@@ -94,8 +94,14 @@ final class LanAccountServer implements Runnable {
             .putString("admin_salt", b64(salt))
             .putString("admin_hash", hash)
             .putString("jwt_secret", b64(randomBytes(48)))
+            .putString("admin_initial_password_pending", password)
             .apply();
         return password;
+    }
+
+    static void acknowledgeAdminPasswordSaved(Context context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().remove("admin_initial_password_pending").apply();
     }
 
     private static void ensureServerSecrets(Context context) {
