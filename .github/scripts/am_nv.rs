@@ -1108,7 +1108,7 @@ fn export_capcut(s: &Session, path: &str) -> Result<J> {
     let meta=json!({"draft_id":project_id,"draft_name":"EffectCraft Project","fps":fps,"width":w,"height":h,"duration":duration});
     archive.start_file("draft_meta_info.json",zip::write::SimpleFileOptions::default()).map_err(|e|err(format!("写入 CapCut 元数据失败：{e}")))?;
     archive.write_all(serde_json::to_string_pretty(&meta).map_err(|e|err(e.to_string()))?.as_bytes()).map_err(|e|err(format!("写入 CapCut 元数据失败：{e}")))?;
-    let bytes=archive.finish().map_err(|e|err(format!("完成 CapCut 工程包失败：{e}")))?.into_inner().into_inner();
+    let bytes=archive.finish().map_err(|e|err(format!("完成 CapCut 工程包失败：{e}")))?.into_inner();
     s.write_output(path,&bytes)?;
     let warning=if skipped.is_empty() {"基础视频、音频、文字片段已写入 CapCut 草稿包；素材仍引用原文件路径。".to_string()}
         else {format!("基础视频/音频/文字已输出；{} 个复杂图层未映射：{}。素材仍引用原文件路径。",skipped.len(),skipped.join("、"))};
