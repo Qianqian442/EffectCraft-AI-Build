@@ -15,6 +15,7 @@ on:
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
+      - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/add_chroma_key_effect.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
