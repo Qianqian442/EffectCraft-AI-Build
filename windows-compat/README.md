@@ -69,6 +69,28 @@ This is an important improvement over a Box64-only proposal. It still does not i
 
 The static PE analyser records machine type, imported DLLs, exported symbols and candidate AE entry points. It also marks ARM64EC (`0xA641`) and ARM64X (`0xA64E`) explicitly so the runtime manager can choose an appropriate container. Architecture hints are diagnostic only until a specific Wine prefix + emulator combination passes real plug-in tests.
 
+## New AE plug-in host breakthrough: aexlo
+
+A particularly relevant MIT-licensed upstream was found and pinned:
+
+- Repository: https://github.com/potistudio/aexlo
+- Revision: `32c3fe399bc7d2deb3e5f9a02c627db50d8e7ff9`
+- It is a Rust reimplementation of the After Effects plug-in runtime, not merely a PE loader. It can load a Windows `.aex`/DLL, perform setup, inspect parameters, and render frames outside Adobe After Effects.
+- Its README reports approximately 89% of its listed Effect API suites implemented, but only approximately 11% of AEGP. It is under heavy development; sequence data, masks, camera, text, composite and several project-level suites are absent or partial.
+- Its documented plug-in target is Windows x64 (plus macOS arm64); it does not support Linux. Therefore the intended Android architecture is to compile an x64 Windows worker and run it inside the selected Wine + Box64 or Arm64EC Wine/Proton + FEXCore container.
+- Upstream source: https://github.com/potistudio/aexlo
+
+This is a substantial bridge for ordinary AE effect plug-ins:
+1. Android runtime starts the selected Wine/Box64 or FEXCore backend.
+2. The backend starts the isolated Windows x64 `effectcraft-aex-host.exe`.
+3. The worker loads the AEX file through aexlo and returns parameter metadata.
+4. EffectCraft sends frame images, time and parameter updates to the worker and receives rendered frames.
+5. Each plugin runs in its own supervised worker process. A crash should not bring down the Android main process.
+
+The experimental bridge source is in `windows-compat/aexlo-host/`. It exposes a JSON-lines worker protocol with inspection and frame render operations. A separate CI job builds it for Windows x64; it is not yet connected to the production Android launcher.
+
+GPU path: the first integration should force aexlo's CPU rendering path unless a supported CUDA/driver translation path is proven. AEX-only plug-ins that rely on unsupported GPU callbacks or AEGP suites may not render. OpenFX remains a separate ABI and host.
+
 ## Work now implemented on this branch
 
 - Extend the desktop ZIP import patch to inspect PE headers without executing binaries.
