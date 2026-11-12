@@ -12,7 +12,7 @@ permissions:
 
 jobs:
   compare-signing-certificate:
-    name: Compare Build 154 and Build 156 APK certificates
+    name: Compare installed Build 163 and tested Build 189 APK certificates
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/admin-signature-check"
-          for VERSION in 154 156 162; do
+          for VERSION in 163 189; do
             curl -fL --retry 4 --retry-all-errors \
               "https://github.com/Qianqian442/EffectCraft-AI-Build/releases/download/account-admin-$VERSION/EffectCraft-Account-Admin.apk" \
               -o "$RUNNER_TEMP/admin-signature-check/build-$VERSION.apk"
@@ -47,15 +47,18 @@ jobs:
         run: |
           set -euo pipefail
           TOOL="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          for VERSION in 154 156 162; do
+          for VERSION in 163 189; do
             "$TOOL" verify --verbose --print-certs "$RUNNER_TEMP/admin-signature-check/build-$VERSION.apk" > "$RUNNER_TEMP/admin-signature-check/$VERSION.txt"
             CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/$VERSION.txt")"
             test -n "$CERT"
             echo "Build $VERSION signer SHA-256: $CERT"
           done
-          CERT154="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/154.txt")"
-          CERT156="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/156.txt")"
-          CERT162="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/162.txt")"
-          [[ "$CERT154" == "$CERT156" ]] && echo "154 -> 156: compatible update" || echo "::notice::154 -> 156: signatures differ; reinstall required"
-          [[ "$CERT156" == "$CERT162" ]] && echo "156 -> 162: compatible update" || echo "::notice::156 -> 162: signatures differ; reinstall required"
-          [[ "$CERT154" == "$CERT162" ]] && echo "154 -> 162: compatible update" || echo "::notice::154 -> 162: signatures differ; reinstall required"
+          CERT163="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/163.txt")"
+          CERT189="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/189.txt")"
+          echo "Build 163 signer SHA-256: $CERT163"
+          echo "Build 189 signer SHA-256: $CERT189"
+          if [[ "$CERT163" != "$CERT189" ]]; then
+            echo "::error::Build 189 is not signed with the installed Build 163 certificate. Do not install it over Build 163."
+            exit 1
+          fi
+          echo "Certificate match confirmed: Build 189 can be installed over Build 163 without uninstalling the app or deleting local SQLite data."
