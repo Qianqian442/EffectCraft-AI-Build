@@ -118,4 +118,4 @@ final class P2PAccountBridge {
         out.write(wire);
         out.flush();
     }
-}}
+}
