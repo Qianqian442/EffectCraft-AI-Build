@@ -206,6 +206,18 @@ Winlator's official project page and source list Wine, Box64/Box86, PRoot, Mesa,
 https://www.winlator.org/
 https://github.com/winebox64/winlator
 
+### Upgrading the emulator components to current November 12 WCP builds
+
+The runtime catalog now prefers the latest pinned Android WCP packages published on November 12, 2026, instead of the older 0.3.7/2508 assets bundled in the original Winlator Bionic source:
+
+| Component | Pinned build | Size | SHA-256 |
+|---|---|---:|---|
+| Box64 | 0.4.5-4dbba1300 | 2,901,992 bytes | `9e8e6cda22cecf6c975ebc7d4521a2e08565f4287a479e9db53fcd2850883256` |
+| FEXCore | 2611-ab135df09 | 1,104,420 bytes | `6a8ad93996147fc23d9dd4c541b84b03c19f11911db431f6d155b5b15f9a9c86` |
+| WowBox64 | 0.4.5-4dbba1300 | 910,648 bytes | `6037af9cc15bf036eb77077423806798e043cf81370dea40cc9ae17d60a09d39` |
+
+These assets are from the public [Winlator Nightly WCP releases](https://github.com/Xnick417x/winlator-nightly-wcp/releases). The downloader verifies the exact size and SHA-256 before the WCP profile installer places any file. The old 0.3.7/2508 components remain catalogued as rollback candidates until the newer packages pass the Android AEX render test.
+
 ## Full Wine/Proton runtime packaging breakthrough: Winlator Bionic
 
 A deeper source inspection found that Winlator Bionic already solves the missing **Wine runtime + private root filesystem + per-container architecture switch**. This is more useful than assembling only standalone CPU emulators.
