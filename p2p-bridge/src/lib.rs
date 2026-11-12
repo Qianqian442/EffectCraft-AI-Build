@@ -31,6 +31,8 @@ use tokio::{sync::mpsc::{self, UnboundedReceiver, UnboundedSender}, time::{inter
 const DHT_PROTOCOL: StreamProtocol = StreamProtocol::new("/ipfs/kad/1.0.0");
 const RELAY_HOP_PROTOCOL: StreamProtocol = StreamProtocol::new("/libp2p/circuit/relay/0.2.0/hop");
 const ACCOUNT_RPC_PROTOCOL: StreamProtocol = StreamProtocol::new("/effectcraft/account-api/1.0.0");
+const ADMIN_AGENT_VERSION: &str = "/effectcraft/account-admin/1.0.0";
+const CLIENT_AGENT_VERSION: &str = "/effectcraft/account-client/1.0.0";
 const ADMIN_SERVICE_KEY: &[u8] = b"/effectcraft/account-authorities/v1";
 const CLIENT_RPC_PROXY: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8789);
 const ADMIN_ACCOUNT_BRIDGE: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8788);
@@ -147,7 +149,7 @@ fn load_or_create_identity(directory: &Path) -> Result<identity::Keypair, String
     Ok(key)
 }
 
-fn build_swarm(key: identity::Keypair) -> Result<Swarm<EffectCraftBehaviour>, Box<dyn std::error::Error + Send + Sync>> {
+fn build_swarm(key: identity::Keypair, is_admin: bool) -> Result<Swarm<EffectCraftBehaviour>, Box<dyn std::error::Error + Send + Sync>> {
     let swarm = SwarmBuilder::with_existing_identity(key.clone())
         .with_tokio()
         .with_tcp(
@@ -172,7 +174,7 @@ fn build_swarm(key: identity::Keypair) -> Result<Swarm<EffectCraftBehaviour>, Bo
                 dcutr: dcutr::Behaviour::new(peer_id),
                 identify: identify::Behaviour::new(
                     identify::Config::new(
-                        "/effectcraft/p2p/1.0.0".to_string(),
+                        if is_admin { ADMIN_AGENT_VERSION } else { CLIENT_AGENT_VERSION }.to_string(),
                         keypair.public(),
                     ).with_push_listen_addr_updates(true),
                 ),
@@ -298,7 +300,7 @@ fn new_java_string(env: &mut JNIEnv, value: String) -> jstring {
 
 async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: UnboundedReceiver<RpcCommand>) {
     let local_peer_id = key.public().to_peer_id();
-    let mut swarm = match build_swarm(key) {
+    let mut swarm = match build_swarm(key, is_admin) {
         Ok(swarm) => swarm,
         Err(error) => {
             set_snapshot(|state| {
@@ -403,6 +405,14 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                             swarm.behaviour_mut().kad.add_address(&peer_id, address.clone());
                         }
 
+                        if !is_admin && info.agent_version == ADMIN_AGENT_VERSION && !admin_peers.contains(&peer_id) {
+                            admin_peers.push(peer_id);
+                            while let Some((request, reply)) = deferred_rpc.pop_front() {
+                                let request_id = swarm.behaviour_mut().account_rpc.send_request(&peer_id, request);
+                                pending_rpc.insert(request_id, reply);
+                            }
+                            set_snapshot(|state| state.status = "local_admin_account_node_discovered".to_string());
+                        }
                         let supports_relay_v2 = info.protocols.iter().any(|protocol| protocol == &RELAY_HOP_PROTOCOL);
                         if supports_relay_v2
                             && attempting.contains(&peer_id)
