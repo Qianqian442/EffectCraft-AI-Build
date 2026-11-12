@@ -45,6 +45,7 @@ jobs:
           python3 -m py_compile .github/scripts/add_desktop_plugin_package_support.py
           python3 -m py_compile windows-compat/tools/pe_audit.py
           python3 -m py_compile windows-compat/tools/patch_box64_obstack_compat.py
+          python3 -m py_compile windows-compat/tools/patch_box64_signal32_bionic.py
 
       - name: Install actionlint
         uses: actions/setup-go@v5
