@@ -171,8 +171,14 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     }
 
     fn push_unique_native_mapping(mappings: &mut Vec<Value>, mapping: Value) {
+        let source = mapping.get("source").cloned();
         let effect_id = mapping.get("effect_id").cloned();
-        if !mappings.iter().any(|existing| existing.get("effect_id") == effect_id.as_ref()) {
+        // Keep separate source files visible even when several files map to the same Android
+        // effect module (for example, a plug-in binary plus an auxiliary native component).
+        if !mappings.iter().any(|existing| {
+            existing.get("source") == source.as_ref()
+                && existing.get("effect_id") == effect_id.as_ref()
+        }) {
             mappings.push(mapping);
         }
     }
