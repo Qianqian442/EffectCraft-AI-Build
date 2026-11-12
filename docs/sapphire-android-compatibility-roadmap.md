@@ -142,7 +142,37 @@ A visual mismatch is not “fixed” by reducing the reference quality, hiding a
 
 ## 7. Project implementation status at baseline
 
-- Existing WASM compatibility pack: Glow, GlowAura, LensFlare, Blur, Distort, Stylize.
-- Existing independent mobile modules: RSMB-style directional blur and Looks Studio color grading.
+- Ten independent Sapphire-style Android WASM modules are now present in source: Glow, GlowAura, LensFlare, Blur, Distort, Stylize, Glint, Rays, HalfTone and PixelSort.
+- Existing independent mobile modules RSMB-style directional blur and Looks Studio color grading are preserved.
 - Current compatibility modules are original EffectCraft implementations. They are not original Sapphire source code and do not reproduce proprietary algorithms by declaration alone.
-- Immediate engineering work: improve renderer sampling, scale handling, optical light effects and stylize algorithms; add per-effect render tests; then expand the pack and host input API.
+- Next work: complete desktop parameter mappings, add the official radial/circular PixelSort modes, per-ray/per-channel Glint and Rays controls, Halftone shape/color controls, and implement host API v2 for optional inputs and temporal effects.
+
+## 8. Verified desktop parameter maps for the first implementation wave
+
+The following names and behaviors were checked against the official Sapphire 2026.5 OFX effect pages. These are the reference names/semantics to use in the Android adapter, not an assertion that every listed control is already implemented in the current APK.
+
+| Desktop effect | Documented controls to map | Current Android v1 implementation / gap |
+|---|---|---|
+| S_Glow | Brightness, Color, Threshold, Threshold Add Color, Glow Width, Width X, Width Y, Width Red, Width Green, Width Blue, Subpixel, Show/Combine, plus Source, optional Background and optional Mask. Mocha controls include mask blur/opacity/invert/resize/shift/dilate and combine mode. | Existing Glow implements luminance threshold, intensity and one radius. Extend to independent XY/RGB widths, per-channel threshold offset, correct source/background compositing, optional mask and glow output modes. Mocha input requires host track/mask support. |
+| S_LensFlare | Lens design, Scale Widths, Rel Heights, Blur Flare, Hotspot, Hotspot Uses Mocha, Smooth Hotspot Track, Pivot, Pivot Uses Mocha, Smooth Pivot Track, Brightness, Color, Gamma, Saturation, Occlusion input/softness/invert/use-color. | Current Android flare has a point, intensity, size and color with procedural ghosts/ring/streak. Add distinct Hotspot/Pivot and flare-design presets. Occlusion and tracked points require auxiliary input/Mocha integration; do not silently omit them from a “full parity” claim. |
+| S_Blur | Effect (Blur Color / Blur Mono), Blur Amount, Blur Rel X/Y, Brightness, Scale Opacity, Offset Darks, Mix With Source, Filter (Box/Triangle/Gauss), Subpixel, Soft Borders, Mask controls. | Current Android blur exposes radius and mix with a three-pass box approximation. The renderer needs explicit Gaussian/triangle/box selection, fractional radii, anisotropic XY widths, brightness/opacity, soft borders and optional mask before it can match desktop behavior. |
+| S_Rays | Effect (Light Rays / Dark Rays), Center, Center Uses Mocha, Smooth Center Track, Rays Length (negative permits inward rays), Length Red/Green/Blue, Reverse Rays, Rays Brightness/Darkness, Blur Rays, Blur Rays Rel X/Y, Rays Color, Rays Color Dark, Bias Outer Bright, Rays Res (Full/Half/Quarter), Threshold, Threshold Add Color, Rays From Alpha, Rays Under Source, Source Opacity, Bg Brightness, Use Source Chroma, Mask Type/Blur/Invert. | Current implementation generates positive radial beams from a single threshold map and an animated center point. It must add dark rays, reverse direction, per-channel lengths, brightness falloff, source-alpha mode, resolution quality, and masking. Mocha tracking and optional Background/Mask inputs require host API support. |
+| S_Glint | Brightness X/Y/Diag1/Diag2, Threshold, Threshold Add Color, Threshold Blur, Size, Size X/Y/Diag1/Diag2, Size Red/Green/Blue, Blur Glint, Hue Shift, Affect Alpha, Glint From Alpha, Glint Under Source, Source Opacity, Bg Brightness, Expand Borders, Mask Type and Swap Diagonals. | Current implementation has threshold, intensity, size, ray count/rotation, tint and mix. The official effect uses separately controlled horizontal, vertical and two diagonal rays, per-channel ray lengths, blur, hue shift and alpha/background compositing. Replace the generic spike model with those independent controls. |
+| S_HalfTone | Dots (Black/White), Dots Frequency, Dots Angle, Dots Rel Width, Dots Sharpness, Dots Lighten, Smooth Source, Color1, Color0, Dots Shift, Mask Use (Luma/Alpha), optional Mask. | Current implementation provides cell size, angle, contrast, softness and monochrome/CMY mode. Add black/white mode, independent dot width/sharpness/lighten, source smoothing, custom dot/background colors and pattern shift. Optional mask requires a second input. |
+| S_PixelSort | Effect (Linear/Radial/Circular), Apply Mask (Post-threshold/Pre-effect), Sort Angle, Center, Start Angle, Degrees Sorted, Inner Radius, Ray Length, Vary Radius, Circle Center, Vary Start; optional Matte; threshold and Mocha-mask controls. | Current implementation supports linear horizontal/vertical runs only, with threshold, segment bounds, sort channel, reverse and mix. Radial and circular path generation, angle ranges, variable starts and matte support are still required for desktop-like behavior. |
+
+Official reference pages (Sapphire 2026.5):
+- Glow: https://borisfx.com/documentation/sapphire/ofx/glow/
+- LensFlare: https://borisfx.com/documentation/sapphire/ofx/lensflare/
+- Blur: https://borisfx.com/documentation/sapphire/ofx/blur/
+- Rays: https://borisfx.com/documentation/sapphire/ofx/rays/
+- Glint: https://borisfx.com/documentation/sapphire/ofx/glint/
+- HalfTone: https://borisfx.com/documentation/sapphire/ofx/halftone/
+- PixelSort: https://borisfx.com/documentation/sapphire/ofx/pixelsort/
+
+## 9. Updated source status
+
+- The built-in Android WASM compatibility pack now has ten independent modules in source: Glow, GlowAura, LensFlare, Blur, Distort, Stylize, Glint, Rays, HalfTone and PixelSort.
+- The separate RSMB-style directional blur and Looks Studio remain part of the existing eight-module Android bundle alongside the original six; the APK launcher’s built-in pack is being updated to ship all ten compatibility modules plus those two existing modules.
+- The four newest renderers are first-pass Android implementations, not full Sapphire parity. In particular, PixelSort currently supports linear runs only; Rays does not yet implement dark rays or all source/mask controls; Glint does not yet expose independent ray families; HalfTone does not yet expose the complete color/shape controls.
+- The current validator is being extended to compile each of the ten modules, check the manifests and run renderer unit tests. A successful source validation is not the same as an APK build or a desktop visual-match approval.
