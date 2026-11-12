@@ -148,6 +148,9 @@ struct AndroidCurveSegment {
     prop: u64,
     first: i64,
     second: i64,
+    first_index: usize,
+    second_index: usize,
+    numeric: bool,
     open: bool,
 }
 
@@ -169,7 +172,7 @@ fn android_playhead_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSe
     let prop = layer.props.find(prop_uid)?;
     let playhead = app.session.time_of(comp_id);
 
-    for pair in prop.keys.windows(2) {
+    for (pair_index, pair) in prop.keys.windows(2).enumerate() {
         let first_comp = layer.comp_time(pair[0].time);
         let second_comp = layer.comp_time(pair[1].time);
         let lower = first_comp.min(second_comp);
@@ -181,6 +184,9 @@ fn android_playhead_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSe
                 prop: prop_uid,
                 first: pair[0].time.0,
                 second: pair[1].time.0,
+                first_index: pair_index + 1,
+                second_index: pair_index + 2,
+                numeric: !prop.value.components().is_empty(),
                 open: true,
             });
         }
@@ -203,6 +209,14 @@ fn android_curve_sample(kind: &str, x: f32) -> f32 {
         }
         // Offset looping continues the same motion while carrying each cycle's value offset.
         "loop_offset" => x,
+        "bounce" => {
+            if x < 0.72 {
+                x
+            } else {
+                let q = ((x - 0.72) / 0.28).clamp(0.0, 1.0);
+                x + (1.0 - x) * (1.0 - (-5.0 * q).exp() * (4.0 * std::f32::consts::PI * q).cos())
+            }
+        }
         _ => x,
     }
 }
@@ -216,7 +230,12 @@ fn android_curve_preview(ui: &mut egui::Ui, rect: Rect, kind: &str, color: Color
     let mut previous = plot.left_bottom();
     for i in 1..=24 {
         let x = i as f32 / 24.0;
-        let y = android_curve_sample(kind, x).clamp(0.0, 1.0);
+        let sample = android_curve_sample(kind, x);
+        let y = if kind == "bounce" {
+            ((sample - 0.0) / 1.08).clamp(0.0, 1.0)
+        } else {
+            sample.clamp(0.0, 1.0)
+        };
         let current = pos2(plot.min.x + x * plot.width(), plot.max.y - y * plot.height());
         p.line_segment([previous, current], Stroke::new(2.2, color));
         previous = current;
@@ -246,6 +265,24 @@ fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, c
             "expression": "loopOut(\"offset\")",
             "enabled": true
         })),
+        "bounce" => {
+            if !segment.numeric {
+                app.ui.status = "弹跳曲线仅适用于数值、位置、缩放等数值属性".into();
+                return;
+            }
+            let expression = format!(
+                "var a = key({}); var b = key({}); var u = clamp((time-a.time)/(b.time-a.time),0,1); var q = clamp((u-0.72)/0.28,0,1); value + (b.value-a.value)*(1-u)*(1-Math.exp(-5*q)*Math.cos(4*Math.PI*q));",
+                segment.first_index,
+                segment.second_index
+            );
+            app.session.execute("prop.setExpression", serde_json::json!({
+                "comp": segment.comp,
+                "layer": segment.layer,
+                "prop": segment.prop,
+                "expression": expression,
+                "enabled": true
+            }))
+        }
         _ => app.session.execute("keys.setSegmentCurve", serde_json::json!({
             "comp": segment.comp,
             "layer": segment.layer,
@@ -317,7 +354,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                         .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysVisible)
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                let presets: [(&str, &str, &str); 11] = [
+                                let presets: [(&str, &str, &str); 12] = [
                                     ("线性", "linear", "linear"),
                                     ("缓入", "ease_in", "ease_in"),
                                     ("缓出", "ease_out", "ease_out"),
@@ -329,6 +366,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                                     ("周期运动", "loop_cycle", "loop_cycle"),
                                     ("往返周期", "loop_pingpong", "loop_pingpong"),
                                     ("偏移周期", "loop_offset", "loop_offset"),
+                                    ("弹跳", "bounce", "bounce"),
                                 ];
                                 for (label, preview, curve) in presets {
                                     let (card, response) = ui.allocate_exact_size(vec2(88.0, 94.0), Sense::click());
