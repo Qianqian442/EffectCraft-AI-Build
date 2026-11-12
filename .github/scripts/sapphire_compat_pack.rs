@@ -594,7 +594,7 @@ fn render_halftone(pixels: &mut [[f32; 4]], width: usize, height: usize, params:
     } else {
         source.clone()
     };
-    let cell = (width.max(height) as f32 / frequency.max(1.0) * scale.max(0.0)).clamp(1.0, 128.0);
+    let cell = (width.max(height) as f32 / frequency.max(1.0)).clamp(1.0, 128.0);
     let (sn, cs) = angle.sin_cos();
     let half = cell * 0.5;
     let cx = width as f32 * 0.5;
@@ -711,9 +711,11 @@ fn render_pixelsort(pixels: &mut [[f32; 4]], width: usize, height: usize, params
 
     if pattern == 0 {
         let (sn, cs) = sort_angle.sin_cos();
-        let normal_extent = width as f32 * sn.abs() + height as f32 * cs.abs();
-        let line_count = normal_extent.ceil() as usize + 2;
-        let normal_min = -(width as f32 * sn.abs() + height as f32 * cs.abs()) * 0.5;
+        let normal_min = (-sn).min(0.0) * width.saturating_sub(1) as f32
+            + cs.min(0.0) * height.saturating_sub(1) as f32;
+        let normal_max = (-sn).max(0.0) * width.saturating_sub(1) as f32
+            + cs.max(0.0) * height.saturating_sub(1) as f32;
+        let line_count = ((normal_max - normal_min).ceil() as usize + 2).max(1);
         let mut lines: Vec<Vec<(f32, usize)>> = (0..line_count).map(|_| Vec::new()).collect();
         for y in 0..height {
             for x in 0..width {
