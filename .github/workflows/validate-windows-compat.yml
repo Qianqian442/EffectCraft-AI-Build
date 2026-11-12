@@ -82,9 +82,19 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null
           "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
 
-      - name: Build and run Android runtime module tests
+      - name: Build and run Android runtime module host tests
         run: |
           gradle -p windows-compat/android-runtime testDebugUnitTest assembleRelease --no-daemon
+
+      - name: Run native archive tests on Android x86_64 emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          profile: pixel_2
+          disable-animations: true
+          script: gradle -p windows-compat/android-runtime connectedDebugAndroidTest --no-daemon
 
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
