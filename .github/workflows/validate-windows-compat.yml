@@ -98,6 +98,36 @@ jobs:
           disable-animations: true
           script: gradle -p windows-compat/android-runtime connectedDebugAndroidTest --no-daemon
 
+      - name: Inspect current Winlator Box64EC, Box64, FEXCore and WowBox64 WCP profiles
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build/wcp-profiles
+          inspect_wcp() {
+            local name="$1" url="$2" expected_sha="$3" expected_size="$4"
+            local archive="build/wcp-profiles/$name.wcp"
+            curl -fL --retry 3 "$url" -o "$archive"
+            echo "$expected_sha  $archive" | sha256sum -c -
+            test "$(stat -c %s "$archive")" = "$expected_size"
+            echo "===== $name: verified size=$(stat -c %s "$archive") sha256=$expected_sha ====="
+            if tar --zstd -tf "$archive" >/dev/null 2>&1; then
+              tar --zstd -xOf "$archive" profile.json
+            elif tar -xJf "$archive" -O profile.json >/dev/null 2>&1; then
+              tar -xJf "$archive" -O profile.json
+            else
+              echo "Unsupported WCP archive compression: $name" >&2
+              file "$archive"
+              exit 1
+            fi
+            echo
+          }
+          base="https://github.com/The412Banner/Nightlies/releases/download/nightly-20261112-230654"
+          inspect_wcp "box64-bionic" "$base/Box64-0.4.5-78ffc6f64-Bionic.wcp" "77b0ef38b458c442dca8fc2ce9a4a14406a3ccc7781a701ef6ab199bb1abba98" "2834452"
+          inspect_wcp "box64ec-experimental" "$base/Box64EC-0.4.5-52db1d07a-experimental.wcp" "5edfbf9f3fe6ab386fd351a359c0053e09653682125f91b7840a75f08a64a138" "1056532"
+          inspect_wcp "wowbox64" "$base/WOWBox64-0.4.5-62de9d50b.wcp" "2d77fb8ea9fc00b8ae4a195b56d569cd8f43530f3a5b27fb55b5b616abe0c0db" "910864"
+          stable="https://github.com/The412Banner/Nightlies/releases/download/FEXCore-2611.1/FEXCore-2611.1.wcp"
+          inspect_wcp "fexcore-2611.1" "$stable" "60ef9fefd5a01e353d9266ddb2ad50317ff6f526bc0f42a96408651e373fa8b4" "1288148"
+
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
