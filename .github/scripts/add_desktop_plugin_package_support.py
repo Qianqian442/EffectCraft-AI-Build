@@ -96,10 +96,11 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             rva as u64
         } else {
             let mut found = None;
-            for (virtual_address, virtual_size, raw_size, raw_pointer) in sections {
-                let span = (*virtual_size).max(*raw_size);
-                let delta = rva.checked_sub(*virtual_address)?;
-                if rva >= *virtual_address && delta < span {
+            for (virtual_address, _virtual_size, raw_size, raw_pointer) in sections {
+                let Some(delta) = rva.checked_sub(*virtual_address) else { continue; };
+                // Only map bytes that are present in the file. Virtual zero-fill section tails
+                // do not have an on-disk offset and must never be parsed as PE structures.
+                if delta < *raw_size {
                     found = Some((*raw_pointer as u64).checked_add(delta as u64)?);
                     break;
                 }
@@ -146,7 +147,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         };
         let size_of_headers = pe_u32(bytes, optional + 60).unwrap_or(0);
         let subsystem = pe_u16(bytes, optional + 68).unwrap_or(0);
-        let dll_characteristics = pe_u16(bytes, optional + 70).unwrap_or(0);
+        let coff_characteristics = pe_u16(bytes, coff + 18).unwrap_or(0);
         let number_of_directories = pe_u32(bytes, number_of_directories_offset).unwrap_or(0);
         let section_table = match optional.checked_add(optional_size as usize) {
             Some(value) => value,
@@ -275,7 +276,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             "machine_name": machine_name,
             "bits": bits,
             "subsystem": subsystem_name,
-            "is_dll": (dll_characteristics & 0x2000) != 0,
+            "is_dll": (coff_characteristics & 0x2000) != 0,
             "imports": imported_dlls,
             "imported_symbols_sample": imported_symbols.iter().take(96).collect::<Vec<_>>(),
             "exports_sample": exports.iter().take(96).collect::<Vec<_>>(),
