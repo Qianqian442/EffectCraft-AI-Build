@@ -760,13 +760,13 @@ jobs:
           test -s "$LAUNCHER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_WASM_PLUGIN_AUTOLOAD_V1" "$LAUNCHER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_BUILTIN_EFFECTS_V1" "$LAUNCHER_SRC"
-          for MODULE in glow aura lensflare blur distort stylize; do
+          for MODULE in glow aura lensflare blur distort stylize glint rays halftone pixelsort; do
             test -s "source/effectcraft/assets/sapphire-compat/ec_sapphire_${MODULE}.wasm"
           done
           test -s "source/effectcraft/assets/rsmb-compat/ec_rsmb_motion_blur.wasm"
           test -s "source/effectcraft/assets/looks-compat/ec_looks_studio.wasm"
           grep -Fq '"ec_looks_studio.wasm"' "$LAUNCHER_SRC"
-          grep -Fq 'const BUILTIN_EFFECTS_VERSION: &str = "2.0.0";' "$LAUNCHER_SRC"
+          grep -Fq 'const BUILTIN_EFFECTS_VERSION: &str = "3.0.0";' "$LAUNCHER_SRC"
           echo "Verified Android startup scanning for the original WASM plug-in folder and built-in Sapphire-compatible pack."
           SAPPHIRE_STRINGS="$(mktemp)"
           while IFS= read -r ENTRY; do
@@ -778,7 +778,11 @@ jobs:
             "org.effectcraft.sapphire.compat.lensflare" \
             "org.effectcraft.sapphire.compat.blur" \
             "org.effectcraft.sapphire.compat.distort" \
-            "org.effectcraft.sapphire.compat.stylize"; do
+            "org.effectcraft.sapphire.compat.stylize" \
+            "org.effectcraft.sapphire.compat.glint" \
+            "org.effectcraft.sapphire.compat.rays" \
+            "org.effectcraft.sapphire.compat.halftone" \
+            "org.effectcraft.sapphire.compat.pixelsort"; do
             grep -Fq "$EFFECT_ID" "$SAPPHIRE_STRINGS" || {
               echo "Built-in Sapphire-compatible module missing from APK: $EFFECT_ID" >&2
               exit 1
@@ -801,7 +805,7 @@ jobs:
             }
           done
           rm -f "$SAPPHIRE_STRINGS"
-          echo "Verified six Sapphire-compatible modules, RSMB, and expanded Looks Studio 2.0 in the main APK."
+          echo "Verified ten Sapphire-compatible modules, RSMB, and expanded Looks Studio 2.0 in the main APK."
           HEADER_SRC="source/effectcraft/crates/ui-egui/src/header.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
