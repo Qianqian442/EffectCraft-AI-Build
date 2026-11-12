@@ -15,6 +15,8 @@ on:
       - '.github/scripts/add_mobile_rsmb_controls.py'
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_desktop_plugin_migration_ui.py'
+      - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/scripts/add_plugin_import_button.py'
   pull_request:
     branches: [main]
     paths:
@@ -26,6 +28,8 @@ on:
       - '.github/scripts/add_mobile_rsmb_controls.py'
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_desktop_plugin_migration_ui.py'
+      - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/scripts/add_plugin_import_button.py'
 
 permissions:
   contents: read
@@ -49,7 +53,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Validate Python build scripts
-        run: python3 -m py_compile .github/scripts/build_sapphire_compat_pack.py .github/scripts/build_rsmb_compat.py .github/scripts/build_looks_compat_pack.py .github/scripts/restore_android_plugins.py .github/scripts/add_mobile_rsmb_controls.py .github/scripts/add_desktop_plugin_package_support.py .github/scripts/add_desktop_plugin_migration_ui.py
+        run: python3 -m py_compile .github/scripts/build_sapphire_compat_pack.py .github/scripts/build_rsmb_compat.py .github/scripts/build_looks_compat_pack.py .github/scripts/restore_android_plugins.py .github/scripts/add_mobile_rsmb_controls.py .github/scripts/add_desktop_plugin_package_support.py .github/scripts/add_desktop_plugin_migration_ui.py .github/scripts/add_zip_plugin_support.py .github/scripts/add_plugin_import_button.py
 
       - name: Compile all bundled effect modules
         env:
