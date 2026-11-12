@@ -29,7 +29,7 @@ EXPECTED_FLATTENED_PARAMS = {
 PARAM_WIDTH = {"slider": 1, "angle": 1, "checkbox": 1, "popup": 1, "point": 2, "color": 4}
 
 def parse_and_validate_manifest(source_text: str, name: str, effect_id: str) -> dict:
-    pattern = rf'#\\[cfg\\({re.escape("sapphire_" + name)}\\)\\]\\s*\\{{\\s*r#"(.*?)"#\\s*\\}}'
+    pattern = rf'#\[cfg\({re.escape("sapphire_" + name)}\)\]\s*\{{\s*r#"(.*?)"#\s*\}}'
     match = re.search(pattern, source_text, re.DOTALL)
     if not match:
         raise SystemExit(f"Missing Rust manifest block for {name}")
