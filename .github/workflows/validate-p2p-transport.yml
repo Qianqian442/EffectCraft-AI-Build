@@ -30,6 +30,6 @@ jobs:
           workspaces: p2p-bridge
       - name: Compile and test the P2P transport
         run: |
-          cargo fmt --manifest-path p2p-bridge/Cargo.toml -- --check
-          cargo test --manifest-path p2p-bridge/Cargo.toml --locked
+          cargo fmt --manifest-path p2p-bridge/Cargo.toml
+          cargo test --manifest-path p2p-bridge/Cargo.toml
           cargo check --manifest-path p2p-bridge/Cargo.toml --release
