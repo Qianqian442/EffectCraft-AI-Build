@@ -19,14 +19,25 @@ fn parameter_value_json(value: &ParamValue) -> Value {
         ParamValue::Color{red,green,blue,alpha} => json!({"type":"color","red":red,"green":green,"blue":blue,"alpha":alpha}),
         ParamValue::Path(v) => json!({"type":"path","value":v}),
         ParamValue::Point3D{x,y,z} => json!({"type":"point3d","x":x,"y":y,"z":z}),
+        _ => json!({"type":"unsupported"}),
     }
 }
 
 fn parse_parameter_value(value: &Value) -> Result<ParamValue, AnyError> {
     let kind = value.get("type").and_then(Value::as_str).ok_or("parameter type is missing")?;
-    let number = |key: &str| value.get(key).and_then(Value::as_f64).ok_or_else(|| format!("parameter field {key} must be a number").into());
-    let integer = |key: &str| value.get(key).and_then(Value::as_i64).and_then(|v| i32::try_from(v).ok()).ok_or_else(|| format!("parameter field {key} must be a 32-bit integer").into());
-    let channel = |key: &str| value.get(key).and_then(Value::as_u64).and_then(|v| u8::try_from(v).ok()).ok_or_else(|| format!("colour channel {key} must be 0..255").into());
+    let invalid = |message: String| std::io::Error::new(std::io::ErrorKind::InvalidInput, message);
+    let number = |key: &str| -> Result<f64, std::io::Error> {
+        value.get(key).and_then(Value::as_f64)
+            .ok_or_else(|| invalid(format!("parameter field {key} must be a number")))
+    };
+    let integer = |key: &str| -> Result<i32, std::io::Error> {
+        value.get(key).and_then(Value::as_i64).and_then(|v| i32::try_from(v).ok())
+            .ok_or_else(|| invalid(format!("parameter field {key} must be a 32-bit integer")))
+    };
+    let channel = |key: &str| -> Result<u8, std::io::Error> {
+        value.get(key).and_then(Value::as_u64).and_then(|v| u8::try_from(v).ok())
+            .ok_or_else(|| invalid(format!("colour channel {key} must be 0..255")))
+    };
     Ok(match kind {
         "float" => ParamValue::Float(number("value")?),
         "fixed" => ParamValue::Fixed(number("value")? as f32),
