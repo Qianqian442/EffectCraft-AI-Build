@@ -945,4 +945,33 @@ mod tests {
         assert_eq!(value["peerId"], "node\\\"a");
         assert_eq!(value["lastError"], "line1 line2");
     }
+
+    #[test]
+    fn closed_client_command_channel_is_detected_for_retry() {
+        let (sender, receiver) = mpsc::unbounded_channel::<RpcCommand>();
+        drop(receiver);
+        let request = AccountRpcRequest {
+            method: "POST".to_string(),
+            path: "/v1/register".to_string(),
+            token: String::new(),
+            body: r#"{\"qq\":\"123456789\"}"#.to_string(),
+            preferred_peer_id: "12D3KooWTestPinnedAdminPeerId123456789".to_string(),
+        };
+        assert!(send_account_rpc(sender, request).is_err());
+    }
+
+    #[test]
+    fn account_rpc_request_keeps_the_pinned_admin_identity() {
+        let request = AccountRpcRequest {
+            method: "POST".to_string(),
+            path: "/v1/login".to_string(),
+            token: String::new(),
+            body: r#"{\"identifier\":\"123456789\",\"password\":\"not-logged\"}"#.to_string(),
+            preferred_peer_id: "12D3KooWTestPinnedAdminPeerId123456789".to_string(),
+        };
+        let encoded = serde_json::to_string(&request).expect("request serializes");
+        let decoded: AccountRpcRequest = serde_json::from_str(&encoded).expect("request deserializes");
+        assert_eq!(decoded.preferred_peer_id, request.preferred_peer_id);
+        assert_eq!(decoded.path, "/v1/login");
+    }
 }
