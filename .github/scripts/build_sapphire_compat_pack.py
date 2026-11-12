@@ -54,7 +54,7 @@ def main() -> None:
 
     bundle = {
         "name": "EffectCraft Sapphire-compatible effects",
-        "version": "1.2.0",
+        "version": "1.3.0",
         "format": "EffectCraft sandboxed WebAssembly effect modules",
         "desktop_binary_support": False,
         "effects": records,
