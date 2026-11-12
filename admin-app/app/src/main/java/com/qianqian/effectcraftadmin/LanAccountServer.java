@@ -137,7 +137,7 @@ final class LanAccountServer implements Runnable {
             }
             try (ServerSocket server = new ServerSocket()) {
                 server.setReuseAddress(true);
-                server.bind(new InetSocketAddress(InetAddress.getByName(currentIp), PORT), 32);
+                server.bind(new InetSocketAddress(PORT), 32); // Loopback for the admin UI plus filtered LAN clients.
                 server.setSoTimeout(2500);
                 listener = server;
                 boundIp = currentIp;
