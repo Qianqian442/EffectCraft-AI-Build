@@ -19,7 +19,13 @@ final class P2PAccountBridge {
     private static final String TAG = "EffectCraftAccountP2P";
     private static final int PORT = 8788;
     private static final int MAX_PACKET = 1_200_000;
-    private static final ExecutorService clients = Executors.newFixedThreadPool(6);
+    // The foreground Service keeps the process alive; bridge workers should
+    // not keep a stopped service or the Robolectric test worker alive.
+    private static final ExecutorService clients = Executors.newFixedThreadPool(6, runnable -> {
+        Thread thread = new Thread(runnable, "EffectCraft-P2P-Account-Bridge-Client");
+        thread.setDaemon(true);
+        return thread;
+    });
     private static volatile LanAccountServer accountServer;
     private static volatile ServerSocket listenerSocket;
     private static volatile boolean started;
