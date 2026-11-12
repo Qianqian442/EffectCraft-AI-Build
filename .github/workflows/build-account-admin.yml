@@ -49,8 +49,6 @@ jobs:
           key: effectcraft-admin-debug-signing-v1-${{ github.repository_id }}
 
       - name: Build admin APK
-        env:
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
         working-directory: admin-app
         run: |
           gradle --no-daemon :app:assembleDebug
