@@ -1,73 +1,81 @@
-# Cross-network phone node network
+# Administrator-phone account authority and multi-relay network
 
-Status: implementation specification; not a claim that cross-network peer transport is already working.
+Status: implementation specification. This file is not a claim that cross-network relay transport is already operational.
 
-## Product behavior
+## Authority and roles
 
-- Two installable Android packages remain separate: the EffectCraft node client and the administrator app.
-- A node joins after the user installs the APK, grants Android-required permissions, and signs in. It then registers a stable device identity and reconnects when Android and the network allow it.
-- Nodes in different homes, cities, Wi-Fi networks, and mobile carriers must be able to exchange authenticated control events.
-- The administrator app has one global network switch. OFF prevents node sessions and relayed peer traffic; ON permits authenticated nodes to reconnect.
-- Account registration/login and ban/unban remain authoritative in the existing Cloudflare Worker + D1 service. Existing account data and secrets must not be replaced during this work.
+- The standalone administrator APK is the only account authority and the only account database host.
+- The administrator phone stores account records in its private SQLite database. Registration, login, profile updates, password verification, bans, and unbans are committed locally on that phone.
+- The EffectCraft main APK is an ordinary account client and network peer. It must not become an alternate account authority.
+- Public relays are transport-only. They do not store accounts, passwords, tokens, ban records, or administrator secrets.
+- No paid VPS, hosted database, or cloud account API is required for the target design.
 
-## Network topology
+## Connection order
 
-1. **Control plane:** the existing Cloudflare Worker authenticates users/admins and stores authoritative account state in D1.
-2. **Presence and signaling:** authenticated node sessions connect outbound over TLS WebSocket to the Worker. This works behind ordinary home routers and carrier NAT because phones initiate the connection.
-3. **Peer transport:** attempt a mutually authenticated direct peer connection where supported. Direct connectivity is an optimization, not a requirement.
-4. **Relay fallback:** when NAT/firewall policy prevents direct connectivity, relay only signed, size-limited peer messages through a public relay endpoint. Never assume mDNS or private IPv4 addresses are routable across the public internet.
-5. **Android lifecycle:** run only after explicit opt-in, use a foreground service and visible notification while active, reconnect with bounded exponential backoff, and respect user/system stop controls and battery restrictions.
+1. Same Wi-Fi: discover the admin phone using Android NSD/mDNS and try a direct LAN connection.
+2. Different networks: attempt peer-to-peer direct connectivity and NAT hole punching.
+3. If direct connectivity fails: discover multiple independent public libp2p Circuit Relay v2 peers and request reservations on more than one relay when available.
+4. Choose a healthy relay based on recent reachability, connection latency, and congestion. Keep at least one alternate reservation where possible.
+5. On timeout, relay refusal, disconnect, or congestion, fail over to another reserved relay with bounded exponential retry.
+6. If no relay is reachable, fail closed for account operations and show a clear connection-unavailable state. Do not silently authenticate from stale account state.
 
-## Global switch semantics
+Use relays as alternatives, not as replicated sources of truth. A single account request should normally use one active route, with retry/idempotency protection if the route changes. Do not broadcast password-bearing account requests to every relay.
 
-- Only an authenticated administrator can change the switch.
-- The server-side state is authoritative; a local preference is only a display/cache value.
-- OFF is enforced server-side: reject new node WebSocket sessions, close existing sessions, and reject relay messages. Do not rely on a best-effort push alone.
-- ON permits nodes to reconnect automatically. It does not silently restart an Android service that the user or Android has explicitly stopped.
-- Every state change is timestamped and broadcast to connected nodes. Clients must also read the current state after reconnecting to avoid missing events.
+## Automatic connection admission
 
-## Identity and message security
+- Ordinary user devices do not enter a manual approval queue. Connection admission is automatic after device cryptographic identity and account authorization checks pass.
+- Every installation has a device key pair. The private key remains on that device, preferably protected by Android Keystore.
+- The peer handshake authenticates the device key and binds it to an authenticated EffectCraft account.
+- A banned or expired account is rejected by the administrator phone even if its device was previously admitted.
+- Automatic admission never grants administrator permissions. Only the local administrator credential on the administrator phone can perform user management or change network controls.
+- Reject unknown identity keys, invalid signatures, expired/replayed messages, malformed frames, oversized payloads, and unauthenticated requests.
 
-- Give each installation a stable public/private key pair backed by Android Keystore where available. The private key never leaves the device.
-- Bind the public key to the signed-in account through an authenticated pairing/registration flow. Require administrator approval or a clear trusted-device approval step before a node can issue privileged actions.
-- Sign every peer control message; include protocol version, sender identity, recipient, message ID, creation time, expiry, and event type.
-- Reject replayed, expired, oversized, malformed, untrusted, or unauthorized messages. Use TLS in transit; never transmit passwords or JWT secrets between peers.
-- Ban/unban decisions are written to D1 first. Peers receive notifications as hints and must verify authoritative account state with the Worker. A peer must never be able to override D1 ban state.
+## Relay selection and failover
 
-## Delivery milestones
+- Discover candidates dynamically; do not rely on one hard-coded public relay address.
+- Use Circuit Relay v2 reservations and keepalives. Attempt a small bounded number of reservations concurrently (target up to 3; actual count depends on candidate availability and relay quotas).
+- Track per-relay last success, connect latency, reservation expiry, disconnect reason, and recent failure rate.
+- Prefer a healthy low-latency relay, not necessarily the geographically nearest advertised node.
+- Keep one alternate reservation warm where the public relay permits it; on active relay failure, switch without requiring the user to reconfigure the app.
+- Add cooldowns for failing relays, bounded retries, jitter, and a cap on concurrent relay attempts to avoid hammering public infrastructure.
+- Never use a public relay for account data unless the underlying peer transport is end-to-end encrypted and peer-authenticated.
+- Do not duplicate account operations over multiple relays. Use request IDs and idempotent server operations to prevent duplicate registration or ban actions if a connection drops mid-request.
 
-1. Preserve and verify current account API, D1 schema, admin login, and both existing APK build workflows.
-2. Implement server-authoritative global network state and authenticated node presence/session APIs.
-3. Add Android node identity registration, pairing/trust, foreground lifecycle, and reconnect behavior.
-4. Add signed event relay with recipient authorization, replay protection, rate limits, and bounded payloads.
-5. Add direct peer transport/NAT traversal as an optimization; retain relay fallback for restrictive networks.
-6. Add the single administrator ON/OFF control, showing the server-confirmed state and handling failed requests safely.
-7. Build both APKs and validate with devices on genuinely different networks (for example, home Wi-Fi versus mobile data), including OFF/ON, reconnect, ban/unban, and app/process restart tests.
+## Encryption and privacy
+
+- End-to-end authenticated transport encryption is mandatory. Use libp2p's secure transport (Noise or another supported authenticated secure channel) on top of Circuit Relay v2.
+- The relay must only forward the encrypted peer stream. It must not terminate account-level encryption or receive plaintext passwords/JWT signing material.
+- The relay may still observe peer IDs, network addresses, timing, and byte counts; tell users that relay use is not anonymous.
+- Do not expose the current plaintext HTTP account listener to the public internet or route it directly through an unencrypted generic relay.
+- LAN-only development endpoints must remain restricted to the local subnet until the encrypted peer transport is in place.
+
+## Administrator phone lifecycle
+
+- The admin app starts the phone-hosted account server only while the administrator has enabled it and Android permits the foreground service.
+- Show the ongoing foreground-service notification and a visible ON/OFF control.
+- Recommend keeping the admin phone on power and disabling battery optimization for the admin app; do not bypass Android permission or foreground-service requirements.
+- When the admin phone is offline, all remote account changes and authoritative login/ban verification are unavailable. Clients should fail closed instead of treating the last-known state as authoritative.
+- The admin app displays `当前注册人数` from the local database count query. Banned accounts remain included; pending device connections are not counted; one account counts once even across multiple devices.
+
+## Build and verification milestones
+
+1. Complete and compile-check the phone-hosted SQLite account API, admin authentication, and migrations (including QQ-only or WeChat-only registration).
+2. Start/stop the account server through a visible Android foreground service; confirm it survives ordinary activity navigation and respects explicit user stop.
+3. Integrate main APK device-key creation and discovery without a separate manual node-enrollment form.
+4. Integrate libp2p secure peer transport, direct connection/NAT traversal, and Circuit Relay v2.
+5. Implement dynamic discovery of multiple relay candidates, concurrent bounded reservation attempts, health scoring, and automatic failover.
+6. Bind authenticated peer requests to the admin-phone account API; automatically admit valid ordinary devices, but always enforce account login and ban status.
+7. Build both APKs and perform real-device tests across distinct Wi-Fi networks and mobile data, including relay failure/failover, admin phone offline, app restart, ban/unban, and count refresh.
 
 ## Acceptance tests
 
-- Two phones on different networks can authenticate and exchange a signed test event through the relay.
-- The same test succeeds after changing one phone from Wi-Fi to mobile data.
-- Turning the global switch OFF rejects new sessions and stops relay delivery to existing sessions.
-- Turning it ON allows eligible nodes to reconnect without manual IP, SSH, or port-forwarding configuration.
-- A banned account remains blocked after reconnect and cannot use peer messaging to bypass the ban.
-- A lost connection does not lose authoritative state; the client reconciles from the Worker on reconnect.
-- Android-required foreground-service/notification behavior is visible and user-controllable.
-- Both APKs install and update with stable signing; no release is marked complete until artifacts are actual APK files and the cross-network tests pass.
-
-## Main APK automatic node participation (user requirement, 2026-11-11)
-
-The EffectCraft main APK is itself the node client. There is no third node APK and no separate in-app node enrollment/registration screen. After installation and first launch, the app should create a per-install node identity locally and automatically attempt to join the node network. This node identity is distinct from the user's EffectCraft account registration/login.
-
-Do not present a separate "register this phone as a node" flow, do not ask the user to enter a node/server address, and do not require manual peer pairing for ordinary node participation. The network protocol must still authenticate devices cryptographically in the background (for example, ephemeral or provisioned device keys) and enforce authorization server-side; "no manual node registration" does not mean unauthenticated public relay access.
-
-Android system rules remain mandatory: use the required foreground-service notification and runtime permission prompts where the OS requires them. Do not hide node activity, bypass system permission dialogs, or restart a service after the user/system explicitly stops it. Once the user launches the app and required Android system conditions are satisfied, node startup and reconnect should be automatic.
-
-The standalone administrator APK remains the only separate management app and owns the global network ON/OFF control. OFF must stop node sessions and relayed traffic; ON permits eligible main-app nodes to reconnect automatically. Keep the existing account registration/login requirement separate from node enrollment: this change removes only the separate node-registration flow, not the account system.
-
-## Operational constraints
-
-- Wi-Fi alone cannot connect private devices across unrelated routers. A public coordination/relay endpoint is required.
-- Cloudflare Workers/D1/DO free plans have quotas and are not guaranteed unlimited or permanent. Relay bandwidth and connection limits must be measured before broad distribution.
-- Do not place Cloudflare tokens, JWT secrets, admin passwords, signing keys, or private peer keys in source, APK assets, issue comments, or chat.
-- Do not claim nationwide availability until the intended Chinese carrier/network routes have been tested. Some networks may block or impair particular public endpoints.
+- Same-Wi-Fi account registration/login succeeds without a public server.
+- The admin phone shows the correct total registered-account count; it increments on successful registration and includes banned accounts.
+- A QQ-only registration succeeds; a WeChat-only registration succeeds; an empty QQ+WeChat registration is rejected.
+- A normal authenticated, non-banned device joins automatically without a manual admin approval prompt.
+- An unauthenticated device, invalid device key, or banned account is rejected.
+- Two or more independent public relay peers can be reserved when available; if one fails, the client uses a different healthy relay.
+- Traffic through a public relay is end-to-end encrypted; a relay cannot read account credentials or alter account commands.
+- The same account remains authoritative only on the administrator phone; no relay or user node can create, ban, or unban accounts.
+- If the administrator phone loses power or connectivity, remote verification is unavailable and clients fail closed.
+- No cross-network feature is marked complete until tests run on real devices and record actual relay IDs, selected path, and failover results.
