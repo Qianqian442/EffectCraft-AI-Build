@@ -1,0 +1,129 @@
+name: Build EffectCraft Windows Compatibility Runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/windows-plugin-runtime
+    paths:
+      - 'windows-compat/**'
+      - '.github/workflows/build-windows-compat-runtime.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  box64-android:
+    name: Build Android ARM64 Box64 backend
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    steps:
+      - name: Check out EffectCraft compatibility configuration
+        uses: actions/checkout@v4
+
+      - name: Check out pinned Box64 source
+        uses: actions/checkout@v4
+        with:
+          repository: ptitSeb/box64
+          ref: 4dbba1300a8d74c7c385f0d8a4e453c740622f9f
+          path: third_party/box64
+          submodules: recursive
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake make ninja-build python3 wget unzip file zstd
+
+      - name: Install Android NDK r26b
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -O "$RUNNER_TEMP/android-ndk.zip"
+          unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
+
+      - name: Configure Box64 for Android Bionic ARM64
+        run: |
+          NDK_COMPILER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android31-clang"
+          cmake -S third_party/box64 -B build/box64-android-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="$NDK_COMPILER" \
+            -DANDROID=1 -DARM64=1 -DARM_DYNAREC=1 -DBAD_SIGNAL=1 \
+            -DNO_CONF_INSTALL=ON -DNO_LIB_INSTALL=ON \
+            -DCMAKE_INSTALL_PREFIX="$PWD/stage/box64"
+
+      - name: Compile Box64
+        run: |
+          cmake --build build/box64-android-arm64 --parallel 2
+          test -s build/box64-android-arm64/box64
+          file build/box64-android-arm64/box64
+          mkdir -p stage/box64/usr/bin
+          install -m 0755 build/box64-android-arm64/box64 stage/box64/usr/bin/box64
+          cp third_party/box64/LICENSE stage/box64/BOX64-LICENSE
+
+      - name: Package Box64 Android ARM64 runtime component
+        run: |
+          mkdir -p artifacts
+          tar --zstd -cf artifacts/box64-android-arm64.tar.zst -C stage/box64 .
+          sha256sum artifacts/box64-android-arm64.tar.zst > artifacts/box64-android-arm64.tar.zst.sha256
+
+      - name: Upload Box64 component
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Box64-Android-ARM64
+          path: artifacts/*
+          retention-days: 30
+
+  fexcore-arm64ec:
+    name: Build FEXCore Arm64EC and WoW64 backends
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 120
+    steps:
+      - name: Check out EffectCraft compatibility configuration
+        uses: actions/checkout@v4
+
+      - name: Check out pinned FEX source
+        uses: actions/checkout@v4
+        with:
+          repository: FEX-Emu/FEX
+          ref: ab135df091d005cc98dfddc56c3dc9c9e4bd501d
+          path: third_party/FEX
+          submodules: recursive
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build 64-bit Arm64EC FEXCore DLL
+        working-directory: third_party/FEX
+        run: |
+          mkdir -p ../../build-fex/arm64ec
+          cd ../../build-fex/arm64ec
+          ../../third_party/FEX/Data/nix/cmake_configure_woa64.sh ../../third_party/FEX -G Ninja -DTUNE_CPU=none
+          ninja
+
+      - name: Build 32-bit WoW64 FEXCore DLL
+        working-directory: third_party/FEX
+        run: |
+          mkdir -p ../../build-fex/wow64
+          cd ../../build-fex/wow64
+          ../../third_party/FEX/Data/nix/cmake_configure_woa32.sh ../../third_party/FEX -G Ninja -DTUNE_CPU=none
+          ninja
+
+      - name: Package FEXCore runtime components
+        run: |
+          set -euo pipefail
+          test -s build-fex/arm64ec/Bin/libarm64ecfex.dll
+          test -s build-fex/wow64/Bin/libwow64fex.dll
+          mkdir -p artifacts/fexcore/system32
+          install -m 0644 build-fex/arm64ec/Bin/libarm64ecfex.dll artifacts/fexcore/system32/
+          install -m 0644 build-fex/wow64/Bin/libwow64fex.dll artifacts/fexcore/system32/
+          cp third_party/FEX/LICENSE artifacts/fexcore/FEX-LICENSE
+          tar --zstd -cf artifacts/fexcore-arm64ec.tar.zst -C artifacts/fexcore .
+          sha256sum artifacts/fexcore-arm64ec.tar.zst > artifacts/fexcore-arm64ec.tar.zst.sha256
+
+      - name: Upload FEXCore components
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-FEXCore-Arm64EC-WoW64
+          path: artifacts/fexcore-arm64ec.tar.zst*
+          retention-days: 30
