@@ -101,6 +101,29 @@ A separate Android NDK CI build now compiles this optional variant with `BOX32=O
 
 Upstream source and CMake options: https://github.com/ptitSeb/box64
 
+### Boxedwine as a 16/32-bit Windows fallback candidate
+
+Another useful open-source fallback has been inspected:
+
+- Repository: https://github.com/danoon2/Boxedwine
+- License: GPL-2.0 (the upstream README says GPL v2; source headers use GPL-2.0-or-later in some newer files, so perform file-level license review).
+- It combines an x86 CPU emulator/JIT, emulated Linux kernel interfaces and a 32-bit Wine environment.
+- Its upstream README reports 16/32-bit Windows program support and native ARMv8 JIT; its CPU emulation documentation describes the portable interpreter and ARMv8 JIT.
+- The tree includes SDL2's Android support code, but the Boxedwine application itself currently documents Windows, macOS, Linux and Emscripten build targets; there is no ready-made Android application build target in the upstream build guide.
+
+Why it may help EffectCraft:
+- It is a second independent x86 execution stack for legacy 32-bit Windows plug-ins.
+- It brings an x86 Linux/Wine environment instead of requiring Android to provide an x86 Linux userspace.
+- It may help test older 32-bit PE modules that do not work in a selected Wine/Box64/WoW64 container.
+
+Why it is not the primary path:
+- It is aimed at 16/32-bit applications, not 64-bit AEX.
+- It still needs the same AE plug-in host ABI; it does not replace aexlo.
+- The app needs an Android SDL2/NDK port and private rootfs integration; this is not yet done.
+- GPL-2.0 has copyleft/source-distribution implications. Keep it in a developer-only experiment until license and distribution consequences are reviewed.
+
+Conclusion: retain Boxedwine as an independent 32-bit compatibility experiment, not as a replacement for the Winlator Bionic Proton + Box64/FEXCore architecture.
+
 ### QEMU linux-user as a third CPU backend
 
 Pinned source reference: https://www.qemu.org/docs/master/user/
