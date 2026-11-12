@@ -9,6 +9,7 @@ on:
       - '.github/workflows/build-box64-box32-backend.yml'
       - 'windows-compat/runtime-manifest.json'
       - 'windows-compat/tools/patch_box64_obstack_compat.py'
+      - 'windows-compat/tools/patch_box64_signal32_bionic.py'
 
 permissions:
   contents: read
@@ -45,9 +46,10 @@ jobs:
           unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
           echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
 
-      - name: Patch the missing GNU obstack header for Bionic
+      - name: Patch missing GNU obstack header and Bionic signal32 macros
         run: |
           python3 windows-compat/tools/patch_box64_obstack_compat.py third_party/box64
+          python3 windows-compat/tools/patch_box64_signal32_bionic.py third_party/box64
 
       - name: Verify obstack ABI structure layout for Android AArch64
         run: |
