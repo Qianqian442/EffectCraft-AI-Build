@@ -2,7 +2,7 @@
 //! The importer lives behind the existing File > Import > EffectCraft Project command.
 
 use std::collections::HashMap;
-use std::io::Read;
+use std::io::{Cursor, Read, Write};
 use std::path::{Component, Path, PathBuf};
 
 use effectcraft_color::Label;
@@ -14,7 +14,8 @@ use effectcraft_project::{
 use effectcraft_time::{FrameRate, Tick};
 use serde_json::{Value as J, json};
 
-use crate::{EngineError, Result, Session};
+use crate::{EngineError, Result, Session, cmd};
+use super::{CommandSpec, always};
 
 const MAX_PROJECT_BYTES: usize = 128 * 1024 * 1024;
 const MAX_ZIP_ENTRIES: usize = 10_000;
@@ -823,6 +824,316 @@ fn import_capcut(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> Resul
     s.toast(if warnings.is_empty() { format!("Imported CapCut project {name}") }
         else { format!("Imported CapCut project {name} ({} import notes)", warnings.len()) });
     Ok(json!({"folder": folder.0, "comp": cid.0, "items": items, "missingMedia": missing, "warnings": warnings}))
+}
+
+
+fn active_export_comp(s: &Session) -> Result<(ItemId, Comp)> {
+    let id = s.active_comp_id().ok_or_else(|| err("请先打开一个合成工程"))?;
+    let comp = s.project.comp(id).cloned().ok_or_else(|| err("当前合成不存在"))?;
+    Ok((id, comp))
+}
+
+fn export_transform(layer: &effectcraft_project::Layer, comp: &Comp) -> ([f64; 2], [f64; 2], f64, f64) {
+    let position = layer.props.prop("transform/position").map(|p| p.value.as_vec2())
+        .unwrap_or([comp.width as f64 / 2.0, comp.height as f64 / 2.0]);
+    let scale = layer.props.prop("transform/scale").map(|p| p.value.as_vec2()).unwrap_or([100.0, 100.0]);
+    let rotation = layer.props.prop("transform/rotation").map(|p| p.value.as_f64()).unwrap_or(0.0);
+    let opacity = layer.props.prop("transform/opacity").map(|p| p.value.as_f64()).unwrap_or(100.0);
+    (position, scale, rotation, opacity)
+}
+
+fn xml_escape(value: &str) -> String {
+    value.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+        .replace('"', "&quot;").replace('\'', "&apos;")
+}
+
+fn am_argb(color: [f32; 4]) -> String {
+    let c = color.map(|v| (v.clamp(0.0, 1.0) * 255.0).round() as u8);
+    format!("#{:02X}{:02X}{:02X}{:02X}", c[3], c[0], c[1], c[2])
+}
+
+fn export_alight_xml(s: &Session, path: &str) -> Result<J> {
+    let (_, comp) = active_export_comp(s)?;
+    let name = Path::new(path).file_stem().and_then(|v| v.to_str()).unwrap_or("EffectCraft Project");
+    let mut xml = format!(
+        "<?xml version='1.0' encoding='UTF-8' ?>\n<scene title=\"{}\" width=\"{}\" height=\"{}\" exportWidth=\"{}\" exportHeight=\"{}\" bgcolor=\"#FF000000\" totalTime=\"{}\" fps=\"{}\" amver=\"106\" ffver=\"101\" am=\"com.alightcreative.motion/5.0.0\" amplatform=\"android\">\n",
+        xml_escape(name), comp.width, comp.height, comp.width, comp.height,
+        (comp.duration.seconds().max(0.1) * 1000.0).round() as i64,
+        comp.frame_rate.as_f64()
+    );
+    let mut skipped = Vec::new();
+    let mut exported = 0usize;
+    for (index, layer) in comp.layers.iter().enumerate().rev() {
+        let (position, scale, rotation, opacity) = export_transform(layer, &comp);
+        let start = (layer.start_time.seconds().max(0.0) * 1000.0).round() as i64;
+        let end = (layer.start_time.seconds() + (layer.out_point - layer.in_point).seconds()).max(0.0);
+        let end = (end * 1000.0).round() as i64;
+        let (tag, attrs, body) = match &layer.source {
+            LayerSource::Footage { item } => {
+                let Some(item) = s.project.item(*item) else { skipped.push(layer.name.clone()); continue };
+                let ItemKind::Footage(footage) = &item.kind else { skipped.push(layer.name.clone()); continue };
+                if footage.kind == FootageKind::Audio {
+                    skipped.push(format!("{}（纯音频轨）", layer.name));
+                    continue;
+                }
+                let uri = xml_escape(&footage.path);
+                let filename = xml_escape(Path::new(&footage.path).file_name().and_then(|v| v.to_str()).unwrap_or(&footage.path));
+                ("shape", format!("fillType=\"media\" s=\"30\""), format!("<media filename=\"{filename}\" uri=\"{uri}\" />"))
+            }
+            LayerSource::Text => {
+                let doc = layer.props.prop("text/sourceText").and_then(|p| match &p.value {
+                    Value::Text(doc) => Some(doc.as_ref()),
+                    _ => None,
+                });
+                let Some(doc) = doc else { skipped.push(format!("{}（文字文档未识别）", layer.name)); continue };
+                let font = xml_escape(&format!("googlefonts?name={}&weight=400", doc.font));
+                let body = format!(
+                    "<transform><location value=\"{:.3},{:.3}\"/><scale value=\"{:.6},{:.6}\"/><rotation value=\"{:.6}\"/><opacity value=\"{:.6}\"/></transform><fillColor value=\"{}\"/><content>{}</content>",
+                    position[0], position[1], scale[0] / 100.0, scale[1] / 100.0, rotation, (opacity / 100.0).clamp(0.0,1.0),
+                    am_argb(doc.fill), xml_escape(&doc.text)
+                );
+                ("text", format!("fillType=\"color\" size=\"{:.3}\" font=\"{font}\" wrapWidth=\"{}\" align=\"left\"", doc.size, comp.width), body)
+            }
+            LayerSource::Shape | LayerSource::Solid { .. } => {
+                ("shape", "fillType=\"color\" s=\".rect\"".to_string(),
+                 "<fillColor value=\"#FFFFFFFF\"/>".to_string())
+            }
+            _ => {
+                skipped.push(layer.name.clone());
+                continue;
+            }
+        };
+        let body = if matches!(layer.source, LayerSource::Text) {
+            body
+        } else {
+            format!(
+                "<transform><location value=\"{:.3},{:.3}\"/><scale value=\"{:.6},{:.6}\"/><rotation value=\"{:.6}\"/><opacity value=\"{:.6}\"/></transform>{body}",
+                position[0], position[1], scale[0] / 100.0, scale[1] / 100.0,
+                rotation, (opacity / 100.0).clamp(0.0,1.0)
+            )
+        };
+        xml.push_str(&format!(
+            "<{tag} id=\"{}\" label=\"{}\" startTime=\"{start}\" endTime=\"{end}\" {attrs}>{body}</{tag}>\n",
+            index + 1, xml_escape(&layer.name)
+        ));
+        exported += 1;
+    }
+    xml.push_str("</scene>\n");
+    s.write_output(path, xml.as_bytes())?;
+    let warning = if skipped.is_empty() {
+        "已导出可映射的图层；原素材仍需保持可访问。".to_string()
+    } else {
+        format!("已导出 {exported} 个图层；{} 个图层/音频/复杂对象未映射：{}。", skipped.len(), skipped.join("、"))
+    };
+    Ok(json!({"path":path,"format":"alight-motion-xml","exportedLayers":exported,"warnings":warning}))
+}
+
+fn zip_single_file(name: &str, bytes: &[u8]) -> Result<Vec<u8>> {
+    let cursor = Cursor::new(Vec::new());
+    let mut archive = zip::ZipWriter::new(cursor);
+    archive.start_file(name, zip::write::SimpleFileOptions::default())
+        .map_err(|e| err(format!("创建工程压缩包失败：{e}")))?;
+    archive.write_all(bytes).map_err(|e| err(format!("写入工程压缩包失败：{e}")))?;
+    archive.finish().map(|c| c.into_inner()).map_err(|e| err(format!("完成工程压缩包失败：{e}")))
+}
+
+fn nv_value(value: f64) -> J { json!({"Value": value}) }
+fn nv_vector2(value: [f64; 2]) -> J { json!({"Params":[nv_value(value[0]),nv_value(value[1])]}) }
+
+fn export_nodevideo(s: &Session, path: &str) -> Result<J> {
+    let (comp_id, comp) = active_export_comp(s)?;
+    let mut children = Vec::new();
+    let mut skipped = Vec::new();
+    for layer in comp.layers.iter().rev() {
+        let (position, scale, rotation, opacity) = export_transform(layer, &comp);
+        let duration = (layer.out_point - layer.in_point).seconds().max(0.0);
+        let timeline = json!({
+            "Pos":layer.start_time.seconds().max(0.0),"Start":layer.in_point.seconds().max(0.0),
+            "End":layer.out_point.seconds().max(0.0),"Duration":duration,"Stretch":(layer.stretch/100.0).max(0.0001)
+        });
+        let transform = json!({
+            "$id":format!("ec-transform-{}",layer.id.0),
+            "$type":"NodeVideo.Data.DataTransform, Assembly-CSharp",
+            "Params":{
+                "_position":nv_vector2([position[0]/comp.width as f64,position[1]/comp.height as f64]),
+                "_scale":nv_vector2([scale[0]/100.0,scale[1]/100.0]),
+                "_rotation":nv_value(rotation),"_opacity":nv_value((opacity/100.0).clamp(0.0,1.0))
+            }
+        });
+        let mut node = match &layer.source {
+            LayerSource::Footage { item } => {
+                let Some(item) = s.project.item(*item) else { skipped.push(layer.name.clone()); continue };
+                let ItemKind::Footage(footage) = &item.kind else { skipped.push(layer.name.clone()); continue };
+                if footage.kind == FootageKind::Audio {
+                    skipped.push(format!("{}（纯音频轨）",layer.name)); continue;
+                }
+                let image = footage.kind == FootageKind::Still;
+                json!({
+                    "$type":if image {"NodeVideo.Node.NodeMediaImage, Assembly-CSharp"} else {"NodeVideo.Node.NodeMediaVideo, Assembly-CSharp"},
+                    "$id":format!("ec-node-{}",layer.id.0),"Name":layer.name,"TimeLine":timeline,
+                    "Props":[transform],
+                    "AssetImage":if image {json!({"AbsolutePath":footage.path,"Width":footage.width,"Height":footage.height})} else {J::Null},
+                    "AssetVideo":if image {J::Null} else {json!({"AbsolutePath":footage.path,"Width":footage.width,"Height":footage.height,"Duration":footage.duration.seconds()})},
+                    "ChildList":[]
+                })
+            }
+            LayerSource::Text => {
+                let doc = layer.props.prop("text/sourceText").and_then(|p| match &p.value { Value::Text(doc)=>Some(doc.as_ref()), _=>None });
+                let Some(doc)=doc else { skipped.push(format!("{}（文字文档未识别）",layer.name)); continue };
+                let data=json!({
+                    "$id":format!("ec-text-{}",layer.id.0),
+                    "$type":"NodeVideo.Data.DataText3D, Assembly-CSharp",
+                    "Params":{"_text":{"Text":doc.text},"_font":{"PickedFont":doc.font},"_size":nv_value(doc.size/72.0)}
+                });
+                json!({"$type":"NodeVideo.Node.NodeViewText, Assembly-CSharp","$id":format!("ec-node-{}",layer.id.0),
+                    "Name":layer.name,"TimeLine":timeline,"Props":[transform,data],"ChildList":[]})
+            }
+            LayerSource::Shape | LayerSource::Solid { .. } => {
+                let data=json!({
+                    "$id":format!("ec-shape-{}",layer.id.0),
+                    "$type":"NodeVideo.Data.DataShape, Assembly-CSharp",
+                    "Params":{
+                        "_shape_type":nv_value(1.0),
+                        "_shape_size":nv_vector2([1.0,1.0]),
+                        "_fill_color":{"Color":{"r":1.0,"g":1.0,"b":1.0,"a":1.0}}
+                    }
+                });
+                json!({"$type":"NodeVideo.Node.NodeShape, Assembly-CSharp","$id":format!("ec-node-{}",layer.id.0),
+                    "Name":layer.name,"TimeLine":timeline,"Props":[transform,data],"ChildList":[]})
+            }
+            _ => { skipped.push(layer.name.clone()); continue; }
+        };
+        if let Some(obj)=node.as_object_mut() {
+            obj.insert("Enabled".into(),json!(true));
+        }
+        children.push(node);
+    }
+    let root = json!({
+        "$type":"NodeVideo.Node.NodeGroup, Assembly-CSharp","$id":"ec-root","Name":"EffectCraft Project",
+        "FixedDuration":comp.duration.seconds(),"TimeLine":{"Pos":0.0,"Start":0.0,"End":comp.duration.seconds()},
+        "Props":[{
+            "$id":"ec-project-setting","$type":"NodeVideo.Data.DataProjectSetting, Assembly-CSharp",
+            "Params":{"_resolution":{"Width":comp.width,"Height":comp.height},"_fps":nv_value(comp.frame_rate.as_f64())}
+        }],
+        "ChildList":children
+    });
+    let bytes=serde_json::to_vec_pretty(&root).map_err(|e|err(format!("生成 NodeVideo 工程失败：{e}")))?;
+    let archive=zip_single_file("EffectCraft.nv",&bytes)?;
+    s.write_output(path,&archive)?;
+    let warning=if skipped.is_empty() {"已输出当前合成的基础图层/文字/变换；素材路径仍指向原文件。".to_string()}
+        else {format!("已输出当前合成；{} 个复杂图层或纯音频未映射：{}。素材路径仍指向原文件。",skipped.len(),skipped.join("、"))};
+    Ok(json!({"path":path,"format":"nodevideo-project-zip","exportedLayers":children.len(),"warnings":warning,"sourceComp":comp_id.0}))
+}
+
+fn capcut_id(prefix: &str, id: u64) -> String {
+    format!("{:08x}-0000-4000-8000-{:012x}", id as u32, id)
+}
+
+fn export_capcut(s: &Session, path: &str) -> Result<J> {
+    let (comp_id, comp) = active_export_comp(s)?;
+    let mut tracks=Vec::new();
+    let mut videos=Vec::new();
+    let mut audios=Vec::new();
+    let mut texts=Vec::new();
+    let mut skipped=Vec::new();
+    let mut render_index=0usize;
+    for layer in comp.layers.iter().rev() {
+        let (position,scale,rotation,opacity)=export_transform(layer,&comp);
+        let target_start=(layer.start_time.seconds().max(0.0)*1_000_000.0).round() as i64;
+        let target_duration=((layer.out_point-layer.in_point).seconds().max(0.0)*1_000_000.0).round() as i64;
+        if target_duration<=0 { skipped.push(layer.name.clone()); continue; }
+        let speed=if layer.stretch.abs()>0.0001 {100.0/layer.stretch} else {1.0};
+        let source_duration=(target_duration as f64*speed.abs()).round() as i64;
+        let (kind,material_id,material)=match &layer.source {
+            LayerSource::Footage { item }=>{
+                let Some(item)=s.project.item(*item) else {skipped.push(layer.name.clone());continue};
+                let ItemKind::Footage(f)=&item.kind else {skipped.push(layer.name.clone());continue};
+                let mid=capcut_id("mat",layer.id.0);
+                if f.kind==FootageKind::Audio {
+                    ("audio",mid.clone(),json!({"id":mid,"path":f.path,"name":layer.name,"duration":(f.duration.seconds()*1_000_000.0) as i64,"type":"music"}))
+                } else {
+                    ("video",mid.clone(),json!({"id":mid,"path":f.path,"material_name":layer.name,"type":if f.kind==FootageKind::Still {"photo"} else {"video"},
+                        "duration":(f.duration.seconds()*1_000_000.0) as i64,"width":f.width,"height":f.height,"fps":comp.frame_rate.as_f64(),"has_audio":f.has_audio}))
+                }
+            }
+            LayerSource::Text=>{
+                let doc=layer.props.prop("text/sourceText").and_then(|p|match &p.value{Value::Text(doc)=>Some(doc.as_ref()),_=>None});
+                let Some(doc)=doc else {skipped.push(format!("{}（文字文档未识别）",layer.name));continue};
+                let mid=capcut_id("txt",layer.id.0);
+                let content=json!({"styles":[{"range":[0,doc.text.encode_utf16().count()],"size":doc.size,"bold":doc.faux_bold,"italic":doc.faux_italic,
+                    "underline":false,"fill":{"alpha":doc.fill[3],"content":{"render_type":"solid","solid":{"alpha":doc.fill[3],"color":[doc.fill[0],doc.fill[1],doc.fill[2]]}}}}],"text":doc.text}).to_string();
+                ("text",mid.clone(),json!({"id":mid,"type":"text","content":content,"alignment":1,"font_size":doc.size,"text_color":format!("#{:02X}{:02X}{:02X}",(doc.fill[0]*255.0) as u8,(doc.fill[1]*255.0) as u8,(doc.fill[2]*255.0) as u8)}))
+            }
+            LayerSource::Shape|LayerSource::Solid{..}=>{skipped.push(format!("{}（CapCut 本轮不转换原生形状/固态层）",layer.name));continue}
+            _=>{skipped.push(layer.name.clone());continue}
+        };
+        let media_type=kind;
+        match media_type { "audio"=>audios.push(material), "video"=>videos.push(material), "text"=>texts.push(material), _=>{} }
+        let segment_id=capcut_id("seg",layer.id.0);
+        let track_id=capcut_id("trk",layer.id.0);
+        let segment=json!({
+            "id":segment_id,"material_id":material_id,"raw_segment_id":track_id,
+            "target_timerange":{"start":target_start,"duration":target_duration},
+            "source_timerange":{"start":0,"duration":source_duration},
+            "speed":speed.abs().clamp(0.01,100.0),"volume":1.0,"visible":true,"reverse":speed<0.0,
+            "clip":{"alpha":(opacity/100.0).clamp(0.0,1.0),"rotation":rotation,
+                "scale":{"x":(scale[0]/100.0).abs(),"y":(scale[1]/100.0).abs()},
+                "transform":{"x":position[0]-comp.width as f64/2.0,"y":position[1]-comp.height as f64/2.0},
+                "flip":{"horizontal":scale[0]<0.0,"vertical":scale[1]<0.0}},
+            "render_index":render_index,"track_render_index":0,"track_attribute":0,
+            "extra_material_refs":[],"common_keyframes":[],"keyframe_refs":[]
+        });
+        tracks.push(json!({"id":track_id,"type":kind,"name":layer.name,"is_default_name":false,"attribute":0,"flag":0,"segments":[segment]}));
+        render_index+=1;
+    }
+    let w=comp.width;
+    let h=comp.height;
+    let fps=comp.frame_rate.as_f64();
+    let duration=(comp.duration.seconds().max(0.1)*1_000_000.0).round() as i64;
+    let ratio=format!("{w}:{h}");
+    let project_id=capcut_id("project",comp_id.0);
+    let draft=json!({
+        "id":project_id,"name":"EffectCraft Project","duration":duration,"fps":fps,
+        "canvas_config":{"width":w,"height":h,"ratio":ratio},
+        "platform":{"app_source":"cc","app_version":"6.2.8","os":"windows"},
+        "tracks":tracks,
+        "materials":{"videos":videos,"audios":audios,"texts":texts,"speeds":[],"material_animations":[],"audio_fades":[],"transitions":[],"masks":[],"canvases":[]},
+        "extra_info":{},"free_render_index_mode_on":false
+    });
+    let bytes=serde_json::to_vec_pretty(&draft).map_err(|e|err(format!("生成 CapCut 工程失败：{e}")))?;
+    let archive=zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let mut archive=archive;
+    archive.start_file("draft_content.json",zip::write::SimpleFileOptions::default()).map_err(|e|err(format!("创建 CapCut 工程包失败：{e}")))?;
+    archive.write_all(&bytes).map_err(|e|err(format!("写入 CapCut 工程包失败：{e}")))?;
+    let meta=json!({"draft_id":project_id,"draft_name":"EffectCraft Project","fps":fps,"width":w,"height":h,"duration":duration});
+    archive.start_file("draft_meta_info.json",zip::write::SimpleFileOptions::default()).map_err(|e|err(format!("写入 CapCut 元数据失败：{e}")))?;
+    archive.write_all(serde_json::to_string_pretty(&meta).map_err(|e|err(e.to_string()))?.as_bytes()).map_err(|e|err(format!("写入 CapCut 元数据失败：{e}")))?;
+    let bytes=archive.finish().map_err(|e|err(format!("完成 CapCut 工程包失败：{e}")))?.into_inner().into_inner();
+    s.write_output(path,&bytes)?;
+    let warning=if skipped.is_empty() {"基础视频、音频、文字片段已写入 CapCut 草稿包；素材仍引用原文件路径。".to_string()}
+        else {format!("基础视频/音频/文字已输出；{} 个复杂图层未映射：{}。素材仍引用原文件路径。",skipped.len(),skipped.join("、"))};
+    Ok(json!({"path":path,"format":"capcut-draft-zip","exportedTracks":render_index,"warnings":warning,"sourceComp":comp_id.0}))
+}
+
+fn export_alight_command(s: &mut Session, p: &J) -> Result<J> {
+    let path=p.get("path").and_then(J::as_str).ok_or_else(||err("缺少导出路径"))?;
+    export_alight_xml(s,path)
+}
+fn export_nodevideo_command(s: &mut Session, p: &J) -> Result<J> {
+    let path=p.get("path").and_then(J::as_str).ok_or_else(||err("缺少导出路径"))?;
+    export_nodevideo(s,path)
+}
+fn export_capcut_command(s: &mut Session, p: &J) -> Result<J> {
+    let path=p.get("path").and_then(J::as_str).ok_or_else(||err("缺少导出路径"))?;
+    export_capcut(s,path)
+}
+
+pub fn specs() -> Vec<CommandSpec> {
+    vec![
+        cmd!("file.exportAlightMotion", "Export Alight Motion Project", ["File", "Export"], None, "{path (.xml)} — exports the active composition as Alight Motion scene XML", always, export_alight_command),
+        cmd!("file.exportNodeVideo", "Export NodeVideo Project", ["File", "Export"], None, "{path (.zip)} — exports the active composition in a NodeVideo ZIP project package", always, export_nodevideo_command),
+        cmd!("file.exportCapCut", "Export CapCut Project", ["File", "Export"], None, "{path (.zip)} — exports the active composition as a CapCut desktop draft package", always, export_capcut_command),
+    ]
 }
 
 fn parse_xml_color(value: &str) -> [f64; 4] {
