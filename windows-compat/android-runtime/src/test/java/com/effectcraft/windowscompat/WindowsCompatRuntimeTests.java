@@ -18,4 +18,9 @@ public final class WindowsCompatRuntimeTests {
     public void extractsXzAndZstandardArchivesSafely() throws Exception {
         SafeRuntimeArchiveExtractorSelfTest.main(new String[0]);
     }
+
+    @Test
+    public void installsVerifiedWinlatorContentProfiles() throws Exception {
+        WinlatorContentPackageInstallerSelfTest.main(new String[0]);
+    }
 }
