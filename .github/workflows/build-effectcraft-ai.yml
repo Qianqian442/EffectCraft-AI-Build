@@ -11,6 +11,8 @@ on:
       - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/install_ai_plugin_bridge.py'
+      - '.github/scripts/integrate_deepseek_single_apk.py'
+      - 'android-ai-plugin/**'
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/upgrade_export_preflight.py'
       - '.github/scripts/ai_assistant_local.rs'
@@ -75,7 +77,8 @@ jobs:
             .github/scripts/add_android_gallery_export.py \
             .github/scripts/add_qq_project_share.py \
             .github/scripts/add_account_avatar_picker.py \
-            .github/scripts/patch_gradle_maven_mirrors.py
+            .github/scripts/patch_gradle_maven_mirrors.py \
+            .github/scripts/integrate_deepseek_single_apk.py
 
   build:
     needs: validate-patches
@@ -118,6 +121,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: build-assets
+
+      - name: Check out llama.cpp Android inference runtime
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/llama.cpp
+          ref: master
+          path: llama.cpp
+          submodules: recursive
 
       - name: Add fallback Maven mirrors to the actual Android builder
         shell: bash
@@ -321,11 +332,15 @@ jobs:
           print("Embedded the supplied Ae avatar in the draggable AI bubble.")
           PY
 
-      - name: Integrate the standalone DeepSeek plugin into the original assistant
+      - name: Integrate DeepSeek model manager and inference into the main APK
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
-        run: python3 build-assets/.github/scripts/install_ai_plugin_bridge.py
+          LLAMA_CPP_DIR: ${{ github.workspace }}/llama.cpp
+        run: |
+          set -euo pipefail
+          python3 -m py_compile build-assets/.github/scripts/integrate_deepseek_single_apk.py
+          python3 build-assets/.github/scripts/integrate_deepseek_single_apk.py
 
       - name: Preserve project import and configure centered export dialog
         env:
@@ -580,7 +595,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018"
+          sdkmanager --install "platform-tools" "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "ndk;29.0.13113456" "cmake;3.31.6"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
 
