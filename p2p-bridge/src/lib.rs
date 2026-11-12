@@ -19,8 +19,8 @@ use libp2p::{
     autonat,
     core::{Multiaddr, multiaddr::Protocol, transport::ListenerId},
     dcutr, identify, identity, kad, mdns, noise, ping, relay, tcp,
-    swarm::{NetworkBehaviour, Swarm, SwarmBuilder, SwarmEvent, StreamProtocol},
-    yamux, PeerId,
+    swarm::{NetworkBehaviour, Swarm, SwarmEvent, StreamProtocol},
+    SwarmBuilder, yamux, PeerId,
 };
 use tokio::time::{interval, MissedTickBehavior};
 
