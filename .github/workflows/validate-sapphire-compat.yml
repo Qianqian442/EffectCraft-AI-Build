@@ -13,6 +13,8 @@ on:
       - '.github/scripts/build_looks_compat_pack.py'
       - '.github/scripts/restore_android_plugins.py'
       - '.github/scripts/add_mobile_rsmb_controls.py'
+      - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/add_desktop_plugin_migration_ui.py'
   pull_request:
     branches: [main]
     paths:
@@ -45,7 +47,7 @@ jobs:
           targets: wasm32-unknown-unknown
 
       - name: Validate Python build scripts
-        run: python3 -m py_compile .github/scripts/build_sapphire_compat_pack.py .github/scripts/build_rsmb_compat.py .github/scripts/build_looks_compat_pack.py .github/scripts/restore_android_plugins.py .github/scripts/add_mobile_rsmb_controls.py
+        run: python3 -m py_compile .github/scripts/build_sapphire_compat_pack.py .github/scripts/build_rsmb_compat.py .github/scripts/build_looks_compat_pack.py .github/scripts/restore_android_plugins.py .github/scripts/add_mobile_rsmb_controls.py .github/scripts/add_desktop_plugin_package_support.py .github/scripts/add_desktop_plugin_migration_ui.py
 
       - name: Compile all bundled effect modules
         env:
@@ -77,6 +79,8 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/vendor/effectcraft
         run: |
+          python3 .github/scripts/add_desktop_plugin_package_support.py
+          python3 .github/scripts/add_desktop_plugin_migration_ui.py
           python3 .github/scripts/add_mobile_rsmb_controls.py
           cd vendor/effectcraft
           cargo check -p effectcraft-ui-egui
