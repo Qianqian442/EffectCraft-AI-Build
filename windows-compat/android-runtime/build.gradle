@@ -8,6 +8,7 @@ android {
 
     defaultConfig {
         minSdk 26
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         consumerProguardFiles 'consumer-rules.pro'
     }
 
@@ -29,4 +30,7 @@ dependencies {
     implementation 'com.google.code.gson:gson:2.8.8'
 
     testImplementation 'junit:junit:4.13.2'
+
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
 }
