@@ -385,6 +385,23 @@ final class LanAccountServer implements Runnable {
         return error(404, "未找到请求接口", "", "");
     }
 
+    private static boolean isAllowedAvatar(String avatar) {
+        if (avatar == null || avatar.isEmpty()) return true;
+        if (avatar.startsWith("https://") || avatar.startsWith("http://")) {
+            return avatar.length() <= 8192;
+        }
+        final String prefix = "data:image/jpeg;base64,";
+        if (!avatar.startsWith(prefix) || avatar.length() > 150000) return false;
+        try {
+            byte[] bytes = java.util.Base64.getDecoder().decode(avatar.substring(prefix.length()));
+            return bytes.length > 0 && bytes.length <= 96 * 1024
+                && bytes.length >= 3 && (bytes[0] & 0xff) == 0xff
+                && (bytes[1] & 0xff) == 0xd8 && (bytes[2] & 0xff) == 0xff;
+        } catch (IllegalArgumentException error) {
+            return false;
+        }
+    }
+
     private JSONObject register(JSONObject body) throws Exception {
         String qq = body.optString("qq", "").trim();
         String wechat = body.optString("wechat", "").trim().toLowerCase(Locale.ROOT);
@@ -396,7 +413,7 @@ final class LanAccountServer implements Runnable {
         if (!wechat.isEmpty() && !WECHAT.matcher(body.optString("wechat", "").trim()).matches()) return error(422, "微信号格式不正确", "", "");
         if (name.isEmpty() || name.length() > 40) return error(422, "姓名不能为空且不能超过40字", "", "");
         if (password.length() < 8 || password.length() > 128) return error(422, "密码至少8位", "", "");
-        if (!avatar.isEmpty() && !(avatar.startsWith("https://") || avatar.startsWith("http://"))) return error(422, "头像地址格式不正确", "", "");
+        if (!isAllowedAvatar(avatar)) return error(422, "头像格式不正确。请从相册选择图片，或填写有效的 HTTP(S) 图片地址；相册头像会自动压缩。", "", "");
         String id = UUID.randomUUID().toString();
         byte[] salt = randomBytes(16);
         String passHash = hashPassword(password, salt);
@@ -453,6 +470,7 @@ final class LanAccountServer implements Runnable {
         String wechat = wechatRaw.toLowerCase(Locale.ROOT);
         String name = body.optString("name", "").trim();
         String avatar = body.optString("avatar_url", "").trim();
+        if (!isAllowedAvatar(avatar)) return error(422, "头像格式不正确。请从相册选择图片，或填写有效的 HTTP(S) 图片地址；相册头像会自动压缩。", "", "");
         if ((qq.isEmpty() && wechatRaw.isEmpty()) || (!qq.isEmpty() && !QQ.matcher(qq).matches()) || (!wechatRaw.isEmpty() && !WECHAT.matcher(wechatRaw).matches()) || name.isEmpty()) return error(422, "QQ号和微信号至少填写一项，且已填写的账号格式必须正确", "", "");
         String newPassword = body.optString("new_password", "");
         android.content.ContentValues values = new android.content.ContentValues();
