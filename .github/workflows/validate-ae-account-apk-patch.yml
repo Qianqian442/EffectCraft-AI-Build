@@ -1,11 +1,10 @@
-name: Validate Ae Cloud Account APK Patch
+name: Validate administrator-phone account APK patch
 
 on:
   push:
     branches: [main, 'feature/automatic-phone-node-main-apk']
     paths:
       - '.github/scripts/add_home_lan_account_gate.py'
-      - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/workflows/validate-ae-account-apk-patch.yml'
   pull_request:
     branches: [main]
@@ -42,15 +41,14 @@ jobs:
         with:
           components: rustfmt
 
-      - name: Generate and convert account gate
+      - name: Generate administrator-phone LAN account gate
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
-          AE_ACCOUNT_API_URL: https://ae-cloud-account-api.validation.workers.dev
         run: |
           python3 -m py_compile .github/scripts/add_home_lan_account_gate.py
-          python3 -m py_compile .github/scripts/convert_account_gate_to_cloud.py
           python3 .github/scripts/add_home_lan_account_gate.py
-          python3 .github/scripts/convert_account_gate_to_cloud.py
+          grep -F 'http://192.168.1.100:8787' "$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          grep -F '管理员手机主服务器' "$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
           rustfmt --edition 2024 --emit stdout "$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs" > /dev/null
           cd "$EFFECTCRAFT_DIR"
           cargo metadata --no-deps --format-version 1 > /dev/null
