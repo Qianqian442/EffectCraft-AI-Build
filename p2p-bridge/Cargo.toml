@@ -20,3 +20,7 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 
 [dev-dependencies]
 serde_json = "1"
+
+# This crate is copied under the EffectCraft Cargo workspace during Android packaging.
+# Keep it an independent workspace so cargo-ndk does not parse the generated launcher manifest.
+[workspace]
