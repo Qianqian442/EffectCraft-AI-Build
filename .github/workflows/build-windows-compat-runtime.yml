@@ -127,3 +127,44 @@ jobs:
           name: EffectCraft-FEXCore-Arm64EC-WoW64
           path: artifacts/fexcore-arm64ec.tar.zst*
           retention-days: 30
+
+  aexlo-windows-host:
+    name: Build AE plug-in host worker (Windows x64)
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Check out EffectCraft compatibility configuration
+        uses: actions/checkout@v4
+
+      - name: Check out pinned aexlo source and license
+        uses: actions/checkout@v4
+        with:
+          repository: potistudio/aexlo
+          ref: 32c3fe399bc7d2deb3e5f9a02c627db50d8e7ff9
+          path: third_party/aexlo
+
+      - name: Set up Rust stable for Windows MSVC
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Generate locked dependency graph and compile AE host
+        run: |
+          cargo generate-lockfile --manifest-path windows-compat/aexlo-host/Cargo.toml
+          cargo build --locked --release --target x86_64-pc-windows-msvc --manifest-path windows-compat/aexlo-host/Cargo.toml
+          if (!(Test-Path "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe")) { throw "AEX host worker executable was not produced" }
+
+      - name: Package AE host worker and notices
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts | Out-Null
+          Copy-Item "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe" "artifacts/"
+          Copy-Item "third_party/aexlo/LICENSE" "artifacts/AEXLO-MIT-LICENSE"
+          Get-FileHash "artifacts/effectcraft-aex-host.exe" -Algorithm SHA256 | Format-List | Out-File "artifacts/SHA256.txt"
+
+      - name: Upload AE host worker
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-AE-Host-Windows-x64
+          path: artifacts/*
+          retention-days: 30
