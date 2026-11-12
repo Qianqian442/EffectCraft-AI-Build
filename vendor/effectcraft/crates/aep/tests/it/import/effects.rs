@@ -271,15 +271,23 @@ fn exposure_keyframes() {
 }
 
 #[test]
-fn unmapped_effects_stay_reported_by_match_name() {
-    // A dropdown is not in the table (a Layer Control is since 905).
-    {
-        let (name, matchname) = ("077-fx-dropdown-default.aep", "Pseudo/");
-        let report = analyze(&fixture!(name), &|_| false).unwrap();
-        assert_eq!(report.count(LossCategory::Effects), 1, "{name}");
-        assert_eq!(report.imported.effects, 0);
-        assert!(report.losses[0].details[0].contains(matchname), "{:?}", report.losses);
-    }
+fn unmapped_effects_are_preserved_as_disabled_original_plugin_placeholders() {
+    // The dropdown belongs to an effect outside EffectCraft's built-in table. Its common
+    // parameter records and original sspc chunk are retained; the plug-in itself stays disabled.
+    let (name, matchname) = ("077-fx-dropdown-default.aep", "Pseudo/");
+    let (project, report) = load!(name);
+    assert_eq!(report.report.count(LossCategory::Effects), 1, "{name}");
+    assert_eq!(report.report.imported.effects, 1, "{name}");
+    assert!(report.report.losses.iter().any(|loss| loss.details.iter().any(|d| d.contains(matchname))), "{:?}", report.report.losses);
+    let fx = effects(layer(&project, &report, "L"));
+    assert_eq!(fx.len(), 1, "{name}");
+    assert!(!fx[0].enabled, "an unavailable native plug-in must not render a substitute");
+    assert!(matches!(&fx[0].kind, GroupKind::Effect { effect } if effect == "aep.plugin.unported"));
+    let raw = fx[0].get("raw_aep_effect_chunk").expect("original native plug-in chunk");
+    assert!(matches!(&raw.value, Value::Str(bytes) if bytes.starts_with("AE-SSPC-CHUNK-HEX-V1:")));
+    let mut found_parameter = false;
+    fx[0].walk("", &mut |_, p| found_parameter |= p.match_id.starts_with("aep_param_"));
+    assert!(found_parameter, "the unknown effect's editable parameter records must be retained");
 }
 
 #[test]
