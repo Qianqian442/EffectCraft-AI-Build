@@ -17,9 +17,11 @@ use serde_json::{Value as J, json};
 use crate::{EngineError, Result, Session};
 
 const MAX_PROJECT_BYTES: usize = 128 * 1024 * 1024;
-const MAX_ZIP_ENTRIES: usize = 512;
-const MAX_ZIP_TOTAL: u64 = 256 * 1024 * 1024;
-const MAX_ZIP_ENTRY: u64 = 64 * 1024 * 1024;
+const MAX_ZIP_ENTRIES: usize = 10_000;
+// Large project packages may contain camera originals. Stream entries to disk rather than
+// allocating the decompressed archive in RAM; retain a generous disk-expansion safety ceiling.
+const MAX_ZIP_TOTAL: u64 = 8 * 1024 * 1024 * 1024;
+const MAX_ZIP_ENTRY: u64 = 4 * 1024 * 1024 * 1024;
 
 #[derive(Clone, Copy)]
 struct Xform {
@@ -71,7 +73,7 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
     let file = std::fs::File::open(path).map_err(|e| err(format!("Cannot read ZIP package: {e}")))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| err(format!("Invalid project ZIP: {e}")))?;
     if archive.len() > MAX_ZIP_ENTRIES {
-        return Err(err("Project ZIP contains more than 512 entries"));
+        return Err(err("Project ZIP contains more than 10,000 entries"));
     }
 
     let mut total = 0_u64;
@@ -85,24 +87,28 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
         if relative.components().any(|c| !matches!(c, Component::Normal(_))) { continue; }
         let size = entry.size();
         if size > MAX_ZIP_ENTRY {
-            return Err(err(format!("ZIP entry {name} exceeds the 64 MB safety limit")));
+            return Err(err(format!("ZIP entry {name} exceeds the 4 GB safety limit")));
         }
         total = total.saturating_add(size);
         if total > MAX_ZIP_TOTAL {
-            return Err(err("Project ZIP expands beyond the 256 MB safety limit"));
+            return Err(err("Project ZIP expands beyond the 8 GB safety limit"));
         }
 
         let destination = root.join(relative);
         if let Some(parent) = destination.parent() {
             std::fs::create_dir_all(parent).map_err(|e| err(format!("Cannot create package folder: {e}")))?;
         }
-        let mut bytes = Vec::new();
-        (&mut entry).take(MAX_ZIP_ENTRY + 1).read_to_end(&mut bytes)
+        let mut output = std::fs::File::create(&destination)
+            .map_err(|e| err(format!("Cannot create {name}: {e}")))?;
+        let mut limited = (&mut entry).take(MAX_ZIP_ENTRY + 1);
+        let copied = std::io::copy(&mut limited, &mut output)
             .map_err(|e| err(format!("Cannot extract {name}: {e}")))?;
-        if bytes.len() as u64 > MAX_ZIP_ENTRY {
-            return Err(err(format!("ZIP entry {name} exceeds the 64 MB safety limit")));
+        if copied > MAX_ZIP_ENTRY {
+            return Err(err(format!("ZIP entry {name} exceeds the 4 GB safety limit")));
         }
-        std::fs::write(&destination, &bytes).map_err(|e| err(format!("Cannot save {name}: {e}")))?;
+        if copied != size {
+            return Err(err(format!("ZIP entry {name} size does not match its archive metadata")));
+        }
         let lower = name.to_ascii_lowercase();
         if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
             project_file = Some(destination);
