@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'admin-app/**'
+      - 'p2p-bridge/**'
       - '.github/workflows/build-account-admin.yml'
   pull_request:
     branches: [main]
@@ -24,7 +25,7 @@ jobs:
   build-admin:
     name: Build standalone account manager APK
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -34,6 +35,25 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+
+      - name: Set up Android SDK and NDK
+        uses: android-actions/setup-android@v3
+        with:
+          ndk-version: 27.2.12479018
+
+      - name: Set up Rust for Android arm64
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build the native public P2P node
+        working-directory: p2p-bridge
+        run: |
+          cargo ndk -t arm64-v8a -o ../admin-app/app/src/main/jniLibs build --release
+          test -s ../admin-app/app/src/main/jniLibs/arm64-v8a/libeffectcraft_p2p.so
 
       - name: Set up Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
@@ -55,6 +75,7 @@ jobs:
         run: |
           gradle --no-daemon :app:assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libeffectcraft_p2p.so'
           cp app/build/outputs/apk/debug/app-debug.apk ../EffectCraft-Account-Admin.apk
 
       - name: Verify APK package integrity
