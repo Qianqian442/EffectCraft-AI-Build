@@ -163,6 +163,12 @@ public final class RuntimeAssetInstaller {
         Path temporary = destination.resolveSibling(destination.getFileName() + ".part");
         Files.deleteIfExists(temporary);
         MessageDigest digest = newDigest(spec.digestKind == DigestKind.SHA256_SIDECAR ? "SHA-256" : "SHA-1");
+        if (spec.digestKind == DigestKind.GIT_BLOB_SHA1) {
+            if (spec.expectedSize < 0) {
+                throw new IOException("Git blob verification requires a pinned file size: " + spec.id);
+            }
+            digest.update(("blob " + spec.expectedSize + "\0").getBytes(StandardCharsets.US_ASCII));
+        }
         long written = 0;
         try {
             try (OutputStream output = Files.newOutputStream(temporary)) {
