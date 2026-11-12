@@ -311,6 +311,240 @@ fn render_motion(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &
     0
 }
 
+
+fn smoothstep(edge0: f32, edge1: f32, value: f32) -> f32 {
+    if (edge1 - edge0).abs() < 1e-6 { return if value >= edge1 { 1.0 } else { 0.0 }; }
+    let t = ((value - edge0) / (edge1 - edge0)).clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+fn straight_luminance(pixel: [f32; 4]) -> f32 {
+    let alpha = pixel[3].max(1e-6);
+    let red = (pixel[0] / alpha).max(0.0);
+    let green = (pixel[1] / alpha).max(0.0);
+    let blue = (pixel[2] / alpha).max(0.0);
+    0.2126 * red + 0.7152 * green + 0.0722 * blue
+}
+
+#[cfg(sapphire_glint)]
+fn render_glint(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], scale: f64) -> i32 {
+    let threshold = params[0].clamp(0.0, 1.5) as f32;
+    let intensity = params[1].clamp(0.0, 3.0) as f32;
+    let size = (params[2].max(1.0) * scale.max(0.0)).clamp(1.0, 96.0) as f32;
+    let spikes = params[3].round().clamp(2.0, 8.0) as usize;
+    let rotation = (params[4] as f32).to_radians();
+    let color = [params[5] as f32, params[6] as f32, params[7] as f32];
+    let mix = (params[9] / 100.0).clamp(0.0, 1.0) as f32;
+    if intensity <= 0.0 || mix <= 0.0 { return 0; }
+    let source = pixels.to_vec();
+    let mut highlights = Vec::with_capacity(source.len());
+    for px in &source {
+        let weight = smoothstep(threshold, threshold + 0.18, straight_luminance(*px));
+        highlights.push([px[0] * weight, px[1] * weight, px[2] * weight, px[3] * weight]);
+    }
+    const STEPS: usize = 6;
+    for y in 0..height {
+        for x in 0..width {
+            let mut star = [0.0_f32; 3];
+            for axis in 0..spikes {
+                let angle = rotation + axis as f32 * std::f32::consts::PI / spikes as f32;
+                let (sn, cs) = angle.sin_cos();
+                for step in 1..=STEPS {
+                    let distance = size * step as f32 / STEPS as f32;
+                    let attenuation = (-(distance / size.max(1.0)) * 2.0).exp()
+                        / (STEPS as f32 * spikes as f32 * 2.0);
+                    for sign in [-1.0_f32, 1.0_f32] {
+                        let sample = sample_bilinear(
+                            &highlights, width, height,
+                            x as f32 + cs * distance * sign,
+                            y as f32 + sn * distance * sign,
+                        );
+                        for channel in 0..3 { star[channel] += sample[channel] * attenuation; }
+                    }
+                }
+            }
+            let idx = y * width + x;
+            for channel in 0..3 {
+                let contribution = star[channel] * intensity * color[channel];
+                pixels[idx][channel] = source[idx][channel] * (1.0 - mix)
+                    + (source[idx][channel] + contribution) * mix;
+            }
+            pixels[idx][3] = source[idx][3];
+        }
+    }
+    0
+}
+
+#[cfg(sapphire_rays)]
+fn render_rays(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
+    let cx = frame_pixel(params[0], width);
+    let cy = frame_pixel(params[1], height);
+    let threshold = params[2].clamp(0.0, 1.5) as f32;
+    let intensity = params[3].clamp(0.0, 3.0) as f32;
+    let length = params[4].clamp(0.0, 1.0) as f32;
+    let color = [params[5] as f32, params[6] as f32, params[7] as f32];
+    let mix = (params[9] / 100.0).clamp(0.0, 1.0) as f32;
+    if intensity <= 0.0 || length <= 0.0 || mix <= 0.0 { return 0; }
+    let source = pixels.to_vec();
+    let mut highlights = Vec::with_capacity(source.len());
+    for px in &source {
+        let weight = smoothstep(threshold, threshold + 0.2, straight_luminance(*px));
+        highlights.push([px[0] * weight, px[1] * weight, px[2] * weight, px[3] * weight]);
+    }
+    const SAMPLES: usize = 20;
+    for y in 0..height {
+        for x in 0..width {
+            let dx = cx - x as f32;
+            let dy = cy - y as f32;
+            let mut ray = [0.0_f32; 3];
+            for sample_index in 0..SAMPLES {
+                let t = sample_index as f32 / (SAMPLES - 1) as f32 * length;
+                let sample = sample_bilinear(
+                    &highlights, width, height,
+                    x as f32 + dx * t, y as f32 + dy * t,
+                );
+                let attenuation = (1.0 - t * 0.45) / SAMPLES as f32;
+                for channel in 0..3 { ray[channel] += sample[channel] * attenuation; }
+            }
+            let idx = y * width + x;
+            for channel in 0..3 {
+                let contribution = ray[channel] * intensity * color[channel];
+                pixels[idx][channel] = source[idx][channel] * (1.0 - mix)
+                    + (source[idx][channel] + contribution) * mix;
+            }
+            pixels[idx][3] = source[idx][3];
+        }
+    }
+    0
+}
+
+#[cfg(sapphire_halftone)]
+fn render_halftone(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64], scale: f64) -> i32 {
+    let cell = (params[0].max(1.0) * scale.max(0.0)).clamp(1.0, 48.0) as f32;
+    let angle = (params[1] as f32).to_radians();
+    let contrast = params[2].clamp(0.25, 2.5) as f32;
+    let softness = params[3].clamp(0.0, 0.5) as f32;
+    let mode = params[4].round().clamp(0.0, 1.0) as usize;
+    let mix = (params[5] / 100.0).clamp(0.0, 1.0) as f32;
+    let source = pixels.to_vec();
+    let (sn, cs) = angle.sin_cos();
+    let half = cell * 0.5;
+    let cx = width as f32 * 0.5;
+    let cy = height as f32 * 0.5;
+    for y in 0..height {
+        for x in 0..width {
+            let px = x as f32 - cx;
+            let py = y as f32 - cy;
+            let fx = px * cs + py * sn;
+            let fy = -px * sn + py * cs;
+            let gx = (fx / cell).floor();
+            let gy = (fy / cell).floor();
+            let local_x = fx - (gx + 0.5) * cell;
+            let local_y = fy - (gy + 0.5) * cell;
+            let screen_r = (local_x * local_x + local_y * local_y).sqrt();
+            let sx = ((gx + 0.5) * cell * cs - (gy + 0.5) * cell * sn + cx)
+                .clamp(0.0, width.saturating_sub(1) as f32);
+            let sy = ((gx + 0.5) * cell * sn + (gy + 0.5) * cell * cs + cy)
+                .clamp(0.0, height.saturating_sub(1) as f32);
+            let sample = sample_bilinear(&source, width, height, sx, sy);
+            let alpha = sample[3].max(1e-6);
+            let rgb = [
+                (sample[0] / alpha).clamp(0.0, 1.0),
+                (sample[1] / alpha).clamp(0.0, 1.0),
+                (sample[2] / alpha).clamp(0.0, 1.0),
+            ];
+            let dot = |ink: f32, phase: f32| {
+                let radius = ink.clamp(0.0, 1.0).sqrt() * half * 0.95;
+                let edge = (screen_r - radius) / (softness * cell + 0.55).max(0.55);
+                1.0 - smoothstep(-1.0, 1.0, edge + phase)
+            };
+            let output_rgb = if mode == 0 {
+                let luma = 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2];
+                let ink = dot(1.0 - ((luma - 0.5) * contrast + 0.5).clamp(0.0, 1.0), 0.0);
+                [1.0 - ink, 1.0 - ink, 1.0 - ink]
+            } else {
+                let cyan = dot(1.0 - rgb[0], 0.0);
+                let magenta = dot(1.0 - rgb[1], 0.12);
+                let yellow = dot(1.0 - rgb[2], 0.24);
+                [
+                    (1.0 - cyan) * (1.0 - yellow),
+                    (1.0 - magenta) * (1.0 - yellow),
+                    (1.0 - cyan) * (1.0 - magenta),
+                ]
+            };
+            let idx = y * width + x;
+            for channel in 0..3 {
+                let out = output_rgb[channel] * source[idx][3];
+                pixels[idx][channel] = source[idx][channel] * (1.0 - mix) + out * mix;
+            }
+            pixels[idx][3] = source[idx][3];
+        }
+    }
+    0
+}
+
+#[cfg(sapphire_pixelsort)]
+fn render_pixelsort(pixels: &mut [[f32; 4]], width: usize, height: usize, params: &[f64]) -> i32 {
+    let threshold = params[0].clamp(0.0, 1.5) as f32;
+    let min_length = params[1].round().clamp(2.0, 256.0) as usize;
+    let max_length = params[2].round().clamp(2.0, 512.0) as usize;
+    let vertical = params[3].round() >= 1.0;
+    let sort_channel = params[4].round().clamp(0.0, 3.0) as usize;
+    let reverse = params[5] >= 0.5;
+    let mix = (params[6] / 100.0).clamp(0.0, 1.0) as f32;
+    if mix <= 0.0 { return 0; }
+    let source = pixels.to_vec();
+    let mut sorted = source.clone();
+    let major = if vertical { width } else { height };
+    let minor = if vertical { height } else { width };
+    for line in 0..major {
+        let mut cursor = 0usize;
+        while cursor < minor {
+            let idx = |v: usize| if vertical { v * width + line } else { line * width + v };
+            while cursor < minor && straight_luminance(source[idx(cursor)]) < threshold {
+                cursor += 1;
+            }
+            let start = cursor;
+            while cursor < minor && straight_luminance(source[idx(cursor)]) >= threshold {
+                cursor += 1;
+            }
+            let end = cursor;
+            if end.saturating_sub(start) < min_length { continue; }
+            let key = |px: &[f32; 4]| -> f32 {
+                let alpha = px[3].max(1e-6);
+                match sort_channel {
+                    1 => px[0] / alpha,
+                    2 => px[1] / alpha,
+                    3 => px[2] / alpha,
+                    _ => straight_luminance(*px),
+                }
+            };
+            let mut chunk_start = start;
+            while chunk_start < end {
+                let chunk_end = (chunk_start + max_length).min(end);
+                if chunk_end - chunk_start >= min_length {
+                    let mut segment: Vec<[f32; 4]> =
+                        (chunk_start..chunk_end).map(|v| source[idx(v)]).collect();
+                    segment.sort_by(|a, b| {
+                        let order = key(a).total_cmp(&key(b));
+                        if reverse { order.reverse() } else { order }
+                    });
+                    for (offset, pixel) in segment.into_iter().enumerate() {
+                        sorted[idx(chunk_start + offset)] = pixel;
+                    }
+                }
+                chunk_start = chunk_end;
+            }
+        }
+    }
+    for i in 0..pixels.len() {
+        for channel in 0..4 {
+            pixels[i][channel] = source[i][channel] * (1.0 - mix) + sorted[i][channel] * mix;
+        }
+    }
+    0
+}
+
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params: i32, nparams: i32, _time: f64, _scale: f64) -> i32 {
     if width <= 0 || height <= 0 || nparams < 1 { return 1; }
@@ -322,6 +556,10 @@ pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params:
         #[cfg(sapphire_distort)] { 5 }
         #[cfg(sapphire_stylize)] { 3 }
         #[cfg(sapphire_motion)] { 3 }
+        #[cfg(sapphire_glint)] { 10 }
+        #[cfg(sapphire_rays)] { 10 }
+        #[cfg(sapphire_halftone)] { 6 }
+        #[cfg(sapphire_pixelsort)] { 7 }
     };
     if nparams < needed { return 1; }
     let values = unsafe { std::slice::from_raw_parts(params as *const f64, nparams as usize) };
@@ -335,6 +573,10 @@ pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params:
     #[cfg(sapphire_distort)] { render_distort(frame, w, h, values) }
     #[cfg(sapphire_stylize)] { render_stylize(frame, values) }
     #[cfg(sapphire_motion)] { render_motion(frame, w, h, values) }
+    #[cfg(sapphire_glint)] { render_glint(frame, w, h, values, _scale) }
+    #[cfg(sapphire_rays)] { render_rays(frame, w, h, values) }
+    #[cfg(sapphire_halftone)] { render_halftone(frame, w, h, values, _scale) }
+    #[cfg(sapphire_pixelsort)] { render_pixelsort(frame, w, h, values) }
 }
 
 
