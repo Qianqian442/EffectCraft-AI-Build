@@ -38,11 +38,15 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      - name: Generate pinned host dependency lockfile
+        run: cargo generate-lockfile --manifest-path windows-compat/aexlo-host/Cargo.toml
+
       - name: Build Windows x64 AEX host worker
         run: |
           cargo build --locked --release --target x86_64-pc-windows-msvc --manifest-path windows-compat/aexlo-host/Cargo.toml
           cargo build --release --target x86_64-pc-windows-msvc --manifest-path third_party/aexlo/examples/plugins/noise/Cargo.toml
-          if (!(Test-Path "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe")) { throw "AEX host worker missing" }
+          Get-ChildItem -Recurse -Filter effectcraft-aex-host.exe
+          if (!(Test-Path "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe")) { throw "AEX host worker missing after Cargo build" }
           if (!(Test-Path "third_party/aexlo/target/x86_64-pc-windows-msvc/release/aexlo_demo_noise.dll")) { throw "AEX sample plug-in missing" }
 
       - name: Package cross-architecture AEX smoke test inputs
