@@ -95,6 +95,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         "admin-app/app/src/test/java/com/qianqian/effectcraftadmin/LanAccountServerAccountFlowTest.java",
         (
             'qqRegistrationLoginBanAndUnbanUseTheSameSqliteAuthority',
+            'p2pLoopbackBridgeForwardsARegistrationIntoSqlite',
             'wechatOnlyRegistrationAndLoginAreSupported',
             'banned user must not log in',
             'banned users cannot update profile',
