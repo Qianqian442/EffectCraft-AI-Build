@@ -756,6 +756,97 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     Ok(install_result)
 }
 
+/// Inspect and archive one native desktop plug-in file without executing it.
+fn inspect_desktop_native_file(s: &mut Session, source_path: &str) -> Result<Value> {
+    const CMD: &str = "effect.plugins.load";
+    let source = Path::new(source_path);
+    let extension = source.extension().and_then(|value| value.to_str())
+        .unwrap_or_default().to_ascii_lowercase();
+    if !["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str()) {
+        return Err(bad(CMD, "所选文件不是支持分析的电脑版原生插件格式"));
+    }
+    let file_name = source.file_name().and_then(|value| value.to_str())
+        .ok_or_else(|| bad(CMD, "无法读取插件文件名"))?;
+    if file_name.is_empty() || file_name.len() > 180 || !super::scripts::is_bare_name(file_name)
+        || (cfg!(windows) && super::scripts::windows_unsafe_name(file_name))
+    {
+        return Err(bad(CMD, "插件文件名不安全或过长"));
+    }
+    let bytes = std::fs::read(source_path)
+        .map_err(|error| bad(CMD, format!("无法读取电脑版插件：{error}")))?;
+    if bytes.is_empty() {
+        return Err(bad(CMD, "电脑版插件文件为空"));
+    }
+    let cfg = s.config.clone()
+        .ok_or_else(|| bad(CMD, "当前会话没有可写的插件目录"))?;
+    let root = cfg.dir()
+        .ok_or_else(|| bad(CMD, "当前存储环境没有可访问的插件目录"))?;
+    let plugins_dir = root.join("Plug-ins");
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    let originals_dir = plugins_dir.join("Desktop-Originals").join(format!("native_{stamp}"));
+    std::fs::create_dir_all(&originals_dir)
+        .map_err(|error| bad(CMD, format!("无法创建电脑版插件存档目录：{error}")))?;
+    let destination = originals_dir.join(file_name);
+    std::fs::write(&destination, &bytes)
+        .map_err(|error| bad(CMD, format!("无法保存电脑版插件原件：{error}")))?;
+
+    let embedded_strings = readable_plugin_strings(&bytes);
+    let embedded_text = embedded_strings.join("\n");
+    let mapping = desktop_native_compatibility(file_name, &embedded_text);
+    let mappings = mapping.into_iter().collect::<Vec<_>>();
+    let (binary_format, architecture) = native_binary_info(&bytes);
+    let pe = windows_pe_metadata(&bytes);
+    let imports = pe.get("imports").and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).take(64).collect::<Vec<_>>().join(", "))
+        .unwrap_or_default();
+    let exports = pe.get("exports_sample").and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).take(64).collect::<Vec<_>>().join(", "))
+        .unwrap_or_default();
+    let entrypoints = pe.get("ae_entrypoint_candidates").and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(", "))
+        .unwrap_or_default();
+    let mapping_summary = mappings.iter().map(|item| format!(
+        "{} → {}：{}",
+        item["source"].as_str().unwrap_or(file_name),
+        item["effect_name"].as_str().unwrap_or("兼容效果"),
+        item["note"].as_str().unwrap_or("")
+    )).collect::<Vec<_>>().join("\n");
+    let report = format!(
+        "EffectCraft 电脑版原生插件分析报告\n时间戳：{stamp}\n文件：{file_name}\n大小：{} 字节\n格式：{binary_format}\n架构：{architecture}\nPE 元数据：{}\n导入 DLL：{imports}\nAE 插件入口候选：{entrypoints}\n导出符号：{exports}\n可读字符串线索：{}\n兼容效果匹配：{}\n\n说明：当前阶段仅做安全静态分析与原件归档，不会执行 Windows 原生机器码。真正运行还需要 Android Wine/Box64 运行时以及对应的插件宿主 ABI 实现。\n原件目录：{}\n",
+        bytes.len(),
+        pe,
+        embedded_strings.iter().take(96).cloned().collect::<Vec<_>>().join(" | "),
+        if mapping_summary.is_empty() { "暂无".into() } else { mapping_summary },
+        originals_dir.display()
+    );
+    let report_dir = plugins_dir.join("Import-Reports");
+    std::fs::create_dir_all(&report_dir)
+        .map_err(|error| bad(CMD, format!("无法创建插件分析报告目录：{error}")))?;
+    let report_path = report_dir.join(format!("native-plugin-{stamp}.txt"));
+    std::fs::write(&report_path, report)
+        .map_err(|error| bad(CMD, format!("无法保存插件分析报告：{error}")))?;
+    s.toast(format!(
+        "电脑版插件已安全归档并完成静态分析（{} 字节）；不会在安卓直接执行原生代码。分析报告：{}",
+        bytes.len(), report_path.display()
+    ));
+    Ok(json!({
+        "desktop_native_requires_port": [file_name],
+        "desktop_native_metadata": [{
+            "file": file_name,
+            "binary_format": binary_format,
+            "architecture": architecture,
+            "pe_metadata": pe,
+            "strings": embedded_strings.iter().take(96).collect::<Vec<_>>()
+        }],
+        "desktop_native_compatibility_matches": mappings,
+        "desktop_skipped": [],
+        "compatibility_report": report_path.to_string_lossy()
+    }))
+}
+
 '''
     marker = "/// " + chr(96) + "effect.plugins.load" + chr(96) + ": load WASM/WAT effect plug-ins directly or from a ZIP archive.\n"
     source = replace_once(source, marker, helper + marker, "desktop package analyzer insertion")
@@ -763,10 +854,16 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     anchor = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
     replacement = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
-    if let Some(path) = str_p(p, "path")
-        && Path::new(path).extension().is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
-    {
-        return install_desktop_plugin_archive(s, path);
+    if let Some(path) = str_p(p, "path") {
+        let extension = Path::new(path).extension().and_then(|value| value.to_str()).unwrap_or_default();
+        if extension.eq_ignore_ascii_case("zip") {
+            return install_desktop_plugin_archive(s, path);
+        }
+        if ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"]
+            .iter().any(|native| extension.eq_ignore_ascii_case(native))
+        {
+            return inspect_desktop_native_file(s, path);
+        }
     }
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
     source = replace_once(source, anchor, replacement, "ZIP route to desktop package installer")
