@@ -585,6 +585,42 @@ final class LanAccountServer implements Runnable {
         return verifyPassword(candidate, p.getString("admin_salt", ""), p.getString("admin_hash", ""));
     }
 
+    /**
+     * One-time owner-selected password adoption for a demonstrably empty local
+     * account database. This stores only a salted PBKDF2 verifier, never the
+     * candidate plaintext. It does not reset JWT/peer identity or alter SQLite.
+     */
+    static boolean adoptAdminPasswordIfNoRegisteredUsers(Context context, String candidate) {
+        if (candidate == null || candidate.length() < 8 || candidate.length() > 128) return false;
+        Context app = context.getApplicationContext();
+        if (countRegisteredAccounts(app) != 0) return false;
+        byte[] salt = randomBytes(16);
+        String hash = hashPassword(candidate, salt);
+        SharedPreferences p = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        boolean saved = p.edit()
+            .putString("admin_salt", b64(salt))
+            .putString("admin_hash", hash)
+            .putString("admin_password_version", "owner-selected-empty-db-v1")
+            .remove("admin_initial_password_pending")
+            .commit();
+        return saved && verifyPassword(candidate,
+            p.getString("admin_salt", ""), p.getString("admin_hash", ""));
+    }
+
+    private static int countRegisteredAccounts(Context context) {
+        AccountDb database = null;
+        try {
+            database = new AccountDb(context.getApplicationContext());
+            try (Cursor cursor = database.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM accounts", null)) {
+                return cursor.moveToFirst() ? cursor.getInt(0) : -1;
+            }
+        } catch (Exception error) {
+            return -1;
+        } finally {
+            if (database != null) database.close();
+        }
+    }
+
     private static String hashPassword(String password, byte[] salt) {
         try {
             PBEKeySpec spec = new PBEKeySpec(password.toCharArray(), salt, PBKDF2_ROUNDS, 256);
