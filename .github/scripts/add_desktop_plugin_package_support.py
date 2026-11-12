@@ -329,7 +329,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     .map_err(|error| bad(CMD, format!("无法保存素材 {file_name}：{error}")))?;
                 // Read common package manifests for effect identifiers when the binary filename
                 // is generic (for example, a bundle named simply "Plugin.aex").
-                if ["json", "xml", "txt", "md", "toml", "plist", "rsrc", "r", "rc", "strings", "manifest", "yaml", "yml", "ini", "config", "pdb", "map"].contains(&extension.as_str()) {
+                if ["json", "xml", "txt", "md", "toml", "plist", "rsrc", "r", "rc", "strings", "manifest", "yaml", "yml", "ini", "config", "pdb", "map", "jsxbin"].contains(&extension.as_str()) {
                     let metadata = String::from_utf8_lossy(&bytes);
                     let metadata_strings = readable_plugin_strings(&bytes);
                     let metadata_probe = format!("{}\n{}", metadata, metadata_strings.join("\n"));
