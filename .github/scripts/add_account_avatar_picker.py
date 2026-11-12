@@ -162,10 +162,11 @@ def patch_build_common(builder: Path) -> None:
     marker = "EFFECTCRAFT_RFD_IMAGE_PICKER_V1"
     if marker in source:
         return
-    start = source.index("RFD_SAF_SETUP = '''")
-    end = source.index("'''", start + len("RFD_SAF_SETUP = '''"))
-    end = source.index("'''", end + 3)
-    block = source[start:end]
+    prefix = "RFD_SAF_SETUP = '''"
+    start = source.index(prefix)
+    body_start = start + len(prefix)
+    end = source.index("'''", body_start)
+    block = source[body_start:end]
     block = replace_once(
         block,
         "            rfd::artcraft_saf::Kind::Open { multiple } => { launcher_bridge.request_open(id, multiple).ok(); }\n",
@@ -187,7 +188,7 @@ def patch_build_common(builder: Path) -> None:
 ''',
         "blocking RFD image picker route",
     )
-    source = source[:start] + block + source[end:]
+    source = source[:body_start] + block + source[end:]
     path.write_text(source, encoding="utf-8")
 
 
