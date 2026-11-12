@@ -1,0 +1,59 @@
+name: Test EffectCraft SQLite Account Lifecycle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'admin-app/app/src/main/java/com/qianqian/effectcraftadmin/LanAccountServer.java'
+      - 'admin-app/app/src/main/java/com/qianqian/effectcraftadmin/AccountDb.java'
+      - 'admin-app/app/src/main/java/com/qianqian/effectcraftadmin/P2PAccountBridge.java'
+      - 'admin-app/app/src/test/**'
+      - 'admin-app/app/build.gradle'
+      - '.github/workflows/test-account-sqlite.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-sqlite-account-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sqlite-account-tests:
+    name: Run SQLite registration login ban and unban tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Configure Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="/usr/local/lib/android/sdk"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
+          test -x "$SDKMANAGER"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Run Android SQLite and P2P bridge unit tests
+        working-directory: admin-app
+        run: gradle --no-daemon :app:testDebugUnitTest --stacktrace
+
