@@ -174,9 +174,13 @@ def main() -> None:
     if bom_old in g:
         g = once(g, bom_old, bom_new, "Kotlin BOM alignment")
 
+    settings_fn_anchor = 'def settings_gradle(app):\n    return f"""'
+    settings_fn_add = 'def settings_gradle(app):\n    ai_runtime_project_dir = _groovy(str(Path(os.environ[\'LLAMA_CPP_DIR\']).resolve() / \'examples/llama.android/lib\'))\n    return f"""'
+    if "ai_runtime_project_dir =" not in g:
+        g = once(g, settings_fn_anchor, settings_fn_add, "llama.cpp Gradle project path setup")
     settings_anchor = "rootProject.name = '{_groovy(app)}-android'\n"
     settings_add = settings_anchor + """include ':ai-runtime'
-project(':ai-runtime').projectDir = file('{_groovy(str(Path(os.environ["LLAMA_CPP_DIR"]).resolve() / "examples/llama.android/lib"))}')
+project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
 """
     if "include ':ai-runtime'" not in g:
         g = once(g, settings_anchor, settings_add, "llama.cpp Android library module inclusion")
