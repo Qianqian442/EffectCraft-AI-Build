@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "status": "experimental-design-and-static-pe-inspection",
+  "target_abi": [
+    "arm64-v8a"
+  ],
+  "primary_backend": {
+    "id": "winlator-wine-box64",
+    "components": [
+      {
+        "name": "Winlator Android runtime patterns",
+        "repository": "https://github.com/brunodev85/winlator-app",
+        "revision": "2c33741d50c5daab0521a098be5c969f63b9e887",
+        "license": "LGPL-2.1",
+        "role": "Android rootfs, Wine environment and guest-process lifecycle reference"
+      },
+      {
+        "name": "Wine",
+        "repository": "https://gitlab.winehq.org/wine/wine",
+        "revision": "7384c8babcaa411a0014bf223068a633d7bfa899",
+        "license": "LGPL-2.1-or-later",
+        "role": "Windows API and PE/DLL loader compatibility"
+      },
+      {
+        "name": "Box64",
+        "repository": "https://github.com/ptitSeb/box64",
+        "revision": "4dbba1300a8d74c7c385f0d8a4e453c740622f9f",
+        "license": "MIT",
+        "role": "x86-64 Linux user-space instruction translation on ARM64"
+      },
+      {
+        "name": "Box86",
+        "repository": "https://github.com/ptitSeb/box86",
+        "license": "MIT",
+        "role": "Optional 32-bit x86 execution path; exact Wine/WoW64 configuration must be validated"
+      }
+    ]
+  },
+  "alternative_backend": {
+    "id": "hangover",
+    "repository": "https://github.com/AndreRH/hangover",
+    "revision": "56e385b7ff490edd281b288f420677093563560b",
+    "license": "LGPL-2.1",
+    "role": "Alternative ARM64 Wine path using emulator DLLs; not yet selected for Android integration"
+  },
+  "memory_policy": {
+    "application_imposed_ram_limit": false,
+    "rlimit_as": false,
+    "cgroup_memory_limit": false,
+    "box64_artificial_memory_cap": false,
+    "allocation_policy": "OS-and-device-managed; no fixed app-level cap"
+  },
+  "required_before_apk_distribution": [
+    "per-package SBOM and license review",
+    "reproducible ARM64 Android build of the selected Wine and emulator components",
+    "corresponding source and license notices for all LGPL/GPL components",
+    "Windows PE loader smoke tests",
+    "AE SDK ABI host coverage report",
+    "real sample plug-in compatibility tests"
+  ],
+  "explicit_non_claims": [
+    "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
+    "No claim that arbitrary AE AEX plug-ins are fully hosted",
+    "No claim that all AE SmartFX or AEGP suites are implemented",
+    "No claim of unlimited physical memory or GPU resources"
+  ]
+}
