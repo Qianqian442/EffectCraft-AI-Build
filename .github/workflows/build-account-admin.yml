@@ -115,6 +115,15 @@ jobs:
           file EffectCraft-Account-Admin.apk
           ls -lh EffectCraft-Account-Admin.apk
 
+      # Explicitly save the debug signing identity after the first successful
+      # build so future admin APK updates use the same certificate.
+      - name: Save persistent Android debug signing key
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: effectcraft-admin-debug-signing-v1-${{ github.repository_id }}
+
       - name: Publish downloadable APK release asset
         if: github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v2
