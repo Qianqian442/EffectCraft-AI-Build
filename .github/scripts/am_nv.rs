@@ -903,7 +903,7 @@ fn export_alight_xml(s: &Session, path: &str) -> Result<J> {
                 continue;
             }
         };
-        let body = if matches!(layer.source, LayerSource::Text) {
+        let body = if matches!(&layer.source, LayerSource::Text) {
             body
         } else {
             format!(
