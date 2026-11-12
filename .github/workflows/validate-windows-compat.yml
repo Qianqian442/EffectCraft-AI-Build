@@ -68,8 +68,12 @@ jobs:
           mkdir -p build/windows-runtime-selector
           javac -d build/windows-runtime-selector \
             windows-compat/android-runtime/src/main/java/com/effectcraft/windowscompat/WindowsRuntimeSelector.java \
-            windows-compat/android-runtime/src/test/java/com/effectcraft/windowscompat/WindowsRuntimeSelectorSelfTest.java
+            windows-compat/android-runtime/src/main/java/com/effectcraft/windowscompat/RuntimeAssetInstaller.java \
+            windows-compat/android-runtime/src/main/java/com/effectcraft/windowscompat/WinlatorBionicAssetCatalog.java \
+            windows-compat/android-runtime/src/test/java/com/effectcraft/windowscompat/WindowsRuntimeSelectorSelfTest.java \
+            windows-compat/android-runtime/src/test/java/com/effectcraft/windowscompat/RuntimeAssetInstallerSelfTest.java
           java -ea -cp build/windows-runtime-selector com.effectcraft.windowscompat.WindowsRuntimeSelectorSelfTest
+          java -ea -cp build/windows-runtime-selector com.effectcraft.windowscompat.RuntimeAssetInstallerSelfTest
 
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
