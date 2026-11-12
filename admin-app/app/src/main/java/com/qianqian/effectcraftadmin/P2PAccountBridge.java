@@ -28,16 +28,24 @@ final class P2PAccountBridge {
     static synchronized void start(LanAccountServer server) {
         accountServer = server;
         if (started) return;
-        started = true;
-        Thread worker = new Thread(P2PAccountBridge::listen, "EffectCraft-P2P-Account-Bridge");
-        worker.setDaemon(true);
-        worker.start();
+        try {
+            // Bind synchronously so the native P2P node is never advertised before
+            // the local SQLite forwarding endpoint is actually listening.
+            ServerSocket listener = new ServerSocket(PORT, 32, InetAddress.getByName("127.0.0.1"));
+            started = true;
+            Thread worker = new Thread(() -> listen(listener), "EffectCraft-P2P-Account-Bridge");
+            worker.setDaemon(true);
+            worker.start();
+        } catch (Exception error) {
+            started = false;
+            Log.e(TAG, "Loopback account bridge bind failed", error);
+        }
     }
 
-    private static void listen() {
-        try (ServerSocket listener = new ServerSocket(PORT, 32, InetAddress.getByName("127.0.0.1"))) {
+    private static void listen(ServerSocket listener) {
+        try (ServerSocket server = listener) {
             while (true) {
-                Socket socket = listener.accept();
+                Socket socket = server.accept();
                 clients.execute(() -> handle(socket));
             }
         } catch (Exception error) {
