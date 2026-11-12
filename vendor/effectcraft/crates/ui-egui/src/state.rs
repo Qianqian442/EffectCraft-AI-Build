@@ -448,7 +448,7 @@ pub struct TimelineState {
     pub link_epoch: u64,
     /// Visible optional columns (column header right-click ▸ Columns): `av`, `keys`, `label`,
     /// `num`, `comment`, `switches`, `parent`, `in`, `out`, `duration`, `stretch`. The name
-    /// column is always shown; Modes follows `show_modes` (F4).
+    /// column is always shown; Modes is shown by default and can still be toggled with F4.
     #[serde(default = "default_tl_columns")]
     pub columns: BTreeSet<String>,
     /// The name column shows Source Name instead of Layer Name (click its header).
@@ -479,7 +479,7 @@ impl Default for TimelineState {
             scroll_y: 0.0,
             columns_w: 560.0,
             outline_scroll: 0.0,
-            show_modes: false,
+            show_modes: true,
             graph_editor: false,
             search: String::new(),
             open_layers: BTreeSet::new(),
