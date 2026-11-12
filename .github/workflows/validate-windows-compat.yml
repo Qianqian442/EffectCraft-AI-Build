@@ -54,6 +54,10 @@ jobs:
           rustfmt --edition 2024 --emit stdout effectcraft/crates/engine/src/cmd/effect.rs >/dev/null
           rustfmt --edition 2024 --emit stdout effectcraft/crates/ui-egui/src/header.rs >/dev/null
 
+      - name: Type-check the patched EffectCraft engine
+        working-directory: effectcraft
+        run: cargo check --locked -p effectcraft-engine --lib
+
       - name: Check required runtime architecture and memory policy
         run: |
           python3 - <<'PY'
