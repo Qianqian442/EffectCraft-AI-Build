@@ -335,8 +335,9 @@ final class LanAccountServer implements Runnable {
         String name = body.optString("name", "").trim();
         String password = body.optString("password", "");
         String avatar = body.optString("avatar_url", "").trim();
-        if (!QQ.matcher(qq).matches()) return error(422, "QQ号应填写5至12位数字", "", "");
-        if (!WECHAT.matcher(body.optString("wechat", "").trim()).matches()) return error(422, "微信号格式不正确", "", "");
+        if (qq.isEmpty() && wechat.isEmpty()) return error(422, "QQ号和微信号至少填写一项", "", "");
+        if (!qq.isEmpty() && !QQ.matcher(qq).matches()) return error(422, "QQ号应填写5至12位数字", "", "");
+        if (!wechat.isEmpty() && !WECHAT.matcher(wechat).matches()) return error(422, "微信号格式不正确", "", "");
         if (name.isEmpty() || name.length() > 40) return error(422, "姓名不能为空且不能超过40字", "", "");
         if (password.length() < 8 || password.length() > 128) return error(422, "密码至少8位", "", "");
         if (!avatar.isEmpty() && !(avatar.startsWith("https://") || avatar.startsWith("http://"))) return error(422, "头像地址格式不正确", "", "");
@@ -346,7 +347,9 @@ final class LanAccountServer implements Runnable {
         SQLiteDatabase writable = db.getWritableDatabase();
         try {
             android.content.ContentValues values = new android.content.ContentValues();
-            values.put("id", id); values.put("qq", qq); values.put("wechat", wechat);
+            values.put("id", id);
+            if (qq.isEmpty()) values.putNull("qq"); else values.put("qq", qq);
+            if (wechat.isEmpty()) values.putNull("wechat"); else values.put("wechat", wechat);
             values.put("name", name); values.put("password_hash", passHash);
             values.put("password_salt", b64(salt)); values.put("avatar_url", avatar);
             values.put("created_at", Instant.now().toString());
@@ -359,6 +362,7 @@ final class LanAccountServer implements Runnable {
 
     private JSONObject login(JSONObject body) throws Exception {
         String id = body.optString("identifier", "").trim();
+        if (id.isEmpty()) return error(401, "请输入 QQ 号或微信号", "", "");
         String password = body.optString("password", "");
         Cursor c = db.getReadableDatabase().query("accounts", null, "qq=? OR wechat=?", new String[]{id, id.toLowerCase(Locale.ROOT)}, null, null, null, "1");
         try {
@@ -394,10 +398,12 @@ final class LanAccountServer implements Runnable {
         String wechat = wechatRaw.toLowerCase(Locale.ROOT);
         String name = body.optString("name", "").trim();
         String avatar = body.optString("avatar_url", "").trim();
-        if (!QQ.matcher(qq).matches() || !WECHAT.matcher(wechatRaw).matches() || name.isEmpty()) return error(422, "QQ号、微信号或姓名格式不正确", "", "");
+        if ((qq.isEmpty() && wechatRaw.isEmpty()) || (!qq.isEmpty() && !QQ.matcher(qq).matches()) || (!wechatRaw.isEmpty() && !WECHAT.matcher(wechatRaw).matches()) || name.isEmpty()) return error(422, "QQ号和微信号至少填写一项，且格式必须正确", "", "");
         String newPassword = body.optString("new_password", "");
         android.content.ContentValues values = new android.content.ContentValues();
-        values.put("qq", qq); values.put("wechat", wechat); values.put("name", name); values.put("avatar_url", avatar);
+        if (qq.isEmpty()) values.putNull("qq"); else values.put("qq", qq);
+        if (wechat.isEmpty()) values.putNull("wechat"); else values.put("wechat", wechat);
+        values.put("name", name); values.put("avatar_url", avatar);
         if (!newPassword.isEmpty()) {
             Cursor c = db.getReadableDatabase().query("accounts", new String[]{"password_hash", "password_salt"}, "id=?", new String[]{id}, null, null, null);
             try {
@@ -422,7 +428,10 @@ final class LanAccountServer implements Runnable {
         else c = db.getReadableDatabase().query("accounts", null, "qq LIKE ? OR wechat LIKE ? OR name LIKE ?",
             new String[]{"%" + query + "%", "%" + query + "%", "%" + query + "%"}, null, null, "created_at DESC", "500");
         try { while (c.moveToNext()) users.put(userFromCursor(c)); } finally { c.close(); }
-        JSONObject out = new JSONObject(); out.put("users", users); return out;
+        JSONObject out = new JSONObject();
+        out.put("users", users);
+        out.put("registered_count", getRegisteredCount());
+        return out;
     }
 
     private JSONObject banUser(String id, JSONObject body) throws Exception {
@@ -441,6 +450,18 @@ final class LanAccountServer implements Runnable {
         }
         db.getWritableDatabase().update("accounts", values, "id=?", new String[]{id});
         JSONObject out = new JSONObject(); out.put("user", findUser(id)); return out;
+    }
+
+    private int getRegisteredCount() {
+        Cursor c = db.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM accounts", null);
+        try { return c.moveToFirst() ? c.getInt(0) : 0; } finally { c.close(); }
+    }
+
+    static int getRegisteredCount(Context context) {
+        AccountDb database = new AccountDb(context.getApplicationContext());
+        Cursor c = database.getReadableDatabase().rawQuery("SELECT COUNT(*) FROM accounts", null);
+        try { return c.moveToFirst() ? c.getInt(0) : 0; }
+        finally { c.close(); database.close(); }
     }
 
     private JSONObject findUser(String id) throws Exception {
@@ -557,11 +578,23 @@ final class LanAccountServer implements Runnable {
     }
 
     private static final class AccountDb extends SQLiteOpenHelper {
-        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 1); }
+        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 2); }
         @Override public void onCreate(SQLiteDatabase db) {
-            db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT NOT NULL UNIQUE, wechat TEXT NOT NULL UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
+            db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT UNIQUE, wechat TEXT UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
             db.execSQL("CREATE INDEX idx_accounts_name ON accounts(name)");
         }
-        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) { }
+        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+            if (oldVersion < 2) {
+                db.beginTransaction();
+                try {
+                    db.execSQL("CREATE TABLE accounts_v2 (id TEXT PRIMARY KEY, qq TEXT UNIQUE, wechat TEXT UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
+                    db.execSQL("INSERT INTO accounts_v2 (id,qq,wechat,name,password_hash,password_salt,avatar_url,created_at,banned_until,ban_reason) SELECT id,NULLIF(qq,''),NULLIF(wechat,''),name,password_hash,password_salt,avatar_url,created_at,banned_until,ban_reason FROM accounts");
+                    db.execSQL("DROP TABLE accounts");
+                    db.execSQL("ALTER TABLE accounts_v2 RENAME TO accounts");
+                    db.execSQL("CREATE INDEX idx_accounts_name ON accounts(name)");
+                    db.setTransactionSuccessful();
+                } finally { db.endTransaction(); }
+            }
+        }
     }
 }
