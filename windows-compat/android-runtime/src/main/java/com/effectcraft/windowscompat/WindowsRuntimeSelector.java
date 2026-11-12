@@ -89,7 +89,7 @@ public final class WindowsRuntimeSelector {
                 addArm64EcFex(plans, "effectcraft-aex-host-x86.exe",
                         Confidence.HOST_WORKER_COMPILED_RUNTIME_UNTESTED);
                 addArm64EcWow(plans, "effectcraft-aex-host-x86.exe",
-                        Confidence.HOST_WORKER_BUILD_CONFIRMED);
+                        Confidence.HOST_WORKER_COMPILED_RUNTIME_UNTESTED);
                 addBox64Box32(plans, "effectcraft-aex-host-x86.exe");
                 break;
             case IMAGE_FILE_MACHINE_ARM64EC:
