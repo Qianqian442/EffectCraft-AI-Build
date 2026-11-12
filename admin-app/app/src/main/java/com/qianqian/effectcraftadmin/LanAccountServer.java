@@ -137,7 +137,7 @@ final class LanAccountServer implements Runnable {
             }
             try (ServerSocket server = new ServerSocket()) {
                 server.setReuseAddress(true);
-                server.bind(new InetSocketAddress(InetAddress.getByName(currentIp), PORT), 32);
+                server.bind(new InetSocketAddress("0.0.0.0", PORT), 32);
                 server.setSoTimeout(2500);
                 listener = server;
                 boundIp = currentIp;
@@ -294,6 +294,40 @@ final class LanAccountServer implements Runnable {
         socket.getOutputStream().flush();
     }
 
+    JSONObject handleP2PRequest(String wire) {
+        try {
+            JSONObject packet = new JSONObject(wire);
+            String method = packet.optString("method", "GET").toUpperCase(Locale.ROOT);
+            String path = packet.optString("path", "");
+            String token = packet.optString("token", "");
+            String bodyText = packet.optString("body", "");
+            java.util.Map<String, String> headers = new java.util.HashMap<>();
+            if (!token.isEmpty()) headers.put("authorization", "Bearer " + token);
+            JSONObject body = bodyText.isEmpty() ? new JSONObject() : new JSONObject(bodyText);
+            JSONObject result = route(method, path, headers, body);
+            int status = result.optInt("_status", 200);
+            result.remove("_status");
+            JSONObject envelope = new JSONObject();
+            envelope.put("status", status);
+            envelope.put("body", result.toString());
+            return envelope;
+        } catch (SecurityException error) {
+            try {
+                JSONObject envelope = new JSONObject();
+                JSONObject detail = new JSONObject(); detail.put("detail", error.getMessage() == null ? "需要登录" : error.getMessage());
+                envelope.put("status", 401); envelope.put("body", detail.toString());
+                return envelope;
+            } catch (Exception ignored) { return new JSONObject(); }
+        } catch (Exception error) {
+            try {
+                JSONObject envelope = new JSONObject();
+                JSONObject detail = new JSONObject(); detail.put("detail", error.getMessage() == null ? "账号请求无法处理" : error.getMessage());
+                envelope.put("status", 400); envelope.put("body", detail.toString());
+                return envelope;
+            } catch (Exception ignored) { return new JSONObject(); }
+        }
+    }
+
     private JSONObject route(String method, String target, java.util.Map<String, String> headers, JSONObject body) throws Exception {
         String path = target.split("\\?", 2)[0];
         String query = target.contains("?") ? target.substring(target.indexOf('?') + 1) : "";
@@ -335,8 +369,9 @@ final class LanAccountServer implements Runnable {
         String name = body.optString("name", "").trim();
         String password = body.optString("password", "");
         String avatar = body.optString("avatar_url", "").trim();
-        if (!QQ.matcher(qq).matches()) return error(422, "QQ号应填写5至12位数字", "", "");
-        if (!WECHAT.matcher(body.optString("wechat", "").trim()).matches()) return error(422, "微信号格式不正确", "", "");
+        if (qq.isEmpty() && wechat.isEmpty()) return error(422, "QQ号和微信号至少填写一项", "", "");
+        if (!qq.isEmpty() && !QQ.matcher(qq).matches()) return error(422, "QQ号应填写5至12位数字", "", "");
+        if (!wechat.isEmpty() && !WECHAT.matcher(body.optString("wechat", "").trim()).matches()) return error(422, "微信号格式不正确", "", "");
         if (name.isEmpty() || name.length() > 40) return error(422, "姓名不能为空且不能超过40字", "", "");
         if (password.length() < 8 || password.length() > 128) return error(422, "密码至少8位", "", "");
         if (!avatar.isEmpty() && !(avatar.startsWith("https://") || avatar.startsWith("http://"))) return error(422, "头像地址格式不正确", "", "");
@@ -346,7 +381,9 @@ final class LanAccountServer implements Runnable {
         SQLiteDatabase writable = db.getWritableDatabase();
         try {
             android.content.ContentValues values = new android.content.ContentValues();
-            values.put("id", id); values.put("qq", qq); values.put("wechat", wechat);
+            values.put("id", id);
+            if (qq.isEmpty()) values.putNull("qq"); else values.put("qq", qq);
+            if (wechat.isEmpty()) values.putNull("wechat"); else values.put("wechat", wechat);
             values.put("name", name); values.put("password_hash", passHash);
             values.put("password_salt", b64(salt)); values.put("avatar_url", avatar);
             values.put("created_at", Instant.now().toString());
@@ -394,10 +431,12 @@ final class LanAccountServer implements Runnable {
         String wechat = wechatRaw.toLowerCase(Locale.ROOT);
         String name = body.optString("name", "").trim();
         String avatar = body.optString("avatar_url", "").trim();
-        if (!QQ.matcher(qq).matches() || !WECHAT.matcher(wechatRaw).matches() || name.isEmpty()) return error(422, "QQ号、微信号或姓名格式不正确", "", "");
+        if ((qq.isEmpty() && wechatRaw.isEmpty()) || (!qq.isEmpty() && !QQ.matcher(qq).matches()) || (!wechatRaw.isEmpty() && !WECHAT.matcher(wechatRaw).matches()) || name.isEmpty()) return error(422, "QQ号和微信号至少填写一项，且已填写的账号格式必须正确", "", "");
         String newPassword = body.optString("new_password", "");
         android.content.ContentValues values = new android.content.ContentValues();
-        values.put("qq", qq); values.put("wechat", wechat); values.put("name", name); values.put("avatar_url", avatar);
+        if (qq.isEmpty()) values.putNull("qq"); else values.put("qq", qq);
+        if (wechat.isEmpty()) values.putNull("wechat"); else values.put("wechat", wechat);
+        values.put("name", name); values.put("avatar_url", avatar);
         if (!newPassword.isEmpty()) {
             Cursor c = db.getReadableDatabase().query("accounts", new String[]{"password_hash", "password_salt"}, "id=?", new String[]{id}, null, null, null);
             try {
@@ -454,8 +493,10 @@ final class LanAccountServer implements Runnable {
     private static JSONObject userFromCursor(Cursor c) throws Exception {
         JSONObject u = new JSONObject();
         u.put("id", c.getString(c.getColumnIndexOrThrow("id")));
-        u.put("qq", c.getString(c.getColumnIndexOrThrow("qq")));
-        u.put("wechat", c.getString(c.getColumnIndexOrThrow("wechat")));
+        int qqColumn = c.getColumnIndexOrThrow("qq");
+        int wechatColumn = c.getColumnIndexOrThrow("wechat");
+        u.put("qq", c.isNull(qqColumn) ? "" : c.getString(qqColumn));
+        u.put("wechat", c.isNull(wechatColumn) ? "" : c.getString(wechatColumn));
         u.put("name", c.getString(c.getColumnIndexOrThrow("name")));
         u.put("avatar_url", c.getString(c.getColumnIndexOrThrow("avatar_url")));
         u.put("created_at", c.getString(c.getColumnIndexOrThrow("created_at")));
@@ -557,11 +598,19 @@ final class LanAccountServer implements Runnable {
     }
 
     private static final class AccountDb extends SQLiteOpenHelper {
-        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 1); }
+        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 2); }
         @Override public void onCreate(SQLiteDatabase db) {
-            db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT NOT NULL UNIQUE, wechat TEXT NOT NULL UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
+            db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT UNIQUE, wechat TEXT UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
             db.execSQL("CREATE INDEX idx_accounts_name ON accounts(name)");
         }
-        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) { }
+        @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
+            if (oldVersion < 2) {
+                db.execSQL("ALTER TABLE accounts RENAME TO accounts_v1");
+                db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT UNIQUE, wechat TEXT UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
+                db.execSQL("INSERT INTO accounts(id,qq,wechat,name,password_hash,password_salt,avatar_url,created_at,banned_until,ban_reason) SELECT id,NULLIF(qq,''),NULLIF(wechat,''),name,password_hash,password_salt,avatar_url,created_at,banned_until,ban_reason FROM accounts_v1");
+                db.execSQL("DROP TABLE accounts_v1");
+                db.execSQL("CREATE INDEX idx_accounts_name ON accounts(name)");
+            }
+        }
     }
 }
