@@ -58,6 +58,7 @@ public final class MainActivity extends Activity {
     private Button loginButton;
     private TextView loginStatus;
     private TextView p2pStatusView;
+    private String serviceStartError = "";
     private final Handler p2pUiHandler = new Handler(Looper.getMainLooper());
     private final Runnable p2pStatusRefresh = new Runnable() {
         @Override public void run() {
@@ -70,8 +71,13 @@ public final class MainActivity extends Activity {
         super.onCreate(state);
         firstAdminPassword = LanAccountServer.ensureAdminPassword(this);
         Intent authorityService = new Intent(this, LanServerService.class);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(authorityService);
-        else startService(authorityService);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(authorityService);
+            else startService(authorityService);
+        } catch (RuntimeException error) {
+            serviceStartError = "后台账号服务启动失败：" + error.getClass().getSimpleName()
+                + (error.getMessage() == null ? "" : " · " + error.getMessage());
+        }
         p2pUiHandler.postDelayed(p2pStatusRefresh, 2500);
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
@@ -271,14 +277,15 @@ public final class MainActivity extends Activity {
             loginButton.setEnabled(false);
             loginButton.setText("正在验证…");
         }
-        if (loginStatus != null) loginStatus.setText("正在连接本机 SQLite 账号数据库并验证管理员密码…");
+        if (loginStatus != null) loginStatus.setText("正在等待本机 SQLite 服务就绪并校验管理员密码…");
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
             if (result == null) {
                 if (loginButton != null) {
                     loginButton.setEnabled(true);
                     loginButton.setText("登录管理后台");
                 }
-                if (loginStatus != null) loginStatus.setText("登录未完成，请检查 HTTPS 服务器地址、网络和密码后重试。");
+                // requestAsync writes the precise diagnosis after this callback.
+                if (loginStatus != null) loginStatus.setText("验证未完成，正在显示具体失败原因…");
                 return;
             }
             try {
@@ -305,12 +312,73 @@ public final class MainActivity extends Activity {
 
     private interface JsonCallback { void done(JSONObject result); }
 
+    /**
+     * Wait until the foreground service has bound its loopback HTTP endpoint and
+     * SQLite has passed an integrity check. The Activity can be visible before
+     * Android has finished creating the foreground service, so a fixed immediate
+     * login request races the service startup.
+     */
+    private void awaitLocalAccountService() throws Exception {
+        if (!serviceStartError.isEmpty()) throw new java.io.IOException(serviceStartError);
+        long deadline = System.currentTimeMillis() + 15000L;
+        String lastProblem = "后台服务仍在启动";
+        while (System.currentTimeMillis() < deadline) {
+            HttpURLConnection probe = null;
+            try {
+                URL healthUrl = new URL(DEFAULT_SERVER + "/health");
+                probe = (HttpURLConnection) healthUrl.openConnection();
+                probe.setConnectTimeout(900);
+                probe.setReadTimeout(1200);
+                probe.setRequestMethod("GET");
+                probe.setRequestProperty("Accept", "application/json");
+                int code = probe.getResponseCode();
+                InputStream input = code >= 200 && code < 300 ? probe.getInputStream() : probe.getErrorStream();
+                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+                if (input != null) {
+                    try (InputStream stream = input) {
+                        byte[] buffer = new byte[1024];
+                        int count;
+                        while ((count = stream.read(buffer)) > 0) bytes.write(buffer, 0, count);
+                    }
+                }
+                JSONObject health = new JSONObject(new String(bytes.toByteArray(), StandardCharsets.UTF_8));
+                if (code == 200 && health.optBoolean("ready", false)
+                    && "ready".equals(health.optString("database", ""))) {
+                    return;
+                }
+                Object detail = health.opt("detail");
+                if (detail instanceof JSONObject) lastProblem = ((JSONObject) detail).optString("message", detail.toString());
+                else lastProblem = detail == null ? ("健康检查返回 HTTP " + code) : detail.toString();
+            } catch (Exception error) {
+                lastProblem = error.getClass().getSimpleName()
+                    + (error.getMessage() == null ? "" : "：" + error.getMessage());
+            } finally {
+                if (probe != null) probe.disconnect();
+            }
+            try { Thread.sleep(350L); }
+            catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException("等待本机账号服务时被中断");
+            }
+        }
+        throw new java.io.IOException("等待本机 SQLite 账号服务超时（15秒）：" + lastProblem);
+    }
+
     private void requestAsync(String method, String path, JSONObject body, boolean auth, JsonCallback callback) {
         io.execute(() -> {
             JSONObject result = null;
             String error = null;
             HttpURLConnection c = null;
             try {
+                if (path.startsWith("/v1/admin/")) {
+                    awaitLocalAccountService();
+                    if ("/v1/admin/login".equals(path)) {
+                        String candidate = body == null ? "" : body.optString("password", "");
+                        if (!LanAccountServer.verifyAdminPasswordOnDevice(getApplicationContext(), candidate)) {
+                            throw new java.io.IOException("输入的密码与这部手机当前保存的管理员凭据不匹配。没有重置密码，也没有删除 SQLite 账号数据。请确认使用首次启动时显示的初始密码。");
+                        }
+                    }
+                }
                 URL url = new URL(server + path);
                 if (!"http".equalsIgnoreCase(url.getProtocol()) || !"127.0.0.1".equals(url.getHost()) || url.getPort() != 8787) {
                     throw new java.io.IOException("账号管理界面只允许访问本机管理员账号服务");
@@ -359,9 +427,12 @@ public final class MainActivity extends Activity {
             runOnUiThread(() -> {
                 if (finalError != null) {
                     toast(finalError);
-                    if (finalError.contains("401") || finalError.contains("管理员")) showLogin();
+                    if (auth && (finalError.contains("401") || finalError.contains("登录已失效") || finalError.contains("账号权限不足"))) showLogin();
                 }
                 if (callback != null) callback.done(finalResult);
+                if (finalError != null && "/v1/admin/login".equals(path) && loginStatus != null) {
+                    loginStatus.setText("登录失败诊断：" + finalError);
+                }
             });
         });
     }
