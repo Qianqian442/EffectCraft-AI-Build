@@ -386,6 +386,8 @@ pub struct TimelineState {
     /// Horizontal scroll of the outline columns (pixels) when they are wider than the pane.
     #[serde(default)]
     pub outline_scroll: f32,
+    /// Always start with Modes visible, including when upgrading from an older saved layout.
+    #[serde(skip_deserializing, default = "yes")]
     pub show_modes: bool,
     pub graph_editor: bool,
     pub search: String,
