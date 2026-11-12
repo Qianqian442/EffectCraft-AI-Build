@@ -84,7 +84,8 @@
     "use Qiling only in a development analysis harness to trace Windows API calls; do not ship it in the APK by default",
     "keep no application-level memory limits in all runtime backends",
     "test the BOX32-enabled Box64 runtime with 32-bit x86 Linux ELF fixtures and a matching 32-bit Wine/WoW64 prefix",
-    "test the 32-bit aexlo Windows host worker inside a matching Box86/Box64-WoW64/FEXCore container before claiming 32-bit AEX execution support"
+    "test the 32-bit aexlo Windows host worker inside a matching Box86/Box64-WoW64/FEXCore container before claiming 32-bit AEX execution support",
+    "use a developer-side Ghidra analysis pipeline for closed-source AEX files whose effect identity/parameters cannot be determined with static PE metadata and string extraction alone; do not bundle Ghidra in the main APK"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
@@ -208,6 +209,17 @@
       "limitations": [
         "supports 32-bit Linux ELF userland, not Windows PE by itself",
         "still requires a compatible 32-bit Wine/WoW64 configuration to host 32-bit Windows AEX plug-ins"
+      ]
+    },
+    {
+      "id": "ghidra-static-reverse-engineering",
+      "repository": "https://github.com/NationalSecurityAgency/ghidra",
+      "license": "Apache-2.0",
+      "role": "Developer-side static reverse-engineering of closed-source x86/x64 AEX PE binaries: disassembly, decompilation, call graphs, imports, render routines and API use",
+      "limitations": [
+        "not a production runtime",
+        "does not automatically reconstruct original source or effect algorithms",
+        "dynamic traces still require a compatible Wine/Box64/FEX execution environment"
       ]
     }
   ],
