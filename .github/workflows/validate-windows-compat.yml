@@ -68,12 +68,18 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Install Android SDK platform and build tools
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found in preinstalled Android SDK" >&2
+            exit 1
+          fi
+          yes | "$SDKMANAGER" --licenses >/dev/null
+          "$SDKMANAGER" --install "platforms;android-35" "build-tools;35.0.0"
 
       - name: Build and run Android runtime module tests
         run: |
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
           gradle -p windows-compat/android-runtime testDebugUnitTest assembleRelease --no-daemon
 
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
