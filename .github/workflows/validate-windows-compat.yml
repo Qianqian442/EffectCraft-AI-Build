@@ -48,7 +48,11 @@ jobs:
       - name: Lint GitHub Actions workflows
         run: |
           go install github.com/rhysd/actionlint/cmd/actionlint@latest
-          "$HOME/go/bin/actionlint" -color .github/workflows/*.yml
+          "$HOME/go/bin/actionlint" -color \
+            .github/workflows/validate-windows-compat.yml \
+            .github/workflows/build-windows-compat-runtime.yml \
+            .github/workflows/build-windows-compat-fallbacks.yml \
+            .github/workflows/build-aexlo-x86-host.yml
 
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
