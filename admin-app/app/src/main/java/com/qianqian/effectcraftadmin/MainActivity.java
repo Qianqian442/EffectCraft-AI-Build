@@ -310,6 +310,10 @@ public final class MainActivity extends Activity {
         return s;
     }
 
+    private static final class AdminCredentialMismatchException extends Exception {
+        AdminCredentialMismatchException(String message) { super(message); }
+    }
+
     private interface JsonCallback { void done(JSONObject result); }
 
     /**
@@ -375,7 +379,14 @@ public final class MainActivity extends Activity {
                     if ("/v1/admin/login".equals(path)) {
                         String candidate = body == null ? "" : body.optString("password", "");
                         if (!LanAccountServer.verifyAdminPasswordOnDevice(getApplicationContext(), candidate)) {
-                            throw new java.io.IOException("输入的密码与这部手机当前保存的管理员凭据不匹配。没有重置密码，也没有删除 SQLite 账号数据。请确认使用首次启动时显示的初始密码。");
+                            // Allow the owner to adopt the password entered here
+                            // only when this phone's SQLite account DB is empty.
+                            // Existing users always keep the current admin credential.
+                            if (!LanAccountServer.adoptAdminPasswordIfNoRegisteredUsers(
+                                getApplicationContext(), candidate)) {
+                                throw new AdminCredentialMismatchException(
+                                    "管理员密码校验失败。只有本机账号库确认为 0 个注册账号时，才允许首次设置/更改管理员密码；当前未修改密码。");
+                            }
                         }
                     }
                 }
@@ -417,8 +428,10 @@ public final class MainActivity extends Activity {
                         getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
                     }
                 }
+            } catch (AdminCredentialMismatchException e) {
+                error = e.getMessage();
             } catch (Exception e) {
-                error = "无法连接服务器：" + e.getMessage();
+                error = "无法连接本机账号服务：" + e.getMessage();
             } finally {
                 if (c != null) c.disconnect();
             }
