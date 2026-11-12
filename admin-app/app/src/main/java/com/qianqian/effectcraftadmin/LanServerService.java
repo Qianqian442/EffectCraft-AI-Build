@@ -86,6 +86,7 @@ public final class LanServerService extends Service {
         if (discovery != null) discovery.stop();
         if (server != null) server.stopServer();
         if (accountServer != null) accountServer.stopServer();
+        P2PAccountBridge.stop();
         NativeP2P.stop();
         getSharedPreferences(LanPeerDiscovery.PREFS, MODE_PRIVATE)
             .edit().putBoolean("node_running", false).apply();
