@@ -209,12 +209,21 @@ fn android_curve_sample(kind: &str, x: f32) -> f32 {
         }
         // Offset looping continues the same motion while carrying each cycle's value offset.
         "loop_offset" => x,
+        // AM-style Bounce easing: several progressively smaller rebounds before settling.
         "bounce" => {
-            if x < 0.72 {
-                x
+            let n = 7.5625;
+            let d = 2.75;
+            if x < 1.0 / d {
+                n * x * x
+            } else if x < 2.0 / d {
+                let t = x - 1.5 / d;
+                n * t * t + 0.75
+            } else if x < 2.5 / d {
+                let t = x - 2.25 / d;
+                n * t * t + 0.9375
             } else {
-                let q = ((x - 0.72) / 0.28).clamp(0.0, 1.0);
-                x + (1.0 - x) * (1.0 - (-5.0 * q).exp() * (4.0 * std::f32::consts::PI * q).cos())
+                let t = x - 2.625 / d;
+                n * t * t + 0.984375
             }
         }
         _ => x,
@@ -231,11 +240,7 @@ fn android_curve_preview(ui: &mut egui::Ui, rect: Rect, kind: &str, color: Color
     for i in 1..=24 {
         let x = i as f32 / 24.0;
         let sample = android_curve_sample(kind, x);
-        let y = if kind == "bounce" {
-            ((sample - 0.0) / 1.08).clamp(0.0, 1.0)
-        } else {
-            sample.clamp(0.0, 1.0)
-        };
+        let y = sample.clamp(0.0, 1.0);
         let current = pos2(plot.min.x + x * plot.width(), plot.max.y - y * plot.height());
         p.line_segment([previous, current], Stroke::new(2.2, color));
         previous = current;
@@ -271,7 +276,7 @@ fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, c
                 return;
             }
             let expression = format!(
-                "var a = key({}); var b = key({}); var u = clamp((time-a.time)/(b.time-a.time),0,1); var q = clamp((u-0.72)/0.28,0,1); value + (b.value-a.value)*(1-u)*(1-Math.exp(-5*q)*Math.cos(4*Math.PI*q));",
+                "var a = key({}); var b = key({}); var u = (time-a.time)/(b.time-a.time); var r = value; if (time >= a.time && time <= b.time) {{ var t = clamp(u,0,1); var n = 7.5625; var d = 2.75; var p; if (t < 1/d) p = n*t*t; else if (t < 2/d) {{ t -= 1.5/d; p = n*t*t + 0.75; }} else if (t < 2.5/d) {{ t -= 2.25/d; p = n*t*t + 0.9375; }} else {{ t -= 2.625/d; p = n*t*t + 0.984375; }} r = a.value + (b.value-a.value)*p; }} r;",
                 segment.first_index,
                 segment.second_index
             );
@@ -294,6 +299,8 @@ fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, c
     };
     if let Err(error) = result {
         app.ui.status = error.to_string();
+    } else if curve == "bounce" {
+        app.ui.status = "已应用 AM 风格弹跳周期：多次回弹并逐渐收敛到终点".into();
     } else if curve.starts_with("loop_") {
         app.ui.status = match curve {
             "loop_cycle" => "已应用周期运动：loopOut(cycle)".into(),
@@ -346,7 +353,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                 .collapsible(false)
                 .open(&mut open)
                 .show(&ctx, |ui| {
-                    ui.label(egui::RichText::new("选择当前属性的曲线；周期模式会在末尾关键帧之后继续重复").size(11.5).color(app.tokens.text_dim));
+                    ui.label(egui::RichText::new("选择当前属性的曲线；弹跳会连续回弹并逐渐停稳，周期模式会重复运动").size(11.5).color(app.tokens.text_dim));
                     ui.add_space(5.0);
                     egui::ScrollArea::horizontal()
                         .id_salt("effectcraft-android-curve-presets")
@@ -366,7 +373,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                                     ("周期运动", "loop_cycle", "loop_cycle"),
                                     ("往返周期", "loop_pingpong", "loop_pingpong"),
                                     ("偏移周期", "loop_offset", "loop_offset"),
-                                    ("弹跳", "bounce", "bounce"),
+                                    ("弹跳周期", "bounce", "bounce"),
                                 ];
                                 for (label, preview, curve) in presets {
                                     let (card, response) = ui.allocate_exact_size(vec2(88.0, 94.0), Sense::click());
