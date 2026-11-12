@@ -766,7 +766,7 @@ jobs:
           test -s "source/effectcraft/assets/rsmb-compat/ec_rsmb_motion_blur.wasm"
           test -s "source/effectcraft/assets/looks-compat/ec_looks_studio.wasm"
           grep -Fq '"ec_looks_studio.wasm"' "$LAUNCHER_SRC"
-          grep -Fq 'const BUILTIN_EFFECTS_VERSION: &str = "3.0.0";' "$LAUNCHER_SRC"
+          grep -Fq 'const BUILTIN_EFFECTS_VERSION: &str = "4.0.0";' "$LAUNCHER_SRC"
           echo "Verified Android startup scanning for the original WASM plug-in folder and built-in Sapphire-compatible pack."
           SAPPHIRE_STRINGS="$(mktemp)"
           while IFS= read -r ENTRY; do
