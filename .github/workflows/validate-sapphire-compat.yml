@@ -91,5 +91,16 @@ jobs:
           cd vendor/effectcraft
           cargo check -p effectcraft-ui-egui
 
-      - name: Parse Android APK workflow YAML
-        run: ruby -e 'require "yaml"; YAML.parse_file(".github/workflows/build-effectcraft-ai.yml"); puts "Android APK workflow YAML syntax is valid."'
+      - name: Parse Android APK workflow YAML with location details
+        shell: ruby
+        run: |
+          require "yaml"
+          begin
+            YAML.parse_file(".github/workflows/build-effectcraft-ai.yml")
+            puts "Android APK workflow YAML syntax is valid."
+          rescue Psych::SyntaxError => error
+            warn "YAML problem: #{error.problem}"
+            warn "YAML context: #{error.context}"
+            warn "YAML line: #{error.line}, column: #{error.column}"
+            raise
+          end
