@@ -92,7 +92,9 @@
     "launch the x86-64 aexlo worker through Box64+Proton and the x86 worker through a verified 32-bit Wine/WoW64 route",
     "launch and render the AEX sample under both Box64 x86-64 and ARM64EC/FEXCore Wine/Proton containers",
     "test the same runtime plan on OPPO/Qualcomm and Huawei/Mali-class ARM64 devices",
-    "evaluate Boxedwine only as a separate GPL-2.0 Android/SDL2 ARM64 port for legacy 32-bit plug-ins; keep it out of the production APK until Android build, 32-bit AEX render and GPL compliance tests pass"
+    "evaluate Boxedwine only as a separate GPL-2.0 Android/SDL2 ARM64 port for legacy 32-bit plug-ins; keep it out of the production APK until Android build, 32-bit AEX render and GPL compliance tests pass",
+    "verify the three November 12, 2026 WCP packages against pinned SHA-256 during an Android emulator install test and confirm profile.json maps Box64 to ${bindir}/box64, FEXCore to its two system32 DLLs and WOWBox64 to wowbox64.dll",
+    "run the same real AEX host + Noise sample render using FEXCore 2611 and WowBox64 0.4.5 on the ARM64EC Proton container, compare success/failure and output hashes"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
@@ -413,5 +415,41 @@
       "wine_memory_cap": false,
       "video_memory_limit": "Use 0/driver default; never impose an arbitrary fixed cap for plug-in compatibility"
     }
+  },
+  "current_runtime_wcp": {
+    "catalog_repository": "https://github.com/Xnick417x/winlator-nightly-wcp",
+    "verified_release_metadata_date": "2026-11-12",
+    "preferred": {
+      "box64": {
+        "version": "0.4.5-4dbba1300",
+        "release_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/tag/box64-nightly-0.4.5-4dbba1300",
+        "asset_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/download/box64-nightly-0.4.5-4dbba1300/Box64-0.4.5-4dbba1300.wcp",
+        "size_bytes": 2901992,
+        "sha256": "9e8e6cda22cecf6c975ebc7d4521a2e08565f4287a479e9db53fcd2850883256",
+        "upstream_commit": "ptitSeb/box64@4dbba1300"
+      },
+      "fexcore": {
+        "version": "2611-ab135df09",
+        "release_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/tag/fex-nightly-2611-ab135df09",
+        "asset_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/download/fex-nightly-2611-ab135df09/FEXCore-2611-ab135df09.wcp",
+        "size_bytes": 1104420,
+        "sha256": "6a8ad93996147fc23d9dd4c541b84b03c19f11911db431f6d155b5b15f9a9c86",
+        "upstream_commit": "FEX-Emu/FEX@ab135df09"
+      },
+      "wowbox64": {
+        "version": "0.4.5-4dbba1300",
+        "release_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/tag/wowbox64-nightly-0.4.5-4dbba1300",
+        "asset_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/download/wowbox64-nightly-0.4.5-4dbba1300/WOWBox64-0.4.5-4dbba1300.wcp",
+        "size_bytes": 910648,
+        "sha256": "6037af9cc15bf036eb77077423806798e043cf81370dea40cc9ae17d60a09d39",
+        "upstream_commit": "ptitSeb/box64@4dbba1300 (WowBox64 package)"
+      }
+    },
+    "legacy_fallbacks": {
+      "box64": "0.3.7 WCP embedded in Winlator Bionic commit 95224ca7db27ae133dbb1578e004b94b86ef8894",
+      "fexcore": "2508 WCP embedded in Winlator Bionic commit 95224ca7db27ae133dbb1578e004b94b86ef8894",
+      "wowbox64": "0.3.7 WCP embedded in Winlator Bionic commit 95224ca7db27ae133dbb1578e004b94b86ef8894"
+    },
+    "install_policy": "Stream-download each WCP to private runtime storage, verify pinned SHA-256 and expected size, parse profile.json and allow only the pre-approved Box64/FEXCore/WOWBox64 destinations; keep legacy packages as rollback options."
   }
 }
