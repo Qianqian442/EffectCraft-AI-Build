@@ -97,7 +97,7 @@ public final class MainActivity extends Activity {
         LinearLayout form = new LinearLayout(this);
         form.setOrientation(LinearLayout.VERTICAL);
         form.setPadding(dp(8), dp(4), dp(8), dp(4));
-        form.addView(text("首次启动请设置管理员密码，至少12位。密码只保存在这部手机的本地安全存储中。", 13, false));
+        form.addView(text("首次启动请设置管理员密码，至少12位。密码只保存在这部手机的应用私有数据中。", 13, false));
         EditText first = field("设置管理员密码（至少12位）", true);
         EditText second = field("再次输入管理员密码", true);
         form.addView(first);
@@ -384,7 +384,7 @@ public final class MainActivity extends Activity {
             if (result == null) {
                 // Do not leave the Activity blank or stuck on an expired token.
                 adminToken = "";
-                getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
+                getPreferences(MODE_PRIVATE).edit().remove("phone_admin_token").apply();
                 showLogin();
                 return;
             }
