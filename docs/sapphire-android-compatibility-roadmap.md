@@ -142,7 +142,31 @@ A visual mismatch is not “fixed” by reducing the reference quality, hiding a
 
 ## 7. Project implementation status at baseline
 
-- Existing WASM compatibility pack: Glow, GlowAura, LensFlare, Blur, Distort, Stylize.
-- Existing independent mobile modules: RSMB-style directional blur and Looks Studio color grading.
-- Current compatibility modules are original EffectCraft implementations. They are not original Sapphire source code and do not reproduce proprietary algorithms by declaration alone.
-- Immediate engineering work: improve renderer sampling, scale handling, optical light effects and stylize algorithms; add per-effect render tests; then expand the pack and host input API.
+- Current WASM compatibility pack: Glow, GlowAura, LensFlare, Blur, Distort, Stylize, Glint, Rays, HalfTone and PixelSort.
+- Independent mobile modules: RSMB-style directional blur and Looks Studio color grading.
+- The current PR branch expands Glint, Rays, HalfTone and PixelSort with desktop-documented control groups and per-renderer smoke tests. Their flattened controls are tracked against the manifests; this is compatibility work, not original Sapphire source code.
+- Current desktop package import accepts WASM/WAT modules, compatible JSX/JS scripts and ScriptUI panels, plus native desktop plugin files in ZIPs or as individually selected files. Native `.aex/.dll/.ofx/.so/.dylib/.plugin/.bundle/.prm/.8bf` files are preserved, statically inspected and matched to available Android effects when possible; they are never executed on Android.
+- Static inspection extracts printable ASCII and UTF-16LE strings from native binaries and archives PiPL-related `.r/.rc/.rsrc`, macOS `Info.plist`, and related metadata. These strings can reveal effect names, match-name hints and some parameter labels, but do not provide authoritative parameter types, ranges, selector behavior or render algorithms.
+- The top-left migration flow accepts desktop plugin ZIPs and standalone native files, shows byte-based scan progress, then reports installable modules, exact compatibility matches, metadata clues and items still requiring a port. `.aep/.aepx` remain project imports, and `.jsxbin` is archived for analysis rather than executed.
+- Immediate engineering work: use each imported binary's metadata and supplied sample projects to build per-plugin manifests, map each parameter to EffectCraft properties/keyframes, implement missing algorithms, and extend the renderer host API for auxiliary inputs or temporal effects where required.
+
+
+## 8. Desktop plug-in import and migration contract
+
+| Desktop input | Android handling | Runtime status |
+|---|---|---|
+| `.wasm` / `.wat` | Validate with the EffectCraft plug-in loader and install to the persistent Plug-ins folder | Runs in EffectCraft's WASM sandbox |
+| `.jsx` / `.js` | Install using the EffectCraft script API; JSX ScriptUI panels use the panel installer | Runs subject to scripting API compatibility |
+| ZIP containing native binaries | Inspect safe paths and file sizes; preserve native originals; read metadata strings; match known Android implementations | Only matched Android reimplementations run |
+| Standalone `.aex`, `.dll`, `.ofx`, `.so`, `.dylib`, `.plugin`, `.bundle`, `.prm`, `.8bf` | Wrap internally for the same scan/import path, preserve original, analyze and report | Native desktop code is never executed |
+| PiPL / macOS metadata (`.r`, `.rc`, `.rsrc`, `Info.plist`) | Preserve and extract readable metadata strings | Analysis only |
+| `.jsxbin` | Preserve as an analysis asset | Not executed or decompiled |
+| `.aep` / `.aepx` | Route to the separate project-import action | Project import, not plug-in migration |
+
+The package scanner currently applies defensive ZIP limits: up to 512 entries, 256 MiB total expanded content, 64 MiB per native/module file, 16 MiB per script, and 32 MiB per asset. These protect the import operation from archive bombs and path abuse; they are not an APK package-size cap or a global application RAM limit.
+
+### Current automatic native-effect mapping
+
+The available first-wave mappings cover Glow, GlowAura, LensFlare, Blur, Distort, Stylize, Glint, Rays, HalfTone, PixelSort and an RSMB-style directional blur. A filename or embedded-string match only selects an Android compatibility implementation. It does not import the manufacturer's native binary, and it does not establish complete desktop parity.
+
+For every other native effect, the import report preserves the original file and surfaces readable metadata/parameter-label clues. The next porting task must identify parameter types, defaults, ranges, animation behavior, input dependencies, color-space assumptions and render algorithm from vendor documentation, sample projects and legitimate source/reference implementations. Only after implementing and validating those parts should the effect be marked as Android-compatible.
