@@ -1,0 +1,35 @@
+name: Validate EffectCraft P2P transport
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'p2p-bridge/**'
+      - '.github/workflows/validate-p2p-transport.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'p2p-bridge/**'
+      - '.github/workflows/validate-p2p-transport.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-native-transport:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: p2p-bridge
+      - name: Compile and test the P2P transport
+        run: |
+          cargo fmt --manifest-path p2p-bridge/Cargo.toml -- --check
+          cargo test --manifest-path p2p-bridge/Cargo.toml --locked
+          cargo check --manifest-path p2p-bridge/Cargo.toml --release
