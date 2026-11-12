@@ -4,6 +4,8 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
 import android.app.TimePickerDialog;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -118,7 +120,19 @@ public final class MainActivity extends Activity {
         p2pStatusView = text(readP2PStatus(), 11, false);
         p2pStatusView.setTextColor(Color.rgb(75, 84, 98));
         panel.addView(p2pStatusView);
-        TextView note = text("同一 Wi-Fi 优先直连；跨网络尝试 NAT 打洞，失败后使用动态发现的可用公共 Relay。用户通过加密 P2P 请求访问本机账号库。", 11, false);
+        Button copyPeer = button("复制管理员节点 ID");
+        copyPeer.setOnClickListener(v -> {
+            try {
+                JSONObject node = new JSONObject(NativeP2P.status());
+                String peerId = node.optString("peerId", "");
+                if (peerId.isEmpty()) { toast("管理员节点 ID 尚未生成，请稍后再试"); return; }
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                clipboard.setPrimaryClip(ClipData.newPlainText("EffectCraft 管理员节点 ID", peerId));
+                toast("管理员节点 ID 已复制，可分享给需要连接的用户用于身份核验");
+            } catch (Exception error) { toast("复制节点 ID 失败：" + error.getMessage()); }
+        });
+        panel.addView(copyPeer, new LinearLayout.LayoutParams(-1, dp(44)));
+        TextView note = text("同一 Wi-Fi 优先直连；跨网络尝试 NAT 打洞，失败后使用动态发现的可用公共 Relay。用户通过加密 P2P 请求访问本机账号库。首次配对时可分享本节点 ID。", 11, false);
         note.setTextColor(Color.rgb(95, 103, 115));
         panel.addView(note);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
@@ -372,7 +386,7 @@ public final class MainActivity extends Activity {
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("账号管理", 22, true);
+        TextView title = text("账号管理 · 共 " + (users == null ? 0 : users.length()) + " 个账号", 22, true);
         top.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
         Button refresh = button("刷新");
         top.addView(refresh);
