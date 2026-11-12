@@ -21,17 +21,29 @@ RFD_PATCH_MARKER = "EFFECTCRAFT_RFD_IMAGE_PICKER_V1"
 def patch_cargo(effectcraft: Path) -> None:
     cargo = effectcraft / "crates/ui-egui/Cargo.toml"
     source = cargo.read_text(encoding="utf-8")
-    additions = [
-        'base64 = "0.22"\n',
-        'image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }\n',
-        'pollster = "0.4"\n',
+    dependency_entries = [
+        ("base64", 'base64 = "0.22"'),
+        ("image", 'image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }'),
+        ("pollster", 'pollster = "0.4"'),
+        # The builder vendors its Android SAF-enabled rfd at workspace_root/vendor/rfd.
+        # From crates/ui-egui this is ../../vendor/rfd.
+        ("rfd", 'rfd = { path = "../../vendor/rfd", default-features = false }'),
     ]
-    if "[dependencies]\n" not in source:
+    import re
+    match = re.search(r"(?m)^\[dependencies\]\s*$", source)
+    if not match:
         raise SystemExit(f"Missing [dependencies] section in {cargo}")
-    for dep in additions:
-        name = dep.split("=", 1)[0].strip()
-        if not any(line.strip().startswith(name + " =") for line in source.splitlines()):
-            source = source.replace("[dependencies]\n", "[dependencies]\n" + dep, 1)
+    next_section = re.search(r"(?m)^\[", source[match.end():])
+    section_end = match.end() + next_section.start() if next_section else len(source)
+    dependency_section = source[match.end():section_end]
+    missing = []
+    for name, entry in dependency_entries:
+        # Check only the normal [dependencies] table. A dev-dependency or
+        # target-specific dependency is not visible to account.rs.
+        if not re.search(rf"(?m)^\s*{re.escape(name)}\s*=", dependency_section):
+            missing.append(entry)
+    if missing:
+        source = source[:match.end()] + "\n" + "\n".join(missing) + source[match.end():]
     cargo.write_text(source, encoding="utf-8")
 
 
@@ -244,7 +256,7 @@ fn encode_avatar_file(path: &std::path::Path) -> Result<(String, String), String
     limits.max_image_width = Some(8192);
     limits.max_image_height = Some(8192);
     limits.max_alloc = Some(96 * 1024 * 1024);
-    reader = reader.limits(limits);
+    reader.limits(limits);
     let decoded = reader.decode().map_err(|error| format!("图片解码失败：{error}"))?;
 
     let mut side = 256u32;
