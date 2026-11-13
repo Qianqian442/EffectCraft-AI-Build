@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Enlarge only the Android composition image while keeping every UI control in place."""
+"""Fill the Android composition viewer with the largest aspect-preserving preview."""
 from __future__ import annotations
 
 import os
@@ -15,13 +15,21 @@ def main() -> None:
     source = path.read_text(encoding="utf-8")
     old = '    let fit = ((area.width() - 40.0) / cw).min((area.height() - 40.0) / ch).max(0.01);'
     new = '''    // EFFECTCRAFT_ANDROID_LARGER_COMPOSITION_NO_CONTROL_SHIFT_V1
-    // Reduce only the empty margin around the composition image. Dock geometry, panel
-    // boundaries, toolbars, buttons and their hit targets remain unchanged.
+    // Use the viewer's previously empty margins: keep the comp's aspect ratio and
+    // enlarge it until the viewer is filled; overflow is clipped to the existing viewer.
+    // Dock geometry, panel boundaries, toolbars, buttons and their hit targets remain unchanged.
     #[cfg(target_os = "android")]
     let fit_padding = 12.0;
     #[cfg(not(target_os = "android"))]
     let fit_padding = 40.0;
-    let fit = ((area.width() - fit_padding) / cw).min((area.height() - fit_padding) / ch).max(0.01);'''
+    #[cfg(target_os = "android")]
+    let fit = ((area.width() - fit_padding) / cw)
+        .max((area.height() - fit_padding) / ch)
+        .max(0.01);
+    #[cfg(not(target_os = "android"))]
+    let fit = ((area.width() - fit_padding) / cw)
+        .min((area.height() - fit_padding) / ch)
+        .max(0.01);'''
     count = source.count(old)
     if count == 0:
         if "EFFECTCRAFT_ANDROID_LARGER_COMPOSITION_NO_CONTROL_SHIFT_V1" not in source:
@@ -33,12 +41,19 @@ def main() -> None:
         path.write_text(source, encoding="utf-8")
 
     check = path.read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_LARGER_COMPOSITION_NO_CONTROL_SHIFT_V1" not in check:
-        raise SystemExit("Android composition zoom marker missing")
-    if 'let fit_padding = 12.0;' not in check or 'let fit_padding = 40.0;' not in check:
-        raise SystemExit("Composition fit padding settings were not applied")
-    print("Applied a larger Android composition image inside the unchanged viewer area; all controls keep their original positions.")
-    
+    required = (
+        "EFFECTCRAFT_ANDROID_LARGER_COMPOSITION_NO_CONTROL_SHIFT_V1",
+        "let fit_padding = 12.0;",
+        "let fit_padding = 40.0;",
+        "Dock geometry, panel boundaries, toolbars, buttons and their hit targets remain unchanged.",
+        "let fit = ((area.width() - fit_padding) / cw)",
+        ".max((area.height() - fit_padding) / ch)",
+    )
+    missing = [item for item in required if item not in check]
+    if missing:
+        raise SystemExit(f"Android preview fill verification failed: {missing}")
+    print("Android preview now grows into the existing viewer's empty margins without moving controls; non-Android fit behavior is unchanged.")
+
 
 if __name__ == "__main__":
     main()
