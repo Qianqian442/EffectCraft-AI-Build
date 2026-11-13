@@ -6,6 +6,10 @@ on:
       - experiment/windows-plugin-runtime
     paths:
       - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/scripts/integrate_windows_compat_runtime.py'
+      - '.github/scripts/add_windows_runtime_ui.py'
+      - '.github/scripts/windows_compat_android.rs'
       - '.github/workflows/validate-windows-compat.yml'
       - 'windows-compat/runtime-manifest.json'
       - 'windows-compat/aexlo-host/**'
@@ -40,9 +44,19 @@ jobs:
           ref: v0.21.1
           path: effectcraft
 
+      - name: Check out ArtCraft Android builder
+        uses: actions/checkout@v4
+        with:
+          repository: MostafaXS1/artcraft-android
+          ref: v0.5.0
+          path: artcraft
+
       - name: Validate Python patch source
         run: |
           python3 -m py_compile .github/scripts/add_desktop_plugin_package_support.py
+          python3 -m py_compile .github/scripts/add_plugin_migration_progress.py
+          python3 -m py_compile .github/scripts/integrate_windows_compat_runtime.py
+          python3 -m py_compile .github/scripts/add_windows_runtime_ui.py
           python3 -m py_compile windows-compat/tools/pe_audit.py
           python3 -m py_compile windows-compat/tools/patch_box64_obstack_compat.py
           python3 -m py_compile windows-compat/tools/patch_box64_signal32_bionic.py
@@ -141,15 +155,30 @@ jobs:
           grep -Fq 'fn inspect_desktop_native_file' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'return inspect_desktop_native_file(s, path)' effectcraft/crates/engine/src/cmd/effect.rs
 
+      - name: Generate AE migration UI and integrate Android Windows runtime
+        env:
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: |
+          python3 .github/scripts/add_plugin_migration_progress.py
+          python3 .github/scripts/integrate_windows_compat_runtime.py
+          python3 .github/scripts/add_windows_runtime_ui.py
+
       - name: Parse generated Rust source
         run: |
           rustup component add rustfmt
           rustfmt --edition 2024 --emit stdout effectcraft/crates/engine/src/cmd/effect.rs >/dev/null
           rustfmt --edition 2024 --emit stdout effectcraft/crates/ui-egui/src/header.rs >/dev/null
+          rustfmt --edition 2024 --emit stdout effectcraft/crates/ui-egui/src/plugin_migration.rs >/dev/null
+          rustfmt --edition 2024 --emit stdout effectcraft/crates/ui-egui/src/windows_compat_android.rs >/dev/null
 
       - name: Type-check the patched EffectCraft engine
         working-directory: effectcraft
         run: cargo check --locked -p effectcraft-engine --lib
+
+      - name: Type-check the patched migration UI and Android JNI bridge
+        working-directory: effectcraft
+        run: cargo check --locked -p effectcraft-ui-egui --lib
 
       - name: Check required runtime architecture and memory policy
         run: |
