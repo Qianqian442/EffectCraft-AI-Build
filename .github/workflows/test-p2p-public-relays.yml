@@ -11,10 +11,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: effectcraft-public-relay-smoke-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   public-relay-smoke:
     name: Discover and reserve a real public libp2p relay
