@@ -350,9 +350,9 @@ def apply_local_ban_cache(source: str) -> str:
     ban_ui_new = (
         "                if app.account.banned_until.eq_ignore_ascii_case(\"permanent\") {\n"
         "                    ui.label(\"封禁期限：永久封号\");\n"
-        "                } else if app.account.ban_remaining_ms < 0 {
-                    ui.label("封禁剩余时间暂不可确认，继续保持封禁；联网同步后再判断。");
-                } else if app.account.ban_clock_warning {\n"
+        "                } else if app.account.ban_remaining_ms < 0 {\n"
+        "                    ui.label(\"封禁剩余时间暂不可确认，继续保持封禁；联网同步后再判断。\");\n"
+        "                } else if app.account.ban_clock_warning {\n"
         "                    ui.label(\"设备时间发生回拨，继续保持封禁；恢复自动设置时间或联网校准后再判断到期。\");\n"
         "                } else {\n"
         "                    let seconds = (app.account.current_ban_remaining_ms().max(0) + 999) / 1000;\n"
