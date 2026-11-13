@@ -13,7 +13,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
-import java.util.Locale;
 import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -34,6 +33,7 @@ public final class WindowsCompatAndroidBridge {
             "0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5";
 
     private static final ConcurrentHashMap<String, String> INSTALL_STATUS = new ConcurrentHashMap<>();
+    private static final java.util.Set<String> ACTIVE_REQUESTS = ConcurrentHashMap.newKeySet();
     private static final ExecutorService INSTALL_EXECUTOR = Executors.newSingleThreadExecutor(runnable -> {
         Thread thread = new Thread(runnable, "EffectCraft-Windows-Runtime-Install");
         thread.setDaemon(true);
@@ -69,8 +69,7 @@ public final class WindowsCompatAndroidBridge {
             INSTALL_STATUS.put(requestId, "ERROR: Windows 兼容运行环境尚未初始化。");
             return;
         }
-        String old = INSTALL_STATUS.get(requestId);
-        if ("INSTALLING".equals(old)) return;
+        if (!ACTIVE_REQUESTS.add(requestId)) return;
         INSTALL_STATUS.put(requestId, "INSTALLING");
         INSTALL_EXECUTOR.execute(() -> installRuntime(context, manager, requestId));
     }
@@ -117,6 +116,7 @@ public final class WindowsCompatAndroidBridge {
             if (archive != null) {
                 try { Files.deleteIfExists(archive); } catch (IOException ignored) {}
             }
+            ACTIVE_REQUESTS.remove(requestId);
         }
     }
 
