@@ -71,6 +71,7 @@ jobs:
       - name: Compile patch scripts
         run: |
           python3 -m py_compile .github/scripts/patch_export_dialog.py .github/scripts/upgrade_export_preflight.py .github/scripts/integrate_video_ai.py .github/scripts/add_android_gallery_export.py .github/scripts/add_qq_project_share.py .github/scripts/add_account_avatar_picker.py .github/scripts/add_offline_account_registration.py .github/scripts/patch_gradle_maven_mirrors.py .github/scripts/install_ai_plugin_bridge.py .github/scripts/add_bottom_left_media_import.py
+          python3 .github/scripts/validate_account_system_contract.py
 
   build:
     needs: validate-patches
