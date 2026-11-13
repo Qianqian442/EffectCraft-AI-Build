@@ -151,10 +151,57 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
         (
             'node_server_enabled',
-            '账号服务器开关',
+            '本机 P2P 辅助节点开关',
             'startNodeServerService()',
             'stopService(new Intent(this, LanServerService.class))',
             'getSharedPreferences(LanServerService.SETTINGS_PREFS, MODE_PRIVATE)',
+        ),
+    ),
+    (
+        "Admin shows the exact cloud account total and can switch the shared cloud account service",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
+        (
+            'total_count',
+            '云端已注册账号：',
+            '当前显示 ',
+            'addAccountServiceControl(page)',
+            'GET", "/v1/admin/server"',
+            'POST", "/v1/admin/server"',
+            'setAccountServiceEnabled',
+            'One vertical card per account',
+        ),
+    ),
+    (
+        "Cloud account API keeps administrator controls available while the user account service can be switched off",
+        "cloudflare-worker/src/index.js",
+        (
+            'account_service_state',
+            'async function adminServerState',
+            'async function adminSetServerState',
+            'requireAccountServiceEnabled(env)',
+            'total_count: totalCount',
+            'filtered_count: filteredCount',
+            'url.pathname === "/v1/admin/server"',
+        ),
+    ),
+    (
+        "Cloud D1 schema persists the account service switch without deleting account records",
+        "cloudflare-worker/schema.sql",
+        (
+            'CREATE TABLE IF NOT EXISTS accounts',
+            'CREATE TABLE IF NOT EXISTS account_service_state',
+            'INSERT OR IGNORE INTO account_service_state',
+        ),
+    ),
+    (
+        "Main APK toolbar keeps all original controls reachable without duplicate overlapping Export buttons",
+        ".github/scripts/make_header_scrollable.py",
+        (
+            'EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1',
+            'ScrollArea::horizontal()',
+            'exactly one Export button handler',
+            'effectcraft-fixed-export-button',
+            'All original buttons remain in their original order',
         ),
     ),
     (
