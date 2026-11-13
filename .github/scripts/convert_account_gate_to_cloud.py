@@ -39,7 +39,7 @@ def clean_identical_duplicate_workspace_keys(source: str) -> tuple[str, bool]:
             continue
 
         body = line.split("#", 1)[0].strip()
-        match = re.match(r"^([A-Za-z0-9_-]+)\\s*=\\s*(.*?)\\s*$", body)
+        match = re.match(r"^([A-Za-z0-9_-]+)\s*=\s*(.*?)\s*$", body)
         if not match:
             output.append(line)
             continue
