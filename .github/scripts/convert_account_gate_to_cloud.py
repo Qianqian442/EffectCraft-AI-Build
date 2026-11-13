@@ -63,39 +63,42 @@ fn next_api_server(current: &str) -> Option<&'static str> {
         "account module documentation",
     )
 
-    old_imports = (
-        "use std::io::{BufRead, BufReader, Read, Write};\n"
-        "use std::net::{TcpListener, TcpStream, ToSocketAddrs};\n"
-        "use std::sync::atomic::{AtomicBool, Ordering};\n"
-        "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::time::Duration;\n\n"
-        'const DEFAULT_SERVER: &str = "p2p://auto";\n'
-        "const ACCOUNT_EVENT_PROXY: std::net::SocketAddr = std::net::SocketAddr::new(\n"
-        "    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8790,\n"
-        ");\n"
-        "static ACCOUNT_EVENT_LISTENER_STARTED: AtomicBool = AtomicBool::new(false);\n\n"
+    # Replace the legacy local transport imports/constants while preserving the
+    # optional image-picker base64 trait import inserted by add_account_avatar_picker.py.
+    imports_pattern = re.compile(
+        r"use std::io::\{BufRead, BufReader, Read, Write\};\r?\n"
+        r"use std::net::\{TcpListener, TcpStream, ToSocketAddrs\};\r?\n"
+        r"use std::sync::atomic::\{AtomicBool, Ordering\};\r?\n"
+        r"use std::sync::mpsc::\{self, Receiver, TryRecvError\};\r?\n"
+        r"use std::time::Duration;\r?\n"
+        r"(use base64::Engine as _;\r?\n)?"
+        r"\r?\n"
+        r'const DEFAULT_SERVER: &str = "p2p://auto";\r?\n'
+        r"const ACCOUNT_EVENT_PROXY: std::net::SocketAddr = std::net::SocketAddr::new\(\r?\n"
+        r"\s*std::net::IpAddr::V4\(std::net::Ipv4Addr::LOCALHOST\), 8790,\r?\n"
+        r"\);\r?\n"
+        r"static ACCOUNT_EVENT_LISTENER_STARTED: AtomicBool = AtomicBool::new\(false\);\r?\n",
+        re.M,
     )
-    # The avatar-picker patch adds base64::Engine immediately after Duration.
-    # Accept both pre-avatar and post-avatar import blocks, preserving the picker dependency.
-    old_imports_with_avatar = old_imports.replace(
-        "use std::time::Duration;\\n\\n",
-        "use std::time::Duration;\\nuse base64::Engine as _;\\n\\n",
-    )
-    base64_import = "use base64::Engine as _;\\n" if old_imports_with_avatar in source else ""
-    imports_to_replace = old_imports_with_avatar if base64_import else old_imports
+    import_match = imports_pattern.search(source)
+    if not import_match:
+        raise SystemExit("Could not locate the legacy account transport imports/constants (including optional avatar picker import).")
+    base64_import = import_match.group(1) or ""
     new_imports = (
-        "use std::io::Read;\\n"
-        "use std::sync::mpsc::{self, Receiver, TryRecvError};\\n"
-        "use std::time::Duration;\\n"
+        "use std::io::Read;\n"
+        "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
+        "use std::time::Duration;\n"
         + base64_import
-        + "use tungstenite::client::IntoClientRequest;\\n"
-        + "use tungstenite::http::HeaderValue;\\n"
-        + "use tungstenite::Message;\\n\\n"
-        + f'const DEFAULT_SERVER: &str = "{api_url}";\\n'
+        + "use tungstenite::client::IntoClientRequest;\n"
+        + "use tungstenite::http::HeaderValue;\n"
+        + "use tungstenite::Message;\n\n"
+        + f'const DEFAULT_SERVER: &str = "{api_url}";\n'
         + pool_source
         + server_switch_helper
     )
-    source = replace_once(source, imports_to_replace, new_imports, "imports and cloud API URL")
+    source, import_count = imports_pattern.subn(lambda _match: new_imports, source, count=1)
+    if import_count != 1:
+        raise SystemExit(f"imports and cloud API URL: expected one match, found {import_count}")
 
     # Remove the old local TCP event listener. Cloud ban/unban state comes from
     # the authenticated Cloudflare Durable Object WebSocket, not the admin phone.
