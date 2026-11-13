@@ -1,0 +1,102 @@
+name: Audit Android-native Hangover Bionic runtime
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/windows-plugin-runtime
+    paths:
+      - '.github/workflows/audit-hangover-bionic-runtime.yml'
+      - 'windows-compat/runtime-manifest.json'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-hangover-bionic-audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: Verify pinned Hangover Bionic release and package gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out EffectCraft audit configuration
+        uses: actions/checkout@v4
+
+      - name: Install archive inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl xz-utils zstd binutils dpkg-dev python3
+
+      - name: Check out pinned Hangover Bionic source and release gate
+        run: |
+          set -euo pipefail
+          mkdir -p .work/hangover
+          git -C .work/hangover init
+          git -C .work/hangover remote add origin https://github.com/Piperella/Piperella-Hangover-Bionic.git
+          git -C .work/hangover fetch --depth 1 origin cd0d2b48da092a6a662a10d0b0b1ce189bbd3981
+          git -C .work/hangover checkout --detach FETCH_HEAD
+          test "$(git -C .work/hangover rev-parse HEAD)" = "cd0d2b48da092a6a662a10d0b0b1ce189bbd3981"
+          test -f .work/hangover/inspect-deb.sh
+          git -C .work/hangover status --short
+
+      - name: Download and verify pinned Hangover Bionic release bundle
+        run: |
+          set -euo pipefail
+          mkdir -p hangover-audit/extracted
+          asset="hangover-audit/hangover-bionic-aarch64.tar"
+          curl -fL --retry 5 --retry-all-errors \
+            "https://github.com/Piperella/Piperella-Hangover-Bionic/releases/download/hangover-bionic-11.9-build19/hangover-bionic-aarch64.tar" \
+            -o "$asset"
+          test "$(stat -c %s "$asset")" = "339589120"
+          echo "09cc7c2f43a1607d64b5f79e916939d0fefc8e1d094d09aee923abc4b8608793  $asset" | sha256sum -c -
+          sha256sum "$asset" > hangover-audit/ASSET-SHA256.txt
+          tar -tf "$asset" > hangover-audit/BUNDLE-FILE-LIST.txt
+          grep -E 'hangover-wine_11\.9_aarch64\.deb$' hangover-audit/BUNDLE-FILE-LIST.txt
+          tar -xf "$asset" -C hangover-audit/extracted
+          deb="$(find hangover-audit/extracted -type f -name 'hangover-wine_11.9_aarch64.deb' -print -quit)"
+          test -n "$deb"
+          echo "$deb" > hangover-audit/DEB-PATH.txt
+          dpkg-deb -I "$deb" > hangover-audit/DEB-CONTROL.txt
+          dpkg-deb -c "$deb" > hangover-audit/DEB-FILE-LIST.txt
+
+      - name: Run upstream release-gate inspection
+        run: |
+          set -euo pipefail
+          deb="$(cat hangover-audit/DEB-PATH.txt)"
+          bash .work/hangover/inspect-deb.sh "$deb" | tee hangover-audit/UPSTREAM-INSPECTION.txt
+          grep -q 'inspect-deb: OK' hangover-audit/UPSTREAM-INSPECTION.txt
+
+      - name: Record source and licensing review status
+        run: |
+          {
+            echo "Source repository: https://github.com/Piperella/Piperella-Hangover-Bionic"
+            echo "Pinned revision: cd0d2b48da092a6a662a10d0b0b1ce189bbd3981"
+            echo "Release: hangover-bionic-11.9-build19"
+            echo "This audit verifies the pinned release asset and upstream package gate."
+            echo "It does not prove execution on an Android ARM64 device or AEX plug-in rendering."
+            echo "A component-level SBOM and per-package license review remain required before redistribution."
+            if [ -f .work/hangover/LICENSE ] || [ -f .work/hangover/COPYING ]; then
+              echo "Repository license file(s):"
+              find .work/hangover -maxdepth 1 -type f \( -iname 'license*' -o -iname 'copying*' \) -print
+            else
+              echo "No root-level repository LICENSE/COPYING file found at the pinned revision."
+            fi
+          } > hangover-audit/AUDIT-NOTES.txt
+          cat hangover-audit/AUDIT-NOTES.txt
+
+      - name: Upload Hangover Bionic audit report
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Hangover-Bionic-Audit
+          path: |
+            hangover-audit/ASSET-SHA256.txt
+            hangover-audit/BUNDLE-FILE-LIST.txt
+            hangover-audit/DEB-PATH.txt
+            hangover-audit/DEB-CONTROL.txt
+            hangover-audit/DEB-FILE-LIST.txt
+            hangover-audit/UPSTREAM-INSPECTION.txt
+            hangover-audit/AUDIT-NOTES.txt
+          retention-days: 30
