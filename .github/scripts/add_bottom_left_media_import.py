@@ -44,7 +44,7 @@ def patch_visual_media_picker(root: Path) -> None:
     )
     source = replace_once(
         source,
-        '        Ask::Import => {\n            let Some(f) = app.hooks.pick_files.as_ref() else { return Some(Err("no file dialog available (pass paths)".into())) };\n            picked_value(key, f(&footage(MEDIA)))\n        }',
+        '        Ask::Import => {\n            let Some(f) = app.hooks.pick_files.as_ref() else { return Some(Err("no file dialog available (pass `paths`)".into())) };\n            picked_value(key, f(&footage(MEDIA)))\n        }',
         '        Ask::Import => {\n            let Some(f) = app.hooks.pick_files.as_ref() else { return Some(Err("no file dialog available (pass paths)".into())) };\n            picked_value(key, f(&footage(MEDIA)))\n        }\n        Ask::VisualMedia => {\n            let Some(f) = app.hooks.pick_files.as_ref() else { return Some(Err("no file dialog available (pass paths)".into())) };\n            picked_value(key, f(&footage(VISUAL_MEDIA)))\n        }',
         "blocking visual media picker",
     )
