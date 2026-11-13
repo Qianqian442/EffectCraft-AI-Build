@@ -144,6 +144,14 @@ jobs:
           if (typeof server.enabled !== "boolean") {
             throw new Error("Cloud admin API did not return the account server switch state");
           }
+          const saved = await request("/v1/admin/server", {
+            method: "POST",
+            headers: { ...headers, "content-type": "application/json" },
+            body: JSON.stringify({ enabled: server.enabled })
+          });
+          if (saved.enabled !== server.enabled) {
+            throw new Error("Cloud server switch did not persist its current state");
+          }
           console.log("Administrator login, exact account count, and cloud server switch APIs passed.");
           console.log("Registered account total: " + accounts.total_count);
           console.log("Cloud account service enabled: " + server.enabled);
