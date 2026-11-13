@@ -31,6 +31,7 @@ on:
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/add_offline_account_registration.py'
+      - '.github/scripts/validate_account_system_contract.py'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/make_header_scrollable.py'
