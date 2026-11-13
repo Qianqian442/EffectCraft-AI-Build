@@ -892,7 +892,9 @@ jobs:
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
           grep -Fq "import_wasm" "$HEADER_SRC"
           grep -Fq "effect.plugins.load" "$HEADER_SRC"
-          grep -Fq "DeepSeek AI 插件 ZIP" "$HEADER_SRC"
+          # The host APK now installs a separately signed DeepSeek plugin package; do not
+          # require the removed legacy ZIP-import menu label in the EffectCraft toolbar.
+          grep -Fq "EFFECTCRAFT_ANDROID_AI_PLUGIN_BRIDGE_V1" "templates/android/SafActivity.java"
           grep -Fq "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
           grep -Fq "AE 脚本 (.jsx/.js)" "$HEADER_SRC"
           grep -Fq "ScriptUI 面板 (.jsx)" "$HEADER_SRC"
