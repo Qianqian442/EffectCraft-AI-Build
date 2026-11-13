@@ -189,9 +189,11 @@ struct HttpResult {""",
     }
 
     fn schedule_registration_retry(&mut self) {
-        let delay = if self.sync_retry_secs == 0 { 30 } else { self.sync_retry_secs };
+        // Offline registration is the only automatic retry. Start gently and back off
+        // to at most one sync attempt per hour while the phone remains offline.
+        let delay = if self.sync_retry_secs == 0 { 60 } else { self.sync_retry_secs };
         self.next_sync_at = Some(std::time::Instant::now() + std::time::Duration::from_secs(delay));
-        self.sync_retry_secs = (delay.saturating_mul(2)).min(300);
+        self.sync_retry_secs = (delay.saturating_mul(2)).min(3600);
     }
 
     fn submit_pending_registration(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
