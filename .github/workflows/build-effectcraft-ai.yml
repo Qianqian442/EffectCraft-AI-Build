@@ -2,7 +2,7 @@ name: Build EffectCraft AI Android APK
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'experiment/windows-plugin-runtime']
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - 'p2p-bridge/**'
