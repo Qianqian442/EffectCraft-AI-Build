@@ -201,7 +201,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "fn current_ban_remaining_ms(&self)",
             "fn update_local_ban_timer(&mut self",
             "Instant::now()",
-            "self.user = saved.user",
+            "self.user = saved.user;",
             "app.account.poll_events(config)",
             "临时封号已到期，本机已自动解封",
             "ban_clock_warning",
