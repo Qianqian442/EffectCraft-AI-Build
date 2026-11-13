@@ -69,7 +69,34 @@ def main() -> int:
     if start < 0 or end < 0:
         raise SystemExit("could not locate Box64 posix_spawn_file_actions conversion helpers")
 
-    source = source[:start] + "/* " + MARKER + " */\n" + NEW_BLOCK + source[end:]
+    source = source[:start] + "/* " + MARKER + " */\\n" + NEW_BLOCK + source[end:]
+
+    old_destroy = """EXPORT int my32_posix_spawn_file_actions_destroy(x64emu_t* emu, posix_spawn_file_actions_32_t* action)
+{
+    posix_spawn_file_actions_t action_l;
+    convert_file_action_to_64(&action_l, action);
+    int ret = posix_spawn_file_actions_destroy(&action_l);
+    convert_file_action_to_32(action, &action_l);   // just in case?
+    return ret;
+}
+"""
+    new_destroy = """EXPORT int my32_posix_spawn_file_actions_destroy(x64emu_t* emu, posix_spawn_file_actions_32_t* action)
+{
+    posix_spawn_file_actions_t action_l;
+    convert_file_action_to_64(&action_l, action);
+    int ret = posix_spawn_file_actions_destroy(&action_l);
+#ifdef ANDROID
+    if (ret == 0)
+        memset(action, 0, sizeof(*action));
+#else
+    convert_file_action_to_32(action, &action_l);   // preserve upstream glibc behavior
+#endif
+    return ret;
+}
+"""
+    if source.count(old_destroy) != 1:
+        raise SystemExit("could not uniquely locate posix_spawn_file_actions_destroy wrapper")
+    source = source.replace(old_destroy, new_destroy, 1)
     path.write_text(source, encoding="utf-8")
     print("Applied Bionic opaque posix_spawn_file_actions handle bridge.")
     return 0
