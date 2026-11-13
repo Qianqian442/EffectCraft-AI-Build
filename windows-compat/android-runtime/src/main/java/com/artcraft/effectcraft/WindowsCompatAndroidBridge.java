@@ -1,5 +1,7 @@
 package com.artcraft.effectcraft;
 
+import android.graphics.Bitmap;
+import org.json.JSONObject;
 import android.content.Context;
 import android.util.Log;
 
@@ -193,23 +195,67 @@ public final class WindowsCompatAndroidBridge {
                     container, host, plugin,
                     line -> appendRuntimeLog(requestId, output, line),
                     code -> appendRuntimeLog(requestId, output, "宿主退出码：" + code));
-            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(120);
-            while (guest.isAlive() && System.nanoTime() < deadline) {
-                Thread.sleep(200);
+
+            // The worker protocol emits one JSON metadata line, then waits for
+            // JSON commands on stdin. Exercise a real CPU frame render rather
+            // than merely starting a process and waiting for a timeout.
+            String metadataLine = guest.readStdoutLine(45,
+                    java.util.concurrent.TimeUnit.SECONDS);
+            if (metadataLine == null) {
+                throw new IOException("AEX 宿主未在 45 秒内返回插件加载信息。");
             }
+            JSONObject metadata = new JSONObject(metadataLine);
+            if (!metadata.optBoolean("ok", false)) {
+                throw new IOException("AEX 插件加载失败：" + metadata.optString("error", metadataLine));
+            }
+            int parameterCount = metadata.optInt("param_count", -1);
+            Path inputPng = plugin.getParent().resolve("input.png");
+            Path outputPng = plugin.getParent().resolve("output.png");
+            writeSmokeTestImage(inputPng, 320, 240);
+
+            JSONObject renderRequest = new JSONObject();
+            renderRequest.put("cmd", "render");
+            renderRequest.put("input_png", inputPng.toString());
+            renderRequest.put("output_png", outputPng.toString());
+            renderRequest.put("frame", 0);
+            renderRequest.put("fps", 30);
+            guest.sendLine(renderRequest.toString());
+
+            String renderLine = guest.readStdoutLine(90,
+                    java.util.concurrent.TimeUnit.SECONDS);
+            if (renderLine == null) {
+                throw new IOException("AEX 插件没有在 90 秒内返回渲染结果。");
+            }
+            JSONObject renderResult = new JSONObject(renderLine);
+            if (!renderResult.optBoolean("ok", false)) {
+                throw new IOException("AEX 插件帧渲染失败：" + renderResult.optString("error", renderLine));
+            }
+            if (!Files.isRegularFile(outputPng) || Files.size(outputPng) < 64) {
+                throw new IOException("AEX 宿主报告渲染成功，但没有生成有效 PNG 输出。");
+            }
+
+            guest.sendLine(new JSONObject().put("cmd", "quit").toString());
+            long deadline = System.nanoTime()
+                    + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
+            while (guest.isAlive() && System.nanoTime() < deadline) Thread.sleep(100);
             if (guest.isAlive()) {
                 guest.terminate();
-                Thread.sleep(1000);
+                Thread.sleep(500);
                 if (guest.isAlive()) guest.kill();
-                INSTALL_STATUS.put(requestId,
-                        "ERROR: AEX 宿主运行超过 120 秒，已终止。\n" + output);
-            } else {
-                Integer exitCode = guest.getExitCode();
-                INSTALL_STATUS.put(requestId,
-                        "EXIT:" + (exitCode == null ? "unknown" : exitCode)
-                                + "\nAEX 宿主进程已结束。退出码只代表进程结果，不代表所有插件功能、参数和渲染均兼容。\n"
-                                + output);
+                throw new IOException("AEX 宿主完成渲染后未能正常退出。");
             }
+            Integer exitCode = guest.getExitCode();
+            if (exitCode == null || exitCode != 0) {
+                throw new IOException("AEX 宿主渲染完成后的退出码异常：" + exitCode);
+            }
+            INSTALL_STATUS.put(requestId,
+                    "EXIT:0\n已加载 AEX 并完成一次 CPU PNG 帧渲染。"
+                            + "\nPE 架构：0x" + Integer.toHexString(machine)
+                            + "，参数数： " + parameterCount
+                            + "，输出尺寸：" + renderResult.optInt("width", 0)
+                            + "x" + renderResult.optInt("height", 0)
+                            + "\n这仅验证当前样例的一次加载和渲染，不代表所有 AE 套件、GPU、AEGP 或其他插件功能均兼容。\n"
+                            + output);
         } catch (Exception error) {
             String detail = error.getMessage();
             INSTALL_STATUS.put(requestId, "ERROR: AEX 测试失败："
@@ -221,6 +267,31 @@ public final class WindowsCompatAndroidBridge {
                 try { deletePrivateTree(plugin.getParent()); } catch (IOException ignored) {}
             }
             ACTIVE_REQUESTS.remove(requestId);
+        }
+    }
+
+    private static void writeSmokeTestImage(Path path, int width, int height) throws IOException {
+        Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+        try {
+            int[] pixels = new int[width * height];
+            for (int y = 0; y < height; y++) {
+                for (int x = 0; x < width; x++) {
+                    int red = (x * 255) / Math.max(1, width - 1);
+                    int green = (y * 255) / Math.max(1, height - 1);
+                    int blue = ((x + y) * 255) / Math.max(1, width + height - 2);
+                    pixels[y * width + x] = android.graphics.Color.argb(255, red, green, blue);
+                }
+            }
+            bitmap.setPixels(pixels, 0, width, 0, 0, width, height);
+            try (OutputStream output = Files.newOutputStream(path,
+                    StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+                if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)) {
+                    throw new IOException("Could not create AEX smoke-test input PNG.");
+                }
+                output.flush();
+            }
+        } finally {
+            bitmap.recycle();
         }
     }
 
