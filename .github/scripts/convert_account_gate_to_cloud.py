@@ -125,6 +125,27 @@ def main() -> None:
         'self.status = format!("无法连接云端 HTTPS 账号服务器：{error}");',
     )
 
+    source = source.replace(
+        'self.status = format!("无法连接管理员账号节点：{error}");',
+        'self.status = format!("无法连接云端 HTTPS 账号服务器：{error}");',
+    )
+    source = source.replace(
+        '"本地注册完成 · 待同步到管理员账号节点"',
+        '"本地注册完成 · 待同步到云端账号库"',
+    )
+    source = source.replace(
+        '"管理员节点 ID（p2p://…）"',
+        '"云端 HTTPS 服务器地址"',
+    )
+    source = source.replace(
+        'ui.text_edit_singleline(&mut app.account.server_url);',
+        'ui.label(&app.account.server_url);',
+    )
+    source = source.replace(
+        '"本地账号资料已更新，仍待管理员节点同步。"',
+        '"本地账号资料已更新，仍待同步到云端账号库。"',
+    )
+
     live_events = r'''
     fn start_events(&mut self) {
         if self.event_started {
