@@ -58,12 +58,12 @@ A newer and more suitable reference has been verified: the Winlator Bionic famil
 - FEXCore source: https://github.com/FEX-Emu/FEX (MIT; inspected revision `ab135df091d005cc98dfddc56c3dc9c9e4bd501d`).
 
 EffectCraft should adapt this **backend orchestration**, not copy the Winlator UI:
-- x86-64 PE: try the standard Wine + Box64 container; allow the Arm64EC/FEXCore container as a separately tested alternate.
-- x86 PE: try a validated Box86/WoW64 path; use FEXCore or WowBox64 only when the selected Wine/Proton container supports that ABI.
+- x86-64 PE: prefer ARM64EC Wine/Proton + FEXCore (HODLL64=libarm64ecfex.dll); keep Box64 and WowBox64 as separate 64-bit fallback candidates.
+- x86 PE: prefer ARM64EC Wine/Proton + FEXCore WoW64 (HODLL=libwow64fex.dll). Do not offer WowBox64 as the x86 backend; it is the separate 64-bit backend.
 - ARM64/ARM64EC PE: route to the matching native/Arm64EC container only after checking the actual ABI and imported DLLs.
 - Record backend failures and allow fallback between separate clean Wine prefixes/containers. Do not mix emulator DLLs from different backends in one Wine prefix without validation.
 
-This is an important improvement over a Box64-only proposal. It still does not implement Adobe's AE plug-in host API, and it does not mean every AEX binary works.
+The hybrid path is still experimental. The current Bionic Proton x86_64 binary failed under Box64 with unresolved __libc_init, so that exact pair is not considered working. The runtime does not implement Adobe's full AE plug-in host API, and it does not mean every AEX binary works.
 
 ## PE architecture routing metadata
 
@@ -97,7 +97,7 @@ GPU path: the first integration should force aexlo's CPU rendering path unless a
 
 Box64 itself has a `BOX32=ON` build option that adds 32-bit x86 ELF support inside the 64-bit ARM64 Box64 process. This is different from 32-bit Windows PE support: it can run the 32-bit Linux/Wine side of a WoW64 configuration, but Wine must still provide the Windows PE loader and 32-bit Windows API implementation.
 
-A separate Android NDK CI build now compiles this optional variant with `BOX32=ON` and `BOX32_BINFMT=OFF`. The latter avoids trying to install Linux `binfmt_misc` rules on Android. It is an additional runtime artifact; it does not replace the standard Box64 build or FEXCore's Arm64EC/WoW64 path.
+A separate Android NDK CI build was attempted with BOX32=ON and BOX32_BINFMT=OFF. Configuration and the obstack ABI checks passed, but compilation currently fails in Box64's libc_net32.c because Bionic leaves struct __res_state incomplete where Box64 expects glibc resolver fields. BOX32 is therefore not built yet; do not claim 32-bit Box32 support until the NDK build and x86 ELF tests pass.
 
 Upstream source and CMake options: https://github.com/ptitSeb/box64
 
@@ -134,9 +134,10 @@ Pinned source reference: https://www.qemu.org/docs/master/user/
 - QEMU source release in the inspected recipe: 11.1.3, GPL-2.0.
 
 EffectCraft fallback chain:
-1. Primary: Winlator Bionic standard x86-64 Wine container + Box64.
-2. Alternate: Arm64EC Wine/Proton container + FEXCore/WowBox64.
-3. Diagnostic/compatibility fallback: Android QEMU `qemu-x86_64` + x86-64 Linux Wine rootfs.
+1. Preferred candidate: ARM64EC Wine/Proton + FEXCore (64-bit PE via HODLL64, 32-bit PE via HODLL).
+2. Separate 64-bit fallback candidates: Box64 + ABI-compatible x86_64 Linux Wine, or ARM64EC Wine/Proton + WowBox64.
+3. Diagnostic fallback: Android QEMU qemu-x86_64 + x86_64 Linux Wine rootfs.
+4. Legacy 32-bit fallback: Box64 BOX32 after its Bionic build issue is fixed, or a separately ported Boxedwine.
 
 QEMU does **not** load Windows PE DLLs by itself. It translates the x86-64 Linux Wine process; Wine remains responsible for Windows PE and API compatibility. This backend is expected to be slower than Box64/FEX and is an alternate path for compatibility/debugging, not a promise of higher performance.
 
@@ -237,7 +238,7 @@ The inspected Winlator Bionic source provides concrete implementation files:
 - `ContainerManager.extractContainerPatternFile()`: creates separate x86-64 or ARM64EC Wine prefixes, then adds the matching common DLLs to `system32` and the i386 DLL set to `syswow64`.
 - `GuestProgramLauncherComponent.java`: performs the actual backend split:
   - x86-64 Proton/Wine container: launch the Windows executable through Android ARM64 `box64`.
-  - ARM64EC Proton/Wine container: launch the ARM64EC Wine executable directly; select `HODLL=libwow64fex.dll` when using FEXCore or `HODLL=wowbox64.dll` when using WowBox64.
+  - ARM64EC Proton/Wine container: launch the native Bionic Wine executable; set HODLL64=libarm64ecfex.dll for 64-bit x86 PE and HODLL=libwow64fex.dll for 32-bit x86 PE. WowBox64 is selected separately as HODLL64=wowbox64.dll for its 64-bit route.
   - FEXCore and WowBox64 DLLs are extracted into the container's `C:\\windows\\system32` directory.
 - `ProcessHelper.java`: starts and supervises the guest process with Android `ProcessBuilder`; basic launch does not require root.
 
@@ -270,8 +271,8 @@ EffectCraft should reuse the **runtime orchestration**, not Winlator's gaming UI
 
 1. Inspect the imported PE architecture, imports and exports.
 2. Select a matching Wine/Proton container and a matching aexlo host worker:
-   - x86-64 AEX: x86-64 aexlo worker, x86-64 Proton/Wine, Box64. ARM64EC/FEXCore can be tried as an alternate only after the worker/host ABI passes.
-   - x86 AEX: x86 aexlo worker, compatible 32-bit Wine/WoW64 path, Box86/Box64-BOX32 or Arm64EC/FEXCore+WowBox64. This remains experimental until the x86 worker can load and render under a matching container.
+   - x86-64 AEX: x64 aexlo worker, ARM64EC Proton/Wine + FEXCore as the preferred candidate; Box64 or WowBox64 remain separate 64-bit fallbacks only after their exact Wine/host ABI passes.
+   - x86 AEX: x86 aexlo worker, ARM64EC Proton/Wine + FEXCore WoW64 (HODLL=libwow64fex.dll) as the preferred candidate. Box64 BOX32 and Boxedwine remain unvalidated fallbacks. This remains experimental until the worker loads and renders under a matching Android container.
    - ARM64EC/ARM64X: inspect the module ABI and host requirements; do not assume that PE machine type alone is sufficient.
 3. Extract the selected container skeleton into an isolated EffectCraft private prefix.
 4. Copy the matching aexlo worker and AEX into the prefix; start one supervised worker process per plugin.
@@ -325,4 +326,17 @@ The Winlator rootfs is a distribution of many packages, not one license. Do not 
 
 ## Current verification status
 
-This branch currently improves native plug-in inspection and routing. It does not yet contain a working Wine/Box64 runtime, an AE host implementation, or proof that arbitrary `.aex` files run. A successful Python/Rust syntax check is not an end-to-end compatibility result.
+This branch now contains an experimental Android runtime installer/manager, architecture routing, an isolated aexlo worker, and a Bionic launcher command that invokes app-private native executables through /system/bin/linker64. The runtime is not yet proven to execute a Windows PE or AEX plug-in on an Android ARM64 device.
+
+Verified build and audit results:
+- Android NDK CI successfully produced a Bionic ARM64 Box64 artifact and FEXCore ARM64EC/WoW64 PE DLL artifacts.
+- Windows CI successfully built the x64 aexlo host worker and sample Noise AEX; the sample worker's Windows-native CPU render test passed.
+- WCP package size/SHA-256 checks and profile metadata inspection passed for Box64 Bionic, Box64EC, WowBox64, FEXCore 2611.1, and GE-Proton 11.0-7.1 x86_64/ARM64EC packages.
+- The WCP profile inspection failure caused by assuming profile.json was at the archive root has been fixed; the new run passed.
+
+Known blockers from actual CI:
+- The x86_64 Bionic Proton binary failed under Box64 on ARM64 Linux with unresolved __libc_init and a segmentation fault. This exact Box64 + Bionic Proton pair is not supported by current evidence; the selector now prefers ARM64EC/FEXCore for x86 and x64 PE.
+- The Android NDK Box64 BOX32 build failed in libc_net32.c because Bionic exposes struct __res_state as incomplete. BOX32 is not built yet.
+- Android archive tests validate safe extraction and WCP installation, not Windows process execution. Actual Wine startup, real PE execution, and AEX parameter/render tests on an Android ARM64 device remain pending.
+
+A successful source build, static PE inspection, or package checksum is not an end-to-end compatibility result. Keep every backend marked experimental until a real Android ARM64 device test has loaded and rendered a real Windows plug-in.
