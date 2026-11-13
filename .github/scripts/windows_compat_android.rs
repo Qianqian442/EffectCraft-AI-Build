@@ -44,6 +44,29 @@ pub(crate) fn start_runtime_install() -> Result<String, String> {
 }
 
 #[cfg(target_os = "android")]
+pub(crate) fn start_aex_plugin_test(source_path: &str) -> Result<String, String> {
+    let request_id = format!(
+        "aex-test-{}",
+        NEXT_REQUEST.fetch_add(1, Ordering::Relaxed)
+    );
+    with_android_vm(|vm| {
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.WindowsCompatAndroidBridge"))?;
+            let id = env.new_string(&request_id)?;
+            let path = env.new_string(source_path)?;
+            env.call_static_method(
+                &class,
+                jni::jni_str!("startAexPluginTest"),
+                jni::jni_sig!("(Ljava/lang/String;Ljava/lang/String;)V"),
+                &[jni::objects::JValue::Object(&id), jni::objects::JValue::Object(&path)],
+            )?;
+            Ok(())
+        }).map_err(|error| error.to_string())
+    })?;
+    Ok(request_id)
+}
+
+#[cfg(target_os = "android")]
 pub(crate) fn poll_runtime_install(request_id: &str) -> Result<Option<String>, String> {
     with_android_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
@@ -75,4 +98,9 @@ pub(crate) fn start_runtime_install() -> Result<String, String> {
 #[cfg(not(target_os = "android"))]
 pub(crate) fn poll_runtime_install(_request_id: &str) -> Result<Option<String>, String> {
     Ok(None)
+}
+
+#[cfg(not(target_os = "android"))]
+pub(crate) fn start_aex_plugin_test(_source_path: &str) -> Result<String, String> {
+    Err("Windows x86/x64 原生插件测试仅在 Android 版中运行。".into())
 }
