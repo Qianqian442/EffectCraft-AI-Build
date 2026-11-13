@@ -974,4 +974,63 @@ mod tests {
         assert_eq!(decoded.preferred_peer_id, request.preferred_peer_id);
         assert_eq!(decoded.path, "/v1/login");
     }
+
+    /// Live integration check against the public libp2p DHT and relay pool.
+    /// Run explicitly in CI; the normal offline unit-test suite stays deterministic.
+    #[test]
+    fn public_relay_smoke() {
+        let directory = std::env::temp_dir()
+            .join(format!("effectcraft-p2p-relay-smoke-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        std::fs::create_dir_all(&directory).expect("create isolated P2P test directory");
+
+        let peer_id = start_node(
+            directory.to_str().expect("UTF-8 test directory"),
+            false,
+        ).expect("start real libp2p client node");
+        eprintln!("Started live EffectCraft P2P node: {peer_id}");
+
+        let deadline = Instant::now() + Duration::from_secs(150);
+        let mut connected = false;
+        let mut last_report = String::new();
+        while Instant::now() < deadline {
+            let report = snapshot().lock().map(|state| {
+                format!(
+                    "started={} status={} discovered={} candidates={} active_relays={} direct_peers={} error={}",
+                    state.started,
+                    state.status,
+                    state.discovered_peers,
+                    state.relay_candidates,
+                    state.active_relays,
+                    state.direct_peers,
+                    state.last_error
+                )
+            }).unwrap_or_else(|_| "snapshot lock poisoned".to_string());
+
+            if report != last_report {
+                eprintln!("P2P live status: {report}");
+                last_report = report.clone();
+            }
+            if report.contains("active_relays=0") == false {
+                connected = true;
+                break;
+            }
+            if report.contains("started=false")
+                && (report.contains("transport_error")
+                    || report.contains("runtime_error")
+                    || report.contains("thread_error")
+                    || report.contains("rpc_proxy_error"))
+            {
+                break;
+            }
+            thread::sleep(Duration::from_secs(3));
+        }
+
+        stop_node();
+        let _ = fs::remove_dir_all(&directory);
+        assert!(
+            connected,
+            "No public Circuit Relay v2 reservation was accepted within 150 seconds. Last observed state: {last_report}"
+        );
+    }
 }
