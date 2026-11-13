@@ -56,9 +56,7 @@ new_check = """            let (source_fps, duration_seconds) = app.session.acti
             let hard_error = effectcraft_export_hard_constraints(
                 check_width, check_height, effective_fps, source_fps,
                 format.as_str(), bitrate_mbps, ai_interpolation, ai_upscale
-            ).or_else(|| effectcraft_export_storage_preflight(
-                duration_seconds, format.as_str(), bitrate_mbps, ai_upscale
-            ));
+            );
             if let Some(message) = hard_error {
                 preflight_error = Some(message);
                 warning_open = true;
@@ -134,7 +132,7 @@ warning_ui = r"""
                 });
                 if let Some(message) = preflight_error.as_deref() { ui.small(message); }
                 if force_allowed {
-                    ui.small("强行导出仅覆盖性能风险预警；无效参数、必要组件缺失和存储不足仍会阻止导出。继续可能导致导出失败、应用卡顿或闪退。");
+                    ui.small("强行导出仅覆盖性能风险预警；无效参数和必需 AI 组件缺失仍会阻止导出。存储不足仍可能导致写入失败；继续可能导致导出失败、应用卡顿或闪退。");
                 } else {
                     ui.small("此问题不能通过强行导出绕过，请先处理上述问题。");
                 }
@@ -430,41 +428,7 @@ fn effectcraft_export_hard_constraints(
     None
 }
 
-fn effectcraft_export_storage_preflight(
-    duration_seconds: f64, format: &str, bitrate_mbps: f64, ai_upscale: bool,
-) -> Option<String> {
-    #[cfg(target_os = "android")]
-    {
-        const MIB: u64 = 1024 * 1024;
-        if let Some(storage_dir) = std::env::var("EFFECTCRAFT_AI_MODEL_PATH").ok()
-            .and_then(|path| std::path::PathBuf::from(path).parent().map(|p| p.to_path_buf())) {
-            if let Ok(output) = std::process::Command::new("df").arg("-Pk").arg(&storage_dir).output() {
-                if output.status.success() {
-                    let report = String::from_utf8_lossy(&output.stdout);
-                    if let Some((_, available)) = effectcraft_engine::sysinfo::parse_df(&report) {
-                        let bitrate = if format == "prores" { 100_000_000_u64 }
-                            else { (bitrate_mbps.clamp(1.0, 100.0) * 1_000_000.0).round() as u64 };
-                        let duration = if duration_seconds.is_finite() {
-                            duration_seconds.clamp(1.0, 86_400.0)
-                        } else { 1.0 };
-                        let scale = if ai_upscale { 1.8 } else { 1.3 };
-                        let estimate = (duration * bitrate as f64 / 8.0 * scale).ceil() as u64;
-                        let required = estimate.saturating_add(256 * MIB);
-                        if available < required {
-                            return Some(format!(
-                                "无法强行导出：存储空间不足，当前约 {} MB，预计至少需要 {} MB",
-                                available / MIB, required / MIB
-                            ));
-                        }
-                    }
-                }
-            }
-        }
-    }
-    #[cfg(not(target_os = "android"))]
-    { let _ = (duration_seconds, format, bitrate_mbps, ai_upscale); }
-    None
-}
+
 '''
 if "EFFECTCRAFT_ANDROID_EXPORT_HARD_CONSTRAINTS_V1" not in header:
     header = header.rstrip() + "\n\n" + hard_helpers.strip() + "\n"
