@@ -102,16 +102,6 @@ jobs:
         run: |
           gradle -p windows-compat/android-runtime testDebugUnitTest assembleRelease --no-daemon
 
-      - name: Run native archive tests on Android x86_64 emulator
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          arch: x86_64
-          target: default
-          profile: pixel_2
-          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2
-          disable-animations: true
-          script: gradle -p windows-compat/android-runtime connectedDebugAndroidTest --no-daemon
 
       - name: Inspect current Winlator Box64EC, Box64, FEXCore and WowBox64 WCP profiles
         shell: bash
@@ -204,3 +194,17 @@ jobs:
           grep -Fq 'fn inspect_desktop_native_file' .github/scripts/add_desktop_plugin_package_support.py
           grep -Fq 'return inspect_desktop_native_file(s, path)' .github/scripts/add_desktop_plugin_package_support.py
           echo "PE static analysis and direct native plug-in routing are present."
+
+      # Keep the slow emulator boot/test after fast source, Gradle, and Rust checks,
+      # so it cannot hide a compile or integration failure.
+      - name: Run native archive tests on Android x86_64 emulator
+        timeout-minutes: 15
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 30
+          arch: x86_64
+          target: default
+          profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2
+          disable-animations: true
+          script: gradle -p windows-compat/android-runtime connectedDebugAndroidTest --no-daemon
