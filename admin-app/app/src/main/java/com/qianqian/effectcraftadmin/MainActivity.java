@@ -83,7 +83,7 @@ public final class MainActivity extends Activity {
         }
         adminToken = getPreferences(MODE_PRIVATE).getString("admin_token", "");
         if (!adminToken.isEmpty()) {
-            showConnecting("正在验证本机管理员账号…");
+            showConnecting("正在验证云端管理员账号…");
             loadUsers("");
         } else {
             showLogin();
@@ -286,7 +286,6 @@ public final class MainActivity extends Activity {
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
         page.addView(text("云端账号管理：主 APK 与管理版共用同一个 HTTPS 账号数据库。", 14, false));
         page.addView(text("用户和管理员可以处于不同城市、不同 Wi-Fi 或使用移动数据；封禁和解禁状态由云端统一保存。", 13, false));
-        addNodeServerToggle(page);
         page.addView(text("云端 HTTPS 服务器地址", 13, true));
         serverInput = field("由 APK 构建时配置的 Cloudflare HTTPS 地址", false);
         serverInput.setText(server);
