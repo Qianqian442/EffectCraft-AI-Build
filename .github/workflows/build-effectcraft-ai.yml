@@ -76,7 +76,8 @@ jobs:
 
   build:
     needs: validate-patches
-    # Build the main APK even without a cloud URL; keep LAN account mode in that case.
+    # Cloud account service is mandatory for cross-location registration, login and moderation.
+    # The account conversion step fails closed if AE_ACCOUNT_API_URL is missing.
     name: Build EffectCraft 0.21.1 with AI helper
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -460,7 +461,6 @@ jobs:
           python3 build-assets/.github/scripts/add_offline_account_registration.py
 
       - name: Convert account gate to cloud HTTPS and real-time ban notifications
-        if: ${{ vars.AE_ACCOUNT_API_URL != '' }}
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
