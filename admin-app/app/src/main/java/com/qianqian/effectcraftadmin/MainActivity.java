@@ -622,88 +622,111 @@ public final class MainActivity extends Activity {
             View child = rows.getChildAt(i);
             if (id.equals(child.getTag())) {
                 rows.removeViewAt(i);
-                break;
+                addUserRow(user, i);
+                return;
             }
         }
         addUserRow(user);
     }
 
     private void addUserRow(JSONObject user) {
+        addUserRow(user, -1);
+    }
+
+    private void addUserRow(JSONObject user, int position) {
         String id = user.optString("id");
         String name = user.optString("name", "未命名");
         String qq = user.optString("qq", "");
         String wechat = user.optString("wechat", "");
         String until = user.optString("banned_until", "");
         boolean banned = !until.isEmpty() && !until.equals("null");
+        boolean permanent = "permanent".equalsIgnoreCase(until);
 
-        // One vertical card per account: details on top, full-width action row below.
-        // This prevents the Ban/Unban controls from colliding with account text on small phones.
+        // One compact horizontal row: avatar on the left, ban/unban controls on the right.
+        // The avatar alone opens the user detail sheet; passwords are never requested or displayed.
         LinearLayout card = new LinearLayout(this);
-        card.setOrientation(LinearLayout.VERTICAL);
+        card.setOrientation(LinearLayout.HORIZONTAL);
         card.setGravity(Gravity.CENTER_VERTICAL);
-        card.setPadding(dp(10), dp(9), dp(10), dp(9));
+        card.setPadding(dp(9), dp(8), dp(9), dp(8));
         card.setBackground(rounded(Color.WHITE));
         card.setTag(id);
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT);
         cardParams.bottomMargin = dp(8);
-        rows.addView(card, cardParams);
 
         LinearLayout details = new LinearLayout(this);
         details.setOrientation(LinearLayout.HORIZONTAL);
         details.setGravity(Gravity.CENTER_VERTICAL);
-        card.addView(details, new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT));
+        card.addView(details, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         String avatarUrl = user.optString("avatar_url", "");
+        View avatarView;
         if (!avatarUrl.isEmpty()) {
             ImageView avatar = new ImageView(this);
             avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
             avatar.setBackground(rounded(Color.rgb(66, 105, 180)));
             avatar.setClipToOutline(true);
-            details.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+            avatar.setContentDescription("点击查看用户信息");
+            details.addView(avatar, new LinearLayout.LayoutParams(dp(48), dp(48)));
             loadAvatar(avatar, avatarUrl);
+            avatarView = avatar;
         } else {
             TextView avatar = text(name.isEmpty() ? "?" : name.substring(0, 1), 20, true);
             avatar.setGravity(Gravity.CENTER);
             avatar.setTextColor(Color.WHITE);
             avatar.setBackground(rounded(Color.rgb(66, 105, 180)));
-            details.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+            avatar.setContentDescription("点击查看用户信息");
+            details.addView(avatar, new LinearLayout.LayoutParams(dp(48), dp(48)));
+            avatarView = avatar;
         }
+        avatarView.setOnClickListener(v -> showUserDetails(user));
 
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
-        info.setPadding(dp(10), 0, dp(4), 0);
-        TextView label = text(name, 15, true);
-        TextView ids = text("QQ " + (qq.isEmpty() ? "未填写" : qq) + "  ·  微信 " + (wechat.isEmpty() ? "未填写" : wechat), 11, false);
+        info.setPadding(dp(9), 0, dp(5), 0);
+        TextView label = text(name, 14, true);
+        TextView ids = text("QQ " + (qq.isEmpty() ? "未填写" : qq) + " · 微信 " + (wechat.isEmpty() ? "未填写" : wechat), 10, false);
         ids.setTextColor(Color.rgb(95, 103, 115));
         label.setMaxLines(1);
         ids.setMaxLines(2);
         info.addView(label);
         info.addView(ids);
         if (banned) {
-            TextView ban = text("封禁至 " + until, 10, true);
+            TextView ban = text(permanent ? "永久封禁" : "封禁至 " + until, 10, true);
             ban.setTextColor(Color.rgb(180, 58, 58));
             info.addView(ban);
+        } else {
+            TextView normal = text("正常", 10, true);
+            normal.setTextColor(Color.rgb(45, 135, 80));
+            info.addView(normal);
         }
         details.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
-        details.setOnClickListener(v -> showUserDetails(user));
 
         LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.setGravity(Gravity.CENTER_VERTICAL);
-        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(-1, dp(44));
-        actionsParams.topMargin = dp(8);
+        actions.setOrientation(LinearLayout.VERTICAL);
+        actions.setGravity(Gravity.CENTER);
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(dp(84), ViewGroup.LayoutParams.WRAP_CONTENT);
         Button banButton = button("封禁");
         Button unbanButton = button("解禁");
+        banButton.setTextSize(12);
+        unbanButton.setTextSize(12);
+        banButton.setMinHeight(0);
+        unbanButton.setMinHeight(0);
+        banButton.setPadding(dp(2), 0, dp(2), 0);
+        unbanButton.setPadding(dp(2), 0, dp(2), 0);
         unbanButton.setEnabled(banned);
-        LinearLayout.LayoutParams actionLeft = new LinearLayout.LayoutParams(0, dp(42), 1);
-        actionLeft.rightMargin = dp(4);
-        LinearLayout.LayoutParams actionRight = new LinearLayout.LayoutParams(0, dp(42), 1);
-        actionRight.leftMargin = dp(4);
-        actions.addView(banButton, actionLeft);
-        actions.addView(unbanButton, actionRight);
+        actions.addView(banButton, new LinearLayout.LayoutParams(-1, dp(38)));
+        LinearLayout.LayoutParams unbanParams = new LinearLayout.LayoutParams(-1, dp(38));
+        unbanParams.topMargin = dp(4);
+        actions.addView(unbanButton, unbanParams);
         card.addView(actions, actionsParams);
         banButton.setOnClickListener(v -> chooseBan(id));
         unbanButton.setOnClickListener(v -> unban(id));
+
+        if (position >= 0 && position <= rows.getChildCount()) {
+            rows.addView(card, position, cardParams);
+        } else {
+            rows.addView(card, cardParams);
+        }
     }
 
     private void loadAvatar(ImageView view, String uri) {
@@ -740,12 +763,16 @@ public final class MainActivity extends Activity {
         String avatar = user.optString("avatar_url");
         String avatarDescription = avatar.startsWith("data:image/")
             ? "本机相册头像（已压缩保存）" : avatar;
+        String until = user.optString("banned_until", "");
+        String banStatus = until.isEmpty() || until.equals("null")
+            ? "未封禁"
+            : ("permanent".equalsIgnoreCase(until) ? "永久封禁" : "临时封禁，截止：" + until);
         String message = "名字：" + user.optString("name") +
                 "\nQQ号：" + user.optString("qq") +
                 "\n微信号：" + user.optString("wechat") +
                 "\n注册时间：" + user.optString("created_at") +
                 "\n头像：" + avatarDescription +
-                "\n封禁截止：" + user.optString("banned_until") +
+                "\n账号状态：" + banStatus +
                 "\n封禁原因：" + user.optString("ban_reason");
         new AlertDialog.Builder(this).setTitle("账号个人信息")
                 .setMessage(message)
@@ -753,6 +780,17 @@ public final class MainActivity extends Activity {
     }
 
     private void chooseBan(String id) {
+        new AlertDialog.Builder(this)
+            .setTitle("选择封禁方式")
+            .setItems(new String[] {"临时封号（设置到期时间）", "永久封号（需管理员手动解禁）"}, (dialog, which) -> {
+                if (which == 0) chooseTemporaryBan(id);
+                else askPermanentBanReason(id);
+            })
+            .setNegativeButton("取消", null)
+            .show();
+    }
+
+    private void chooseTemporaryBan(String id) {
         Calendar selected = Calendar.getInstance();
         new DatePickerDialog(this, (view, year, month, day) -> {
             selected.set(Calendar.YEAR, year);
@@ -763,38 +801,57 @@ public final class MainActivity extends Activity {
                 selected.set(Calendar.MINUTE, minute);
                 selected.set(Calendar.SECOND, 0);
                 selected.set(Calendar.MILLISECOND, 0);
-                askBanReason(id, selected);
+                EditText reason = new EditText(this);
+                reason.setHint("填写封禁原因（必填）");
+                reason.setMinLines(2);
+                reason.setGravity(Gravity.TOP);
+                new AlertDialog.Builder(this).setTitle("确认临时封禁")
+                    .setMessage("封禁截止：" + selected.getTime())
+                    .setView(reason)
+                    .setNegativeButton("取消", null)
+                    .setPositiveButton("确认封禁", (dialog, which) -> {
+                        String why = reason.getText().toString().trim();
+                        if (why.isEmpty()) { toast("请填写封禁原因"); return; }
+                        submitBan(id, Instant.ofEpochMilli(selected.getTimeInMillis()).toString(), why);
+                    })
+                    .show();
             }, selected.get(Calendar.HOUR_OF_DAY), selected.get(Calendar.MINUTE), true).show();
         }, selected.get(Calendar.YEAR), selected.get(Calendar.MONTH), selected.get(Calendar.DAY_OF_MONTH)).show();
     }
 
-    private void askBanReason(String id, Calendar until) {
+    private void askPermanentBanReason(String id) {
         EditText reason = new EditText(this);
-        reason.setHint("填写封禁原因（必填）");
+        reason.setHint("填写永久封禁原因（必填）");
         reason.setMinLines(2);
         reason.setGravity(Gravity.TOP);
-        new AlertDialog.Builder(this).setTitle("确认封禁")
-                .setMessage("封禁截止：" + until.getTime())
-                .setView(reason)
-                .setNegativeButton("取消", null)
-                .setPositiveButton("确认封禁", (dialog, which) -> {
-                    String why = reason.getText().toString().trim();
-                    if (why.isEmpty()) { toast("请填写封禁原因"); return; }
-                    JSONObject body = new JSONObject();
-                    try {
-                        body.put("banned_until", Instant.ofEpochMilli(until.getTimeInMillis()).toString());
-                        body.put("reason", why);
-                    } catch (Exception ignored) {}
-                    requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
-                        if (result != null) {
-                            int delivered = result.optInt("notification_delivered", 0);
-                            toast(delivered > 0
-                                ? "已封禁，并已通知在线 Ae 设备（" + delivered + " 个连接）"
-                                : "封禁记录已保存；未发现在线 Ae 连接，对方下次联网或打开 Ae 时核验");
-                            updateVisibleUser(result.optJSONObject("user"));
-                        }
-                    });
-                }).show();
+        new AlertDialog.Builder(this).setTitle("确认永久封禁")
+            .setMessage("永久封禁不会自动到期，只有管理员执行解禁后才能恢复。")
+            .setView(reason)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("确认永久封禁", (dialog, which) -> {
+                String why = reason.getText().toString().trim();
+                if (why.isEmpty()) { toast("请填写封禁原因"); return; }
+                submitBan(id, "permanent", why);
+            })
+            .show();
+    }
+
+    private void submitBan(String id, String until, String reason) {
+        JSONObject body = new JSONObject();
+        try {
+            body.put("banned_until", until);
+            body.put("reason", reason);
+        } catch (Exception ignored) {}
+        requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
+            if (result != null) {
+                int delivered = result.optInt("notification_delivered", 0);
+                String status = "permanent".equalsIgnoreCase(until) ? "永久封禁" : "临时封禁";
+                toast(delivered > 0
+                    ? status + "已生效，并已通知在线设备（" + delivered + " 个连接）"
+                    : status + "记录已保存；离线设备联网后同步");
+                updateVisibleUser(result.optJSONObject("user"));
+            }
+        });
     }
 
     private void unban(String id) {
