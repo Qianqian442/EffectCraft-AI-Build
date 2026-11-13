@@ -58,7 +58,7 @@ fi
     # and profile JSON parsers directly rather than introducing a second Android library module.
     generator = builder / "lib/android_project.py"
     gradle_source = generator.read_text(encoding="utf-8")
-    dependency_anchor = "    implementation 'androidx.games:games-activity:4.4.0'\\n"
+    dependency_anchor = "    implementation 'androidx.games:games-activity:4.4.0'\n"
     extra_dependencies = dependency_anchor + """    // EffectCraft's optional Windows compatibility runtime (safe TAR/XZ/Zstandard extraction).
     implementation 'org.apache.commons:commons-compress:1.20'
     implementation 'org.tukaani:xz:1.7'
@@ -75,7 +75,7 @@ fi
     # The generated EffectCraftActivity and the bridge share com.artcraft.effectcraft.
     activity_template = builder / "templates/android/SafActivity.java"
     activity = activity_template.read_text(encoding="utf-8")
-    create_anchor = "        super.onCreate(savedInstanceState);\\n"
+    create_anchor = "        super.onCreate(savedInstanceState);\n"
     create_replacement = create_anchor + """        // EFFECTCRAFT_ANDROID_WINDOWS_COMPAT_RUNTIME_V1
         WindowsCompatAndroidBridge.initialize(getApplicationContext());
 """
@@ -148,7 +148,7 @@ pub(crate) fn poll_windows_compat_runtime_install(request_id: &str) -> Result<Op
         vm_anchor = "egui_winit::android_activity::set_vm(android_app.vm_as_ptr());"
         common = replace_once(
             common, vm_anchor,
-            vm_anchor + "\\n    effectcraft_ui_egui::init_android_windows_compat_bridge(android_app.vm_as_ptr());",
+            vm_anchor + "\n    effectcraft_ui_egui::init_android_windows_compat_bridge(android_app.vm_as_ptr());",
             "Windows runtime JNI VM initialization", count=2
         )
         build_common.write_text(common, encoding="utf-8")
