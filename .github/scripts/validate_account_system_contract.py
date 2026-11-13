@@ -37,7 +37,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
-        "Ban state is checked at login, profile update, and periodic /me verification",
+        "Ban state is checked at login, profile update, and explicit /v1/me requests",
         "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/LanAccountServer.java",
         (
             'if (isBanned(user)) return error(423',
@@ -205,6 +205,22 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             '"/v1/profile"',
             '"preferred_peer_id": preferred_peer_id',
             '127.0.0.1:8789',
+        ),
+    ),
+    (
+        "Offline registration persists a local pending profile without storing the password and retries with backoff",
+        ".github/scripts/add_offline_account_registration.py",
+        (
+            "PendingRegistration",
+            "effectcraft-home-pending-registration.json",
+            "self.local_only = true",
+            "password仅保留在当前运行内存",
+            "std::time::Duration::from_secs(delay)",
+            ".min(300)",
+            'response.status == 409',
+            "maybe_retry_pending_registration",
+            "立即同步本地账号",
+            "no 10-second validation polling",
         ),
     ),
 ]
