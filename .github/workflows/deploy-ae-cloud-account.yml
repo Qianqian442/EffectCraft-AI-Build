@@ -2,7 +2,7 @@ name: Deploy Ae Cloud Account API
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'experiment/windows-plugin-runtime']
     paths:
       - '.github/workflows/deploy-ae-cloud-account.yml'
       - 'cloudflare-worker/**'
@@ -130,6 +130,6 @@ jobs:
               -f name="AE_ACCOUNT_API_URL" -f value="$WORKER_URL" >/dev/null
           fi
           echo "Saved AE_ACCOUNT_API_URL for the APK workflows." >> "$GITHUB_STEP_SUMMARY"
-          gh workflow run build-effectcraft-ai.yml --ref main
-          gh workflow run build-account-admin.yml --ref main
+          gh workflow run build-effectcraft-ai.yml --ref "$GITHUB_REF_NAME"
+          gh workflow run build-account-admin.yml --ref "$GITHUB_REF_NAME"
           echo "Dispatched the main EffectCraft APK and account-admin APK builds." >> "$GITHUB_STEP_SUMMARY"
