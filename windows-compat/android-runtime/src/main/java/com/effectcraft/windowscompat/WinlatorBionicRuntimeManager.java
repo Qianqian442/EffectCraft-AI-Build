@@ -329,7 +329,7 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
             environment.put("BOX64_NORCFILES", "1");
             environment.put("BOX64_X11GLX", "1");
             environment.put("BOX64_PATH", imageFsRoot.resolve("usr/bin").toString());
-            environment.put("BOX64_LD_LIBRARY_PATH", guestLibraryPath());
+            environment.put("BOX64_LD_LIBRARY_PATH", guestLibraryPath(container));
         } else {
             // The ARM64EC Wine host is a native Bionic ELF. Select the two
             // distinct Hangover/FEX backends: HODLL64 handles x86_64 PE code,
@@ -369,7 +369,14 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         env.put("TMPDIR", root + "/usr/tmp");
         env.put("XDG_DATA_DIRS", root + "/usr/share");
         env.put("XDG_CONFIG_DIRS", root + "/usr/etc/xdg");
-        env.put("LD_LIBRARY_PATH", root + "/usr/lib:/system/lib64");
+        String nativeLibraryPath = root + "/usr/lib:/system/lib64";
+        if (container.architecture == Architecture.ARM64EC) {
+            // ARM64EC Wine is a native Bionic runtime; its own native libraries
+            // must precede the system paths. Never put x86_64 guest libraries
+            // on the Bionic host loader path.
+            nativeLibraryPath = container.wineRoot.resolve("lib") + ":" + nativeLibraryPath;
+        }
+        env.put("LD_LIBRARY_PATH", nativeLibraryPath);
         env.put("PATH", winePath + ":" + root + "/usr/bin");
         env.put("PREFIX", root + "/usr");
         env.put("WINEPREFIX", container.winePrefix.toString());
@@ -383,10 +390,12 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         return env;
     }
 
-    private String guestLibraryPath() {
+    private String guestLibraryPath(Container container) {
         return imageFsRoot.resolve("lib/x86_64-linux-gnu") + ":"
                 + imageFsRoot.resolve("usr/lib/x86_64-linux-gnu") + ":"
-                + imageFsRoot.resolve("usr/lib");
+                + imageFsRoot.resolve("usr/lib") + ":"
+                + container.wineRoot.resolve("lib/wine/x86_64-unix") + ":"
+                + container.wineRoot.resolve("lib");
     }
 
     private static Path findWineExecutable(Path wineBin) throws IOException {
