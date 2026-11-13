@@ -403,7 +403,7 @@ public final class MainActivity extends Activity {
             java.util.ArrayList<String> endpoints = cloudServerPool();
             if (!endpoints.contains(server) && server.startsWith("https://")) endpoints.add(0, server);
             if (endpoints.isEmpty()) error = "云端 HTTPS 账号服务器尚未配置";
-            for (int index = 0; index < endpoints.size() && result == null && error == null; index++) {
+            for (int index = 0; index < endpoints.size() && result == null; index++) {
                 String candidate = endpoints.get(index);
                 HttpURLConnection c = null;
                 try {
@@ -433,7 +433,7 @@ public final class MainActivity extends Activity {
                     }
                     JSONObject parsed = new JSONObject(new String(data.toByteArray(), StandardCharsets.UTF_8));
                     if (code >= 500 && index + 1 < endpoints.size()) {
-                        error = "入口暂时不可用（HTTP " + code + "），正在切换备用服务器…";
+                        error = null;
                         continue;
                     }
                     server = candidate;
@@ -452,8 +452,8 @@ public final class MainActivity extends Activity {
                         }
                     }
                 } catch (Exception e) {
-                    error = "入口 " + candidate + " 连接失败：" + e.getMessage();
-                    if (index + 1 < endpoints.size()) error += "；正在尝试下一个入口…";
+                    if (index + 1 < endpoints.size()) error = null;
+                    else error = "所有云端 HTTPS 入口均连接失败，最后一个入口 " + candidate + "：" + e.getMessage();
                 } finally {
                     if (c != null) c.disconnect();
                 }
