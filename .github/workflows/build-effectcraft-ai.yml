@@ -36,6 +36,7 @@ on:
       - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
+      - '.github/scripts/set_android_default_workspace.py'
       - '.github/scripts/add_startup_attribution_notice.py'
       - '.github/scripts/add_chroma_key_effect.py'
       - '.github/scripts/add_bottom_left_media_import.py'
@@ -71,7 +72,7 @@ jobs:
           python-version: '3.12'
       - name: Compile patch scripts
         run: |
-          python3 -m py_compile .github/scripts/patch_export_dialog.py .github/scripts/upgrade_export_preflight.py .github/scripts/integrate_video_ai.py .github/scripts/add_android_gallery_export.py .github/scripts/add_qq_project_share.py .github/scripts/add_account_avatar_picker.py .github/scripts/add_offline_account_registration.py .github/scripts/patch_gradle_maven_mirrors.py .github/scripts/install_ai_plugin_bridge.py .github/scripts/add_bottom_left_media_import.py
+          python3 -m py_compile .github/scripts/patch_export_dialog.py .github/scripts/upgrade_export_preflight.py .github/scripts/integrate_video_ai.py .github/scripts/add_android_gallery_export.py .github/scripts/add_qq_project_share.py .github/scripts/add_account_avatar_picker.py .github/scripts/add_offline_account_registration.py .github/scripts/patch_gradle_maven_mirrors.py .github/scripts/install_ai_plugin_bridge.py .github/scripts/add_bottom_left_media_import.py .github/scripts/set_android_default_workspace.py
           python3 .github/scripts/validate_account_system_contract.py
 
   build:
@@ -437,6 +438,13 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_chinese_group_puppet_keyframe_ui.py
+
+      - name: Expand the default Android composition workspace
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/set_android_default_workspace.py
+          python3 build-assets/.github/scripts/set_android_default_workspace.py
 
       - name: Add mandatory home-Wi-Fi account registration, login and ban gate
         env:
