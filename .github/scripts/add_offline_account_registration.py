@@ -147,6 +147,20 @@ struct HttpResult {""",
     }
 
     fn create_local_registration(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        let qq = self.qq.trim();
+        let wechat = self.wechat.trim();
+        let qq_valid = qq.is_empty() || (qq.len() >= 5 && qq.len() <= 12 && qq.as_bytes()[0].is_ascii_digit() && qq.as_bytes()[0] != b'0' && qq.bytes().all(|c| c.is_ascii_digit()));
+        let wechat_valid = wechat.is_empty() || (wechat.len() >= 6 && wechat.len() <= 32 && wechat.as_bytes()[0].is_ascii_alphabetic() && wechat.bytes().all(|c| c.is_ascii_alphanumeric() || c == b'_' || c == b'-'));
+        if (qq.is_empty() && wechat.is_empty()) || !qq_valid || !wechat_valid {
+            self.status = "离线注册失败：QQ号和微信号至少填写一项；已填写的号码必须符合格式。".to_string();
+            self.mode = Mode::Auth;
+            return;
+        }
+        if self.name.trim().is_empty() || self.name.trim().chars().count() > 40 || self.password.chars().count() < 8 || self.password.chars().count() > 128 {
+            self.status = "离线注册失败：请填写昵称，并设置8至128位密码。".to_string();
+            self.mode = Mode::Auth;
+            return;
+        }
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap_or_default()
@@ -222,6 +236,50 @@ struct HttpResult {""",
 
     fn send(&mut self,""",
         "pending registration persistence and retry methods",
+    )
+
+    source = replace_once(
+        source,
+        """    fn submit_profile(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        self.send(""",
+        """    fn submit_profile(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        if self.local_only {
+            let qq = self.edit_qq.trim().to_string();
+            let wechat = self.edit_wechat.trim().to_string();
+            let name = self.edit_name.trim().to_string();
+            let avatar = self.edit_avatar.trim().to_string();
+            let server_url = self.server_url.clone();
+            let new_password = self.new_password.clone();
+            if qq.is_empty() && wechat.is_empty() {
+                self.status = "QQ号和微信号至少填写一项".to_string();
+                return;
+            }
+            if !new_password.is_empty() && (new_password.chars().count() < 8 || new_password.chars().count() > 128) {
+                self.status = "新密码必须为8至128位".to_string();
+                return;
+            }
+            let Some(pending) = self.pending_registration.as_mut() else {
+                self.status = "本地待同步账号资料不存在".to_string();
+                return;
+            };
+            pending.user.qq = qq;
+            pending.user.wechat = wechat;
+            pending.user.name = name;
+            pending.user.avatar_url = avatar;
+            pending.server_url = server_url;
+            let updated = pending.user.clone();
+            self.user = Some(updated);
+            if !new_password.is_empty() {
+                self.password = new_password;
+            }
+            self.current_password.clear();
+            self.new_password.clear();
+            self.persist_pending_registration(config);
+            self.status = "本地账号资料已更新，仍待管理员节点同步。".to_string();
+            return;
+        }
+        self.send(""",
+        "save local-only profile changes without a server request",
     )
 
     source = replace_once(
