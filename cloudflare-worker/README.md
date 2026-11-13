@@ -33,14 +33,13 @@ Workers, D1 and Durable Objects have separate usage limits. SQLite-backed Durabl
 
 ## Deploy from GitHub Actions (phone-friendly)
 
-The repository contains `.github/workflows/deploy-ae-cloud-account.yml`. Before running it, add these four repository **Actions secrets** at GitHub → repository → Settings → Secrets and variables → Actions → New repository secret:
+The repository contains `.github/workflows/deploy-ae-cloud-account.yml`. Before running it, add these three repository **Actions secrets** at GitHub → repository → Settings → Secrets and variables → Actions → New repository secret:
 
 - `CLOUDFLARE_API_TOKEN`: with the existing least-privilege setup, use Account → Workers Scripts → **Edit** and Account → D1 → **Edit**. First create an empty Worker named `ae-cloud-account-api` manually in the Cloudflare dashboard (Workers & Pages → Create application → Create Worker → Deploy). The current token can then update and deploy that existing Worker and apply the D1 schema. If you instead want GitHub Actions to create the first Worker automatically, the token needs product-level Workers **Admin**, which is broader. Restrict the resource selector to your Cloudflare account. Never paste this token into chat.
-- `CLOUDFLARE_ACCOUNT_ID`: the account ID shown in the Cloudflare dashboard URL.
 - `JWT_SECRET`: a randomly generated secret of at least 32 characters.
 - `ADMIN_PASSWORD`: your private administrator password of at least 12 characters.
 
-The workflow applies `schema.sql`, deploys the Worker and Durable Object migration, then sets `JWT_SECRET` and `ADMIN_PASSWORD` as Worker secrets. GitHub Actions masks secret values in logs. Keep all four values private. The Account ID for the already-created Cloudflare account is `6ed9bd81b9aef69ba61060f33510f014`; the D1 Database ID is already in `wrangler.jsonc` and should not be edited.
+The workflow applies `schema.sql`, deploys the Worker and Durable Object migration, then sets `JWT_SECRET` and `ADMIN_PASSWORD` as Worker secrets. GitHub Actions masks secret values in logs. Keep all four values private. The Cloudflare Account ID is already configured in the deployment workflow, and the D1 Database ID is already in `wrangler.jsonc`; do not edit either value unless the Cloudflare account/database is intentionally changed.
 
 After the run succeeds, open the deployment log to find the Worker `workers.dev` URL. It will look like:
 
@@ -50,6 +49,6 @@ Check that `https://...workers.dev/health` returns `{"ok":true,"service":"Ae Clo
 
 ## Main APK build
 
-After the actual Worker URL is known, set the repository Actions **variable** (not a secret) `AE_ACCOUNT_API_URL` to the exact base URL, for example `https://ae-cloud-account-api.<your-workers-dev-subdomain>.workers.dev`. The main APK workflow checks for this variable and only then runs the cloud-account conversion step. The admin APK accepts the same HTTPS URL in its server address field.
+After deployment, the workflow automatically saves the Worker URL as repository Actions **variable** `AE_ACCOUNT_API_URL` and dispatches builds for both APKs on the same branch. Both APKs embed that same HTTPS endpoint; the manager no longer talks to a local SQLite account server.
 
 Do not distribute the previous LAN-only builds. Build and validate both cloud-connected APKs first.
