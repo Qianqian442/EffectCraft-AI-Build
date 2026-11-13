@@ -30,6 +30,7 @@ on:
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_account_avatar_picker.py'
+      - '.github/scripts/add_offline_account_registration.py'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/make_header_scrollable.py'
@@ -69,7 +70,7 @@ jobs:
           python-version: '3.12'
       - name: Compile patch scripts
         run: |
-          python3 -m py_compile .github/scripts/patch_export_dialog.py .github/scripts/upgrade_export_preflight.py .github/scripts/integrate_video_ai.py .github/scripts/add_android_gallery_export.py .github/scripts/add_qq_project_share.py .github/scripts/add_account_avatar_picker.py .github/scripts/patch_gradle_maven_mirrors.py .github/scripts/install_ai_plugin_bridge.py .github/scripts/add_bottom_left_media_import.py
+          python3 -m py_compile .github/scripts/patch_export_dialog.py .github/scripts/upgrade_export_preflight.py .github/scripts/integrate_video_ai.py .github/scripts/add_android_gallery_export.py .github/scripts/add_qq_project_share.py .github/scripts/add_account_avatar_picker.py .github/scripts/add_offline_account_registration.py .github/scripts/patch_gradle_maven_mirrors.py .github/scripts/install_ai_plugin_bridge.py .github/scripts/add_bottom_left_media_import.py
 
   build:
     needs: validate-patches
@@ -448,6 +449,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_account_avatar_picker.py
           python3 build-assets/.github/scripts/add_account_avatar_picker.py
+
+      - name: Add offline-first local registration and demand-driven retry
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_offline_account_registration.py
+          python3 build-assets/.github/scripts/add_offline_account_registration.py
 
       - name: Convert account gate to cloud HTTPS and real-time ban notifications
         if: ${{ vars.AE_ACCOUNT_API_URL != '' }}
