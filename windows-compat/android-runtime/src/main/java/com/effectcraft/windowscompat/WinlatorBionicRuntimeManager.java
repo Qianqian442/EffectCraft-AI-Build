@@ -316,14 +316,21 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         }
         Path root = containersRoot.resolve(id).normalize();
         if (!root.startsWith(containersRoot)) throw new IOException("container path escapes private runtime root");
-        deleteTree(root);
-        createDirectoriesNoSymlink(privateRoot, root);
-
-        RuntimeAssetInstaller.AssetSpec pattern = architecture == Architecture.X86_64
-                ? WinlatorBionicAssetCatalog.x64ContainerPattern()
-                : WinlatorBionicAssetCatalog.arm64EcContainerPattern();
-        Path archive = assets.downloadVerified(pattern);
-        extractor.extractTarZstd(archive, root);
+        createDirectoriesNoSymlink(privateRoot, containersRoot);
+        Path marker = root.resolve(".effectcraft-container-architecture");
+        boolean reusable = Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)
+                && !Files.isSymbolicLink(marker)
+                && Files.readString(marker, StandardCharsets.UTF_8).trim().equals(architecture.name())
+                && Files.isDirectory(root.resolve(".wine"), LinkOption.NOFOLLOW_LINKS);
+        if (!reusable) {
+            deleteTree(root);
+            createDirectoriesNoSymlink(privateRoot, root);
+            RuntimeAssetInstaller.AssetSpec pattern = architecture == Architecture.X86_64
+                    ? WinlatorBionicAssetCatalog.x64ContainerPattern()
+                    : WinlatorBionicAssetCatalog.arm64EcContainerPattern();
+            Path archive = assets.downloadVerified(pattern);
+            extractor.extractTarZstd(archive, root);
+        }
 
         Path wineRoot = architecture == Architecture.X86_64
                 ? imageFsRoot.resolve("opt/proton-9.0-x86_64")
@@ -332,6 +339,8 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         createDirectoriesNoSymlink(privateRoot, container.system32);
         createDirectoriesNoSymlink(privateRoot, container.syswow64);
         installCommonWindowsDlls(container);
+        Files.write(marker, (architecture.name() + "\n").getBytes(StandardCharsets.US_ASCII),
+                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
         return container;
     }
 
