@@ -69,7 +69,7 @@ def main() -> int:
     if start < 0 or end < 0:
         raise SystemExit("could not locate Box64 posix_spawn_file_actions conversion helpers")
 
-    source = source[:start] + "/* " + MARKER + " */\\n" + NEW_BLOCK + source[end:]
+    source = source[:start] + "/* " + MARKER + " */\n" + NEW_BLOCK + source[end:]
 
     old_destroy = """EXPORT int my32_posix_spawn_file_actions_destroy(x64emu_t* emu, posix_spawn_file_actions_32_t* action)
 {
