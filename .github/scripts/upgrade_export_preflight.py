@@ -20,6 +20,8 @@ draft_replacement = """    let (mut format, mut fps, mut resolution, mut bitrate
     let mut warning_open = ui.ctx().data(|d| d.get_temp::<bool>(warning_id).unwrap_or(false));
     let force_export_id = open_id.with("force-export-once");
     let mut force_export = ui.ctx().data(|d| d.get_temp::<bool>(force_export_id).unwrap_or(false));
+    let force_allowed_id = open_id.with("force-export-allowed");
+    let mut force_allowed = ui.ctx().data(|d| d.get_temp::<bool>(force_allowed_id).unwrap_or(false));
     let previous_settings = (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale);
     let comp_name = app.session.active_comp_id()"""
 if "let previous_settings = (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale);" not in header:
@@ -51,19 +53,33 @@ new_check = """            let (source_fps, duration_seconds) = app.session.acti
                 .map(|active| (active.frame_rate.as_f64(), active.duration.seconds()))
                 .unwrap_or((30.0, 1.0));
             let mut block_export = false;
-            if !force_export {
+            let hard_error = effectcraft_export_hard_constraints(
+                check_width, check_height, effective_fps, source_fps,
+                format.as_str(), bitrate_mbps, ai_interpolation, ai_upscale
+            ).or_else(|| effectcraft_export_storage_preflight(
+                duration_seconds, format.as_str(), bitrate_mbps, ai_upscale
+            ));
+            if let Some(message) = hard_error {
+                preflight_error = Some(message);
+                warning_open = true;
+                force_allowed = false;
+                force_export = false;
+                block_export = true;
+            } else if !force_export {
                 if let Some(message) = effectcraft_export_device_preflight(
                     check_width, check_height, effective_fps, source_fps, duration_seconds,
                     format.as_str(), bitrate_mbps, ai_interpolation, ai_upscale
                 ) {
                     preflight_error = Some(message);
                     warning_open = true;
+                    force_allowed = true;
                     block_export = true;
                 }
             }
             if !block_export {
                 preflight_error = None;
                 warning_open = false;
+                force_allowed = false;
                 force_export = false;"""
 if new_check not in header:
     if old_check not in header:
@@ -76,11 +92,14 @@ cancel_old = """    if cancel {
 cancel_new = """    if (format.clone(), fps, resolution.clone(), bitrate_mbps, ai_interpolation, ai_upscale) != previous_settings {
         preflight_error = None;
         warning_open = false;
+        force_allowed = false;
+        force_export = false;
     }
     if cancel {
         open = false;
         preflight_error = None;
         warning_open = false;
+        force_allowed = false;
         force_export = false;
     }"""
 if cancel_new not in header:
@@ -89,7 +108,7 @@ if cancel_new not in header:
     header = header.replace(cancel_old, cancel_new, 1)
 
 draft_store = 'd.insert_temp(draft_id, (format, fps, resolution, bitrate_mbps, ai_interpolation, ai_upscale));'
-draft_store_new = draft_store + '\n        d.insert_temp(preflight_error_id, preflight_error);\n        d.insert_temp(warning_id, warning_open);\n        d.insert_temp(force_export_id, force_export);'
+draft_store_new = draft_store + '\n        d.insert_temp(preflight_error_id, preflight_error);\n        d.insert_temp(warning_id, warning_open);\n        d.insert_temp(force_export_id, force_export);\n        d.insert_temp(force_allowed_id, force_allowed);'
 if draft_store_new not in header:
     if header.count(draft_store) != 1:
         raise SystemExit("Could not persist preflight dialog warning state")
@@ -108,17 +127,25 @@ warning_ui = r"""
             .default_width(300.0)
             .default_pos(ui.ctx().content_rect().center() - vec2(150.0, 92.0))
             .show(ui.ctx(), |ui| {
-                ui.label("参数过高，手机性能不足，请调整参数再试。");
+                ui.label(if force_allowed {
+                    "设备负载预警：当前参数可能超过手机的稳定处理能力。"
+                } else {
+                    "导出参数或必需条件不符合要求。"
+                });
                 if let Some(message) = preflight_error.as_deref() { ui.small(message); }
-                ui.small("强行导出可能导致导出失败、应用卡顿或闪退。");
+                if force_allowed {
+                    ui.small("强行导出仅覆盖性能风险预警；无效参数、必要组件缺失和存储不足仍会阻止导出。继续可能导致导出失败、应用卡顿或闪退。");
+                } else {
+                    ui.small("此问题不能通过强行导出绕过，请先处理上述问题。");
+                }
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     if ui.button("调整参数").clicked() { adjust_parameters = true; }
-                    if ui.button("强行导出").clicked() { force_now = true; }
+                    if force_allowed && ui.button("强行导出").clicked() { force_now = true; }
                 });
             });
-        if adjust_parameters { warning_open = false; preflight_error = None; }
-        if force_now { warning_open = false; preflight_error = None; force_export = true; }
+        if adjust_parameters { warning_open = false; preflight_error = None; force_allowed = false; force_export = false; }
+        if force_now && force_allowed { warning_open = false; preflight_error = None; force_export = true; }
     }
 """
 submit_old = "    let mut submit = false;"
