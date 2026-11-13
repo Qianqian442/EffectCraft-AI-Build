@@ -98,9 +98,9 @@ fi
     if 'jni = "0.22"' not in cargo_source:
         cargo_source = replace_once(
             cargo_source,
-            "[dev-dependencies]\\n",
             "[dev-dependencies]\n",
             "[target.'cfg(target_os = \"android\")'.dependencies]\njni = \"0.22\"\n\n[dev-dependencies]\n",
+            "Android JNI dependency"
         )
         cargo.write_text(cargo_source, encoding="utf-8")
 
