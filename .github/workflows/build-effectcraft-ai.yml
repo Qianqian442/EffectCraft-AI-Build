@@ -53,7 +53,7 @@ permissions:
 
 concurrency:
   # Only the newest source revision should consume a runner for this APK.
-  group: effectcraft-ai-android-${{ github.ref }}
+  group: effectcraft-ai-android-host-plugin-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
