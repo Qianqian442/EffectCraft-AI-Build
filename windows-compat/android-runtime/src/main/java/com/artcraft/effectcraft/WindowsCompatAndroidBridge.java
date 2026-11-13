@@ -9,6 +9,13 @@ import com.effectcraft.windowscompat.WinlatorBionicRuntimeManager;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.RandomAccessFile;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Locale;
+import java.util.UUID;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -31,6 +38,10 @@ public final class WindowsCompatAndroidBridge {
             "windows-compat/box64-box32-android-arm64.tar.zst";
     private static final String BOX32_SHA256 =
             "0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5";
+    private static final String AEX_HOST_X64_ASSET = "windows-compat/aex-host-x64.exe";
+    private static final String AEX_HOST_X64_SHA256 = "ed8875e9346f117cb4f61a766dd271a746fecab2db315e6e9fd753b90101511f";
+    private static final String AEX_HOST_X86_ASSET = "windows-compat/aex-host-x86.exe";
+    private static final String AEX_HOST_X86_SHA256 = "d067d8e9e7cf02ab11026dde0b8d6ca5975ecf04cc9e634dac4d0dcf261a1131";
 
     private static final ConcurrentHashMap<String, String> INSTALL_STATUS = new ConcurrentHashMap<>();
     private static final java.util.Set<String> ACTIVE_REQUESTS = ConcurrentHashMap.newKeySet();
@@ -42,6 +53,7 @@ public final class WindowsCompatAndroidBridge {
 
     private static volatile Context applicationContext;
     private static volatile WinlatorBionicRuntimeManager runtimeManager;
+    private static volatile WinlatorBionicRuntimeManager.Container arm64EcContainer;
 
     private WindowsCompatAndroidBridge() {}
 
@@ -101,6 +113,14 @@ public final class WindowsCompatAndroidBridge {
             manager.installArm64EcEmulator(
                     container,
                     WinlatorBionicRuntimeManager.WoW64Engine.FEXCORE);
+
+            arm64EcContainer = container;
+            INSTALL_STATUS.put(requestId, "正在校验并安装 Windows x64 / x86 AEX 宿主…");
+            Path hostDirectory = context.getFilesDir().toPath().resolve("windows-compat/hosts");
+            installVerifiedPeHost(context, AEX_HOST_X64_ASSET, AEX_HOST_X64_SHA256,
+                    hostDirectory.resolve("effectcraft-aex-host-x64.exe"), 0x8664);
+            installVerifiedPeHost(context, AEX_HOST_X86_ASSET, AEX_HOST_X86_SHA256,
+                    hostDirectory.resolve("effectcraft-aex-host-x86.exe"), 0x014c);
 
             INSTALL_STATUS.put(requestId,
                     "READY:Windows 兼容运行环境已安装。真实 AEX 插件执行仍需逐项验证。");
