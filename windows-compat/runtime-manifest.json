@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "status": "experimental-design-and-static-pe-inspection",
+  "status": "experimental-runtime-integration-not-device-validated",
   "target_abi": [
     "arm64-v8a"
   ],
@@ -107,16 +107,18 @@
       "pe_machine": "0x8664",
       "architecture": "x86-64",
       "candidates": [
-        "Wine+Box64 x86_64 container",
-        "Arm64EC Wine/Proton + FEXCore container"
+        "Arm64EC Wine/Proton + FEXCore (HODLL64=libarm64ecfex.dll) — preferred candidate, runtime not yet device-tested",
+        "Wine + Box64 x86_64 container — fallback only after using a compatible x86_64 Linux Wine build; current Bionic Proton test failed on unresolved __libc_init",
+        "Arm64EC Wine/Proton + WowBox64 (HODLL64=wowbox64.dll) — separate 64-bit fallback candidate"
       ]
     },
     {
       "pe_machine": "0x014c",
       "architecture": "x86",
       "candidates": [
-        "Wine + Box86/WoW64 if supported",
-        "Arm64EC Wine/Proton + FEXCore or WowBox64 where configured"
+        "Arm64EC Wine/Proton + FEXCore WoW64 (HODLL=libwow64fex.dll) — preferred candidate, runtime not yet device-tested",
+        "Box64 BOX32 + 32-bit Wine/WoW64 — experimental fallback; current Android build fails on Bionic struct __res_state compatibility",
+        "Boxedwine Android ARM64 port — legacy fallback candidate, Android app port still required"
       ]
     },
     {
@@ -451,5 +453,13 @@
       "wowbox64": "0.3.7 WCP embedded in Winlator Bionic commit 95224ca7db27ae133dbb1578e004b94b86ef8894"
     },
     "install_policy": "Stream-download each WCP to private runtime storage, verify pinned SHA-256 and expected size, parse profile.json and allow only the pre-approved Box64/FEXCore/WOWBox64 destinations; keep legacy packages as rollback options."
-  }
+  },
+  "recent_validation_findings": [
+    "November 13, 2026: SHA-256 and archive/profile inspection passed for pinned Box64EC, Box64 Bionic, WowBox64, FEXCore 2611.1, GE-Proton 11.0-7.1 x86_64 and GE-Proton 11.0-7.1 ARM64EC WCP packages; this validates package integrity/metadata only, not runtime execution.",
+    "November 12, 2026: Android NDK build produced a Bionic ARM64 Box64 artifact, FEXCore Arm64EC/WoW64 PE DLL artifacts, and a Windows x64 AEX host worker artifact.",
+    "November 12, 2026: the x64 AEX worker built successfully on Windows, but the Linux ARM64 Box64 + Bionic Proton x86_64 smoke test failed with unresolved __libc_init and SIGSEGV; this Bionic Wine/Box64 combination is not supported by current evidence.",
+    "November 12, 2026: the Android NDK Box64 BOX32 build failed in libc_net32.c because Bionic exposes struct __res_state as incomplete; 32-bit Box32 support is not built yet.",
+    "November 13, 2026: Android runtime launcher now wraps app-private Bionic host executables through /system/bin/linker64 and selects HODLL64 for x86_64 PE plus HODLL for 32-bit WoW64 PE; unit/instrumented validation is pending.",
+    "No real Windows PE or AEX plug-in has yet been launched and rendered on an Android ARM64 device through this integration."
+  ]
 }
