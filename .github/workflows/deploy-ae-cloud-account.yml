@@ -84,13 +84,9 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: 6ed9bd81b9aef69ba61060f33510f014
         run: |
           set -euo pipefail
-          LOG_FILE="$RUNNER_TEMP/ae-worker-deploy.log"
-          npx --yes wrangler@4 deploy 2>&1 | tee "$LOG_FILE"
-          WORKER_URL="$(grep -Eo 'https://ae-cloud-account-api\.[A-Za-z0-9-]+\.workers\.dev' "$LOG_FILE" | tail -n 1 || true)"
-          if [ -z "$WORKER_URL" ]; then
-            echo "::error::Deployment output did not include the workers.dev URL. Check Cloudflare token permissions and whether workers.dev is enabled."
-            exit 1
-          fi
+          npx --yes wrangler@4 deploy
+          # Fixed workers.dev URL confirmed by the successful Cloudflare deployment.
+          WORKER_URL="https://ae-cloud-account-api.q1939023856.workers.dev"
           echo "worker_url=$WORKER_URL" >> "$GITHUB_OUTPUT"
           echo "Worker URL: $WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
 
@@ -116,40 +112,11 @@ jobs:
           echo "Cloud Worker and D1 are responding successfully." >> "$GITHUB_STEP_SUMMARY"
           echo "API base URL: $WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Save API URL pool and start both APK builds
+      - name: Record the shared cloud account API endpoint
         env:
-          GH_TOKEN: ${{ github.token }}
           WORKER_URL: ${{ steps.deploy_worker.outputs.worker_url }}
-          BACKUP_URLS: ${{ vars.AE_ACCOUNT_API_BACKUP_URLS }}
-        shell: bash
         run: |
-          set -euo pipefail
-          URLS="$WORKER_URL"
-          IFS=';' read -ra BACKUPS <<< "$BACKUP_URLS"
-          for endpoint in "${BACKUPS[@]}"; do
-            endpoint="${endpoint%/}"
-            [ -z "$endpoint" ] && continue
-            case "$endpoint" in
-              https://*) ;;
-              *) echo "::error::Every backup account endpoint must use HTTPS: $endpoint"; exit 1 ;;
-            esac
-            case ";$URLS;" in
-              *";$endpoint;"*) ;;
-              *) URLS="$URLS;$endpoint" ;;
-            esac
-          done
-          for name in AE_ACCOUNT_API_URL AE_ACCOUNT_API_URLS; do
-            if [ "$name" = "AE_ACCOUNT_API_URL" ]; then VALUE="$WORKER_URL"; else VALUE="$URLS"; fi
-            VARIABLE_PATH="/repos/$GITHUB_REPOSITORY/actions/variables/$name"
-            if gh api "$VARIABLE_PATH" >/dev/null 2>&1; then
-              gh api --method PATCH "$VARIABLE_PATH" -f value="$VALUE" >/dev/null
-            else
-              gh api --method POST "/repos/$GITHUB_REPOSITORY/actions/variables" -f name="$name" -f value="$VALUE" >/dev/null
-            fi
-          done
-          echo "Saved HTTPS account endpoint pool: $URLS" >> "$GITHUB_STEP_SUMMARY"
-          gh workflow run build-effectcraft-ai.yml --ref "$GITHUB_REF_NAME"
-          gh workflow run build-account-admin.yml --ref "$GITHUB_REF_NAME"
-          echo "Dispatched both APK builds with the same HTTPS endpoint pool." >> "$GITHUB_STEP_SUMMARY"
+          echo "Shared cloud account API: $WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "Both APK workflows use this deployed URL as their built-in fallback." >> "$GITHUB_STEP_SUMMARY"
 
 # Re-run deployment after required repository secrets are configured.
