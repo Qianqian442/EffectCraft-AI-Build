@@ -269,13 +269,13 @@ async function adminUsers(request, env, url) {
   let result;
   let filteredCount = totalCount;
   if (query) {
-    const like = "%" + query.replace(/[%_\\\\]/g, "\\\\$&") + "%";
+    const like = "%" + query.replace(/[%_\\]/g, "\\$&") + "%";
     const countRow = await env.DB.prepare(
-      "SELECT COUNT(*) AS filtered_count FROM accounts WHERE qq LIKE ? ESCAPE '\\\\' OR lower(wechat) LIKE ? ESCAPE '\\\\' OR lower(name) LIKE ? ESCAPE '\\\\'"
+      "SELECT COUNT(*) AS filtered_count FROM accounts WHERE qq LIKE ? ESCAPE '\\' OR lower(wechat) LIKE ? ESCAPE '\\' OR lower(name) LIKE ? ESCAPE '\\'"
     ).bind(like, like, like).first();
     filteredCount = Number(countRow && countRow.filtered_count || 0);
     result = await env.DB.prepare(
-      "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE qq LIKE ? ESCAPE '\\\\' OR lower(wechat) LIKE ? ESCAPE '\\\\' OR lower(name) LIKE ? ESCAPE '\\\\' ORDER BY created_at DESC LIMIT 500"
+      "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE qq LIKE ? ESCAPE '\\' OR lower(wechat) LIKE ? ESCAPE '\\' OR lower(name) LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT 500"
     ).bind(like, like, like).all();
   } else {
     result = await env.DB.prepare(
