@@ -119,12 +119,15 @@ function publicUser(row) {
 }
 async function ensureNotBanned(db, row) {
   if (!row.banned_until) return null;
+  if (String(row.banned_until).toLowerCase() === "permanent") {
+    return { until: "permanent", reason: row.ban_reason || "未填写封禁原因", permanent: true };
+  }
   const until = Date.parse(row.banned_until);
   if (Number.isFinite(until) && until <= Date.now()) {
     await db.prepare("UPDATE accounts SET banned_until = NULL, ban_reason = '' WHERE id = ?").bind(row.id).run();
     return null;
   }
-  return { until: row.banned_until, reason: row.ban_reason || "未填写封禁原因" };
+  return { until: row.banned_until, reason: row.ban_reason || "未填写封禁原因", permanent: false };
 }
 async function authResult(env, row, role, seconds) {
   return {
@@ -305,9 +308,10 @@ async function revokeNodeAccount(env, accountId, reason = "account banned") {
   return Number(result.revoked || 0);
 }
 
-async function notifyAccountStatus(env, accountId, status, bannedUntil = null) {
+async function notifyAccountStatus(env, accountId, status, bannedUntil = null, reason = "") {
   const id = env.ACCOUNT_SESSIONS.idFromName(accountId);
   const stub = env.ACCOUNT_SESSIONS.get(id);
+  const changedAt = new Date().toISOString();
   const res = await stub.fetch("https://account-session.internal/notify", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -315,7 +319,9 @@ async function notifyAccountStatus(env, accountId, status, bannedUntil = null) {
       type: "account_status_changed",
       status,
       banned_until: bannedUntil,
-      changed_at: new Date().toISOString()
+      until: bannedUntil,
+      reason: status === "banned" ? reason : "",
+      changed_at: changedAt
     })
   });
   if (!res.ok) return 0;
@@ -347,11 +353,15 @@ async function adminBan(request, env, id) {
     await env.DB.prepare("UPDATE accounts SET banned_until = NULL, ban_reason = '' WHERE id = ?").bind(id).run();
     status = "unbanned";
   } else {
-    const timestamp = Date.parse(String(until));
     const reason = String(body.reason || "").trim();
-    if (!Number.isFinite(timestamp) || timestamp <= Date.now()) return fail(422, "封禁时间必须晚于当前时间");
     if (!reason || reason.length > 200) return fail(422, "请填写封禁原因（最多200字）");
-    bannedUntil = new Date(timestamp).toISOString();
+    if (String(until).toLowerCase() === "permanent") {
+      bannedUntil = "permanent";
+    } else {
+      const timestamp = Date.parse(String(until));
+      if (!Number.isFinite(timestamp) || timestamp <= Date.now()) return fail(422, "封禁时间必须晚于当前时间");
+      bannedUntil = new Date(timestamp).toISOString();
+    }
     await env.DB.prepare("UPDATE accounts SET banned_until = ?, ban_reason = ? WHERE id = ?")
       .bind(bannedUntil, reason, id).run();
     status = "banned";
@@ -370,7 +380,7 @@ async function adminBan(request, env, id) {
   // Push one event to connected Ae clients; each client then performs /v1/me.
   let notified = 0;
   try {
-    notified = await notifyAccountStatus(env, id, status, bannedUntil);
+    notified = await notifyAccountStatus(env, id, status, bannedUntil, status === "banned" ? String(body.reason || "").trim() : "");
   } catch (error) {
     console.error("account-notification-error", error && error.message ? error.message : String(error));
   }
