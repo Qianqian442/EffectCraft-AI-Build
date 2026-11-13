@@ -1,6 +1,11 @@
 package com.effectcraft.windowscompat;
 
 import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.OutputStreamWriter;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -69,10 +74,14 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
     public final class GuestProcess {
         private final Process process;
         private final ExecutorService outputReaders;
+        private final BlockingQueue<String> stdoutLines = new ArrayBlockingQueue<>(64);
+        private final BufferedWriter stdin;
+        private final Object stdinLock = new Object();
         private volatile Integer exitCode;
 
         private GuestProcess(Process process, Consumer<String> logCallback, Consumer<Integer> exitCallback) {
             this.process = process;
+            this.stdin = new BufferedWriter(new OutputStreamWriter(process.getOutputStream(), StandardCharsets.UTF_8));
             this.outputReaders = Executors.newFixedThreadPool(2, runnable -> {
                 Thread thread = new Thread(runnable, "EffectCraft-Wine-Log");
                 thread.setDaemon(true);
@@ -96,6 +105,21 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
             waiter.start();
         }
 
+        /** Send one JSON-line command to the isolated AEX worker. */
+        public void sendLine(String line) throws IOException {
+            if (!process.isAlive()) throw new IOException("AEX worker is no longer running");
+            synchronized (stdinLock) {
+                stdin.write(line);
+                stdin.newLine();
+                stdin.flush();
+            }
+        }
+
+        /** Read the next worker response line without blocking the Android UI thread. */
+        public String readStdoutLine(long timeout, TimeUnit unit) throws InterruptedException {
+            return stdoutLines.poll(timeout, unit);
+        }
+
         public boolean isAlive() {
             return process.isAlive();
         }
@@ -116,6 +140,10 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8))) {
                 String line;
                 while ((line = reader.readLine()) != null) {
+                    if ("stdout".equals(streamName) && !stdoutLines.offer(line)) {
+                        stdoutLines.poll();
+                        stdoutLines.offer(line);
+                    }
                     if (callback != null) callback.accept("[" + streamName + "] " + line);
                 }
             } catch (IOException failure) {
