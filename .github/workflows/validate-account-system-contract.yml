@@ -2,12 +2,13 @@ name: Validate EffectCraft Account and Ban System
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'experiment/windows-plugin-runtime']
     paths:
       - 'admin-app/**'
       - 'p2p-bridge/**'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_account_avatar_picker.py'
+      - '.github/scripts/add_offline_account_registration.py'
       - '.github/scripts/validate_account_system_contract.py'
       - '.github/workflows/validate-account-system-contract.yml'
   workflow_dispatch:
