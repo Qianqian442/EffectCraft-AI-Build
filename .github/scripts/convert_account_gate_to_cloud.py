@@ -344,6 +344,31 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
         'ui.label("通过 HTTPS 连接云端账号服务，可跨城市和不同网络使用");',
     )
     source = source.replace(
+        '            ui.label(&app.account.server_url);\n',
+        '            ui.label(&app.account.server_url);\n'
+        '            if ui.button("切换服务器").clicked() {\n'
+        '                if let Some(next) = next_api_server(&app.account.server_url) {\n'
+        '                    app.account.server_url = next.to_string();\n'
+        '                    app.account.retry(config);\n'
+        '                } else {\n'
+        '                    app.account.status = "目前只配置了一个云端入口；备用入口需部署并指向同一账号数据库".to_string();\n'
+        '                }\n'
+        '            }\n',
+    )
+    source = source.replace(
+        '                    if ui.button("账号信息").clicked() {',
+        '                    if ui.button("切换服务器").clicked() {\n'
+        '                        if let Some(next) = next_api_server(&app.account.server_url) {\n'
+        '                            app.account.server_url = next.to_string();\n'
+        '                            app.account.retry(config);\n'
+        '                        } else {\n'
+        '                            app.account.status = "目前只配置了一个云端入口；备用入口需部署并指向同一账号数据库".to_string();\n'
+        '                        }\n'
+        '                    }\n'
+        '                    if ui.button("账号信息").clicked() {',
+    )
+
+    source = source.replace(
         'ui.label("账号节点连接方式");\n            ui.text_edit_singleline(&mut app.account.server_url);\n'
         '            ui.small("请首次填写管理版复制的完整 p2p://管理员节点ID。为防止假节点窃取密码，未固定管理员身份前不会发送账号密码；保存后以后自动连接，无需逐次审批。");',
         'ui.label("云端账号服务器（HTTPS）");\n'
@@ -401,8 +426,8 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
         ui = ui.replace(anchor, anchor + 'ureq = { workspace = true }\n' + 'tungstenite = { workspace = true }\n', 1)
         ui_manifest.write_text(ui, encoding="utf-8")
 
-    if "fn http_request_single" not in source or "API_SERVER_POOL" not in source:
-        raise SystemExit("Cloud endpoint failover code was not installed.")
+    if "fn http_request_single" not in source or "API_SERVER_POOL" not in source or "切换服务器" not in source:
+        raise SystemExit("Cloud endpoint failover or server-switch controls were not installed.")
     print(f"Cloud HTTPS account gate installed with {len(api_urls)} configured endpoint(s), automatic failover, and live ban/unban notifications; no periodic polling.")
 
 
