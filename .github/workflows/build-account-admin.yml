@@ -122,8 +122,8 @@ jobs:
 
       - name: Require shared cloud HTTPS account API
         env:
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
-          AE_ACCOUNT_API_URLS: ${{ vars.AE_ACCOUNT_API_URLS }}
+          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL || 'https://ae-cloud-account-api.q1939023856.workers.dev' }}
+          AE_ACCOUNT_API_URLS: ${{ vars.AE_ACCOUNT_API_URLS || vars.AE_ACCOUNT_API_URL || 'https://ae-cloud-account-api.q1939023856.workers.dev' }}
         shell: bash
         run: |
           set -euo pipefail
