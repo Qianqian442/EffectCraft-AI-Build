@@ -99,26 +99,26 @@ fi
         cargo_source = replace_once(
             cargo_source,
             "[dev-dependencies]\\n",
-            "[target.'cfg(target_os = \\"android\\")'.dependencies]\\njni = \\"0.22\\"\\n\\n[dev-dependencies]\\n",
-            "Android JNI dependency"
+            "[dev-dependencies]\n",
+            "[target.'cfg(target_os = \"android\")'.dependencies]\njni = \"0.22\"\n\n[dev-dependencies]\n",
         )
         cargo.write_text(cargo_source, encoding="utf-8")
 
     lib = source_dir / "lib.rs"
     lib_source = lib.read_text(encoding="utf-8")
     if "mod windows_compat_android;" not in lib_source:
-        if "pub(crate) mod plugin_migration;\\n" in lib_source:
+        if "pub(crate) mod plugin_migration;\n" in lib_source:
             lib_source = replace_once(
                 lib_source,
-                "pub(crate) mod plugin_migration;\\n",
-                "pub(crate) mod plugin_migration;\\nmod windows_compat_android;\\n",
+                "pub(crate) mod plugin_migration;\n",
+                "pub(crate) mod plugin_migration;\nmod windows_compat_android;\n",
                 "Windows runtime Rust module"
             )
         else:
             # Fallback location is after the public module block; keep inner crate docs first.
-            anchor = "pub(crate) mod a11y;\\n"
+            anchor = "pub(crate) mod a11y;\n"
             lib_source = replace_once(
-                lib_source, anchor, "mod windows_compat_android;\\n" + anchor,
+                lib_source, anchor, "mod windows_compat_android;\n" + anchor,
                 "Windows runtime Rust module"
             )
 
