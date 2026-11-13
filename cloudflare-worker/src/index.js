@@ -404,6 +404,7 @@ async function adminSetNetworkState(request, env) {
 }
 
 async function requireActiveAccount(env, accountId) {
+  await requireAccountServiceEnabled(env);
   const row = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(accountId).first();
   if (!row) throw new HttpError(401, "账号不存在，请重新登录");
   const banned = await ensureNotBanned(env.DB, row);
