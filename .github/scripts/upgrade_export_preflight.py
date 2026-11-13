@@ -63,7 +63,7 @@ new_check = """            let (source_fps, duration_seconds) = app.session.acti
                 force_allowed = false;
                 force_export = false;
                 block_export = true;
-            } else if !force_export {
+            } else if !force_this_submit {
                 if let Some(message) = effectcraft_export_device_preflight(
                     check_width, check_height, effective_fps, source_fps, duration_seconds,
                     format.as_str(), bitrate_mbps, ai_interpolation, ai_upscale
@@ -146,7 +146,7 @@ warning_ui = r"""
     }
 """
 submit_old = "    let mut submit = false;"
-submit_new = "    let mut submit = force_export;\n    force_export = false;"
+submit_new = "    let force_this_submit = force_export;\n    let mut submit = force_this_submit;\n    force_export = false;"
 if submit_new not in header:
     if submit_old not in header:
         raise SystemExit("Could not add one-shot force-export state")
@@ -432,6 +432,8 @@ fn effectcraft_export_hard_constraints(
 if "EFFECTCRAFT_ANDROID_EXPORT_HARD_CONSTRAINTS_V1" not in header:
     header = header.rstrip() + "\n\n" + hard_helpers.strip() + "\n"
 
+if "let force_this_submit = force_export;" not in header or "else if !force_this_submit" not in header:
+    raise SystemExit("Force-export one-shot confirmation is not wired into the device preflight.")
 header_path.write_text(header)
 print("Added comprehensive Android export device checks.")
 
