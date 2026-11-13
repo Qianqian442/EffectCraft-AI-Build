@@ -492,10 +492,15 @@ fn next_api_server(current: &str) -> Option<&'static str> {
         "                    }"
     )
     new_saved = (
-        "                    // Cloud tokens are bound to the configured HTTPS API.\n"
-        "                    // Do not reuse credentials saved for an old LAN/P2P server.\n"
-        "                    if saved.server_url == self.server_url && !saved.token.is_empty() {\n"
-        "                        self.token = Some(saved.token);\n"
+        "                    // Restore cached account and ban state only for this configured HTTPS authority.\n"
+        "                    if saved.server_url == self.server_url {\n"
+        "                        if !saved.token.is_empty() { self.token = Some(saved.token); }\n"
+        "                        self.user = saved.user;\n"
+        "                        self.banned_until = saved.banned_until.unwrap_or_default();\n"
+        "                        self.ban_reason = saved.ban_reason;\n"
+        "                        self.ban_remaining_ms = saved.ban_remaining_ms;\n"
+        "                        self.ban_saved_at_ms = saved.ban_saved_at_ms;\n"
+        "                        self.ban_clock_floor_ms = saved.ban_clock_floor_ms;\n"
         "                    }"
     )
     source = replace_once(source, old_saved, new_saved, "saved account server migration")
