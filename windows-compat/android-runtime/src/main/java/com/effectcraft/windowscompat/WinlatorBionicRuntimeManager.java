@@ -320,7 +320,7 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         Path marker = root.resolve(".effectcraft-container-architecture");
         boolean reusable = Files.isRegularFile(marker, LinkOption.NOFOLLOW_LINKS)
                 && !Files.isSymbolicLink(marker)
-                && Files.readString(marker, StandardCharsets.UTF_8).trim().equals(architecture.name())
+                && new String(Files.readAllBytes(marker), StandardCharsets.UTF_8).trim().equals(architecture.name())
                 && Files.isDirectory(root.resolve(".wine"), LinkOption.NOFOLLOW_LINKS);
         if (!reusable) {
             deleteTree(root);
