@@ -346,13 +346,12 @@ fn workspace_root(name: &str) -> Node<PanelKind> {
         // Undocked Panels: the Composition panel docked, the others floating
         // ([`workspace_floating`]).
         "Undocked Panels" => tabs(&[Composition, Layer, Flowchart], 0),
+        // Phone portrait: give the Composition viewer the full width of the upper work area.
+        // Secondary panels remain one tap away as tabs instead of permanently consuming canvas width.
+        // The Timeline stays in its original lower position and keeps the existing split ratio.
         "Small Screen" => vsplit(
             Ratio(0.55),
-            hsplit(
-                FixedFirst(240.0),
-                tabs(&[Project, EffectControls], 0),
-                hsplit(FixedSecond(240.0), tabs(&[Composition], 0), tabs(&[Info, Preview, EffectsPresets], 1)),
-            ),
+            tabs(&[Composition, Layer, Project, EffectControls, Info, Preview, EffectsPresets], 0),
             tabs(&[Timeline], 0),
         ),
         "All Panels" => vsplit(
