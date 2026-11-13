@@ -311,14 +311,19 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
 
         Path wineBin = container.wineRoot.resolve("bin");
         Path wine64 = findWineExecutable(wineBin);
-        List<String> command = new ArrayList<>();
+        ensureExecutable(wine64);
         Map<String, String> environment = baseWineEnvironment(container);
+        Path bionicHostExecutable;
+        List<String> guestArguments = new ArrayList<>();
 
         if (container.architecture == Architecture.X86_64) {
             Path box64 = imageFsRoot.resolve("usr/bin/box64");
             if (!Files.isRegularFile(box64)) throw new IOException("Box64 binary is missing");
             ensureExecutable(box64);
-            command.add(box64.toString());
+            bionicHostExecutable = box64;
+            // The x86_64 Wine binary is a guest ELF and must be passed to Box64,
+            // not directly to Android's Bionic linker.
+            guestArguments.add(wine64.toString());
             environment.put("BOX64_DYNAREC", "1");
             environment.put("BOX64_NOBANNER", "1");
             environment.put("BOX64_NORCFILES", "1");
@@ -326,18 +331,26 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
             environment.put("BOX64_PATH", imageFsRoot.resolve("usr/bin").toString());
             environment.put("BOX64_LD_LIBRARY_PATH", guestLibraryPath());
         } else {
-            // FEXCore or WowBox64 DLL selection is controlled by HODLL.
-            if (!Files.exists(container.system32.resolve("libwow64fex.dll"))
-                    && !Files.exists(container.system32.resolve("wowbox64.dll"))) {
-                throw new IOException("ARM64EC container has no FEXCore or WowBox64 WoW64 DLL");
+            // The ARM64EC Wine host is a native Bionic ELF. Select the two
+            // distinct Hangover/FEX backends: HODLL64 handles x86_64 PE code,
+            // while HODLL handles 32-bit x86 PE code in the WoW64 layer.
+            Path fex64 = container.system32.resolve("libarm64ecfex.dll");
+            Path fex32 = container.system32.resolve("libwow64fex.dll");
+            Path wowBox64 = container.system32.resolve("wowbox64.dll");
+            if (Files.isRegularFile(fex64) && Files.isRegularFile(fex32)) {
+                environment.put("HODLL64", "libarm64ecfex.dll");
+                environment.put("HODLL", "libwow64fex.dll");
+            } else if (Files.isRegularFile(wowBox64)) {
+                environment.put("HODLL64", "wowbox64.dll");
+            } else {
+                throw new IOException("ARM64EC container has no complete FEXCore or WowBox64 backend");
             }
-            environment.put("HODLL", Files.exists(container.system32.resolve("libwow64fex.dll"))
-                    ? "libwow64fex.dll" : "wowbox64.dll");
+            bionicHostExecutable = wine64;
         }
 
-        command.add(wine64.toString());
-        command.add(toWinePath(host));
-        command.add(toWinePath(plugin));
+        guestArguments.add(toWinePath(host));
+        guestArguments.add(toWinePath(plugin));
+        List<String> command = AndroidBionicProcessLauncher.command(bionicHostExecutable, guestArguments);
 
         ProcessBuilder builder = new ProcessBuilder(command);
         builder.directory(imageFsRoot.toFile());
