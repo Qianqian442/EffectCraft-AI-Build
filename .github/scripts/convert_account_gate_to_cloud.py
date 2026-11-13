@@ -175,51 +175,64 @@ fn next_api_server(current: &str) -> Option<&'static str> {
             return;
         }
         let Some(token) = self.token.clone() else { return; };
-        let base = self.server_url.trim_end_matches('/')
-            .replacen("https://", "wss://", 1);
-        let ws_url = format!("{base}/v1/events");
+        let mut ws_urls = Vec::<String>::new();
+        for endpoint in std::iter::once(self.server_url.as_str()).chain(API_SERVER_POOL.iter().copied()) {
+            if !endpoint.starts_with("https://") { continue; }
+            let base = endpoint.trim_end_matches('/').replacen("https://", "wss://", 1);
+            let candidate = format!("{base}/v1/events");
+            if !ws_urls.contains(&candidate) {
+                ws_urls.push(candidate);
+            }
+        }
         let (tx, rx) = mpsc::channel();
         self.events = Some(rx);
         self.event_started = true;
         std::thread::spawn(move || {
             let mut reconnect_delay = 3u64;
             loop {
-                let mut request = match ws_url.clone().into_client_request() {
-                    Ok(request) => request,
-                    Err(error) => {
-                        let _ = tx.send(Err(format!("实时封禁通知地址无效：{error}")));
-                        std::thread::sleep(Duration::from_secs(reconnect_delay));
-                        reconnect_delay = (reconnect_delay * 2).min(600);
-                        continue;
-                    }
-                };
-                let authorization = match HeaderValue::from_str(&format!("Bearer {token}")) {
-                    Ok(value) => value,
-                    Err(_) => {
-                        let _ = tx.send(Err("账号登录凭据格式不正确".to_string()));
-                        return;
-                    }
-                };
-                request.headers_mut().insert("Authorization", authorization);
-                match tungstenite::connect(request) {
-                    Ok((mut socket, _)) => {
-                        reconnect_delay = 3;
-                        loop {
-                            match socket.read() {
-                                Ok(Message::Text(message)) => {
-                                    if let Ok(value) = serde_json::from_str::<Value>(message.as_str()) {
-                                        if tx.send(Ok(value)).is_err() { return; }
+                let mut connected = false;
+                let mut last_error = String::new();
+                for ws_url in &ws_urls {
+                    let mut request = match ws_url.clone().into_client_request() {
+                        Ok(request) => request,
+                        Err(error) => {
+                            last_error = format!("实时封禁通知地址无效：{error}");
+                            continue;
+                        }
+                    };
+                    let authorization = match HeaderValue::from_str(&format!("Bearer {token}")) {
+                        Ok(value) => value,
+                        Err(_) => {
+                            let _ = tx.send(Err("账号登录凭据格式不正确".to_string()));
+                            return;
+                        }
+                    };
+                    request.headers_mut().insert("Authorization", authorization);
+                    match tungstenite::connect(request) {
+                        Ok((mut socket, _)) => {
+                            connected = true;
+                            reconnect_delay = 3;
+                            loop {
+                                match socket.read() {
+                                    Ok(Message::Text(message)) => {
+                                        if let Ok(value) = serde_json::from_str::<Value>(message.as_str()) {
+                                            if tx.send(Ok(value)).is_err() { return; }
+                                        }
                                     }
+                                    Ok(Message::Close(_)) => break,
+                                    Ok(_) => {}
+                                    Err(_) => break,
                                 }
-                                Ok(Message::Close(_)) => break,
-                                Ok(_) => {}
-                                Err(_) => break,
                             }
+                            break;
+                        }
+                        Err(error) => {
+                            last_error = format!("{ws_url}：{error}");
                         }
                     }
-                    Err(error) => {
-                        let _ = tx.send(Err(format!("实时封禁通知连接失败：{error}")));
-                    }
+                }
+                if !connected {
+                    let _ = tx.send(Err(format!("所有实时通知入口均无法连接：{last_error}")));
                 }
                 std::thread::sleep(Duration::from_secs(reconnect_delay));
                 reconnect_delay = (reconnect_delay * 2).min(600);
@@ -257,11 +270,9 @@ fn next_api_server(current: &str) -> Option<&'static str> {
                 }
             }
             Some(Err(error)) => {
-                if self.status.is_empty() {
-                    self.status = error;
-                }
+                self.status = error;
             }
-            _ => {}
+            None => {}
         }
     }
 '''
