@@ -108,13 +108,16 @@ fn stop_node() {
         });
     }
 }
-const BOOTSTRAP_PEERS: [&str; 4] = [
-    "QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
-    "QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
-    "QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
-    "QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
+// Use peer-qualified DNSADDRs so TXT expansion is constrained to the expected
+// PeerId. Keep direct IP seed addresses as a DNS-independent fallback.
+const BOOTSTRAP_PEERS: [(&str, &str); 6] = [
+    ("QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN", "/dnsaddr/bootstrap.libp2p.io"),
+    ("QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa", "/dnsaddr/bootstrap.libp2p.io"),
+    ("QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb", "/dnsaddr/bootstrap.libp2p.io"),
+    ("QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt", "/dnsaddr/bootstrap.libp2p.io"),
+    ("QmaCpDMGvV2BGHeYERUEnRQAwe3N8SzbUtfsmvsqQLuvuJ", "/ip4/104.131.131.82/tcp/4001"),
+    ("QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb", "/ip4/147.75.87.27/tcp/4001"),
 ];
-const BOOTSTRAP_DNS: &str = "/dnsaddr/bootstrap.libp2p.io";
 const MAX_CONCURRENT_RELAY_PROBES: usize = 8;
 const DISCOVERY_INTERVAL: Duration = Duration::from_secs(45);
 const HEALTH_INTERVAL: Duration = Duration::from_secs(20);
@@ -400,14 +403,37 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
         set_snapshot(|state| state.last_error = format!("QUIC listener: {error}"));
     }
 
-    for peer in BOOTSTRAP_PEERS {
-        if let Ok(peer_id) = PeerId::from_str(peer) {
-            if let Ok(address) = BOOTSTRAP_DNS.parse::<Multiaddr>() {
-                swarm.behaviour_mut().kad.add_address(&peer_id, address);
+    for (peer, base_address) in BOOTSTRAP_PEERS {
+        let peer_id = match PeerId::from_str(peer) {
+            Ok(peer_id) => peer_id,
+            Err(error) => {
+                set_snapshot(|state| state.last_error = format!("invalid DHT bootstrap peer ID: {error}"));
+                continue;
             }
+        };
+        let address_text = format!("{base_address}/p2p/{peer}");
+        let address = match address_text.parse::<Multiaddr>() {
+            Ok(address) => address,
+            Err(error) => {
+                set_snapshot(|state| state.last_error = format!("invalid DHT bootstrap address {address_text}: {error}"));
+                continue;
+            }
+        };
+        let _ = swarm.behaviour_mut().kad.add_address(&peer_id, address.clone());
+        if let Err(error) = swarm.dial(address) {
+            set_snapshot(|state| state.last_error = format!("DHT bootstrap dial {peer_id} failed to start: {error}"));
         }
     }
-    let _ = swarm.behaviour_mut().kad.bootstrap();
+    match swarm.behaviour_mut().kad.bootstrap() {
+        Ok(_) => set_snapshot(|state| {
+            state.status = "connecting_to_public_dht_bootstrap_peers".to_string();
+            state.last_error.clear();
+        }),
+        Err(error) => set_snapshot(|state| {
+            state.status = "dht_bootstrap_unavailable".to_string();
+            state.last_error = format!("Kademlia bootstrap could not start: {error}");
+        }),
+    }
     swarm.behaviour_mut().kad.get_closest_peers(local_peer_id);
     let service_key = kad::RecordKey::new(&ADMIN_SERVICE_KEY);
     if !is_admin {
@@ -485,6 +511,14 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                         set_snapshot(|state| {
                             state.discovered_peers = candidate_addresses.len();
                             state.relay_candidates = candidate_queue.len() + attempting.len() + active_relays.len();
+                        });
+                    }
+                    SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
+                        result: kad::QueryResult::GetClosestPeers(Err(error)),
+                        ..
+                    })) => {
+                        set_snapshot(|state| {
+                            state.last_error = format!("public DHT peer lookup failed: {error:?}");
                         });
                     }
                     SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Mdns(mdns::Event::Discovered(peers))) => {
@@ -664,15 +698,25 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                         }
                         attempting.remove(&peer_id);
                     }
-                    SwarmEvent::OutgoingConnectionError { peer_id: Some(peer_id), .. } => {
+                    SwarmEvent::OutgoingConnectionError { peer_id: Some(peer_id), error } => {
                         attempting.remove(&peer_id);
                         failed_until.insert(peer_id, Instant::now() + FAILED_RELAY_COOLDOWN);
+                        set_snapshot(|state| {
+                            state.last_error = format!("outgoing connection to {peer_id} failed: {error}");
+                        });
+                    }
+                    SwarmEvent::OutgoingConnectionError { peer_id: None, error } => {
+                        set_snapshot(|state| {
+                            state.last_error = format!("outgoing connection failed before peer identification: {error}");
+                        });
                     }
                     _ => {}
                 }
             }
             _ = discovery_tick.tick() => {
-                let _ = swarm.behaviour_mut().kad.bootstrap();
+                if let Err(error) = swarm.behaviour_mut().kad.bootstrap() {
+                    set_snapshot(|state| state.last_error = format!("periodic Kademlia bootstrap failed: {error}"));
+                }
                 swarm.behaviour_mut().kad.get_closest_peers(local_peer_id);
                 if !is_admin {
                     swarm.behaviour_mut().kad.get_providers(service_key.clone());

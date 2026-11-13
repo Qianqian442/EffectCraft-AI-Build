@@ -23,9 +23,24 @@ jobs:
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Inspect public bootstrap DNS records
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "A/AAAA records for bootstrap.libp2p.io:"
+          getent ahosts bootstrap.libp2p.io || true
+          if command -v dig >/dev/null 2>&1; then
+            echo "DNSADDR TXT records:"
+            dig +short TXT _dnsaddr.bootstrap.libp2p.io || true
+          fi
+
       - name: Run live public relay discovery and reservation test
         working-directory: p2p-bridge
         timeout-minutes: 8
         run: |
           set -euo pipefail
-          cargo test --lib tests::public_relay_smoke -- --exact --nocapture --test-threads=1
+          LOG="$RUNNER_TEMP/p2p-relay-smoke.log"
+          cargo test --lib tests::public_relay_smoke -- --exact --nocapture --test-threads=1 2>&1 | tee "$LOG"
+          grep -Eq '^test tests::public_relay_smoke \.\.\. ok
+ "$LOG"
+          grep -Eq '^test result: ok\. 1 passed; 0 failed;' "$LOG"
