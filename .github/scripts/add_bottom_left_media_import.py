@@ -57,7 +57,7 @@ def main() -> None:
             self.auto.add("quick.importMedia", rect, "导入素材");
         }
         if clicked
-            && let Err(error) = crate::menus::invoke(self, ctx, "file.import", serde_json::json!({}))
+            && let Err(error) = crate::menus::invoke(self, ctx, "file.importVisualMedia", serde_json::json!({}))
         {
             self.ui.status = error;
         }
@@ -77,7 +77,7 @@ def main() -> None:
     new_lift = "    full.max.y - 64.0 - bottom"
     media = replace_once(media, old_lift, new_lift, "import progress-card reserved-height calculation")
     media_path.write_text(media, encoding="utf-8")
-    print("Installed the bottom-left Import Media shortcut, routed to file.import, and reserved space for import progress cards and toasts.")
+    print("Installed a direct image/video-only multi-select shortcut; it bypasses the general Import Files dialog and imports in the background.")
 
 
 if __name__ == "__main__":
