@@ -381,6 +381,94 @@ if "fn effectcraft_export_dimensions(" not in header:
 if "fn effectcraft_export_dimensions(" not in header:
     raise SystemExit("Export dimensions helper is still missing after the repair.")
 
+hard_helpers = r'''
+
+/// EFFECTCRAFT_ANDROID_EXPORT_HARD_CONSTRAINTS_V1
+fn effectcraft_export_hard_constraints(
+    width: u32, height: u32, fps: f64, source_fps: f64,
+    format: &str, bitrate_mbps: f64,
+    ai_interpolation: bool, ai_upscale: bool,
+) -> Option<String> {
+    let fail = |reason: &str| Some(format!("无法强行导出：{reason}"));
+    if width == 0 || height == 0 || width > 8192 || height > 8192 {
+        return fail("画面尺寸无效或超出导出引擎硬性支持范围");
+    }
+    if !fps.is_finite() || fps <= 0.0 || fps > 240.0 {
+        return fail("帧率无效；最高帧率仍为 240 FPS");
+    }
+    if !bitrate_mbps.is_finite() || bitrate_mbps < 1.0 || bitrate_mbps > 100.0 {
+        return fail("码率参数无效，请设置为 1–100 Mbps");
+    }
+    if !matches!(format, "h264" | "hevc" | "av1" | "webm" | "prores") {
+        return fail("当前构建未识别所选编码格式");
+    }
+    if ai_interpolation && (!source_fps.is_finite() || fps <= source_fps + 0.001) {
+        return fail("AI 插帧要求导出帧率高于工程原始帧率");
+    }
+    if (ai_interpolation || ai_upscale) && (width > 2048 || height > 2048) {
+        return fail("当前本地 RIFE / Real-ESRGAN 模型输入尺寸上限为 2048 像素");
+    }
+    #[cfg(target_os = "android")]
+    if ai_interpolation || ai_upscale {
+        let worker = std::env::var("EFFECTCRAFT_AI_VIDEO_WORKER_PATH").ok();
+        if worker.as_deref().is_none_or(|path| !std::path::Path::new(path).is_file()) {
+            return fail("本地 AI 视频引擎未安装或不可执行");
+        }
+        if ai_interpolation {
+            let model = std::env::var("EFFECTCRAFT_RIFE_MODEL_PATH").ok()
+                .map(|path| std::path::PathBuf::from(path).join("flownet.bin").is_file())
+                .unwrap_or(false);
+            if !model { return fail("未找到本地 RIFE 4.6 模型文件"); }
+        }
+        if ai_upscale {
+            let model = std::env::var("EFFECTCRAFT_ESRGAN_MODEL_PATH").ok()
+                .map(|path| std::path::Path::new(&path).is_file())
+                .unwrap_or(false);
+            if !model { return fail("未找到本地 Real-ESRGAN 模型文件"); }
+        }
+    }
+    None
+}
+
+fn effectcraft_export_storage_preflight(
+    duration_seconds: f64, format: &str, bitrate_mbps: f64, ai_upscale: bool,
+) -> Option<String> {
+    #[cfg(target_os = "android")]
+    {
+        const MIB: u64 = 1024 * 1024;
+        if let Some(storage_dir) = std::env::var("EFFECTCRAFT_AI_MODEL_PATH").ok()
+            .and_then(|path| std::path::PathBuf::from(path).parent().map(|p| p.to_path_buf())) {
+            if let Ok(output) = std::process::Command::new("df").arg("-Pk").arg(&storage_dir).output() {
+                if output.status.success() {
+                    let report = String::from_utf8_lossy(&output.stdout);
+                    if let Some((_, available)) = effectcraft_engine::sysinfo::parse_df(&report) {
+                        let bitrate = if format == "prores" { 100_000_000_u64 }
+                            else { (bitrate_mbps.clamp(1.0, 100.0) * 1_000_000.0).round() as u64 };
+                        let duration = if duration_seconds.is_finite() {
+                            duration_seconds.clamp(1.0, 86_400.0)
+                        } else { 1.0 };
+                        let scale = if ai_upscale { 1.8 } else { 1.3 };
+                        let estimate = (duration * bitrate as f64 / 8.0 * scale).ceil() as u64;
+                        let required = estimate.saturating_add(256 * MIB);
+                        if available < required {
+                            return Some(format!(
+                                "无法强行导出：存储空间不足，当前约 {} MB，预计至少需要 {} MB",
+                                available / MIB, required / MIB
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #[cfg(not(target_os = "android"))]
+    { let _ = (duration_seconds, format, bitrate_mbps, ai_upscale); }
+    None
+}
+'''
+if "EFFECTCRAFT_ANDROID_EXPORT_HARD_CONSTRAINTS_V1" not in header:
+    header = header.rstrip() + "\n\n" + hard_helpers.strip() + "\n"
+
 header_path.write_text(header)
 print("Added comprehensive Android export device checks.")
 
