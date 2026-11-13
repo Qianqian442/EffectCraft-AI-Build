@@ -111,13 +111,33 @@ jobs:
           inspect_wcp() {
             local name="$1" url="$2" expected_sha="$3" expected_size="$4"
             local archive="build/wcp-profiles/$name.wcp"
+            local profile_list="build/wcp-profiles/$name.profile-members.txt"
+            local -a profile_members
             curl -fL --retry 3 "$url" -o "$archive"
             echo "$expected_sha  $archive" | sha256sum -c -
             test "$(stat -c %s "$archive")" = "$expected_size"
             echo "===== $name: verified size=$(stat -c %s "$archive") sha256=$expected_sha ====="
-            local profile_list="build/wcp-profiles/$name.profile-members.txt"
             if tar --zstd -tf "$archive" > "$profile_list" 2>/dev/null; then
-              mapfile -t profile_members < <(grep -E '(^|/)profile\\.json
+              mapfile -t profile_members < <(grep -E "profile[.]json$" "$profile_list" || true)
+              if [[ "${#profile_members[@]}" -ne 1 ]]; then
+                echo "Expected exactly one profile.json member in $name, found ${#profile_members[@]}" >&2
+                cat "$profile_list" >&2
+                exit 1
+              fi
+              tar --zstd -xOf "$archive" "${profile_members[0]}"
+            elif tar -tJf "$archive" > "$profile_list" 2>/dev/null; then
+              mapfile -t profile_members < <(grep -E "profile[.]json$" "$profile_list" || true)
+              if [[ "${#profile_members[@]}" -ne 1 ]]; then
+                echo "Expected exactly one profile.json member in $name, found ${#profile_members[@]}" >&2
+                cat "$profile_list" >&2
+                exit 1
+              fi
+              tar -xJOf "$archive" "${profile_members[0]}"
+            else
+              echo "Unsupported WCP archive compression: $name" >&2
+              file "$archive"
+              exit 1
+            fi
             echo
           }
           base="https://github.com/The412Banner/Nightlies/releases/download/nightly-20261112-230654"
