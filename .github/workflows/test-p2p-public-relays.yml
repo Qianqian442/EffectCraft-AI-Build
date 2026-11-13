@@ -41,6 +41,5 @@ jobs:
           set -euo pipefail
           LOG="$RUNNER_TEMP/p2p-relay-smoke.log"
           cargo test --lib tests::public_relay_smoke -- --exact --nocapture --test-threads=1 2>&1 | tee "$LOG"
-          grep -Eq '^test tests::public_relay_smoke \.\.\. ok
- "$LOG"
-          grep -Eq '^test result: ok\. 1 passed; 0 failed;' "$LOG"
+          grep -Fq "test tests::public_relay_smoke ... ok" "$LOG"
+          grep -Fq "test result: ok. 1 passed; 0 failed;" "$LOG"
