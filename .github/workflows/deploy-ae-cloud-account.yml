@@ -116,20 +116,38 @@ jobs:
           echo "Cloud Worker and D1 are responding successfully." >> "$GITHUB_STEP_SUMMARY"
           echo "API base URL: $WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Save API URL and start both APK builds
+      - name: Save API URL pool and start both APK builds
         env:
           GH_TOKEN: ${{ github.token }}
           WORKER_URL: ${{ steps.deploy_worker.outputs.worker_url }}
+          BACKUP_URLS: ${{ vars.AE_ACCOUNT_API_BACKUP_URLS }}
+        shell: bash
         run: |
           set -euo pipefail
-          VARIABLE_PATH="/repos/$GITHUB_REPOSITORY/actions/variables/AE_ACCOUNT_API_URL"
-          if gh api "$VARIABLE_PATH" >/dev/null 2>&1; then
-            gh api --method PATCH "$VARIABLE_PATH" -f value="$WORKER_URL" >/dev/null
-          else
-            gh api --method POST "/repos/$GITHUB_REPOSITORY/actions/variables" \
-              -f name="AE_ACCOUNT_API_URL" -f value="$WORKER_URL" >/dev/null
-          fi
-          echo "Saved AE_ACCOUNT_API_URL for the APK workflows." >> "$GITHUB_STEP_SUMMARY"
+          URLS="$WORKER_URL"
+          IFS=';' read -ra BACKUPS <<< "$BACKUP_URLS"
+          for endpoint in "${BACKUPS[@]}"; do
+            endpoint="${endpoint%/}"
+            [ -z "$endpoint" ] && continue
+            case "$endpoint" in
+              https://*) ;;
+              *) echo "::error::Every backup account endpoint must use HTTPS: $endpoint"; exit 1 ;;
+            esac
+            case ";$URLS;" in
+              *";$endpoint;"*) ;;
+              *) URLS="$URLS;$endpoint" ;;
+            esac
+          done
+          for name in AE_ACCOUNT_API_URL AE_ACCOUNT_API_URLS; do
+            if [ "$name" = "AE_ACCOUNT_API_URL" ]; then VALUE="$WORKER_URL"; else VALUE="$URLS"; fi
+            VARIABLE_PATH="/repos/$GITHUB_REPOSITORY/actions/variables/$name"
+            if gh api "$VARIABLE_PATH" >/dev/null 2>&1; then
+              gh api --method PATCH "$VARIABLE_PATH" -f value="$VALUE" >/dev/null
+            else
+              gh api --method POST "/repos/$GITHUB_REPOSITORY/actions/variables" -f name="$name" -f value="$VALUE" >/dev/null
+            fi
+          done
+          echo "Saved HTTPS account endpoint pool: $URLS" >> "$GITHUB_STEP_SUMMARY"
           gh workflow run build-effectcraft-ai.yml --ref "$GITHUB_REF_NAME"
           gh workflow run build-account-admin.yml --ref "$GITHUB_REF_NAME"
-          echo "Dispatched the main EffectCraft APK and account-admin APK builds." >> "$GITHUB_STEP_SUMMARY"
+          echo "Dispatched both APK builds with the same HTTPS endpoint pool." >> "$GITHUB_STEP_SUMMARY"
