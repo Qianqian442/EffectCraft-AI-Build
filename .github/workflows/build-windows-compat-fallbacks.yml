@@ -45,6 +45,13 @@ jobs:
           \tlocal QEMU_TARGETS="x86_64-linux-user"
           ''' + source[end:]
           source = source.replace('alsa-lib, dtc, glib,', 'glib,')
+          # This is Linux-user emulation only. Do not build/ship audio servers,
+          # devices or multimedia backends for the fallback package.
+          for dependency in (
+              "jack2, ", "libspice-server, ", "libusb, ",
+              "libusbredir, ", "ncurses, ", "pulseaudio, ",
+          ):
+              source = source.replace(dependency, "")
           source = source.replace('--enable-fdt=system', '--disable-fdt')
           source = source.replace('--audio-drv-list=pa', '--audio-drv-list=')
           source = source.replace('--enable-curses', '--disable-curses')
