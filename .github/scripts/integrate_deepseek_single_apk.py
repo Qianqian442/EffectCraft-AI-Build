@@ -95,9 +95,32 @@ def main() -> None:
     lib_gradle = llama / "examples/llama.android/lib/build.gradle.kts"
     lg = lib_gradle.read_text(encoding="utf-8")
     if "minSdk = 33" in lg:
-        lib_gradle.write_text(lg.replace("minSdk = 33", "minSdk = 28", 1), encoding="utf-8")
+        lg = lg.replace("minSdk = 33", "minSdk = 28", 1)
     elif "minSdk = 28" not in lg:
         raise SystemExit("Unexpected llama.cpp Android library minSdk; refusing an unsafe patch.")
+
+    # The AI helper is built inside the host ArtCraft Gradle build. Its AGP and
+    # Kotlin plugins are already loaded by the root buildscript, so the external
+    # llama :lib module must not request a second version through its own catalog.
+    # Versioned plugin aliases here trigger Gradle's "already on classpath with
+    # unknown version" failure when the host build has preloaded AGP 8.7.3.
+    plugin_marker = "EFFECTCRAFT_ANDROID_PLUGIN_CLASSPATH_COMPAT"
+    plugin_aliases = """plugins {
+        alias(libs.plugins.android.library)
+        alias(libs.plugins.jetbrains.kotlin.android)
+    }"""
+    plugin_ids = """// EFFECTCRAFT_ANDROID_PLUGIN_CLASSPATH_COMPAT
+    plugins {
+        id("com.android.library")
+        id("org.jetbrains.kotlin.android")
+    }"""
+    if plugin_marker not in lg:
+        if plugin_aliases not in lg:
+            raise SystemExit("Unexpected llama.cpp Android library plugin block; refusing an unsafe Gradle patch.")
+        lg = lg.replace(plugin_aliases, plugin_ids, 1)
+    if "alias(libs.plugins.android.library)" in lg or "alias(libs.plugins.jetbrains.kotlin.android)" in lg:
+        raise SystemExit("The llama.cpp Android library still requests versioned plugins from its catalog.")
+    lib_gradle.write_text(lg, encoding="utf-8")
 
     logging = llama / "examples/llama.android/lib/src/main/cpp/logging.h"
     log_text = logging.read_text(encoding="utf-8")
