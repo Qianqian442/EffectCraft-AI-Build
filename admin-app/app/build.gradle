@@ -1,3 +1,4 @@
+// Trigger a fresh standalone admin APK build; no application behavior changed.
 plugins {
     id "com.android.application"
 }
