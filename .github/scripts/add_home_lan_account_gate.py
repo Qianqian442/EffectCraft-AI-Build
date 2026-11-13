@@ -498,7 +498,7 @@ fn centered_window(ctx: &egui::Context, title: &str, size: Vec2, add_contents: i
         .order(Order::Foreground)
         .fixed_pos(pos2(screen.center().x - size.x * 0.5, screen.center().y - size.y * 0.5))
         .fixed_size(size)
-        .movable(false)
+        .movable(true)
         .collapsible(false)
         .resizable(false)
         .show(ctx, add_contents);
