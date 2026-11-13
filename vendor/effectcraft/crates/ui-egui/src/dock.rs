@@ -737,6 +737,30 @@ mod tests {
     }
 
     #[test]
+    fn small_screen_gives_composition_the_full_width_above_the_timeline() {
+        let small = workspace("Small Screen");
+        let Some(Node::Split {
+            axis: SplitAxis::Vertical,
+            size: SplitSize::Ratio(ratio),
+            first,
+            second,
+        }) = &small.root else { panic!("{small:?}") };
+        assert!((*ratio - 0.55).abs() < f32::EPSILON);
+        assert_eq!(
+            **first,
+            tabs(&[Composition, Layer, Project, EffectControls, Info, Preview, EffectsPresets], 0)
+        );
+        assert_eq!(**second, tabs(&[Timeline], 0));
+        let mut w = Workspace::new(small);
+        assert!(w.is_visible(Composition));
+        assert!(w.is_docked(Timeline));
+        assert_eq!(
+            w.group_of(Composition),
+            vec![Composition, Layer, Project, EffectControls, Info, Preview, EffectsPresets]
+        );
+    }
+
+    #[test]
     fn default_right_column_is_a_short_preview_frame_over_the_properties_frame() {
         let default = workspace("Default");
         let Some(Node::Split { second, size: SplitSize::FixedSecond(300.0), .. }) = &default.root else { panic!("{default:?}") };
