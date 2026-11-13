@@ -11,7 +11,7 @@ on:
       - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/install_ai_plugin_bridge.py'
-            .github/scripts/integrate_deepseek_single_apk.py \
+      - '.github/scripts/integrate_deepseek_single_apk.py'
       - 'android-ai-plugin/**'
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/upgrade_export_preflight.py'
