@@ -33,7 +33,7 @@ def patch_visual_media_picker(root: Path) -> None:
     source = replace_once(
         source,
         '    const MEDIA: &[&str] = &[',
-        '    const VISUAL_MEDIA: &[&str] = &[\\n        "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp", "exr", "dpx", "cin", "svg", "eps", "tga", "hdr", "mp4", "m4v", "mov", "mkv", "webm", "avi", "3gp", "3g2", "mpg", "mpeg", "m2v", "mts", "m2ts", "ts", "wmv", "flv", "ogv", "vob", "hevc", "h264",\\n    ];\\n    const MEDIA: &[&str] = &[\\n',
+        '    const VISUAL_MEDIA: &[&str] = &[\n        "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp", "exr", "dpx", "cin", "svg", "eps", "tga", "hdr", "mp4", "m4v", "mov", "mkv", "webm", "avi", "3gp", "3g2", "mpg", "mpeg", "m2v", "mts", "m2ts", "ts", "wmv", "flv", "ogv", "vob", "hevc", "h264",\n    ];\n    const MEDIA: &[&str] = &[\n',
         "visual media extension list",
     )
     source = replace_once(
