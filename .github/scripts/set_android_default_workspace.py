@@ -1,18 +1,9 @@
 #!/usr/bin/env python3
-"""Use a phone-first expanded composition workspace on first launch."""
+"""Enlarge only the Android composition image while keeping every UI control in place."""
 from __future__ import annotations
 
-from pathlib import Path
 import os
-
-
-def replace_once(source: str, old: str, new: str, label: str) -> str:
-    if new in source:
-        return source
-    count = source.count(old)
-    if count != 1:
-        raise SystemExit(f"{label}: expected exactly one anchor, found {count}")
-    return source.replace(old, new, 1)
+from pathlib import Path
 
 
 def main() -> None:
@@ -20,37 +11,34 @@ def main() -> None:
     if not root.is_dir():
         raise SystemExit("EFFECTCRAFT_DIR must point to the checked-out EffectCraft source")
 
-    state_path = root / "crates/ui-egui/src/state.rs"
-    state = state_path.read_text(encoding="utf-8")
-    state = replace_once(
-        state,
-        '            workspace: "Default".into(),\n            dock: crate::dock::Workspace::new(crate::dock::workspace("Default")),',
-        '            // EFFECTCRAFT_ANDROID_DEFAULT_PHONE_WORKSPACE_V1\n'
-        '            // Put Composition first and keep secondary panels as tabs on phone screens.\n'
-        '            workspace: "Small Screen".into(),\n'
-        '            dock: crate::dock::Workspace::new(crate::dock::workspace("Small Screen")),',
-        "Phone-first default workspace",
-    )
-    state_path.write_text(state, encoding="utf-8")
+    path = root / "crates/ui-egui/src/panels/viewer.rs"
+    source = path.read_text(encoding="utf-8")
+    old = '    let fit = ((area.width() - 40.0) / cw).min((area.height() - 40.0) / ch).max(0.01);'
+    new = '''    // EFFECTCRAFT_ANDROID_LARGER_COMPOSITION_NO_CONTROL_SHIFT_V1
+    // Reduce only the empty margin around the composition image. Dock geometry, panel
+    // boundaries, toolbars, buttons and their hit targets remain unchanged.
+    #[cfg(target_os = "android")]
+    let fit_padding = 12.0;
+    #[cfg(not(target_os = "android"))]
+    let fit_padding = 40.0;
+    let fit = ((area.width() - fit_padding) / cw).min((area.height() - fit_padding) / ch).max(0.01);'''
+    count = source.count(old)
+    if count == 0:
+        if "EFFECTCRAFT_ANDROID_LARGER_COMPOSITION_NO_CONTROL_SHIFT_V1" not in source:
+            raise SystemExit("Could not find the original composition fit calculation")
+    elif count != 1:
+        raise SystemExit(f"Expected one composition fit calculation, found {count}")
+    else:
+        source = source.replace(old, new, 1)
+        path.write_text(source, encoding="utf-8")
 
-    dock_path = root / "crates/ui-egui/src/dock.rs"
-    dock = dock_path.read_text(encoding="utf-8")
-    dock = replace_once(
-        dock,
-        '        "Small Screen" => vsplit(\n            Ratio(0.55),',
-        '        "Small Screen" => vsplit(\n            // Reserve more height for the composition preview by default.\n'
-        '            Ratio(0.62),',
-        "Expanded phone composition area",
-    )
-    dock_path.write_text(dock, encoding="utf-8")
-
-    if 'workspace: "Small Screen".into()' not in state:
-        raise SystemExit("Phone-first default workspace verification failed")
-    if '"Small Screen" => vsplit(\n            // Reserve more height for the composition preview by default.\n            Ratio(0.62),' not in dock:
-        raise SystemExit("Expanded phone composition area verification failed")
-
-    print("Applied EFFECTCRAFT_ANDROID_DEFAULT_PHONE_WORKSPACE_V1: full-width Composition tabs and a 62% upper preview area.")
-
+    check = path.read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_LARGER_COMPOSITION_NO_CONTROL_SHIFT_V1" not in check:
+        raise SystemExit("Android composition zoom marker missing")
+    if 'let fit_padding = 12.0;' not in check or 'let fit_padding = 40.0;' not in check:
+        raise SystemExit("Composition fit padding settings were not applied")
+    print("Applied a larger Android composition image inside the unchanged viewer area; all controls keep their original positions.")
+    
 
 if __name__ == "__main__":
     main()
