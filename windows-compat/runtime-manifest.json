@@ -116,9 +116,9 @@
       "pe_machine": "0x014c",
       "architecture": "x86",
       "candidates": [
-        "Arm64EC Wine/Proton + FEXCore WoW64 (HODLL=libwow64fex.dll) — preferred candidate, runtime not yet device-tested",
-        "Box64 BOX32 + 32-bit Wine/WoW64 — experimental fallback; current Android build fails on Bionic struct __res_state compatibility",
-        "Boxedwine Android ARM64 port — legacy fallback candidate, Android app port still required"
+        "Arm64EC Wine/Proton + FEXCore WoW64 (HODLL=libwow64fex.dll) — preferred candidate; runtime/device tests pending",
+        "Box64 BOX32 + matching 32-bit Wine/WoW64 — Android ARM64 BOX32 executable now built and checksum-verified; 32-bit x86 ELF execution and Windows PE/AEX hosting are not yet verified",
+        "Boxedwine Android ARM64 port — independent legacy fallback candidate; Android app port still required"
       ]
     },
     {
@@ -483,5 +483,43 @@
         "package-level SBOM and redistribution-license review are required before bundling or redistributing"
       ]
     }
-  ]
+  ],
+  "box64_box32_android_build": {
+    "status": "compiled-packaged-checksum-verified; guest execution and device validation pending",
+    "branch": "experiment/windows-plugin-runtime",
+    "source_commit": "92cda7aeee5fc793083af51dd7d4f17f7515bec3",
+    "workflow_run_id": 43392590850,
+    "workflow_url": "https://github.com/Qianqian442/EffectCraft-AI-Build/actions/runs/43392590850",
+    "artifact_name": "EffectCraft-Box64-BOX32-Android-ARM64",
+    "artifact_id": 14021596892,
+    "artifact_zip_size_bytes": 5807204,
+    "payload": "box64-box32-android-arm64.tar.zst",
+    "payload_size_bytes": 5841155,
+    "payload_sha256": "0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5",
+    "binary": "usr/bin/box64",
+    "binary_format": "Android ARM64 ELF64 PIE, API 31, interpreter /system/bin/linker64",
+    "build_configuration": [
+      "ANDROID=1",
+      "ARM64=1",
+      "ARM_DYNAREC=1",
+      "BOX32=ON",
+      "BOX32_BINFMT=OFF"
+    ],
+    "validation_completed": [
+      "Android NDK r26b configuration",
+      "Bionic compatibility patch application",
+      "obstack ABI layout compile-time assertions",
+      "BOX32=ON CMake configuration",
+      "658-object Box64 link completed",
+      "zstd archive integrity",
+      "payload SHA-256 independently matched"
+    ],
+    "validation_pending": [
+      "execute a 32-bit x86 Linux ELF fixture through the ARM64 Box64 binary",
+      "validate matching 32-bit Wine/WoW64 process startup",
+      "run a 32-bit Windows PE/AEX host fixture",
+      "OPPO Android ARM64 device validation",
+      "Huawei ARM64 device validation"
+    ]
+  }
 }
