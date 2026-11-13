@@ -123,6 +123,7 @@ jobs:
       - name: Require shared cloud HTTPS account API
         env:
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+          AE_ACCOUNT_API_URLS: ${{ vars.AE_ACCOUNT_API_URLS }}
         shell: bash
         run: |
           set -euo pipefail
@@ -134,6 +135,7 @@ jobs:
       - name: Build admin APK
         env:
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+          AE_ACCOUNT_API_URLS: ${{ vars.AE_ACCOUNT_API_URLS }}
         working-directory: admin-app
         run: |
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
