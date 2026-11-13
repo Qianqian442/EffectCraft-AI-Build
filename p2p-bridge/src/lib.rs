@@ -445,6 +445,8 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
 
     let mut candidate_queue: VecDeque<(PeerId, Multiaddr)> = VecDeque::new();
     let mut candidate_addresses: HashMap<PeerId, Multiaddr> = HashMap::new();
+    // Keep relay-capable peers even when they were connected before entering the probe queue.
+    let mut relay_capable: HashMap<PeerId, Multiaddr> = HashMap::new();
     let mut attempting: HashSet<PeerId> = HashSet::new();
     let mut active_relays: HashSet<PeerId> = HashSet::new();
     let mut listener_peers: HashMap<ListenerId, PeerId> = HashMap::new();
@@ -549,23 +551,45 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                             set_snapshot(|state| state.status = "authenticated_admin_account_node_discovered".to_string());
                         }
                         let supports_relay_v2 = info.protocols.iter().any(|protocol| protocol == &RELAY_HOP_PROTOCOL);
-                        if supports_relay_v2
-                            && attempting.contains(&peer_id)
-                            && !active_relays.contains(&peer_id)
-                            && !listener_peers.values().any(|known| *known == peer_id)
-                        {
-                            if let Some(address) = candidate_addresses.get(&peer_id).cloned() {
-                                match swarm.listen_on(address.with(Protocol::P2pCircuit)) {
-                                    Ok(listener_id) => { listener_peers.insert(listener_id, peer_id); }
-                                    Err(error) => {
-                                        attempting.remove(&peer_id);
-                                        failed_until.insert(peer_id, Instant::now() + FAILED_RELAY_COOLDOWN);
-                                        set_snapshot(|state| state.last_error = format!("relay reservation start: {error}"));
+                        if supports_relay_v2 {
+                            // Identify may arrive before the DHT result is queued, or the peer
+                            // may already be connected as a bootstrap/DHT peer. In both cases,
+                            // retain its advertised address and attempt a Relay v2 reservation.
+                            let address = candidate_addresses.get(&peer_id).cloned().or_else(|| {
+                                info.listen_addrs.iter()
+                                    .find(|address| !address.iter().any(|protocol| matches!(protocol, Protocol::P2pCircuit)))
+                                    .cloned()
+                                    .map(|address| {
+                                        if address.iter().any(|protocol| matches!(protocol, Protocol::P2p(_))) {
+                                            address
+                                        } else {
+                                            address.with(Protocol::P2p(peer_id))
+                                        }
+                                    })
+                            });
+                            if let Some(address) = address {
+                                candidate_addresses.insert(peer_id, address.clone());
+                                relay_capable.insert(peer_id, address.clone());
+                                let cooling_down = failed_until.get(&peer_id)
+                                    .map_or(false, |until| *until > Instant::now());
+                                let reservation_pending = listener_peers.values().any(|known| *known == peer_id);
+                                if !active_relays.contains(&peer_id) && !reservation_pending && !cooling_down {
+                                    attempting.insert(peer_id);
+                                    match swarm.listen_on(address.with(Protocol::P2pCircuit)) {
+                                        Ok(listener_id) => { listener_peers.insert(listener_id, peer_id); }
+                                        Err(error) => {
+                                            attempting.remove(&peer_id);
+                                            failed_until.insert(peer_id, Instant::now() + FAILED_RELAY_COOLDOWN);
+                                            set_snapshot(|state| state.last_error = format!("relay reservation start: {error}"));
+                                        }
                                     }
                                 }
+                            } else {
+                                set_snapshot(|state| state.last_error = format!("relay-capable peer {peer_id} has no usable listen address"));
                             }
-                        } else if !supports_relay_v2 {
+                        } else {
                             attempting.remove(&peer_id);
+                            relay_capable.remove(&peer_id);
                         }
                     }
                     SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Kad(kad::Event::OutboundQueryProgressed {
@@ -725,8 +749,31 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                 }
             }
             _ = health_tick.tick() => {
-                // Probe candidates in batches to protect mobile radio/battery. Accepted relays
-                // are retained independently, so the pool is not fixed to two or another pair.
+                // Retry reservations against peers already confirmed to support Relay v2.
+                // This also handles peers that connected before entering the candidate queue.
+                let known_relays = relay_capable.iter()
+                    .map(|(peer_id, address)| (peer_id.clone(), address.clone()))
+                    .collect::<Vec<_>>();
+                for (peer_id, address) in known_relays {
+                    let cooling_down = failed_until.get(&peer_id)
+                        .map_or(false, |until| *until > Instant::now());
+                    let reservation_pending = listener_peers.values().any(|known| *known == peer_id);
+                    if active_relays.contains(&peer_id) || reservation_pending || cooling_down {
+                        continue;
+                    }
+                    attempting.insert(peer_id);
+                    match swarm.listen_on(address.with(Protocol::P2pCircuit)) {
+                        Ok(listener_id) => { listener_peers.insert(listener_id, peer_id); }
+                        Err(error) => {
+                            attempting.remove(&peer_id);
+                            failed_until.insert(peer_id, Instant::now() + FAILED_RELAY_COOLDOWN);
+                            set_snapshot(|state| state.last_error = format!("relay reservation retry: {error}"));
+                        }
+                    }
+                }
+
+                // Probe unconnected candidates in batches to protect mobile radio/battery.
+                // Accepted relays are retained independently, so the pool is not fixed to two.
                 let mut started = 0usize;
                 while attempting.len() < MAX_CONCURRENT_RELAY_PROBES && started < MAX_CONCURRENT_RELAY_PROBES {
                     let Some((peer_id, address)) = candidate_queue.pop_front() else { break };
