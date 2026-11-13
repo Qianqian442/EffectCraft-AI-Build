@@ -698,14 +698,14 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                         }
                         attempting.remove(&peer_id);
                     }
-                    SwarmEvent::OutgoingConnectionError { peer_id: Some(peer_id), error } => {
+                    SwarmEvent::OutgoingConnectionError { peer_id: Some(peer_id), error, .. } => {
                         attempting.remove(&peer_id);
                         failed_until.insert(peer_id, Instant::now() + FAILED_RELAY_COOLDOWN);
                         set_snapshot(|state| {
                             state.last_error = format!("outgoing connection to {peer_id} failed: {error}");
                         });
                     }
-                    SwarmEvent::OutgoingConnectionError { peer_id: None, error } => {
+                    SwarmEvent::OutgoingConnectionError { peer_id: None, error, .. } => {
                         set_snapshot(|state| {
                             state.last_error = format!("outgoing connection failed before peer identification: {error}");
                         });
