@@ -12,6 +12,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -199,6 +200,113 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         contentPackages.install(spec, imageFsRoot,
                 imageFsRoot.resolve("containers/not-used/system32"),
                 imageFsRoot.resolve("containers/not-used/syswow64"));
+    }
+
+    /**
+     * Installs the independently built Android/Bionic BOX32 binary over the
+     * ordinary Box64 WCP executable. The embedded archive is SHA-256 pinned,
+     * safely extracted beneath app-private staging, and checked for an
+     * AArch64 Android PIE ELF header before it can replace the live binary.
+     */
+    public synchronized Path installBox64Box32Archive(Path archive, String expectedSha256)
+            throws IOException {
+        ensureOpen();
+        if (archive == null || !Files.isRegularFile(archive, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(archive)) {
+            throw new IOException("BOX32 archive is missing or unsafe");
+        }
+        if (expectedSha256 == null || !expectedSha256.matches("(?i)[0-9a-f]{64}")) {
+            throw new IOException("BOX32 archive requires a pinned SHA-256 digest");
+        }
+        String actualDigest = sha256(archive);
+        if (!actualDigest.equalsIgnoreCase(expectedSha256)) {
+            throw new IOException("BOX32 archive SHA-256 mismatch: expected "
+                    + expectedSha256.toLowerCase(Locale.ROOT) + ", received " + actualDigest);
+        }
+
+        Path staging = privateRoot.resolve("staging/box64-box32");
+        deleteTree(staging);
+        Files.createDirectories(staging);
+        try {
+            extractor.extractTarZstd(archive, staging);
+            Path candidate = staging.resolve("usr/bin/box64").normalize();
+            if (!candidate.startsWith(staging)
+                    || !Files.isRegularFile(candidate, LinkOption.NOFOLLOW_LINKS)
+                    || Files.isSymbolicLink(candidate)) {
+                throw new IOException("BOX32 archive is missing usr/bin/box64");
+            }
+            verifyAndroidArm64Pie(candidate);
+
+            Path destination = imageFsRoot.resolve("usr/bin/box64").normalize();
+            if (!destination.startsWith(imageFsRoot)) {
+                throw new IOException("BOX32 destination escapes ImageFS");
+            }
+            Path parent = destination.getParent();
+            if (parent == null) throw new IOException("BOX32 destination has no parent");
+            createDirectoriesNoSymlink(privateRoot, parent);
+            Path temporary = destination.resolveSibling("box64.box32.installing");
+            Files.deleteIfExists(temporary);
+            try {
+                copyStreamed(candidate, temporary);
+                ensureExecutable(temporary);
+                Files.move(temporary, destination,
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
+            } catch (IOException | RuntimeException failure) {
+                Files.deleteIfExists(temporary);
+                throw failure;
+            }
+            Files.write(privateRoot.resolve("box64-box32-installed.sha256"),
+                    (actualDigest + "\n").getBytes(StandardCharsets.US_ASCII),
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            return destination;
+        } finally {
+            deleteTree(staging);
+        }
+    }
+
+    private static String sha256(Path file) throws IOException {
+        final MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (java.security.NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("Android must provide SHA-256", impossible);
+        }
+        try (InputStream input = Files.newInputStream(file)) {
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (count > 0) digest.update(buffer, 0, count);
+            }
+        }
+        StringBuilder result = new StringBuilder(64);
+        for (byte value : digest.digest()) result.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+        return result.toString();
+    }
+
+    private static void verifyAndroidArm64Pie(Path binary) throws IOException {
+        byte[] header = new byte[20];
+        try (InputStream input = Files.newInputStream(binary)) {
+            int offset = 0;
+            while (offset < header.length) {
+                int count = input.read(header, offset, header.length - offset);
+                if (count < 0) throw new IOException("BOX32 executable has a truncated ELF header");
+                offset += count;
+            }
+        }
+        boolean valid = (header[0] & 0xff) == 0x7f && header[1] == 'E' && header[2] == 'L' && header[3] == 'F'
+                && (header[4] & 0xff) == 2
+                && (header[5] & 0xff) == 1
+                && readLe16(header, 16) == 3
+                && readLe16(header, 18) == 183;
+        if (!valid) {
+            throw new IOException("BOX32 executable is not an Android-compatible AArch64 ELF64 PIE");
+        }
+    }
+
+    private static int readLe16(byte[] data, int offset) {
+        return (data[offset] & 0xff) | ((data[offset + 1] & 0xff) << 8);
     }
 
     public synchronized Container createContainer(String id, Architecture architecture) throws IOException {
