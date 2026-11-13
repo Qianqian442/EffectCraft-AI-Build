@@ -168,7 +168,12 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             'GET", "/v1/admin/server"',
             'POST", "/v1/admin/server"',
             'setAccountServiceEnabled',
-            'One vertical card per account',
+            'new ScrollView(this)',
+            'card.setOrientation(LinearLayout.HORIZONTAL)',
+            'avatarView.setOnClickListener(v -> showUserDetails(user))',
+            'actions.setOrientation(LinearLayout.VERTICAL)',
+            'private void choosePermanentBan(String id)',
+            'submitBan(id, "permanent", why)',
         ),
     ),
     (
@@ -182,6 +187,26 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             'total_count: totalCount',
             'filtered_count: filteredCount',
             'url.pathname === "/v1/admin/server"',
+        ),
+    ),
+    (
+        "Cloud account API supports permanent bans and complete online status notifications",
+        "cloudflare-worker/src/index.js",
+        (
+            'String(row.banned_until).toLowerCase() === "permanent"',
+            'bannedUntil = "permanent"',
+            'until: bannedUntil',
+            'reason: status === "banned" ? reason : ""',
+        ),
+    ),
+    (
+        "Account event hub replays ban status, expiry, and reason to reconnecting devices",
+        "cloudflare-worker/src/account_session_hub.js",
+        (
+            'banned_until: lastStatus.banned_until || null',
+            'until: lastStatus.banned_until || null',
+            'reason: lastStatus.reason || ""',
+            'changed_at: lastStatus.changed_at || null',
         ),
     ),
     (
