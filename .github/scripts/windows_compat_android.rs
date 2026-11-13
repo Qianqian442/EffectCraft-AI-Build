@@ -14,10 +14,14 @@ pub(crate) fn init_android_vm(ptr: *mut std::ffi::c_void) {
 fn with_android_vm<T>(
     f: impl FnOnce(&jni::vm::JavaVM) -> Result<T, String>,
 ) -> Result<T, String> {
-    if ANDROID_VM_PTR.load(Ordering::Acquire) == 0 {
+    let raw_vm = ANDROID_VM_PTR.load(Ordering::Acquire) as *mut jni::sys::JavaVM;
+    if raw_vm.is_null() {
         return Err("Windows 兼容运行时 JNI 尚未初始化。".into());
     }
-    let vm = jni::vm::JavaVM::singleton().map_err(|error| error.to_string())?;
+    // android_app.vm_as_ptr() provides the process-owned JavaVM pointer.
+    // Wrap that exact pointer instead of relying on jni-rs' per-crate singleton,
+    // which may not have been initialized by a different android-activity build.
+    let vm = unsafe { jni::vm::JavaVM::from_raw(raw_vm) };
     f(&vm)
 }
 
