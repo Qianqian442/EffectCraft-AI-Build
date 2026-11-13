@@ -87,6 +87,282 @@ def validate_workspace_manifest(root: Path, source: str) -> str:
         return cleaned
 
 
+
+
+def apply_local_ban_cache(source: str) -> str:
+    """Persist ban decisions locally and expire temporary bans without startup polling."""
+    saved_old = (
+        "struct SavedAccount {\n"
+        "    server_url: String,\n"
+        "    token: String,\n"
+        "}"
+    )
+    saved_new = (
+        "struct SavedAccount {\n"
+        "    server_url: String,\n"
+        "    token: String,\n"
+        "    #[serde(default)]\n"
+        "    user: Option<User>,\n"
+        "    #[serde(default)]\n"
+        "    banned_until: Option<String>,\n"
+        "    #[serde(default)]\n"
+        "    ban_reason: String,\n"
+        "    #[serde(default)]\n"
+        "    ban_remaining_ms: i64,\n"
+        "    #[serde(default)]\n"
+        "    ban_saved_at_ms: i64,\n"
+        "    #[serde(default)]\n"
+        "    ban_clock_floor_ms: i64,\n"
+        "}"
+    )
+    source = replace_once(source, saved_old, saved_new, "saved local ban state structure")
+
+    source = replace_once(
+        source,
+        "    banned_until: String,\n    ban_reason: String,",
+        "    banned_until: String,\n"
+        "    ban_reason: String,\n"
+        "    ban_remaining_ms: i64,\n"
+        "    ban_saved_at_ms: i64,\n"
+        "    ban_clock_floor_ms: i64,\n"
+        "    ban_anchor: Option<Instant>,\n"
+        "    ban_clock_warning: bool,",
+        "local ban clock state fields",
+    )
+    source = replace_once(
+        source,
+        "            banned_until: String::new(),\n            ban_reason: String::new(),",
+        "            banned_until: String::new(),\n"
+        "            ban_reason: String::new(),\n"
+        "            ban_remaining_ms: 0,\n"
+        "            ban_saved_at_ms: 0,\n"
+        "            ban_clock_floor_ms: 0,\n"
+        "            ban_anchor: None,\n"
+        "            ban_clock_warning: false,",
+        "local ban clock state initialization",
+    )
+
+    source = replace_once(
+        source,
+        "impl AccountState {\n",
+        "fn local_wall_clock_ms() -> i64 {\n"
+        "    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default()\n"
+        "        .as_millis().min(i64::MAX as u128) as i64\n"
+        "}\n\n"
+        "impl AccountState {\n"
+        "    fn clear_local_ban(&mut self) {\n"
+        "        self.banned_until.clear();\n"
+        "        self.ban_reason.clear();\n"
+        "        self.ban_remaining_ms = 0;\n"
+        "        self.ban_saved_at_ms = local_wall_clock_ms();\n"
+        "        self.ban_clock_floor_ms = self.ban_clock_floor_ms.max(self.ban_saved_at_ms);\n"
+        "        self.ban_anchor = None;\n"
+        "        self.ban_clock_warning = false;\n"
+        "    }\n\n"
+        "    fn current_ban_remaining_ms(&self) -> i64 {\n"
+        "        if self.ban_remaining_ms < 0 { return -1; }\n"
+        "        match self.ban_anchor {\n"
+        "            Some(anchor) => self.ban_remaining_ms.saturating_sub(\n"
+        "                anchor.elapsed().as_millis().min(i64::MAX as u128) as i64\n"
+        "            ),\n"
+        "            None => self.ban_remaining_ms,\n"
+        "        }\n"
+        "    }\n\n"
+        "    fn update_local_ban_timer(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n"
+        "        if self.mode != Mode::Banned || self.banned_until.eq_ignore_ascii_case(\"permanent\") || self.ban_clock_warning {\n"
+        "            return;\n"
+        "        }\n"
+        "        if self.current_ban_remaining_ms() <= 0 {\n"
+        "            self.clear_local_ban();\n"
+        "            self.mode = if self.user.is_some() { Mode::Editor } else { Mode::Auth };\n"
+        "            self.status = \"临时封号已到期，本机已自动解封；联网后同步服务器\".to_string();\n"
+        "            self.persist(config);\n"
+        "        }\n"
+        "    }\n",
+        "local ban timer helpers",
+    )
+
+    startup_old = (
+        "        if self.token.is_some() {\n"
+        "            self.mode = Mode::Checking;\n"
+        "            self.send(Action::Verify, \"GET\", \"/v1/me\", Value::Null, config);\n"
+        "        } else {\n"
+        "            self.mode = Mode::Auth;\n"
+        "        }"
+    )
+    startup_new = (
+        "        if self.banned_until.eq_ignore_ascii_case(\"permanent\") {\n"
+        "            self.ban_remaining_ms = -1;\n"
+        "            self.mode = Mode::Banned;\n"
+        "        } else if self.ban_remaining_ms > 0 {\n"
+        "            let now = local_wall_clock_ms();\n"
+        "            if now < self.ban_clock_floor_ms || now < self.ban_saved_at_ms {\n"
+        "                self.ban_clock_warning = true;\n"
+        "                self.mode = Mode::Banned;\n"
+        "            } else {\n"
+        "                let elapsed = now.saturating_sub(self.ban_saved_at_ms);\n"
+        "                self.ban_remaining_ms = self.ban_remaining_ms.saturating_sub(elapsed);\n"
+        "                self.ban_saved_at_ms = now;\n"
+        "                self.ban_clock_floor_ms = self.ban_clock_floor_ms.max(now);\n"
+        "                if self.ban_remaining_ms > 0 {\n"
+        "                    self.ban_anchor = Some(Instant::now());\n"
+        "                    self.mode = Mode::Banned;\n"
+        "                } else {\n"
+        "                    self.clear_local_ban();\n"
+        "                    self.mode = if self.user.is_some() { Mode::Editor } else { Mode::Auth };\n"
+        "                    self.status = \"临时封号已到期，本机已自动解封；联网后同步服务器\".to_string();\n"
+        "                }\n"
+        "            }\n"
+        "        } else if self.user.is_some() {\n"
+        "            self.mode = Mode::Editor;\n"
+        "        } else if self.token.is_some() {\n"
+        "            // One-time compatibility verification for older token-only saved profiles.\n"
+        "            self.mode = Mode::Checking;\n"
+        "            self.send(Action::Verify, \"GET\", \"/v1/me\", Value::Null, config);\n"
+        "        } else {\n"
+        "            self.mode = Mode::Auth;\n"
+        "        }"
+    )
+    source = replace_once(source, startup_old, startup_new, "offline-first account startup")
+
+    persist_old = (
+        "    fn persist(&self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n"
+        "        let (Some(store), Some(token)) = (config, self.token.as_ref()) else {\n"
+        "            return;\n"
+        "        };\n"
+        "        let saved = SavedAccount { server_url: self.server_url.clone(), token: token.clone() };\n"
+        "        if let Ok(data) = serde_json::to_string(&saved) {\n"
+        "            let _ = store.write(\"effectcraft-home-account.json\", &data);\n"
+        "        }\n"
+        "    }"
+    )
+    persist_new = (
+        "    fn persist(&self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n"
+        "        let (Some(store), Some(token)) = (config, self.token.as_ref()) else { return; };\n"
+        "        let now = local_wall_clock_ms();\n"
+        "        let remaining = self.current_ban_remaining_ms();\n"
+        "        let saved = SavedAccount {\n"
+        "            server_url: self.server_url.clone(),\n"
+        "            token: token.clone(),\n"
+        "            user: self.user.clone(),\n"
+        "            banned_until: if remaining == 0 { None } else { Some(self.banned_until.clone()) },\n"
+        "            ban_reason: if remaining == 0 { String::new() } else { self.ban_reason.clone() },\n"
+        "            ban_remaining_ms: remaining,\n"
+        "            ban_saved_at_ms: now,\n"
+        "            ban_clock_floor_ms: self.ban_clock_floor_ms.max(now),\n"
+        "        };\n"
+        "        if let Ok(data) = serde_json::to_string(&saved) {\n"
+        "            let _ = store.write(\"effectcraft-home-account.json\", &data);\n"
+        "        }\n"
+        "    }"
+    )
+    source = replace_once(source, persist_old, persist_new, "persist cached account and ban expiry")
+
+    banned_old = (
+        "                self.banned_until = detail.get(\"until\").and_then(Value::as_str).unwrap_or(\"时间未知\").to_string();\n"
+        "                self.ban_reason = detail.get(\"reason\").and_then(Value::as_str).unwrap_or(\"未填写原因\").to_string();\n"
+        "                self.mode = Mode::Banned;\n"
+        "                self.status.clear();"
+    )
+    banned_new = (
+        "                self.banned_until = detail.get(\"until\").and_then(Value::as_str).unwrap_or(\"时间未知\").to_string();\n"
+        "                self.ban_reason = detail.get(\"reason\").and_then(Value::as_str).unwrap_or(\"未填写原因\").to_string();\n"
+        "                self.ban_remaining_ms = if self.banned_until.eq_ignore_ascii_case(\"permanent\") { -1 } else { detail.get(\"remaining_ms\").and_then(Value::as_i64).unwrap_or(0).max(0) };\n"
+        "                self.ban_saved_at_ms = local_wall_clock_ms();\n"
+        "                self.ban_clock_floor_ms = self.ban_saved_at_ms;\n"
+        "                self.ban_anchor = if self.ban_remaining_ms > 0 { Some(Instant::now()) } else { None };\n"
+        "                self.ban_clock_warning = false;\n"
+        "                self.mode = Mode::Banned;\n"
+        "                self.status.clear();\n"
+        "                self.persist(config);"
+    )
+    source = replace_once(source, banned_old, banned_new, "local cache for authenticated ban response")
+
+    # Extend the generated WebSocket handler with a local monotonic countdown.
+    poll_events_pattern = re.compile(
+        r"    fn poll_events\\(&mut self\\) \\{.*?\\n    \\}\\n",
+        re.S,
+    )
+    local_events = r'''    fn poll_events(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        if self.token.is_some() && !self.event_started {
+            self.start_events();
+        }
+        let received = match self.events.as_ref().map(|rx| rx.try_recv()) {
+            Some(Ok(result)) => Some(result),
+            Some(Err(TryRecvError::Disconnected)) => Some(Err("实时封禁通知通道已结束".to_string())),
+            Some(Err(TryRecvError::Empty)) | None => None,
+        };
+        match received {
+            Some(Ok(event)) if event.get("type").and_then(Value::as_str) == Some("account_status_changed") => {
+                match event.get("status").and_then(Value::as_str).unwrap_or("") {
+                    "banned" => {
+                        self.banned_until = event.get("banned_until").or_else(|| event.get("until")).and_then(Value::as_str).unwrap_or("时间未知").to_string();
+                        self.ban_reason = event.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
+                        self.ban_remaining_ms = if self.banned_until.eq_ignore_ascii_case("permanent") {
+                            -1
+                        } else {
+                            event.get("remaining_ms").and_then(Value::as_i64).unwrap_or(0).max(0)
+                        };
+                        self.ban_saved_at_ms = local_wall_clock_ms();
+                        self.ban_clock_floor_ms = self.ban_saved_at_ms;
+                        self.ban_anchor = if self.ban_remaining_ms > 0 { Some(Instant::now()) } else { None };
+                        self.ban_clock_warning = false;
+                        if self.ban_remaining_ms == 0 {
+                            self.clear_local_ban();
+                            self.mode = if self.user.is_some() { Mode::Editor } else { Mode::Auth };
+                            self.status = "临时封号已到期，本机已自动解封".to_string();
+                        } else {
+                            self.mode = Mode::Banned;
+                            self.status = "管理员已封禁此账号".to_string();
+                        }
+                        self.persist(config);
+                    }
+                    "unbanned" => {
+                        self.clear_local_ban();
+                        if self.user.is_some() {
+                            self.mode = Mode::Editor;
+                            self.status = "管理员已解除封禁".to_string();
+                        }
+                        self.persist(config);
+                    }
+                    _ => {}
+                }
+            }
+            Some(Err(error)) => self.status = error,
+            None => {}
+        }
+    }'''
+    source, count = poll_events_pattern.subn(lambda _m: local_events + "\n", source, count=1)
+    if count != 1:
+        raise SystemExit(f"local ban event handler: expected one poll_events method, found {count}")
+
+    source = replace_once(
+        source,
+        "    app.account.poll_events();",
+        "    app.account.poll_events(config);\n    app.account.update_local_ban_timer(config);",
+        "local ban expiry frame update",
+    )
+    ban_ui_old = (
+        "                ui.label(format!(\"封禁截止时间：{}\", app.account.banned_until));\n"
+        "                ui.add_space(8.0);\n"
+        "                ui.label(\"封禁原因：\");"
+    )
+    ban_ui_new = (
+        "                if app.account.banned_until.eq_ignore_ascii_case(\"permanent\") {\n"
+        "                    ui.label(\"封禁期限：永久封号\");\n"
+        "                } else if app.account.ban_clock_warning {\n"
+        "                    ui.label(\"设备时间发生回拨，继续保持封禁；恢复自动设置时间或联网校准后再判断到期。\");\n"
+        "                } else {\n"
+        "                    let seconds = (app.account.current_ban_remaining_ms().max(0) + 999) / 1000;\n"
+        "                    ui.label(format!(\"本机剩余封禁时间：{}天 {:02}:{:02}:{:02}\", seconds / 86400, (seconds % 86400) / 3600, (seconds % 3600) / 60, seconds % 60));\n"
+        "                    ui.label(format!(\"封禁截止时间：{}\", app.account.banned_until));\n"
+        "                }\n"
+        "                ui.add_space(8.0);\n"
+        "                ui.label(\"封禁原因：\");"
+    )
+    source = replace_once(source, ban_ui_old, ban_ui_new, "show local ban countdown")
+    return source
+
 def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"])
     account_path = root / "crates/ui-egui/src/account.rs"
@@ -157,7 +433,7 @@ fn next_api_server(current: &str) -> Option<&'static str> {
     new_imports = (
         "use std::io::Read;\n"
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::time::Duration;\n"
+        "use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};\n"
         + base64_import
         + "use tungstenite::client::IntoClientRequest;\n"
         + "use tungstenite::http::HeaderValue;\n"
@@ -365,6 +641,8 @@ fn next_api_server(current: &str) -> Option<&'static str> {
     source, n = event_pattern.subn(live_events + "\n    fn retry(", source, count=1)
     if n != 1:
         raise SystemExit(f"cloud WebSocket event implementation expected one replacement, found {n}")
+
+    source = apply_local_ban_cache(source)
 
     http_replacement = r'''fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
     let mut candidates = Vec::<&str>::new();
