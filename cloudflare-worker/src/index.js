@@ -17,6 +17,15 @@ function response(data, status = 200) {
 function fail(status, message, extra = {}) {
   return response({ detail: { message, ...extra } }, status);
 }
+async function accountServiceEnabled(env) {
+  const row = await env.DB.prepare("SELECT enabled FROM account_service_state WHERE id = 1").first();
+  return !row || Number(row.enabled) !== 0;
+}
+async function requireAccountServiceEnabled(env) {
+  if (!(await accountServiceEnabled(env))) {
+    throw new HttpError(503, "云端账号服务器当前已关闭，请联系管理员开启后重试");
+  }
+}
 function bytesToB64Url(bytes) {
   let binary = "";
   for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
@@ -154,6 +163,7 @@ function validateRegistration(body) {
   return { qq, wechat, name, password, avatar };
 }
 async function register(request, env) {
+  await requireAccountServiceEnabled(env);
   const body = validateRegistration(await readJson(request));
   const id = crypto.randomUUID();
   const hash = await passwordHash(env, body.password);
@@ -169,6 +179,7 @@ async function register(request, env) {
   return response(await authResult(env, row, "user", 30 * 24 * 60 * 60), 201);
 }
 async function login(request, env) {
+  await requireAccountServiceEnabled(env);
   const body = await readJson(request);
   const identifier = String(body.identifier || "").trim();
   const password = String(body.password || "");
@@ -182,6 +193,7 @@ async function login(request, env) {
   return response(await authResult(env, row, "user", 30 * 24 * 60 * 60));
 }
 async function me(request, env) {
+  await requireAccountServiceEnabled(env);
   const claims = await readToken(env, request, "user");
   const row = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(claims.sub).first();
   if (!row) return fail(401, "账号不存在，请重新注册");
@@ -190,6 +202,7 @@ async function me(request, env) {
   return response({ user: publicUser(row) });
 }
 async function updateProfile(request, env) {
+  await requireAccountServiceEnabled(env);
   const claims = await readToken(env, request, "user");
   const body = await readJson(request);
   const row = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(claims.sub).first();
@@ -221,6 +234,22 @@ async function updateProfile(request, env) {
   const updated = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(claims.sub).first();
   return response({ user: publicUser(updated) });
 }
+
+async function adminServerState(request, env) {
+  await readToken(env, request, "admin");
+  const row = await env.DB.prepare("SELECT enabled, updated_at, updated_by FROM account_service_state WHERE id = 1").first();
+  return response({ enabled: !row || Number(row.enabled) !== 0, updated_at: row && row.updated_at || null, updated_by: row && row.updated_by || "system" });
+}
+async function adminSetServerState(request, env) {
+  const claims = await readToken(env, request, "admin");
+  const body = await readJson(request);
+  if (typeof body.enabled !== "boolean") return fail(422, "enabled 必须是布尔值");
+  const updatedAt = new Date().toISOString();
+  await env.DB.prepare(
+    "INSERT INTO account_service_state (id, enabled, updated_at, updated_by) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at, updated_by = excluded.updated_by"
+  ).bind(body.enabled ? 1 : 0, updatedAt, claims.sub).run();
+  return response({ enabled: body.enabled, updated_at: updatedAt, updated_by: claims.sub });
+}
 async function adminLogin(request, env) {
   const body = await readJson(request);
   const username = String(body.username || "");
@@ -235,18 +264,25 @@ async function adminLogin(request, env) {
 async function adminUsers(request, env, url) {
   await readToken(env, request, "admin");
   const query = (url.searchParams.get("q") || "").trim().toLowerCase().slice(0, 80);
+  const totalRow = await env.DB.prepare("SELECT COUNT(*) AS total_count FROM accounts").first();
+  const totalCount = Number(totalRow && totalRow.total_count || 0);
   let result;
+  let filteredCount = totalCount;
   if (query) {
-    const like = "%" + query.replace(/[%_\\]/g, "\\$&") + "%";
+    const like = "%" + query.replace(/[%_\\\\]/g, "\\\\$&") + "%";
+    const countRow = await env.DB.prepare(
+      "SELECT COUNT(*) AS filtered_count FROM accounts WHERE qq LIKE ? ESCAPE '\\\\' OR lower(wechat) LIKE ? ESCAPE '\\\\' OR lower(name) LIKE ? ESCAPE '\\\\'"
+    ).bind(like, like, like).first();
+    filteredCount = Number(countRow && countRow.filtered_count || 0);
     result = await env.DB.prepare(
-      "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE qq LIKE ? ESCAPE '\\' OR lower(wechat) LIKE ? ESCAPE '\\' OR lower(name) LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT 500"
+      "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE qq LIKE ? ESCAPE '\\\\' OR lower(wechat) LIKE ? ESCAPE '\\\\' OR lower(name) LIKE ? ESCAPE '\\\\' ORDER BY created_at DESC LIMIT 500"
     ).bind(like, like, like).all();
   } else {
     result = await env.DB.prepare(
       "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts ORDER BY created_at DESC LIMIT 500"
     ).all();
   }
-  return response({ users: result.results || [] });
+  return response({ users: result.results || [], total_count: totalCount, filtered_count: filteredCount, limit: 500 });
 }
 async function adminUser(request, env, id) {
   await readToken(env, request, "admin");
@@ -288,6 +324,7 @@ async function notifyAccountStatus(env, accountId, status, bannedUntil = null) {
 }
 
 async function accountEvents(request, env) {
+  await requireAccountServiceEnabled(env);
   const claims = await readToken(env, request, "user");
   if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
     return fail(426, "需要 WebSocket 连接");
@@ -433,6 +470,8 @@ async function route(request, env) {
     if (request.method === "POST" && url.pathname === "/v1/register") return await register(request, env);
     if (request.method === "POST" && url.pathname === "/v1/login") return await login(request, env);
     if (request.method === "POST" && url.pathname === "/v1/admin/login") return await adminLogin(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/admin/server") return await adminServerState(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/admin/server") return await adminSetServerState(request, env);
     if (request.method === "GET" && url.pathname === "/v1/me") return await me(request, env);
     if (request.method === "POST" && url.pathname === "/v1/profile") return await updateProfile(request, env);
     if (request.method === "GET" && url.pathname === "/v1/admin/users") return await adminUsers(request, env, url);
