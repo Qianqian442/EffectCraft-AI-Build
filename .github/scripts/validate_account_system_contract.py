@@ -255,6 +255,18 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Android composition preview enlarges only the image while preserving every control position",
+        ".github/scripts/set_android_default_workspace.py",
+        (
+            "EFFECTCRAFT_ANDROID_LARGER_COMPOSITION_NO_CONTROL_SHIFT_V1",
+            "crates/ui-egui/src/panels/viewer.rs",
+            "let fit_padding = 12.0;",
+            "let fit_padding = 40.0;",
+            "Dock geometry, panel boundaries, toolbars, buttons and their hit targets remain unchanged.",
+            "all controls keep their original positions",
+        ),
+    ),
+    (
         "Offline registration persists a local pending profile without storing the password and retries with backoff",
         ".github/scripts/add_offline_account_registration.py",
         (
