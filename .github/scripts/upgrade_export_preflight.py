@@ -77,8 +77,7 @@ new_check = """            let (source_fps, duration_seconds) = app.session.acti
             if !block_export {
                 preflight_error = None;
                 warning_open = false;
-                force_allowed = false;
-                force_export = false;"""
+                force_allowed = false;"""
 if new_check not in header:
     if old_check not in header:
         raise SystemExit("Could not replace the original export preflight with unified device checks")
