@@ -1,6 +1,6 @@
 # EffectCraft Windows Plug-in Compatibility Runtime
 
-This branch is an isolated compatibility experiment. It does not change the production `main` branch or the active main-APK build.
+This branch is an isolated compatibility experiment and is not merged into `main`. Since 2026-11-13, the main Android APK workflow is also triggered on this branch so the current export and app-integration patches can be type-checked and packaged independently.
 
 ## What is being combined
 
@@ -109,7 +109,18 @@ GPU path: the first integration should force aexlo's CPU rendering path unless a
 
 Box64 itself has a `BOX32=ON` build option that adds 32-bit x86 ELF support inside the 64-bit ARM64 Box64 process. This is different from 32-bit Windows PE support: it can run the 32-bit Linux/Wine side of a WoW64 configuration, but Wine must still provide the Windows PE loader and 32-bit Windows API implementation.
 
-A separate Android NDK CI build was attempted with BOX32=ON and BOX32_BINFMT=OFF. Configuration and the obstack ABI checks passed, but compilation currently fails in Box64's libc_net32.c because Bionic leaves struct __res_state incomplete where Box64 expects glibc resolver fields. BOX32 is therefore not built yet; do not claim 32-bit Box32 support until the NDK build and x86 ELF tests pass.
+A dedicated Android NDK r26b build with `BOX32=ON` and `BOX32_BINFMT=OFF` now compiles and links successfully.
+
+- Run: https://github.com/Qianqian442/EffectCraft-AI-Build/actions/runs/43392590850
+- Source commit: `92cda7aeee5fc793083af51dd7d4f17f7515bec3`
+- Artifact: `EffectCraft-Box64-BOX32-Android-ARM64`
+- Artifact ID: `14021596892`
+- Payload: `box64-box32-android-arm64.tar.zst` (5,841,155 bytes)
+- Payload SHA-256: `0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5`
+- The payload was independently downloaded, decompressed and checked; the binary is an Android API 31 AArch64 ELF64 PIE with `/system/bin/linker64` as its interpreter.
+- The build compiled 658 objects, including the Android-specific `box32_alloc_bionic.c` allocator bridge; packaging and checksum generation succeeded.
+
+The previous Bionic resolver/netdb compile errors and unresolved `box32_*` final-link symbols are resolved for this pinned Box64 source/build configuration. This is a **build/package milestone only**. Still required before claiming 32-bit execution support: run a 32-bit x86 Linux ELF fixture through the resulting ARM64 Box64 binary, validate matching 32-bit Wine/WoW64 process startup, run a 32-bit Windows PE/AEX host fixture, and test on OPPO/Qualcomm and Huawei/Mali Android devices. BOX32 alone handles 32-bit Linux ELF userland; it does not load Windows PE files or supply Windows APIs without Wine/WoW64.
 
 Upstream source and CMake options: https://github.com/ptitSeb/box64
 
