@@ -35,40 +35,40 @@ def main() -> None:
 
     source = replace_once(
         source,
-        "//! Home-Wi-Fi-only account gate. The account API is intentionally fail-closed:\\n"
+        "//! Home-Wi-Fi-only account gate. The account API is intentionally fail-closed:\n"
         "//! when a saved account cannot be checked against the home server, the editor stays locked.",
-        "//! Cloud HTTPS account gate. The account API is intentionally fail-closed:\\n"
+        "//! Cloud HTTPS account gate. The account API is intentionally fail-closed:\n"
         "//! when a saved account cannot be checked against Cloudflare, the editor stays locked.",
         "account module documentation",
     )
 
     old_imports = (
-        "use std::io::{BufRead, BufReader, Read, Write};\\n"
-        "use std::net::{TcpListener, TcpStream, ToSocketAddrs};\\n"
-        "use std::sync::atomic::{AtomicBool, Ordering};\\n"
-        "use std::sync::mpsc::{self, Receiver, TryRecvError};\\n"
-        "use std::time::Duration;\\n\\n"
-        'const DEFAULT_SERVER: &str = "p2p://auto";\\n'
-        "const ACCOUNT_EVENT_PROXY: std::net::SocketAddr = std::net::SocketAddr::new(\\n"
-        "    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8790,\\n"
-        ");\\n"
-        "static ACCOUNT_EVENT_LISTENER_STARTED: AtomicBool = AtomicBool::new(false);\\n\\n"
+        "use std::io::{BufRead, BufReader, Read, Write};\n"
+        "use std::net::{TcpListener, TcpStream, ToSocketAddrs};\n"
+        "use std::sync::atomic::{AtomicBool, Ordering};\n"
+        "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
+        "use std::time::Duration;\n\n"
+        'const DEFAULT_SERVER: &str = "p2p://auto";\n'
+        "const ACCOUNT_EVENT_PROXY: std::net::SocketAddr = std::net::SocketAddr::new(\n"
+        "    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8790,\n"
+        ");\n"
+        "static ACCOUNT_EVENT_LISTENER_STARTED: AtomicBool = AtomicBool::new(false);\n\n"
     )
     new_imports = (
-        "use std::io::Read;\\n"
-        "use std::sync::mpsc::{self, Receiver, TryRecvError};\\n"
-        "use std::time::Duration;\\n"
-        "use tungstenite::client::IntoClientRequest;\\n"
-        "use tungstenite::http::HeaderValue;\\n"
-        "use tungstenite::Message;\\n\\n"
-        f'const DEFAULT_SERVER: &str = "{api_url}";\\n'
+        "use std::io::Read;\n"
+        "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
+        "use std::time::Duration;\n"
+        "use tungstenite::client::IntoClientRequest;\n"
+        "use tungstenite::http::HeaderValue;\n"
+        "use tungstenite::Message;\n\n"
+        f'const DEFAULT_SERVER: &str = "{api_url}";\n'
     )
     source = replace_once(source, old_imports, new_imports, "imports and cloud API URL")
 
     # Remove the old local TCP event listener. Cloud ban/unban state comes from
     # the authenticated Cloudflare Durable Object WebSocket, not the admin phone.
     listener_pattern = re.compile(
-        r"fn start_account_event_listener\\(\\) -> Option<Receiver<Value>> \\{.*?\\n\\}\\n\\n(?=#\\[derive\\(Clone, Copy, Debug, Default)",
+        r"fn start_account_event_listener\(\) -> Option<Receiver<Value>> \{.*?\n\}\n\n(?=#\[derive\(Clone, Copy, Debug, Default)",
         re.S,
     )
     source, n = listener_pattern.subn("", source, count=1)
@@ -78,41 +78,41 @@ def main() -> None:
     source = replace_once(
         source,
         "    events: Option<Receiver<Value>>,",
-        "    events: Option<Receiver<Result<Value, String>>>,\\n    event_started: bool,",
+        "    events: Option<Receiver<Result<Value, String>>>,\n    event_started: bool,",
         "cloud event receiver field",
     )
     source = replace_once(
         source,
         "            events: None,",
-        "            events: None,\\n            event_started: false,",
+        "            events: None,\n            event_started: false,",
         "cloud event receiver initialization",
     )
     source = replace_once(
         source,
-        "        if self.events.is_none() {\\n"
-        "            self.events = start_account_event_listener();\\n"
-        "        }\\n",
+        "        if self.events.is_none() {\n"
+        "            self.events = start_account_event_listener();\n"
+        "        }\n",
         "",
         "remove local event-listener startup",
     )
 
     old_saved = (
-        "                    // Preserve an explicitly pinned administrator identity. Upgrade\\n"
-        "                    // legacy LAN profiles to auto-discovery without discarding tokens.\\n"
-        "                    self.server_url = if saved.server_url.starts_with(\\"p2p://\\") {\\n"
-        "                        saved.server_url\\n"
-        "                    } else {\\n"
-        "                        DEFAULT_SERVER.to_string()\\n"
-        "                    };\\n"
-        "                    if !saved.token.is_empty() {\\n"
-        "                        self.token = Some(saved.token);\\n"
+        "                    // Preserve an explicitly pinned administrator identity. Upgrade\n"
+        "                    // legacy LAN profiles to auto-discovery without discarding tokens.\n"
+        "                    self.server_url = if saved.server_url.starts_with(\"p2p://\") {\n"
+        "                        saved.server_url\n"
+        "                    } else {\n"
+        "                        DEFAULT_SERVER.to_string()\n"
+        "                    };\n"
+        "                    if !saved.token.is_empty() {\n"
+        "                        self.token = Some(saved.token);\n"
         "                    }"
     )
     new_saved = (
-        "                    // Cloud tokens are bound to the configured HTTPS API.\\n"
-        "                    // Do not reuse credentials saved for an old LAN/P2P server.\\n"
-        "                    if saved.server_url == self.server_url && !saved.token.is_empty() {\\n"
-        "                        self.token = Some(saved.token);\\n"
+        "                    // Cloud tokens are bound to the configured HTTPS API.\n"
+        "                    // Do not reuse credentials saved for an old LAN/P2P server.\n"
+        "                    if saved.server_url == self.server_url && !saved.token.is_empty() {\n"
+        "                        self.token = Some(saved.token);\n"
         "                    }"
     )
     source = replace_once(source, old_saved, new_saved, "saved account server migration")
@@ -222,7 +222,7 @@ def main() -> None:
     }
 '''
     event_pattern = re.compile(
-        r"    fn poll_events\\(&mut self\\) \\{.*?\\n    \\}\\n\\n    fn retry\\(",
+        r"    fn poll_events\(&mut self\) \{.*?\n    \}\n\n    fn retry\(",
         re.S,
     )
     source, n = event_pattern.subn(live_events + "\n    fn retry(", source, count=1)
@@ -264,7 +264,7 @@ def main() -> None:
 
 '''
     http_pattern = re.compile(
-        r"fn http_request\\(url: &str, method: &str, path: &str, body: Value, token: Option<&str>\\) -> Result<HttpResult, String> \\{.*?\\n\\}\\n\\n(?=fn blocking_overlay)",
+        r"fn http_request\(url: &str, method: &str, path: &str, body: Value, token: Option<&str>\) -> Result<HttpResult, String> \{.*?\n\}\n\n(?=fn blocking_overlay)",
         re.S,
     )
     source, n = http_pattern.subn(http_replacement, source, count=1)
@@ -276,10 +276,10 @@ def main() -> None:
         'ui.label("通过 HTTPS 连接云端账号服务，可跨城市和不同网络使用");',
     )
     source = source.replace(
-        'ui.label("账号节点连接方式");\\n            ui.text_edit_singleline(&mut app.account.server_url);\\n'
+        'ui.label("账号节点连接方式");\n            ui.text_edit_singleline(&mut app.account.server_url);\n'
         '            ui.small("请首次填写管理版复制的完整 p2p://管理员节点ID。为防止假节点窃取密码，未固定管理员身份前不会发送账号密码；保存后以后自动连接，无需逐次审批。");',
-        'ui.label("云端账号服务器（HTTPS）");\\n'
-        '            ui.label(&app.account.server_url);\\n'
+        'ui.label("云端账号服务器（HTTPS）");\n'
+        '            ui.label(&app.account.server_url);\n'
         '            ui.small("主 APK 与管理版共用同一个云端账号数据库；管理员封禁/解禁会实时通知在线设备。");',
     )
     source = source.replace(
@@ -287,19 +287,19 @@ def main() -> None:
         'ui.heading("正在连接云端 HTTPS 账号服务器");',
     )
     source = source.replace(
-        'ui.label("管理员手机账号节点当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");\\n'
-        '            ui.label("请粘贴管理版“复制管理员节点 ID”得到的完整 p2p://地址；同 Wi-Fi 优先直连，跨网络自动尝试打洞和公共中继。");\\n'
-        '            ui.label("管理员节点地址");\\n'
-        '            ui.text_edit_singleline(&mut app.account.server_url);\\n'
-        '            if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("保存节点地址并重新连接")).clicked() {\\n'
-        '                app.account.retry(config);\\n'
+        'ui.label("管理员手机账号节点当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");\n'
+        '            ui.label("请粘贴管理版“复制管理员节点 ID”得到的完整 p2p://地址；同 Wi-Fi 优先直连，跨网络自动尝试打洞和公共中继。");\n'
+        '            ui.label("管理员节点地址");\n'
+        '            ui.text_edit_singleline(&mut app.account.server_url);\n'
+        '            if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("保存节点地址并重新连接")).clicked() {\n'
+        '                app.account.retry(config);\n'
         '            }',
-        'ui.label("云端 HTTPS 账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");\\n'
-        '            ui.label("请检查手机网络或云端服务状态，然后重新验证账号。");\\n'
-        '            ui.label("云端地址");\\n'
-        '            ui.label(&app.account.server_url);\\n'
-        '            if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新连接云端")).clicked() {\\n'
-        '                app.account.retry(config);\\n'
+        'ui.label("云端 HTTPS 账号服务器当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");\n'
+        '            ui.label("请检查手机网络或云端服务状态，然后重新验证账号。");\n'
+        '            ui.label("云端地址");\n'
+        '            ui.label(&app.account.server_url);\n'
+        '            if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新连接云端")).clicked() {\n'
+        '                app.account.retry(config);\n'
         '            }',
     )
 
@@ -312,14 +312,14 @@ def main() -> None:
     workspace_manifest = root / "Cargo.toml"
     workspace = workspace_manifest.read_text(encoding="utf-8")
     if 'tungstenite = { version = "0.30"' not in workspace:
-        anchor = 'serde_json = { version = "1", features = ["float_roundtrip"] }\\n'
+        anchor = 'serde_json = { version = "1", features = ["float_roundtrip"] }\n'
         if anchor not in workspace:
             raise SystemExit("Could not add HTTPS dependencies: workspace serde_json anchor is missing.")
         workspace = workspace.replace(
             anchor,
             anchor
-            + 'ureq = "3.5"\\n'
-            + 'tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }\\n',
+            + 'ureq = "3.5"\n'
+            + 'tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }\n',
             1,
         )
         workspace_manifest.write_text(workspace, encoding="utf-8")
@@ -327,10 +327,10 @@ def main() -> None:
     ui_manifest = root / "crates/ui-egui/Cargo.toml"
     ui = ui_manifest.read_text(encoding="utf-8")
     if 'tungstenite = { workspace = true }' not in ui:
-        anchor = 'image = { workspace = true }\\n'
+        anchor = 'image = { workspace = true }\n'
         if anchor not in ui:
             raise SystemExit("Could not add HTTPS dependencies: UI image dependency anchor is missing.")
-        ui = ui.replace(anchor, anchor + 'ureq = { workspace = true }\\n' + 'tungstenite = { workspace = true }\\n', 1)
+        ui = ui.replace(anchor, anchor + 'ureq = { workspace = true }\n' + 'tungstenite = { workspace = true }\n', 1)
         ui_manifest.write_text(ui, encoding="utf-8")
 
     print("Cloud HTTPS account gate installed: shared Cloudflare API, live ban/unban WebSocket, no periodic polling.")
