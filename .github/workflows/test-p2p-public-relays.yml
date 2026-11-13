@@ -41,5 +41,7 @@ jobs:
           set -euo pipefail
           LOG="$RUNNER_TEMP/p2p-relay-smoke.log"
           cargo test --lib tests::public_relay_smoke -- --exact --nocapture --test-threads=1 2>&1 | tee "$LOG"
-          grep -Fq "test tests::public_relay_smoke ... ok" "$LOG"
+          # --nocapture may append startup output to the test-name line; assert the live
+          # relay count and Rust result instead of matching cargo test progress formatting.
+          grep -Eq "active_relays=[1-9][0-9]*" "$LOG"
           grep -Fq "test result: ok. 1 passed; 0 failed;" "$LOG"
