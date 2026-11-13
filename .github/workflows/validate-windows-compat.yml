@@ -177,11 +177,11 @@ jobs:
 
       - name: Type-check the patched EffectCraft engine
         working-directory: effectcraft
-        run: cargo check --locked -p effectcraft-engine --lib
+        run: cargo check -p effectcraft-engine --lib
 
       - name: Type-check the patched migration UI and Android JNI bridge
         working-directory: effectcraft
-        run: cargo check --locked -p effectcraft-ui-egui --lib
+        run: cargo check -p effectcraft-ui-egui --lib
 
       - name: Check required runtime architecture and memory policy
         run: |
