@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tomllib
 from pathlib import Path
 
 
@@ -15,6 +16,75 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
     if count != 1:
         raise SystemExit(f"{label}: expected one match, found {count}")
     return source.replace(old, new, 1)
+
+
+def clean_identical_duplicate_workspace_keys(source: str) -> tuple[str, bool]:
+    """Remove only byte-for-byte equivalent repeated keys in the same TOML table."""
+    lines = source.splitlines(keepends=True)
+    output: list[str] = []
+    seen: dict[tuple[str, int, str], tuple[int, str]] = {}
+    table = ""
+    array_table_index: dict[str, int] = {}
+    changed = False
+
+    for line_number, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            if stripped.startswith("[[") and stripped.endswith("]]"):
+                table = stripped[2:-2].strip()
+                array_table_index[table] = array_table_index.get(table, -1) + 1
+            else:
+                table = stripped[1:-1].strip()
+            output.append(line)
+            continue
+
+        body = line.split("#", 1)[0].strip()
+        match = re.match(r"^([A-Za-z0-9_-]+)\\s*=\\s*(.*?)\\s*$", body)
+        if not match:
+            output.append(line)
+            continue
+
+        key, value = match.group(1), match.group(2)
+        identity = (table, array_table_index.get(table, 0), key)
+        previous = seen.get(identity)
+        if previous is None:
+            seen[identity] = (line_number, value)
+            output.append(line)
+            continue
+
+        previous_line, previous_value = previous
+        if value != previous_value:
+            raise SystemExit(
+                f"Workspace Cargo.toml has conflicting values for [{table}] {key}: "
+                f"line {previous_line} has {previous_value!r}, line {line_number} has {value!r}; "
+                "automatic merging was refused."
+            )
+        print(
+            f"Removed identical duplicate workspace dependency [{table}] {key} "
+            f"at line {line_number}; original is at line {previous_line}."
+        )
+        changed = True
+
+    return "".join(output), changed
+
+
+def validate_workspace_manifest(root: Path, source: str) -> str:
+    try:
+        tomllib.loads(source)
+        return source
+    except tomllib.TOMLDecodeError as original_error:
+        cleaned, changed = clean_identical_duplicate_workspace_keys(source)
+        if not changed:
+            raise SystemExit(f"Invalid workspace Cargo.toml after account patch: {original_error}")
+        try:
+            tomllib.loads(cleaned)
+        except tomllib.TOMLDecodeError as repaired_error:
+            raise SystemExit(
+                f"Workspace Cargo.toml is still invalid after removing identical duplicates: {repaired_error}"
+            )
+        (root / "Cargo.toml").write_text(cleaned, encoding="utf-8")
+        print("Workspace Cargo.toml parsed successfully after safe duplicate cleanup.")
+        return cleaned
 
 
 def main() -> None:
@@ -439,6 +509,10 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
             1,
         )
         workspace_manifest.write_text(workspace, encoding="utf-8")
+
+    # The Android launcher generator parses the entire workspace manifest. Validate
+    # after all earlier root-manifest patches (AM/NV, ZIP plug-ins, and HTTPS) have run.
+    workspace = validate_workspace_manifest(root, workspace)
 
     ui_manifest = root / "crates/ui-egui/Cargo.toml"
     ui = ui_manifest.read_text(encoding="utf-8")
