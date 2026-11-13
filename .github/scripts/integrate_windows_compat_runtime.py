@@ -34,8 +34,15 @@ def main() -> None:
     if not rust_helper.is_file() or not runtime_java.is_dir():
         raise SystemExit("Windows compatibility Rust/Java runtime sources are missing.")
 
-    # Add the Java runtime package to the crate's generated source set after the builder
-    # generates the NativeActivity source. The builder calls build-common.sh before Gradle.
+    # Keep the Java sources inside the builder checkout. The APK workflow removes
+    # build-assets before running build.sh to reclaim disk, so the builder must not
+    # depend on the temporary patch checkout at APK-build time.
+    persistent_java = builder / "templates/windows-compat-java"
+    if persistent_java.exists():
+        shutil.rmtree(persistent_java)
+    shutil.copytree(runtime_java, persistent_java)
+
+    # Add the Java runtime package to the generated one-module Android app.
     build_common = builder / "lib/build-common.sh"
     common = build_common.read_text(encoding="utf-8")
     copy_anchor = '''    cp "$ROOT/templates/android/ArtCraftIme.java" "$IME_DIR/ArtCraftIme.java"
@@ -43,7 +50,7 @@ fi
 '''
     copy_block = copy_anchor + '''
 if [[ "$APP" == "effectcraft" ]]; then
-    WINDOWS_COMPAT_JAVA_SOURCE="$ROOT/../build-assets/windows-compat/android-runtime/src/main/java"
+    WINDOWS_COMPAT_JAVA_SOURCE="$ROOT/templates/windows-compat-java"
     [[ -d "$WINDOWS_COMPAT_JAVA_SOURCE/com/effectcraft/windowscompat" ]] || fail "The Windows compatibility Java source tree is missing."
     mkdir -p "$ANDROID_DIR/java"
     cp -a "$WINDOWS_COMPAT_JAVA_SOURCE/." "$ANDROID_DIR/java/"
