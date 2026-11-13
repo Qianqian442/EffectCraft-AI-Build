@@ -214,7 +214,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "PendingRegistration",
             "effectcraft-home-pending-registration.json",
             "self.local_only = true",
-            "password仅保留在当前运行内存",
+            "密码仅保留在当前运行内存",
             "std::time::Duration::from_secs(delay)",
             ".min(300)",
             'response.status == 409',
