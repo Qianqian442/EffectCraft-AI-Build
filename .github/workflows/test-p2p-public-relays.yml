@@ -1,0 +1,35 @@
+name: Test EffectCraft Public Relay Connectivity
+
+on:
+  push:
+    branches: [main, 'experiment/windows-plugin-runtime']
+    paths:
+      - 'p2p-bridge/**'
+      - '.github/workflows/test-p2p-public-relays.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-public-relay-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  public-relay-smoke:
+    name: Discover and reserve a real public libp2p relay
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out EffectCraft
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run live public relay discovery and reservation test
+        working-directory: p2p-bridge
+        timeout-minutes: 8
+        run: |
+          set -euo pipefail
+          cargo test --lib tests::public_relay_smoke -- --exact --nocapture --test-threads=1
