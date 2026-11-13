@@ -81,11 +81,18 @@ export class AccountSessionHub {
       // compares it with its just-verified state and only calls /v1/me if different.
       const lastStatus = await this.ctx.storage.get("last_status");
       if (lastStatus && ["banned", "unbanned"].includes(lastStatus.status)) {
+        const expiry = String(lastStatus.banned_until || "");
+        const permanent = expiry.toLowerCase() === "permanent";
+        const remainingMs = lastStatus.status !== "banned"
+          ? 0
+          : (permanent ? -1 : Math.max(0, Date.parse(expiry) - Date.now()));
         server.send(JSON.stringify({
           type: "account_status_changed",
           status: lastStatus.status,
           banned_until: lastStatus.banned_until || null,
           until: lastStatus.banned_until || null,
+          remaining_ms: remainingMs,
+          server_time_ms: Date.now(),
           reason: lastStatus.reason || "",
           changed_at: lastStatus.changed_at || null
         }));
@@ -99,13 +106,23 @@ export class AccountSessionHub {
           !["banned", "unbanned"].includes(event.status)) {
         return Response.json({ error: "invalid event" }, { status: 400 });
       }
-      await this.ctx.storage.put("last_status", {
+      const expiry = String(event.banned_until || event.until || "");
+      const permanent = expiry.toLowerCase() === "permanent";
+      const remainingMs = event.status !== "banned"
+        ? 0
+        : (permanent ? -1 : Math.max(0, Date.parse(expiry) - Date.now()));
+      const savedStatus = {
         status: event.status,
-        banned_until: event.status === "banned" ? event.banned_until : null,
+        banned_until: event.status === "banned" ? expiry : null,
         reason: event.status === "banned" ? String(event.reason || "") : "",
         changed_at: event.changed_at || new Date().toISOString()
+      };
+      await this.ctx.storage.put("last_status", savedStatus);
+      const payload = JSON.stringify({
+        ...event,
+        remaining_ms: remainingMs,
+        server_time_ms: Date.now()
       });
-      const payload = JSON.stringify(event);
       let delivered = 0;
       for (const socket of this.ctx.getWebSockets()) {
         try {
