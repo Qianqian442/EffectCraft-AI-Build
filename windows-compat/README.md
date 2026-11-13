@@ -31,6 +31,18 @@ Keep Hangover as an alternative backend to evaluate, not something to blindly li
 
 Hangover is designed to run x86/x86-64 Windows applications on AArch64 Wine using emulator DLLs such as FEX or Box64. It is an ARM64 Linux route and still needs Android-specific integration and testing.
 
+### Android-native Hangover Bionic candidate
+
+A more directly Android-focused build has also been audited:
+- Source: https://github.com/Piperella/Piperella-Hangover-Bionic
+- Pinned source revision: cd0d2b48da092a6a662a10d0b0b1ce189bbd3981
+- Release: hangover-bionic-11.9-build19 (2026-07-14)
+- Asset: hangover-bionic-aarch64.tar, 339,589,120 bytes; SHA-256 09cc7c2f43a1607d64b5f79e916939d0fefc8e1d094d09aee923abc4b8608793
+- It builds Wine 11.9/Hangover against Android Bionic, includes fresh FEX-2607 ARM64EC and WoW64 backends plus WowBox64, adds Wine Wayland and PulseAudio drivers, and patches wineserver paths, NLS lookup, W^X executable mappings, and removal of wine-preloader for Android linker64 launch.
+- The project documents the Android API 29+ app-data execution restriction and uses /system/bin/linker64 to load Bionic ELFs.
+
+This is a strong Android-specific alternative to the current Winlator Proton 9.0 package. It is not automatically the primary backend: the release is several months older than the currently audited FEXCore 2611.1 package, its GUI path expects a Wayland compositor, the runtime bundle is about 340 MB, and it has not yet been tested with EffectCraft's aexlo host on an Android ARM64 device. Keep it as a separately audited fallback until its runtime, license/SBOM, and rendering tests pass.
+
 ## Important distinction: executing a DLL is not hosting an AE plug-in
 
 An `.aex` file is normally a Windows PE DLL. Wine/Box64 can help with PE loading and CPU execution, but an AE effect plug-in expects an After Effects host process and its plug-in ABI. The host has to implement the relevant entry-point commands, parameter suites, memory suites, image worlds, render callbacks, UI callbacks, SmartFX/AEGP behavior, and any other suites the plug-in uses.
