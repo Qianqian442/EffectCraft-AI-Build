@@ -10,26 +10,30 @@ public final class WindowsRuntimeSelectorSelfTest {
         var x64 = WindowsRuntimeSelector.candidates(
                 WindowsRuntimeSelector.IMAGE_FILE_MACHINE_AMD64,
                 WindowsRuntimeSelector.Preference.AUTO);
-        check(x64.size() == 2, "x64 must have Box64 and ARM64EC/FEX candidates");
+        check(x64.size() == 3, "x64 must have FEXCore, Box64 and WowBox64 candidates");
         check(x64.get(0).hostWorker.equals("effectcraft-aex-host-x64.exe"),
                 "x64 must select x64 AEX host");
-        check(x64.get(0).backendId.equals("x86_64-proton-box64"),
-                "Box64 is the default x64 path");
+        check(x64.get(0).backendId.equals("arm64ec-proton-fexcore"),
+                "ARM64EC/FEXCore is the default x64 path");
+        check(x64.get(0).components.contains("HODLL64=libarm64ecfex.dll"),
+                "64-bit PE execution must select HODLL64");
+        check(x64.get(0).components.contains("HODLL=libwow64fex.dll"),
+                "32-bit WoW64 execution must select HODLL");
 
         var x86 = WindowsRuntimeSelector.candidates(
                 WindowsRuntimeSelector.IMAGE_FILE_MACHINE_I386,
                 WindowsRuntimeSelector.Preference.AUTO);
-        check(x86.size() == 4, "x86 must have FEX, WowBox64, Box64-BOX32 and Boxedwine candidates");
+        check(x86.size() == 3, "x86 must have FEX, Box64-BOX32 and Boxedwine candidates");
         check(x86.get(0).hostWorker.equals("effectcraft-aex-host-x86.exe"),
                 "x86 must select x86 AEX host");
         check(x86.get(0).hodll.equals("libwow64fex.dll"),
                 "FEXCore WoW64 path must select the correct HODLL");
 
         var preferred = WindowsRuntimeSelector.candidates(
-                WindowsRuntimeSelector.IMAGE_FILE_MACHINE_I386,
+                WindowsRuntimeSelector.IMAGE_FILE_MACHINE_AMD64,
                 WindowsRuntimeSelector.Preference.WOWBOX64_FIRST);
         check(preferred.get(0).backendId.equals("arm64ec-proton-wowbox64"),
-                "preference must move WowBox64 path first");
+                "preference must move the 64-bit WowBox64 path first");
         var boxedwinePreferred = WindowsRuntimeSelector.candidates(
                 WindowsRuntimeSelector.IMAGE_FILE_MACHINE_I386,
                 WindowsRuntimeSelector.Preference.BOXEDWINE_FIRST);
