@@ -124,9 +124,7 @@ struct HttpResult {""",
         if let Some(store) = config {
             let _ = store.remove("effectcraft-home-account.json");
         }
-    }
-
-    fn send(&mut self,""",
+    }""",
         """    fn remove_saved(&self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         if let Some(store) = config {
             let _ = store.remove("effectcraft-home-account.json");
@@ -311,12 +309,10 @@ struct HttpResult {""",
     source = replace_once(
         source,
         """    app.account.ensure_loaded(config);
-    app.account.poll(config);
-    app.account.poll_events();""",
+    app.account.poll(config);""",
         """    app.account.ensure_loaded(config);
     app.account.poll(config);
-    app.account.maybe_retry_pending_registration(config);
-    app.account.poll_events();""",
+    app.account.maybe_retry_pending_registration(config);""",
         "run pending sync retry without periodic account verification",
     )
 
