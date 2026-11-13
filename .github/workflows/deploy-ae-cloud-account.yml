@@ -63,13 +63,13 @@ jobs:
 
       - name: Apply account database schema
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: 6ed9bd81b9aef69ba61060f33510f014
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
           set -euo pipefail
-          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ] || [ -z "$JWT_SECRET" ] || [ -z "$ADMIN_PASSWORD" ]; then
-            echo "::error::Missing one or more required repository Actions secrets: CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, JWT_SECRET, ADMIN_PASSWORD"
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$JWT_SECRET" ] || [ -z "$ADMIN_PASSWORD" ]; then
+            echo "::error::Missing one or more required repository Actions secrets: CLOUDFLARE_API_TOKEN, JWT_SECRET, ADMIN_PASSWORD"
             exit 1
           fi
           if [ "${#JWT_SECRET}" -lt 32 ] || [ "${#ADMIN_PASSWORD}" -lt 12 ]; then
@@ -81,7 +81,7 @@ jobs:
       - name: Deploy Worker
         id: deploy_worker
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: 6ed9bd81b9aef69ba61060f33510f014
         run: |
           set -euo pipefail
           LOG_FILE="$RUNNER_TEMP/ae-worker-deploy.log"
@@ -96,7 +96,7 @@ jobs:
 
       - name: Configure Worker runtime secrets
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: 6ed9bd81b9aef69ba61060f33510f014
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
