@@ -120,14 +120,18 @@ function publicUser(row) {
 async function ensureNotBanned(db, row) {
   if (!row.banned_until) return null;
   if (String(row.banned_until).toLowerCase() === "permanent") {
-    return { until: "permanent", reason: row.ban_reason || "未填写封禁原因", permanent: true };
+    return { until: "permanent", reason: row.ban_reason || "未填写封禁原因", permanent: true, remaining_ms: -1, server_time_ms: Date.now() };
   }
   const until = Date.parse(row.banned_until);
-  if (Number.isFinite(until) && until <= Date.now()) {
+  if (!Number.isFinite(until)) {
+    return { until: row.banned_until, reason: row.ban_reason || "未填写封禁原因", permanent: false, remaining_ms: null, server_time_ms: Date.now() };
+  }
+  const remaining = until - Date.now();
+  if (remaining <= 0) {
     await db.prepare("UPDATE accounts SET banned_until = NULL, ban_reason = '' WHERE id = ?").bind(row.id).run();
     return null;
   }
-  return { until: row.banned_until, reason: row.ban_reason || "未填写封禁原因", permanent: false };
+  return { until: row.banned_until, reason: row.ban_reason || "未填写封禁原因", permanent: false, remaining_ms: remaining, server_time_ms: Date.now() };
 }
 async function authResult(env, row, role, seconds) {
   return {
@@ -320,6 +324,8 @@ async function notifyAccountStatus(env, accountId, status, bannedUntil = null, r
       status,
       banned_until: bannedUntil,
       until: bannedUntil,
+      remaining_ms: status !== "banned" ? 0 : (String(bannedUntil || "").toLowerCase() === "permanent" ? -1 : Math.max(0, Date.parse(String(bannedUntil || "")) - Date.now())),
+      server_time_ms: Date.now(),
       reason: status === "banned" ? reason : "",
       changed_at: changedAt
     })
