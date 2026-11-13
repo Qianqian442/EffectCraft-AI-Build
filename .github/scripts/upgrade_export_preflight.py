@@ -147,7 +147,7 @@ warning_ui = r"""
     }
 """
 submit_old = "    let mut submit = false;"
-submit_new = "    let mut submit = force_export;"
+submit_new = "    let mut submit = force_export;\n    force_export = false;"
 if submit_new not in header:
     if submit_old not in header:
         raise SystemExit("Could not add one-shot force-export state")
