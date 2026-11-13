@@ -131,6 +131,33 @@ jobs:
             --generator artcraft/lib/android_project.py
           grep -Fq 'maven.aliyun.com/repository/google' artcraft/lib/android_project.py
           grep -Fq 'maven.aliyun.com/repository/public' artcraft/lib/android_project.py
+          # androidx.core:1.17.0 requires AGP >=8.9.1 and compileSdk >=36.
+          # Upgrade the generated Android project toolchain without raising targetSdk,
+          # so Android runtime behavior and device eligibility remain unchanged.
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("artcraft/lib/android_project.py")
+          s = p.read_text(encoding="utf-8")
+          old_plugin = 'GRADLE_PLUGIN_VERSION = "8.7.3"'
+          new_plugin = 'GRADLE_PLUGIN_VERSION = "8.10.1"'
+          if old_plugin in s:
+              s = s.replace(old_plugin, new_plugin, 1)
+          elif new_plugin not in s:
+              raise SystemExit("Could not identify the Android Gradle Plugin version in android_project.py")
+          old_sdk = "    compileSdk {target_sdk}"
+          new_sdk = "    compileSdk 36"
+          if old_sdk in s:
+              s = s.replace(old_sdk, new_sdk, 1)
+          elif new_sdk not in s:
+              raise SystemExit("Could not identify generated compileSdk declaration")
+          compile(s, str(p), "exec")
+          if new_plugin not in s or new_sdk not in s:
+              raise SystemExit("Android Gradle compatibility patch verification failed")
+          p.write_text(s, encoding="utf-8")
+          print("Applied EFFECTCRAFT_ANDROID_GRADLE_API36_COMPAT_V1: AGP 8.10.1 + compileSdk 36; targetSdk unchanged.")
+          PY
+          grep -Fq 'GRADLE_PLUGIN_VERSION = "8.10.1"' artcraft/lib/android_project.py
+          grep -Fq 'compileSdk 36' artcraft/lib/android_project.py
 
       - name: Check out RIFE 4.6 ncnn source and model
         uses: actions/checkout@v4
