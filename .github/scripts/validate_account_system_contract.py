@@ -172,7 +172,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             'card.setOrientation(LinearLayout.HORIZONTAL)',
             'avatarView.setOnClickListener(v -> showUserDetails(user))',
             'actions.setOrientation(LinearLayout.VERTICAL)',
-            'private void choosePermanentBan(String id)',
+            'private void askPermanentBanReason(String id)',
             'submitBan(id, "permanent", why)',
         ),
     ),
