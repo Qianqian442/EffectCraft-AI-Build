@@ -439,7 +439,7 @@ jobs:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_chinese_group_puppet_keyframe_ui.py
 
-      - name: Expand the default Android composition workspace
+      - name: Enlarge the default composition image without moving controls
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: |
