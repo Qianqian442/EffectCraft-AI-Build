@@ -13,6 +13,8 @@ android {
         versionCode 5
         versionName "1.4"
         buildConfigField "String", "ACCOUNT_API_URL", "\"${System.getenv('AE_ACCOUNT_API_URL') ?: ''}\""
+        def accountApiUrls = System.getenv('AE_ACCOUNT_API_URLS') ?: System.getenv('AE_ACCOUNT_API_URL') ?: ''
+        buildConfigField "String", "ACCOUNT_API_URLS", "\"${accountApiUrls}\""
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
