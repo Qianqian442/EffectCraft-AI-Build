@@ -43,6 +43,9 @@ jobs:
             local size="$4"
             local id="$5"
             local dest="wcp-inspection/$id.wcp"
+            local listing="wcp-inspection/$id.list"
+            local profile="wcp-inspection/$id.profile.json"
+            local compression=""
 
             echo "===== Download $id ====="
             curl -fL --retry 4 --retry-all-errors "$base/$release/$asset" -o "$dest"
@@ -51,20 +54,37 @@ jobs:
 
             echo "--- archive type and listing ---"
             file "$dest"
-            if tar --zstd -tf "$dest" > "wcp-inspection/$id.list" 2>/dev/null; then
-              tar --zstd -xOf "$dest" profile.json > "wcp-inspection/$id.profile.json"
+            if tar --zstd -tf "$dest" > "$listing" 2>/dev/null; then
+              compression="zstd"
             elif xz -t "$dest" >/dev/null 2>&1; then
-              tar -xJf "$dest" -O profile.json > "wcp-inspection/$id.profile.json"
-              tar -tJf "$dest" > "wcp-inspection/$id.list"
+              tar -tJf "$dest" > "$listing"
+              compression="xz"
             else
-              echo "Unsupported WCP archive or profile.json missing: $id" >&2
+              echo "Unsupported WCP archive compression: $id" >&2
               file "$dest"
               tar --list -f "$dest" || true
               exit 1
             fi
-            jq -e '.type and .versionName and .versionCode and (.files | type == "array")' "wcp-inspection/$id.profile.json" >/dev/null
-            echo "--- profile.json ---"
-            jq . "wcp-inspection/$id.profile.json"
+
+            # WCP producers may place profile.json at the archive root or under
+            # a package directory. Resolve the actual member instead of assuming
+            # a fixed archive layout.
+            local profile_member
+            profile_member="$(grep -E '(^|/)profile\.json$' "$listing" | head -n 1 || true)"
+            if [ -z "$profile_member" ]; then
+              echo "profile.json missing from WCP archive: $id" >&2
+              cat "$listing"
+              exit 1
+            fi
+
+            if [ "$compression" = "zstd" ]; then
+              tar --zstd -xOf "$dest" "$profile_member" > "$profile"
+            else
+              tar -xJf "$dest" -O "$profile_member" > "$profile"
+            fi
+            jq -e '.type and .versionName and .versionCode and (.files | type == "array")' "$profile" >/dev/null
+            echo "--- profile.json ($profile_member) ---"
+            jq . "$profile"
           }
 
           nightly="nightly-20261112-230654"
