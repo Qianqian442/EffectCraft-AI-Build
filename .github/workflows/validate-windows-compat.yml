@@ -91,10 +91,11 @@ jobs:
       - name: Run native archive tests on Android x86_64 emulator
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 30
           arch: x86_64
-          target: google_apis
+          target: default
           profile: pixel_2
+          emulator-options: -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -memory 2048 -cores 2
           disable-animations: true
           script: gradle -p windows-compat/android-runtime connectedDebugAndroidTest --no-daemon
 
