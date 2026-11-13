@@ -169,10 +169,10 @@ def apply_local_ban_cache(source: str) -> str:
         "        }\n"
         "    }\n\n"
         "    fn update_local_ban_timer(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n"
-        "        if self.mode != Mode::Banned || self.banned_until.eq_ignore_ascii_case(\"permanent\") || self.ban_clock_warning {\n"
+        "        if self.mode != Mode::Banned || self.ban_remaining_ms < 0 || self.banned_until.eq_ignore_ascii_case(\"permanent\") || self.ban_clock_warning {\n"
         "            return;\n"
         "        }\n"
-        "        if self.current_ban_remaining_ms() <= 0 {\n"
+        "        if self.current_ban_remaining_ms() == 0 {\n"
         "            self.clear_local_ban();\n"
         "            self.mode = if self.user.is_some() { Mode::Editor } else { Mode::Auth };\n"
         "            self.status = \"临时封号已到期，本机已自动解封；联网后同步服务器\".to_string();\n"
@@ -191,7 +191,7 @@ def apply_local_ban_cache(source: str) -> str:
         "        }"
     )
     startup_new = (
-        "        if self.banned_until.eq_ignore_ascii_case(\"permanent\") {\n"
+        "        if self.banned_until.eq_ignore_ascii_case(\"permanent\") || self.ban_remaining_ms < 0 {\n"
         "            self.ban_remaining_ms = -1;\n"
         "            self.mode = Mode::Banned;\n"
         "        } else if self.ban_remaining_ms > 0 {\n"
@@ -267,7 +267,7 @@ def apply_local_ban_cache(source: str) -> str:
     banned_new = (
         "                self.banned_until = detail.get(\"until\").and_then(Value::as_str).unwrap_or(\"时间未知\").to_string();\n"
         "                self.ban_reason = detail.get(\"reason\").and_then(Value::as_str).unwrap_or(\"未填写原因\").to_string();\n"
-        "                self.ban_remaining_ms = if self.banned_until.eq_ignore_ascii_case(\"permanent\") { -1 } else { detail.get(\"remaining_ms\").and_then(Value::as_i64).unwrap_or(0).max(0) };\n"
+        "                self.ban_remaining_ms = if self.banned_until.eq_ignore_ascii_case(\"permanent\") { -1 } else { detail.get(\"remaining_ms\").and_then(Value::as_i64).map(|value| value.max(0)).unwrap_or(-1) };\n"
         "                self.ban_saved_at_ms = local_wall_clock_ms();\n"
         "                self.ban_clock_floor_ms = self.ban_saved_at_ms;\n"
         "                self.ban_anchor = if self.ban_remaining_ms > 0 { Some(Instant::now()) } else { None };\n"
@@ -301,7 +301,7 @@ def apply_local_ban_cache(source: str) -> str:
                         self.ban_remaining_ms = if self.banned_until.eq_ignore_ascii_case("permanent") {
                             -1
                         } else {
-                            event.get("remaining_ms").and_then(Value::as_i64).unwrap_or(0).max(0)
+                            event.get("remaining_ms").and_then(Value::as_i64).map(|value| value.max(0)).unwrap_or(-1)
                         };
                         self.ban_saved_at_ms = local_wall_clock_ms();
                         self.ban_clock_floor_ms = self.ban_saved_at_ms;
@@ -350,7 +350,9 @@ def apply_local_ban_cache(source: str) -> str:
     ban_ui_new = (
         "                if app.account.banned_until.eq_ignore_ascii_case(\"permanent\") {\n"
         "                    ui.label(\"封禁期限：永久封号\");\n"
-        "                } else if app.account.ban_clock_warning {\n"
+        "                } else if app.account.ban_remaining_ms < 0 {
+                    ui.label("封禁剩余时间暂不可确认，继续保持封禁；联网同步后再判断。");
+                } else if app.account.ban_clock_warning {\n"
         "                    ui.label(\"设备时间发生回拨，继续保持封禁；恢复自动设置时间或联网校准后再判断到期。\");\n"
         "                } else {\n"
         "                    let seconds = (app.account.current_ban_remaining_ms().max(0) + 999) / 1000;\n"
