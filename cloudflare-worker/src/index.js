@@ -289,7 +289,17 @@ async function adminUsers(request, env, url) {
       "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts ORDER BY created_at DESC LIMIT 500"
     ).all();
   }
-  return response({ users: result.results || [], total_count: totalCount, filtered_count: filteredCount, limit: 500 });
+  const users = result.results || [];
+  // Keep the visible admin list consistent with automatic expiry even when a
+  // banned account has not attempted to log in since its temporary ban elapsed.
+  for (const row of users) {
+    const ban = await ensureNotBanned(env.DB, row);
+    if (!ban) {
+      row.banned_until = null;
+      row.ban_reason = "";
+    }
+  }
+  return response({ users, total_count: totalCount, filtered_count: filteredCount, limit: 500 });
 }
 async function adminUser(request, env, id) {
   await readToken(env, request, "admin");
