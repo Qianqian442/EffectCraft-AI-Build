@@ -2,6 +2,7 @@
 """Convert the generated EffectCraft account gate to the shared HTTPS Cloudflare API."""
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
@@ -23,11 +24,31 @@ def main() -> None:
         raise SystemExit("Run add_home_lan_account_gate.py before the cloud account patch.")
 
     api_url = os.environ.get("AE_ACCOUNT_API_URL", "").strip().rstrip("/")
-    if not api_url.startswith("https://") or not api_url.endswith(".workers.dev"):
+    if not api_url.startswith("https://"):
         raise SystemExit(
-            "AE_ACCOUNT_API_URL must be the deployed HTTPS workers.dev base URL. "
+            "AE_ACCOUNT_API_URL must be the deployed primary HTTPS account API URL. "
             "Deploy cloudflare-worker first; do not publish a LAN/P2P-only APK."
         )
+    api_urls = []
+    for candidate in [api_url, *os.environ.get("AE_ACCOUNT_API_URLS", "").split(";")]:
+        candidate = candidate.strip().rstrip("/")
+        if candidate and candidate not in api_urls:
+            if not candidate.startswith("https://") or "@" in candidate:
+                raise SystemExit(f"Invalid backup account API URL: {candidate!r}; HTTPS is required.")
+            api_urls.append(candidate)
+    pool_source = "const API_SERVER_POOL: &[&str] = &[\n" + "".join(
+        f"    {json.dumps(candidate)},\n" for candidate in api_urls
+    ) + "];\n"
+    server_switch_helper = """
+fn next_api_server(current: &str) -> Option<&'static str> {
+    if API_SERVER_POOL.len() < 2 {
+        return None;
+    }
+    let index = API_SERVER_POOL.iter().position(|candidate| *candidate == current).unwrap_or(0);
+    Some(API_SERVER_POOL[(index + 1) % API_SERVER_POOL.len()])
+}
+
+"""
 
     source = account_path.read_text(encoding="utf-8")
     if "EFFECTCRAFT_HOME_LAN_ACCOUNT_GATE_V1" not in source:
@@ -62,6 +83,8 @@ def main() -> None:
         "use tungstenite::http::HeaderValue;\n"
         "use tungstenite::Message;\n\n"
         f'const DEFAULT_SERVER: &str = "{api_url}";\n'
+        + pool_source
+        + server_switch_helper
     )
     source = replace_once(source, old_imports, new_imports, "imports and cloud API URL")
 
@@ -251,20 +274,44 @@ def main() -> None:
         raise SystemExit(f"cloud WebSocket event implementation expected one replacement, found {n}")
 
     http_replacement = r'''fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
+    let mut candidates = Vec::<&str>::new();
+    if url.starts_with("https://") {
+        candidates.push(url.trim_end_matches('/'));
+    }
+    for candidate in API_SERVER_POOL {
+        if !candidates.contains(candidate) {
+            candidates.push(candidate);
+        }
+    }
+    let mut last_error = String::new();
+    let mut last_server_error = None;
+    for candidate in candidates {
+        match http_request_single(candidate, method, path, body.clone(), token) {
+            Ok(response) if response.status >= 500 => {
+                last_error = format!("{candidate} 返回 HTTP {}", response.status);
+                last_server_error = Some(response);
+            }
+            Ok(response) => return Ok(response),
+            Err(error) => last_error = format!("{candidate}：{error}"),
+        }
+    }
+    if let Some(response) = last_server_error {
+        return Ok(response);
+    }
+    Err(format!("所有已配置的云端 HTTPS 入口均不可用：{last_error}"))
+}
+
+fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
     if !url.starts_with("https://") {
         return Err("账号服务必须使用 HTTPS 云端地址".to_string());
     }
     let endpoint = format!("{}{}", url.trim_end_matches('/'), path);
     let agent: ureq::Agent = ureq::Agent::config_builder()
         .http_status_as_error(false)
-        .timeout_global(Some(Duration::from_secs(15)))
+        .timeout_global(Some(Duration::from_secs(10)))
         .build()
         .into();
-    let mut request = if method == "GET" {
-        agent.get(&endpoint)
-    } else {
-        agent.post(&endpoint)
-    };
+    let mut request = if method == "GET" { agent.get(&endpoint) } else { agent.post(&endpoint) };
     request = request.header("Accept", "application/json");
     if let Some(token) = token {
         request = request.header("Authorization", &format!("Bearer {token}"));
@@ -354,7 +401,9 @@ def main() -> None:
         ui = ui.replace(anchor, anchor + 'ureq = { workspace = true }\n' + 'tungstenite = { workspace = true }\n', 1)
         ui_manifest.write_text(ui, encoding="utf-8")
 
-    print("Cloud HTTPS account gate installed: shared Cloudflare API, live ban/unban WebSocket, no periodic polling.")
+    if "fn http_request_single" not in source or "API_SERVER_POOL" not in source:
+        raise SystemExit("Cloud endpoint failover code was not installed.")
+    print(f"Cloud HTTPS account gate installed with {len(api_urls)} configured endpoint(s), automatic failover, and live ban/unban notifications; no periodic polling.")
 
 
 if __name__ == "__main__":
