@@ -48,7 +48,7 @@ import java.util.concurrent.Executors;
 public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
     private static final String DEFAULT_SERVER = BuildConfig.ACCOUNT_API_URL;
-    private String server = DEFAULT_SERVER;
+    private volatile String server = DEFAULT_SERVER;
     private String adminToken = "";
     private LinearLayout root;
     private LinearLayout rows;
@@ -76,11 +76,11 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-        server = trimServer(DEFAULT_SERVER);
+        java.util.ArrayList<String> availableServers = cloudServerPool();
+        server = availableServers.isEmpty() ? trimServer(DEFAULT_SERVER) : availableServers.get(0);
         String savedServer = getPreferences(MODE_PRIVATE).getString("server", "");
-        if (!server.equals(savedServer)) {
-            getPreferences(MODE_PRIVATE).edit().remove("admin_token").remove("server").apply();
-        }
+        if (availableServers.contains(savedServer)) server = savedServer;
+        else if (!savedServer.isEmpty()) getPreferences(MODE_PRIVATE).edit().remove("admin_token").remove("server").apply();
         adminToken = getPreferences(MODE_PRIVATE).getString("admin_token", "");
         if (!adminToken.isEmpty()) {
             showConnecting("正在验证云端管理员账号…");
@@ -88,6 +88,32 @@ public final class MainActivity extends Activity {
         } else {
             showLogin();
         }
+    }
+
+    private java.util.ArrayList<String> cloudServerPool() {
+        java.util.LinkedHashSet<String> values = new java.util.LinkedHashSet<>();
+        String configured = BuildConfig.ACCOUNT_API_URLS == null ? "" : BuildConfig.ACCOUNT_API_URLS;
+        for (String item : configured.split(";")) {
+            String endpoint = trimServer(item);
+            if (endpoint.startsWith("https://") && !endpoint.contains("@")) values.add(endpoint);
+        }
+        String primary = trimServer(BuildConfig.ACCOUNT_API_URL == null ? "" : BuildConfig.ACCOUNT_API_URL);
+        if (primary.startsWith("https://")) values.add(primary);
+        return new java.util.ArrayList<>(values);
+    }
+
+    private void switchCloudServer() {
+        java.util.ArrayList<String> endpoints = cloudServerPool();
+        if (endpoints.size() < 2) {
+            toast("目前只配置了一个云端入口；备用 HTTPS 入口尚未部署");
+            return;
+        }
+        int current = endpoints.indexOf(server);
+        server = endpoints.get((current < 0 ? 0 : current + 1) % endpoints.size());
+        getPreferences(MODE_PRIVATE).edit().putString("server", server).apply();
+        toast("已切换云端入口：" + server);
+        if (!adminToken.isEmpty()) loadUsers("");
+        else showLogin();
     }
 
     private String readP2PStatus() {
@@ -264,6 +290,9 @@ public final class MainActivity extends Activity {
         TextView status = text(message, 15, false);
         page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
         page.addView(text("正在连接共享云端 HTTPS 账号服务，账号和封禁状态在不同地区的设备间同步。", 12, false));
+        Button switchServer = button("切换服务器");
+        switchServer.setOnClickListener(v -> switchCloudServer());
+        page.addView(switchServer, new LinearLayout.LayoutParams(-1, dp(44)));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
             showConnecting("正在重新连接云端账号服务…");
@@ -291,6 +320,9 @@ public final class MainActivity extends Activity {
         serverInput.setText(server);
         serverInput.setEnabled(false);
         page.addView(serverInput);
+        Button switchServer = button("切换服务器");
+        page.addView(switchServer, new LinearLayout.LayoutParams(-1, dp(42)));
+        switchServer.setOnClickListener(v -> switchCloudServer());
         page.addView(text("管理员账号", 13, true));
         usernameInput = field("admin", false);
         usernameInput.setText("admin");
@@ -368,54 +400,63 @@ public final class MainActivity extends Activity {
         io.execute(() -> {
             JSONObject result = null;
             String error = null;
-            HttpURLConnection c = null;
-            try {
-                if (server.isEmpty() || !server.startsWith("https://") || !server.endsWith(".workers.dev")) {
-                    throw new java.io.IOException("尚未配置有效的云端 HTTPS 账号服务器");
-                }
-                URL url = new URL(server + path);
-                URL configured = new URL(BuildConfig.ACCOUNT_API_URL);
-                if (!"https".equalsIgnoreCase(url.getProtocol()) || !url.getHost().equals(configured.getHost())) {
-                    throw new java.io.IOException("账号管理请求只能发送到构建时配置的 HTTPS 云端地址");
-                }
-                c = (HttpURLConnection) url.openConnection();
-                c.setRequestMethod(method);
-                c.setConnectTimeout(8000);
-                c.setReadTimeout(10000);
-                c.setRequestProperty("Accept", "application/json");
-                if (auth && !adminToken.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + adminToken);
-                if (body != null) {
-                    c.setDoOutput(true);
-                    c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-                    try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
-                }
-                int code = c.getResponseCode();
-                InputStream in = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
-                ByteArrayOutputStream data = new ByteArrayOutputStream();
-                if (in != null) {
-                    try (InputStream stream = in) {
-                        byte[] buffer = new byte[4096];
-                        int n;
-                        while ((n = stream.read(buffer)) > 0) data.write(buffer, 0, n);
+            java.util.ArrayList<String> endpoints = cloudServerPool();
+            if (!endpoints.contains(server) && server.startsWith("https://")) endpoints.add(0, server);
+            if (endpoints.isEmpty()) error = "云端 HTTPS 账号服务器尚未配置";
+            for (int index = 0; index < endpoints.size() && result == null && error == null; index++) {
+                String candidate = endpoints.get(index);
+                HttpURLConnection c = null;
+                try {
+                    URL url = new URL(candidate + path);
+                    if (!"https".equalsIgnoreCase(url.getProtocol())) throw new java.io.IOException("只允许 HTTPS 账号入口");
+                    c = (HttpURLConnection) url.openConnection();
+                    c.setRequestMethod(method);
+                    c.setConnectTimeout(6500);
+                    c.setReadTimeout(8500);
+                    c.setRequestProperty("Accept", "application/json");
+                    if (auth && !adminToken.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + adminToken);
+                    if (body != null) {
+                        c.setDoOutput(true);
+                        c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+                        try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
                     }
-                }
-                JSONObject parsed = new JSONObject(new String(data.toByteArray(), StandardCharsets.UTF_8));
-                if (code >= 200 && code < 300) result = parsed;
-                else {
-                    Object detail = parsed.opt("detail");
-                    if (detail instanceof JSONObject) error = ((JSONObject) detail).optString("message", detail.toString());
-                    else error = detail == null ? ("HTTP " + code) : detail.toString();
-                    if ((code == 401 || code == 403) && auth) {
-                        adminToken = "";
-                        error = "管理员登录已失效：" + error;
-                        getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
+                    int code = c.getResponseCode();
+                    InputStream in = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
+                    ByteArrayOutputStream data = new ByteArrayOutputStream();
+                    if (in != null) {
+                        try (InputStream stream = in) {
+                            byte[] buffer = new byte[4096];
+                            int n;
+                            while ((n = stream.read(buffer)) > 0) data.write(buffer, 0, n);
+                        }
                     }
+                    JSONObject parsed = new JSONObject(new String(data.toByteArray(), StandardCharsets.UTF_8));
+                    if (code >= 500 && index + 1 < endpoints.size()) {
+                        error = "入口暂时不可用（HTTP " + code + "），正在切换备用服务器…";
+                        continue;
+                    }
+                    server = candidate;
+                    getPreferences(MODE_PRIVATE).edit().putString("server", server).apply();
+                    if (code >= 200 && code < 300) {
+                        result = parsed;
+                        error = null;
+                    } else {
+                        Object detail = parsed.opt("detail");
+                        if (detail instanceof JSONObject) error = ((JSONObject) detail).optString("message", detail.toString());
+                        else error = detail == null ? ("HTTP " + code) : detail.toString();
+                        if ((code == 401 || code == 403) && auth) {
+                            adminToken = "";
+                            error = "管理员登录已失效：" + error;
+                            getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
+                        }
+                    }
+                } catch (Exception e) {
+                    error = "入口 " + candidate + " 连接失败：" + e.getMessage();
+                    if (index + 1 < endpoints.size()) error += "；正在尝试下一个入口…";
+                } finally {
+                    if (c != null) c.disconnect();
                 }
-            } catch (Exception e) {
-                error = "无法连接云端 HTTPS 账号服务：" + e.getMessage();
-            } finally {
-                if (c != null) c.disconnect();
             }
             JSONObject finalResult = result;
             String finalError = error;
@@ -454,6 +495,9 @@ public final class MainActivity extends Activity {
         top.setGravity(Gravity.CENTER_VERTICAL);
         TextView title = text("账号管理 · 共 " + (users == null ? 0 : users.length()) + " 个账号", 22, true);
         top.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
+        Button switchServer = button("切换服务器");
+        top.addView(switchServer);
+        switchServer.setOnClickListener(v -> switchCloudServer());
         Button refresh = button("刷新");
         top.addView(refresh);
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
