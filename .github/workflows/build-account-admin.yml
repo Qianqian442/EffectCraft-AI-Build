@@ -120,6 +120,17 @@ jobs:
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
           echo "Persistent admin APK signing key is ready."
 
+      - name: Require shared cloud HTTPS account API
+        env:
+          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$AE_ACCOUNT_API_URL" in
+            https://*.workers.dev) echo "Shared cloud HTTPS API URL is configured." ;;
+            *) echo "::error::AE_ACCOUNT_API_URL must be set to the deployed Cloudflare HTTPS workers.dev URL before building the account manager APK."; exit 1 ;;
+          esac
+
       - name: Build admin APK
         env:
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
