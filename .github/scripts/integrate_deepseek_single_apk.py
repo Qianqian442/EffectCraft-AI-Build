@@ -106,14 +106,14 @@ def main() -> None:
     # unknown version" failure when the host build has preloaded AGP 8.7.3.
     plugin_marker = "EFFECTCRAFT_ANDROID_PLUGIN_CLASSPATH_COMPAT"
     plugin_aliases = """plugins {
-        alias(libs.plugins.android.library)
-        alias(libs.plugins.jetbrains.kotlin.android)
-    }"""
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.jetbrains.kotlin.android)
+}"""
     plugin_ids = """// EFFECTCRAFT_ANDROID_PLUGIN_CLASSPATH_COMPAT
-    plugins {
-        id("com.android.library")
-        id("org.jetbrains.kotlin.android")
-    }"""
+plugins {
+    id("com.android.library")
+    id("org.jetbrains.kotlin.android")
+}"""
     if plugin_marker not in lg:
         if plugin_aliases not in lg:
             raise SystemExit("Unexpected llama.cpp Android library plugin block; refusing an unsafe Gradle patch.")
