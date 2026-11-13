@@ -519,7 +519,14 @@ final class LanAccountServer implements Runnable {
             values.put("banned_until", until); values.put("ban_reason", reason);
         }
         db.getWritableDatabase().update("accounts", values, "id=?", new String[]{id});
-        JSONObject out = new JSONObject(); out.put("user", findUser(id)); return out;
+        JSONObject updatedUser = findUser(id);
+        boolean nowBanned = isBanned(updatedUser);
+        String until = nowBanned ? updatedUser.optString("banned_until", "") : "";
+        String reason = nowBanned ? updatedUser.optString("ban_reason", "") : "";
+        // Push to every authenticated P2P client currently using this account.
+        // No periodic /me polling is required while the app remains connected.
+        NativeP2P.notifyAccountStatus(id, nowBanned ? "banned" : "unbanned", until, reason);
+        JSONObject out = new JSONObject(); out.put("user", updatedUser); return out;
     }
 
     private JSONObject findUser(String id) throws Exception {
