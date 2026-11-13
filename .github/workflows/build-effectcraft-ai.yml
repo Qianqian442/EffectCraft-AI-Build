@@ -78,7 +78,7 @@ jobs:
             .github/scripts/add_qq_project_share.py \
             .github/scripts/add_account_avatar_picker.py \
             .github/scripts/patch_gradle_maven_mirrors.py \
-            .github/scripts/integrate_deepseek_single_apk.py
+            .github/scripts/integrate_deepseek_single_apk.py \\
             .github/scripts/add_bottom_left_media_import.py
 
   build:
