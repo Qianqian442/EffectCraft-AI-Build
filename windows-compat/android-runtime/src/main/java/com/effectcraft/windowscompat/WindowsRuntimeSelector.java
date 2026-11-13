@@ -83,14 +83,18 @@ public final class WindowsRuntimeSelector {
         List<LaunchPlan> plans = new ArrayList<>();
         switch (peMachine) {
             case IMAGE_FILE_MACHINE_AMD64:
-                addX64(plans);
+                // Prefer the native ARM64EC Wine host plus the dedicated 64-bit
+                // FEX backend. Keep Box64 and WowBox64 as separately tested fallbacks.
                 addArm64EcFex(plans, "effectcraft-aex-host-x64.exe",
+                        Confidence.CANDIDATE_NOT_YET_RUNTIME_TESTED);
+                addX64(plans);
+                addArm64EcWow(plans, "effectcraft-aex-host-x64.exe",
                         Confidence.CANDIDATE_NOT_YET_RUNTIME_TESTED);
                 break;
             case IMAGE_FILE_MACHINE_I386:
+                // FEXCore supplies both ARM64EC and 32-bit WoW64 backends.
+                // WowBox64 is a 64-bit backend and is not offered for x86 PE files.
                 addArm64EcFex(plans, "effectcraft-aex-host-x86.exe",
-                        Confidence.HOST_WORKER_COMPILED_RUNTIME_UNTESTED);
-                addArm64EcWow(plans, "effectcraft-aex-host-x86.exe",
                         Confidence.HOST_WORKER_COMPILED_RUNTIME_UNTESTED);
                 addBox64Box32(plans, "effectcraft-aex-host-x86.exe");
                 addBoxedwine(plans, "effectcraft-aex-host-x86.exe");
@@ -144,7 +148,8 @@ public final class WindowsRuntimeSelector {
                 "effectcraft-aex-host-x64.exe",
                 null,
                 Confidence.CANDIDATE_NOT_YET_RUNTIME_TESTED,
-                List.of("ImageFS", "Proton 9.0 x86_64", "Box64 Android ARM64")));
+                List.of("ImageFS", "Proton 9.0 x86_64", "Box64 Android ARM64",
+                        "Current Bionic Proton test failed on unresolved __libc_init; do not mark supported until corrected")));
     }
 
     private static void addArm64EcFex(
@@ -157,7 +162,7 @@ public final class WindowsRuntimeSelector {
                 worker,
                 "libwow64fex.dll",
                 confidence,
-                List.of("ImageFS", "Proton 9.0 ARM64EC", "FEXCore ARM64EC", "FEXCore WoW64")));
+                List.of("ImageFS", "Proton 9.0 ARM64EC", "HODLL64=libarm64ecfex.dll", "HODLL=libwow64fex.dll")));
     }
 
     private static void addArm64EcWow(
@@ -170,7 +175,7 @@ public final class WindowsRuntimeSelector {
                 worker,
                 "wowbox64.dll",
                 confidence,
-                List.of("ImageFS", "Proton 9.0 ARM64EC", "WowBox64")));
+                List.of("ImageFS", "Proton 9.0 ARM64EC", "HODLL64=wowbox64.dll")));
     }
 
     private static void addBox64Box32(List<LaunchPlan> plans, String worker) {
