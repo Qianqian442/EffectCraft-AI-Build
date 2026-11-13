@@ -190,6 +190,43 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "Main APK caches the user profile and performs temporary-ban expiry locally across app restarts",
+        ".github/scripts/convert_account_gate_to_cloud.py",
+        (
+            "def apply_local_ban_cache",
+            "ban_remaining_ms: i64",
+            "ban_saved_at_ms: i64",
+            "ban_clock_floor_ms: i64",
+            "fn local_wall_clock_ms()",
+            "fn current_ban_remaining_ms(&self)",
+            "fn update_local_ban_timer(&mut self",
+            "Instant::now()",
+            "self.user = saved.user",
+            "app.account.poll_events(config)",
+            "临时封号已到期，本机已自动解封",
+            "ban_clock_warning",
+        ),
+    ),
+    (
+        "Cloud ban responses and live events provide a server-calculated remaining duration",
+        "cloudflare-worker/src/index.js",
+        (
+            "remaining_ms: remaining",
+            "server_time_ms: Date.now()",
+            "permanent: true",
+        ),
+    ),
+    (
+        "Reconnect event replay recalculates remaining ban duration instead of replaying a stale timer",
+        "cloudflare-worker/src/account_session_hub.js",
+        (
+            "const remainingMs = event.status !==",
+            "remaining_ms: remainingMs",
+            "server_time_ms: Date.now()",
+            "lastStatus.banned_until",
+        ),
+    ),
+    (
         "Cloud account API supports permanent bans and complete online status notifications",
         "cloudflare-worker/src/index.js",
         (
