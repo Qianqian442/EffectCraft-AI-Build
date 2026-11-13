@@ -75,18 +75,27 @@ fn next_api_server(current: &str) -> Option<&'static str> {
         ");\n"
         "static ACCOUNT_EVENT_LISTENER_STARTED: AtomicBool = AtomicBool::new(false);\n\n"
     )
+    # The avatar-picker patch adds base64::Engine immediately after Duration.
+    # Accept both pre-avatar and post-avatar import blocks, preserving the picker dependency.
+    old_imports_with_avatar = old_imports.replace(
+        "use std::time::Duration;\\n\\n",
+        "use std::time::Duration;\\nuse base64::Engine as _;\\n\\n",
+    )
+    base64_import = "use base64::Engine as _;\\n" if old_imports_with_avatar in source else ""
+    imports_to_replace = old_imports_with_avatar if base64_import else old_imports
     new_imports = (
-        "use std::io::Read;\n"
-        "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::time::Duration;\n"
-        "use tungstenite::client::IntoClientRequest;\n"
-        "use tungstenite::http::HeaderValue;\n"
-        "use tungstenite::Message;\n\n"
-        f'const DEFAULT_SERVER: &str = "{api_url}";\n'
+        "use std::io::Read;\\n"
+        "use std::sync::mpsc::{self, Receiver, TryRecvError};\\n"
+        "use std::time::Duration;\\n"
+        + base64_import
+        + "use tungstenite::client::IntoClientRequest;\\n"
+        + "use tungstenite::http::HeaderValue;\\n"
+        + "use tungstenite::Message;\\n\\n"
+        + f'const DEFAULT_SERVER: &str = "{api_url}";\\n'
         + pool_source
         + server_switch_helper
     )
-    source = replace_once(source, old_imports, new_imports, "imports and cloud API URL")
+    source = replace_once(source, imports_to_replace, new_imports, "imports and cloud API URL")
 
     # Remove the old local TCP event listener. Cloud ban/unban state comes from
     # the authenticated Cloudflare Durable Object WebSocket, not the admin phone.
