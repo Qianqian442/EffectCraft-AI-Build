@@ -14,7 +14,7 @@ futures = "0.3"
 jni = "0.21.1"
 libp2p = { version = "=0.57.1", default-features = false, features = [
   "autonat", "dcutr", "dns", "ed25519", "identify", "kad", "macros",
-  "mdns", "noise", "ping", "quic", "relay", "request-response", "json", "tcp", "tokio", "yamux"
+  "mdns", "noise", "ping", "quic", "relay", "request-response", "json", "rsa", "tcp", "tls", "tokio", "websocket", "yamux"
 ] }
 tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
 serde = { version = "1", features = ["derive"] }
