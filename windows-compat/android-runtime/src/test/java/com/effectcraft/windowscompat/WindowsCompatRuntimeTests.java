@@ -10,6 +10,11 @@ public final class WindowsCompatRuntimeTests {
     }
 
     @Test
+    public void launchesPrivateBionicExecutablesThroughAndroidLinker64() {
+        AndroidBionicProcessLauncherSelfTest.main(new String[0]);
+    }
+
+    @Test
     public void verifiesAndStreamsRuntimeAssets() throws Exception {
         RuntimeAssetInstallerSelfTest.main(new String[0]);
     }
