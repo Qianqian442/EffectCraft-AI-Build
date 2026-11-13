@@ -36,6 +36,7 @@ const CLIENT_AGENT_VERSION: &str = "/effectcraft/account-client/1.0.0";
 const ADMIN_SERVICE_KEY: &[u8] = b"/effectcraft/account-authorities/v1";
 const CLIENT_RPC_PROXY: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8789);
 const ADMIN_ACCOUNT_BRIDGE: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8788);
+const CLIENT_EVENT_PROXY: SocketAddr = SocketAddr::new(std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8790);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct AccountRpcRequest {
@@ -59,6 +60,10 @@ enum RpcCommand {
     Request {
         request: AccountRpcRequest,
         reply: std_mpsc::Sender<Result<AccountRpcResponse, String>>,
+    },
+    NotifyAccountStatus {
+        account_id: String,
+        body: String,
     },
     Shutdown,
 }
@@ -345,6 +350,49 @@ pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeStopAd
 }
 
 #[no_mangle]
+pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeNotifyAccountStatus(
+    mut env: JNIEnv,
+    _class: JClass,
+    account_id: JString,
+    status: JString,
+    until: JString,
+    reason: JString,
+) -> jstring {
+    let account_id = match env.get_string(&account_id) {
+        Ok(value) => value.to_string_lossy().into_owned(),
+        Err(error) => return new_java_string(&mut env, format!("ERROR:{error}")),
+    };
+    let status = match env.get_string(&status) {
+        Ok(value) => value.to_string_lossy().into_owned(),
+        Err(error) => return new_java_string(&mut env, format!("ERROR:{error}")),
+    };
+    let until = match env.get_string(&until) {
+        Ok(value) => value.to_string_lossy().into_owned(),
+        Err(error) => return new_java_string(&mut env, format!("ERROR:{error}")),
+    };
+    let reason = match env.get_string(&reason) {
+        Ok(value) => value.to_string_lossy().into_owned(),
+        Err(error) => return new_java_string(&mut env, format!("ERROR:{error}")),
+    };
+    if account_id.is_empty() || !matches!(status.as_str(), "banned" | "unbanned") {
+        return new_java_string(&mut env, "ERROR:invalid account status event".to_string());
+    }
+    let body = serde_json::json!({
+        "type": "account_status_changed",
+        "status": status,
+        "until": until,
+        "reason": reason
+    }).to_string();
+    let Some(sender) = current_rpc_command_tx() else {
+        return new_java_string(&mut env, "ERROR:P2P admin node is not running".to_string());
+    };
+    match sender.send(RpcCommand::NotifyAccountStatus { account_id, body }) {
+        Ok(_) => new_java_string(&mut env, "OK".to_string()),
+        Err(error) => new_java_string(&mut env, format!("ERROR:{error}")),
+    }
+}
+
+#[no_mangle]
 pub extern "system" fn Java_com_qianqian_effectcraftadmin_NativeP2P_nativeStatus(
     mut env: JNIEnv,
     _class: JClass,
@@ -454,6 +502,8 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
     let mut admin_peers: Vec<PeerId> = Vec::new();
     let mut deferred_rpc: VecDeque<(AccountRpcRequest, std_mpsc::Sender<Result<AccountRpcResponse, String>>)> = VecDeque::new();
     let mut pending_rpc: HashMap<request_response::OutboundRequestId, std_mpsc::Sender<Result<AccountRpcResponse, String>>> = HashMap::new();
+    let mut connected_accounts: HashMap<PeerId, String> = HashMap::new();
+    let mut pinned_admin_peer: Option<PeerId> = None;
 
     let mut discovery_tick = interval(DISCOVERY_INTERVAL);
     discovery_tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
@@ -477,6 +527,14 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                             let _ = reply.send(Err("必须先固定管理员 Peer ID，保护账号凭据不被冒充节点窃取".to_string()));
                             continue;
                         }
+                        let preferred_id = match PeerId::from_str(&request.preferred_peer_id) {
+                            Ok(peer) => peer,
+                            Err(_) => {
+                                let _ = reply.send(Err("管理员 Peer ID 格式不正确".to_string()));
+                                continue;
+                            }
+                        };
+                        pinned_admin_peer = Some(preferred_id);
                         let preferred = PeerId::from_str(&request.preferred_peer_id).ok()
                             .filter(|peer| admin_peers.contains(peer));
                         if let Some(peer) = preferred {
@@ -490,8 +548,29 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                             swarm.behaviour_mut().kad.get_providers(service_key.clone());
                         }
                     }
+                    Some(RpcCommand::NotifyAccountStatus { account_id, body }) if is_admin => {
+                        let peers: Vec<PeerId> = connected_accounts.iter()
+                            .filter(|(_, active_id)| *active_id == &account_id)
+                            .map(|(peer, _)| peer.clone())
+                            .collect();
+                        for peer in peers {
+                            if swarm.is_connected(&peer) {
+                                let event_request = AccountRpcRequest {
+                                    method: "POST".to_string(),
+                                    path: "/v1/events/push".to_string(),
+                                    token: String::new(),
+                                    body: body.clone(),
+                                    preferred_peer_id: String::new(),
+                                };
+                                let _ = swarm.behaviour_mut().account_rpc.send_request(&peer, event_request);
+                            }
+                        }
+                    }
                     Some(RpcCommand::Request { reply, .. }) => {
                         let _ = reply.send(Err("管理员节点不接受本机发起的账号请求".to_string()));
+                    }
+                    Some(RpcCommand::NotifyAccountStatus { .. }) => {
+                        set_snapshot(|state| state.last_error = "只有管理员节点可以推送账号状态".to_string());
                     }
                 }
             }
@@ -612,16 +691,26 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                         match message {
                             RpcMessage::Request { request, channel, .. } => {
                                 let response = if is_admin {
-                                    forward_to_local_account_service(&request)
+                                    let response = forward_to_local_account_service(&request);
+                                    if (200..300).contains(&response.status) {
+                                        if let Some(account_id) = account_id_from_response(&response) {
+                                            connected_accounts.insert(peer.clone(), account_id);
+                                        }
+                                    }
+                                    response
+                                } else if pinned_admin_peer.as_ref() == Some(&peer)
+                                    && request.method == "POST"
+                                    && request.path == "/v1/events/push"
+                                {
+                                    forward_to_local_client_event(&request)
                                 } else {
-                                    AccountRpcResponse { status: 403, body: r#"{\"detail\":\"该节点不是管理员账号服务器\"}"#.to_string() }
+                                    AccountRpcResponse { status: 403, body: r#"{\"detail\":\"该节点不是已固定的管理员账号服务器\"}"#.to_string() }
                                 };
                                 let _ = swarm.behaviour_mut().account_rpc.send_response(channel, response);
                                 set_snapshot(|state| {
-                                    state.status = if is_admin { "account_rpc_serving" } else { "account_rpc_rejected" }.to_string();
+                                    state.status = if is_admin { "account_rpc_serving" } else if request.path == "/v1/events/push" { "account_event_received" } else { "account_rpc_rejected" }.to_string();
                                     state.last_error.clear();
                                 });
-                                let _ = peer;
                             }
                             RpcMessage::Response { request_id, response } => {
                                 if let Some(reply) = pending_rpc.remove(&request_id) {
@@ -995,6 +1084,32 @@ fn write_proxy_error(stream: &mut TcpStream, detail: String) {
         let _ = writeln!(stream, "{serialized}");
         let _ = stream.flush();
     }
+}
+
+fn account_id_from_response(response: &AccountRpcResponse) -> Option<String> {
+    if !(200..300).contains(&response.status) {
+        return None;
+    }
+    let value: serde_json::Value = serde_json::from_str(&response.body).ok()?;
+    value.get("user")?.get("id")?.as_str().map(str::to_string)
+}
+
+fn forward_to_local_client_event(request: &AccountRpcRequest) -> AccountRpcResponse {
+    let mut stream = match TcpStream::connect_timeout(&CLIENT_EVENT_PROXY, Duration::from_secs(3)) {
+        Ok(stream) => stream,
+        Err(error) => return AccountRpcResponse {
+            status: 503,
+            body: serde_json::json!({"detail": format!("主 APK 事件接收器未就绪：{error}")}).to_string(),
+        },
+    };
+    let _ = stream.set_write_timeout(Some(Duration::from_secs(3)));
+    if writeln!(stream, "{}", request.body).is_err() || stream.flush().is_err() {
+        return AccountRpcResponse {
+            status: 503,
+            body: r#"{"detail":"无法将管理员状态通知交给主 APK"}"#.to_string(),
+        };
+    }
+    AccountRpcResponse { status: 200, body: r#"{"ok":true}"#.to_string() }
 }
 
 fn forward_to_local_account_service(request: &AccountRpcRequest) -> AccountRpcResponse {
