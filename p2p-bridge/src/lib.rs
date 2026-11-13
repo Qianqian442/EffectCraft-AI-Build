@@ -20,7 +20,7 @@ use jni::{JNIEnv, objects::{JClass, JString}, sys::jstring};
 use libp2p::{
     autonat,
     core::{Multiaddr, multiaddr::Protocol, transport::ListenerId},
-    dcutr, identify, identity, kad, mdns, noise, ping, relay, tcp,
+    dcutr, identify, identity, kad, mdns, noise, ping, relay, tcp, tls,
     request_response::{self, ProtocolSupport, Message as RpcMessage},
     swarm::{NetworkBehaviour, Swarm, SwarmEvent, StreamProtocol},
     SwarmBuilder, yamux, PeerId,
@@ -199,7 +199,7 @@ fn load_or_create_identity(directory: &Path) -> Result<identity::Keypair, String
     Ok(key)
 }
 
-fn build_swarm(key: identity::Keypair, is_admin: bool) -> Result<Swarm<EffectCraftBehaviour>, Box<dyn std::error::Error + Send + Sync>> {
+async fn build_swarm(key: identity::Keypair, is_admin: bool) -> Result<Swarm<EffectCraftBehaviour>, Box<dyn std::error::Error + Send + Sync>> {
     let swarm = SwarmBuilder::with_existing_identity(key.clone())
         .with_tokio()
         .with_tcp(
@@ -209,6 +209,8 @@ fn build_swarm(key: identity::Keypair, is_admin: bool) -> Result<Swarm<EffectCra
         )?
         .with_quic()
         .with_dns()?
+        .with_websocket((tls::Config::new, noise::Config::new), yamux::Config::default)
+        .await?
         .with_relay_client(noise::Config::new, yamux::Config::default)?
         .with_behaviour(|keypair, relay_client| {
             let peer_id = keypair.public().to_peer_id();
@@ -383,7 +385,7 @@ fn new_java_string(env: &mut JNIEnv, value: String) -> jstring {
 
 async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: UnboundedReceiver<RpcCommand>) {
     let local_peer_id = key.public().to_peer_id();
-    let mut swarm = match build_swarm(key, is_admin) {
+    let mut swarm = match build_swarm(key, is_admin).await {
         Ok(swarm) => swarm,
         Err(error) => {
             clear_rpc_command_tx();
