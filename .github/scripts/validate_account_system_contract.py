@@ -263,7 +263,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "self.local_only = true",
             "密码仅保留在当前运行内存",
             "std::time::Duration::from_secs(delay)",
-            ".min(300)",
+            ".min(3600)",
             'response.status == 409',
             "maybe_retry_pending_registration",
             "立即同步本地账号",
