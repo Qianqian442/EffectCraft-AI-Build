@@ -23,6 +23,19 @@ final class NativeP2P {
     private static native String nativeStartAdmin(String filesDirectory);
     private static native String nativeStopAdmin();
     private static native String nativeStatus();
+    private static native String nativeNotifyAccountStatus(String accountId, String status, String until, String reason);
+
+    static void notifyAccountStatus(String accountId, String status, String until, String reason) {
+        if (!AVAILABLE) return;
+        try {
+            String result = nativeNotifyAccountStatus(accountId, status, until, reason);
+            if (result == null || !result.equals("OK")) {
+                android.util.Log.w("EffectCraftAccountP2P", "Account status push was not queued: " + result);
+            }
+        } catch (Throwable error) {
+            android.util.Log.w("EffectCraftAccountP2P", "Account status push failed", error);
+        }
+    }
 
     static synchronized String start(Context context) {
         if (!AVAILABLE) return "ERROR:P2P原生组件未加载";
