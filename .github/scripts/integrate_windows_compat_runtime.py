@@ -139,6 +139,10 @@ pub(crate) fn start_windows_compat_runtime_install() -> Result<String, String> {
 pub(crate) fn poll_windows_compat_runtime_install(request_id: &str) -> Result<Option<String>, String> {
     windows_compat_android::poll_runtime_install(request_id)
 }
+
+pub(crate) fn start_windows_compat_aex_test(source_path: &str) -> Result<String, String> {
+    windows_compat_android::start_aex_plugin_test(source_path)
+}
 """
     lib.write_text(lib_source, encoding="utf-8")
 
