@@ -497,17 +497,20 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
 
     workspace_manifest = root / "Cargo.toml"
     workspace = workspace_manifest.read_text(encoding="utf-8")
-    if 'tungstenite = { version = "0.30"' not in workspace:
-        anchor = 'serde_json = { version = "1", features = ["float_roundtrip"] }\n'
+    workspace_additions: list[str] = []
+    # Upstream workspaces may already define ureq with a compatible version or
+    # feature set. Reuse that declaration instead of adding a conflicting second key.
+    if not re.search(r"(?m)^ureq\\s*=", workspace):
+        workspace_additions.append('ureq = "3.5"\\n')
+    if not re.search(r"(?m)^tungstenite\\s*=", workspace):
+        workspace_additions.append(
+            'tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }\\n'
+        )
+    if workspace_additions:
+        anchor = 'serde_json = { version = "1", features = ["float_roundtrip"] }\\n'
         if anchor not in workspace:
             raise SystemExit("Could not add HTTPS dependencies: workspace serde_json anchor is missing.")
-        workspace = workspace.replace(
-            anchor,
-            anchor
-            + 'ureq = "3.5"\n'
-            + 'tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }\n',
-            1,
-        )
+        workspace = workspace.replace(anchor, anchor + "".join(workspace_additions), 1)
         workspace_manifest.write_text(workspace, encoding="utf-8")
 
     # The Android launcher generator parses the entire workspace manifest. Validate
@@ -516,11 +519,16 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
 
     ui_manifest = root / "crates/ui-egui/Cargo.toml"
     ui = ui_manifest.read_text(encoding="utf-8")
-    if 'tungstenite = { workspace = true }' not in ui:
-        anchor = 'image = { workspace = true }\n'
+    ui_additions: list[str] = []
+    if not re.search(r"(?m)^ureq\\s*=", ui):
+        ui_additions.append('ureq = { workspace = true }\\n')
+    if not re.search(r"(?m)^tungstenite\\s*=", ui):
+        ui_additions.append('tungstenite = { workspace = true }\\n')
+    if ui_additions:
+        anchor = 'image = { workspace = true }\\n'
         if anchor not in ui:
             raise SystemExit("Could not add HTTPS dependencies: UI image dependency anchor is missing.")
-        ui = ui.replace(anchor, anchor + 'ureq = { workspace = true }\n' + 'tungstenite = { workspace = true }\n', 1)
+        ui = ui.replace(anchor, anchor + "".join(ui_additions), 1)
         ui_manifest.write_text(ui, encoding="utf-8")
 
     if "fn http_request_single" not in source or "API_SERVER_POOL" not in source or "切换服务器" not in source:
