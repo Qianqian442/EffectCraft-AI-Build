@@ -140,7 +140,6 @@ jobs:
           python3 .github/scripts/add_plugin_import_button.py
           python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
-          python3 .github/scripts/add_desktop_plugin_package_support.py
           grep -Fq 'fn windows_pe_metadata' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'fn inspect_desktop_native_file' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'return inspect_desktop_native_file(s, path)' effectcraft/crates/engine/src/cmd/effect.rs
