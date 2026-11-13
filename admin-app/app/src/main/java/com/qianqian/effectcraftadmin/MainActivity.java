@@ -47,9 +47,8 @@ import java.util.concurrent.Executors;
 
 public final class MainActivity extends Activity {
     private final ExecutorService io = Executors.newSingleThreadExecutor();
-    private static final String DEFAULT_SERVER = "http://127.0.0.1:8787";
+    private static final String DEFAULT_SERVER = BuildConfig.ACCOUNT_API_URL;
     private String server = DEFAULT_SERVER;
-    private String firstAdminPassword;
     private String adminToken = "";
     private LinearLayout root;
     private LinearLayout rows;
@@ -72,16 +71,16 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        firstAdminPassword = LanAccountServer.ensureAdminPassword(this);
-        if (isNodeServerEnabled()) {
-            try { startNodeServerService(); }
-            catch (RuntimeException ignored) { /* The login screen will keep the server error visible. */ }
-        }
+        // The Cloudflare HTTPS API is the single account authority; do not start a second local account database.
         p2pUiHandler.postDelayed(p2pStatusRefresh, 2500);
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
         server = trimServer(DEFAULT_SERVER);
+        String savedServer = getPreferences(MODE_PRIVATE).getString("server", "");
+        if (!server.equals(savedServer)) {
+            getPreferences(MODE_PRIVATE).edit().remove("admin_token").remove("server").apply();
+        }
         adminToken = getPreferences(MODE_PRIVATE).getString("admin_token", "");
         if (!adminToken.isEmpty()) {
             showConnecting("正在验证本机管理员账号…");
@@ -264,10 +263,10 @@ public final class MainActivity extends Activity {
         page.addView(text("Ae账号管理", 24, true), new LinearLayout.LayoutParams(-1, dp(56)));
         TextView status = text(message, 15, false);
         page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
-        page.addView(text("正在连接本机账号数据库，并通过 P2P 为其他手机提供加密账号服务。", 12, false));
+        page.addView(text("正在连接共享云端 HTTPS 账号服务，账号和封禁状态在不同地区的设备间同步。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
-            showConnecting("正在重新连接本机账号服务…");
+            showConnecting("正在重新连接云端账号服务…");
             loadUsers("");
         });
         page.addView(retry, new LinearLayout.LayoutParams(-1, dp(48)));
@@ -285,11 +284,11 @@ public final class MainActivity extends Activity {
         LinearLayout page = column();
         TextView title = text("EffectCraft 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
-        page.addView(text("本机账号管理：账号数据库保存在这部管理员手机上。", 14, false));
-        page.addView(text("其他用户无需与管理员处于同一 Wi-Fi；主 APK 自动发现本机节点，并通过加密 P2P 通道注册、登录和核验封禁状态。", 13, false));
+        page.addView(text("云端账号管理：主 APK 与管理版共用同一个 HTTPS 账号数据库。", 14, false));
+        page.addView(text("用户和管理员可以处于不同城市、不同 Wi-Fi 或使用移动数据；封禁和解禁状态由云端统一保存。", 13, false));
         addNodeServerToggle(page);
-        page.addView(text("服务器地址", 13, true));
-        serverInput = field("服务器地址由管理版自动配置", false);
+        page.addView(text("云端 HTTPS 服务器地址", 13, true));
+        serverInput = field("由 APK 构建时配置的 Cloudflare HTTPS 地址", false);
         serverInput.setText(server);
         serverInput.setEnabled(false);
         page.addView(serverInput);
@@ -302,26 +301,20 @@ public final class MainActivity extends Activity {
         page.addView(passwordInput);
         loginButton = button("登录管理后台");
         page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
-        loginStatus = text("请输入管理员密码；本机注册人数为 0 时，首次登录会采用本次输入密码。", 12, false);
+        loginStatus = text("请输入云端管理员密码。账号登录与管理操作均由云端验证。", 12, false);
         loginStatus.setTextColor(Color.rgb(95, 103, 115));
         page.addView(loginStatus, new LinearLayout.LayoutParams(-1, dp(36)));
         loginButton.setOnClickListener(v -> doAdminLogin());
-        page.addView(text("管理员账号固定为 admin。本机尚无注册账号时，首次登录会将本次输入的密码保存为管理员密码；注册账号后不再允许通过此入口重设。", 12, false));
+        page.addView(text("管理员账号固定为 admin；密码由云端 Worker 的 ADMIN_PASSWORD 安全配置项控制。", 12, false));
         setRoot(page);
-        if (firstAdminPassword != null) {
-            String password = firstAdminPassword;
-            firstAdminPassword = null;
-            new AlertDialog.Builder(this)
-                .setTitle("本机管理员初始密码")
-                .setMessage("这是本机账号数据库生成的唯一初始管理员密码。请先复制并妥善保存，后续登录需要使用它：\\n\\n" + password)
-                .setPositiveButton("我已保存", (dialog, which) -> LanAccountServer.acknowledgeAdminPasswordSaved(this))
-                .setCancelable(false)
-                .show();
-        }
     }
 
     private void doAdminLogin() {
         server = trimServer(DEFAULT_SERVER);
+        if (server.isEmpty() || !server.startsWith("https://") || !server.endsWith(".workers.dev")) {
+            if (loginStatus != null) loginStatus.setText("云端 HTTPS 地址尚未配置，暂时不能登录。请先完成 Cloudflare 部署。");
+            return;
+        }
         String user = usernameInput.getText().toString().trim();
         // The generated admin password contains no spaces. Ignore accidental
         // leading/trailing whitespace added by mobile clipboard or IME input.
@@ -336,7 +329,7 @@ public final class MainActivity extends Activity {
             loginButton.setEnabled(false);
             loginButton.setText("正在验证…");
         }
-        if (loginStatus != null) loginStatus.setText("正在等待本机 SQLite 服务就绪并校验管理员密码…");
+        if (loginStatus != null) loginStatus.setText("正在通过 HTTPS 验证云端管理员账号…");
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
             if (result == null) {
                 if (loginButton != null) {
@@ -369,63 +362,8 @@ public final class MainActivity extends Activity {
         return s;
     }
 
-    private static final class AdminCredentialMismatchException extends Exception {
-        AdminCredentialMismatchException(String message) { super(message); }
-    }
 
     private interface JsonCallback { void done(JSONObject result); }
-
-    /**
-     * Wait until the foreground service has bound its loopback HTTP endpoint and
-     * SQLite has passed an integrity check. The Activity can be visible before
-     * Android has finished creating the foreground service, so a fixed immediate
-     * login request races the service startup.
-     */
-    private void awaitLocalAccountService() throws Exception {
-        if (!serviceStartError.isEmpty()) throw new java.io.IOException(serviceStartError);
-        long deadline = System.currentTimeMillis() + 15000L;
-        String lastProblem = "后台服务仍在启动";
-        while (System.currentTimeMillis() < deadline) {
-            HttpURLConnection probe = null;
-            try {
-                URL healthUrl = new URL(DEFAULT_SERVER + "/health");
-                probe = (HttpURLConnection) healthUrl.openConnection();
-                probe.setConnectTimeout(900);
-                probe.setReadTimeout(1200);
-                probe.setRequestMethod("GET");
-                probe.setRequestProperty("Accept", "application/json");
-                int code = probe.getResponseCode();
-                InputStream input = code >= 200 && code < 300 ? probe.getInputStream() : probe.getErrorStream();
-                ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-                if (input != null) {
-                    try (InputStream stream = input) {
-                        byte[] buffer = new byte[1024];
-                        int count;
-                        while ((count = stream.read(buffer)) > 0) bytes.write(buffer, 0, count);
-                    }
-                }
-                JSONObject health = new JSONObject(new String(bytes.toByteArray(), StandardCharsets.UTF_8));
-                if (code == 200 && health.optBoolean("ready", false)
-                    && "ready".equals(health.optString("database", ""))) {
-                    return;
-                }
-                Object detail = health.opt("detail");
-                if (detail instanceof JSONObject) lastProblem = ((JSONObject) detail).optString("message", detail.toString());
-                else lastProblem = detail == null ? ("健康检查返回 HTTP " + code) : detail.toString();
-            } catch (Exception error) {
-                lastProblem = error.getClass().getSimpleName()
-                    + (error.getMessage() == null ? "" : "：" + error.getMessage());
-            } finally {
-                if (probe != null) probe.disconnect();
-            }
-            try { Thread.sleep(350L); }
-            catch (InterruptedException interrupted) {
-                Thread.currentThread().interrupt();
-                throw new java.io.IOException("等待本机账号服务时被中断");
-            }
-        }
-        throw new java.io.IOException("等待本机 SQLite 账号服务超时（15秒）：" + lastProblem);
-    }
 
     private void requestAsync(String method, String path, JSONObject body, boolean auth, JsonCallback callback) {
         io.execute(() -> {
@@ -433,25 +371,13 @@ public final class MainActivity extends Activity {
             String error = null;
             HttpURLConnection c = null;
             try {
-                if (path.startsWith("/v1/admin/")) {
-                    awaitLocalAccountService();
-                    if ("/v1/admin/login".equals(path)) {
-                        String candidate = body == null ? "" : body.optString("password", "");
-                        if (!LanAccountServer.verifyAdminPasswordOnDevice(getApplicationContext(), candidate)) {
-                            // Allow the owner to adopt the password entered here
-                            // only when this phone's SQLite account DB is empty.
-                            // Existing users always keep the current admin credential.
-                            if (!LanAccountServer.adoptAdminPasswordIfNoRegisteredUsers(
-                                getApplicationContext(), candidate)) {
-                                throw new AdminCredentialMismatchException(
-                                    "管理员密码校验失败。只有本机账号库确认为 0 个注册账号时，才允许首次设置/更改管理员密码；当前未修改密码。");
-                            }
-                        }
-                    }
+                if (server.isEmpty() || !server.startsWith("https://") || !server.endsWith(".workers.dev")) {
+                    throw new java.io.IOException("尚未配置有效的云端 HTTPS 账号服务器");
                 }
                 URL url = new URL(server + path);
-                if (!"http".equalsIgnoreCase(url.getProtocol()) || !"127.0.0.1".equals(url.getHost()) || url.getPort() != 8787) {
-                    throw new java.io.IOException("账号管理界面只允许访问本机管理员账号服务");
+                URL configured = new URL(BuildConfig.ACCOUNT_API_URL);
+                if (!"https".equalsIgnoreCase(url.getProtocol()) || !url.getHost().equals(configured.getHost())) {
+                    throw new java.io.IOException("账号管理请求只能发送到构建时配置的 HTTPS 云端地址");
                 }
                 c = (HttpURLConnection) url.openConnection();
                 c.setRequestMethod(method);
@@ -490,7 +416,7 @@ public final class MainActivity extends Activity {
             } catch (AdminCredentialMismatchException e) {
                 error = e.getMessage();
             } catch (Exception e) {
-                error = "无法连接本机账号服务：" + e.getMessage();
+                error = "无法连接云端 HTTPS 账号服务：" + e.getMessage();
             } finally {
                 if (c != null) c.disconnect();
             }
