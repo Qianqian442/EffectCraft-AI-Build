@@ -84,7 +84,10 @@ export class AccountSessionHub {
         server.send(JSON.stringify({
           type: "account_status_changed",
           status: lastStatus.status,
-          banned_until: lastStatus.banned_until || null
+          banned_until: lastStatus.banned_until || null,
+          until: lastStatus.banned_until || null,
+          reason: lastStatus.reason || "",
+          changed_at: lastStatus.changed_at || null
         }));
       }
       return new Response(null, { status: 101, webSocket: client });
@@ -98,7 +101,9 @@ export class AccountSessionHub {
       }
       await this.ctx.storage.put("last_status", {
         status: event.status,
-        banned_until: event.status === "banned" ? event.banned_until : null
+        banned_until: event.status === "banned" ? event.banned_until : null,
+        reason: event.status === "banned" ? String(event.reason || "") : "",
+        changed_at: event.changed_at || new Date().toISOString()
       });
       const payload = JSON.stringify(event);
       let delivered = 0;
