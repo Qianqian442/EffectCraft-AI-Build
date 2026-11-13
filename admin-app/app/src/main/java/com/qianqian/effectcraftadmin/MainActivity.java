@@ -59,8 +59,12 @@ public final class MainActivity extends Activity {
     private Button loginButton;
     private TextView loginStatus;
     private TextView p2pStatusView;
+    private TextView accountCountView;
+    private TextView accountFilterCountView;
+    private Switch accountServiceSwitch;
     private String serviceStartError = "";
     private boolean serverToggleChanging = false;
+    private boolean accountServiceSwitchChanging = false;
     private final Handler p2pUiHandler = new Handler(Looper.getMainLooper());
     private final Runnable p2pStatusRefresh = new Runnable() {
         @Override public void run() {
@@ -185,7 +189,7 @@ public final class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        TextView label = text("账号服务器开关", 14, true);
+        TextView label = text("本机 P2P 辅助节点开关", 14, true);
         row.addView(label, new LinearLayout.LayoutParams(0, dp(48), 1));
         Switch control = new Switch(this);
         control.setTextOn("开启");
@@ -194,7 +198,7 @@ public final class MainActivity extends Activity {
         control.setOnCheckedChangeListener((button, enabled) -> setNodeServerEnabled(enabled, control));
         row.addView(control, new LinearLayout.LayoutParams(-2, dp(48)));
         parent.addView(row);
-        parent.addView(text("开启：本机 SQLite 账号库和加密 P2P 节点对外服务；关闭：停止节点与账号服务。", 11, false));
+        parent.addView(text("仅控制本机 P2P 辅助节点；主 APK 与管理版的账号数据统一保存在 Cloudflare 云端，不受此开关影响。", 11, false));
     }
 
     /** The administrator phone is the account authority; P2P carries authenticated account RPC. */
@@ -203,8 +207,8 @@ public final class MainActivity extends Activity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(10));
         panel.setBackground(rounded(Color.WHITE));
-        panel.addView(text("管理员手机账号节点", 16, true));
-        panel.addView(text("账号数据保存在本机 SQLite；用户注册、登录、资料修改和封禁状态均由本机校验。", 12, false));
+        panel.addView(text("本机 P2P 辅助节点", 16, true));
+        panel.addView(text("云端账号数据库是主 APK 与管理版共同使用的账号来源；本面板仅管理本机 P2P 辅助节点。", 12, false));
         addNodeServerToggle(panel);
         p2pStatusView = text(readP2PStatus(), 11, false);
         p2pStatusView.setTextColor(Color.rgb(75, 84, 98));
@@ -221,7 +225,7 @@ public final class MainActivity extends Activity {
             } catch (Exception error) { toast("复制节点 ID 失败：" + error.getMessage()); }
         });
         panel.addView(copyPeer, new LinearLayout.LayoutParams(-1, dp(44)));
-        TextView note = text("同一 Wi-Fi 优先直连；跨网络尝试 NAT 打洞，失败后使用动态发现的可用公共 Relay。用户通过加密 P2P 请求访问本机账号库。首次配对时可分享本节点 ID。", 11, false);
+        TextView note = text("同一 Wi-Fi 优先直连；跨网络尝试 NAT 打洞，失败后使用动态发现的可用公共 Relay。此节点状态不替代云端账号服务器。", 11, false);
         note.setTextColor(Color.rgb(95, 103, 115));
         panel.addView(note);
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
@@ -478,36 +482,114 @@ public final class MainActivity extends Activity {
         try { encoded = URLEncoder.encode(query, "UTF-8"); } catch (Exception e) { encoded = ""; }
         requestAsync("GET", "/v1/admin/users?q=" + encoded, null, true, result -> {
             if (result == null) {
-                // Do not leave the Activity blank or stuck on an expired token.
                 adminToken = "";
                 getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
                 showLogin();
                 return;
             }
-            showUsers(result.optJSONArray("users"));
+            JSONArray users = result.optJSONArray("users");
+            int totalCount = result.optInt("total_count", users == null ? 0 : users.length());
+            int filteredCount = result.optInt("filtered_count", users == null ? 0 : users.length());
+            showUsers(users, totalCount, filteredCount);
         });
     }
 
-    private void showUsers(JSONArray users) {
+    private void addAccountServiceControl(LinearLayout page) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(8), dp(12), dp(8));
+        panel.setBackground(rounded(Color.WHITE));
+        panel.addView(text("云端账号服务器", 16, true));
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = text("账号服务开关", 14, true);
+        row.addView(label, new LinearLayout.LayoutParams(0, dp(48), 1));
+        Switch control = new Switch(this);
+        control.setTextOn("开启");
+        control.setTextOff("关闭");
+        control.setChecked(true);
+        control.setEnabled(false);
+        row.addView(control, new LinearLayout.LayoutParams(-2, dp(48)));
+        panel.addView(row);
+        TextView note = text("关闭后，用户端不能注册、登录或验证账号；管理员仍可进入本后台并重新开启。此开关控制云端账号服务，不会删除账号资料。", 11, false);
+        note.setTextColor(Color.rgb(95, 103, 115));
+        panel.addView(note);
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(10);
+        page.addView(panel, params);
+        accountServiceSwitch = control;
+        control.setOnCheckedChangeListener((button, enabled) -> setAccountServiceEnabled(enabled, control));
+        requestAsync("GET", "/v1/admin/server", null, true, result -> {
+            if (result == null) {
+                control.setEnabled(false);
+                return;
+            }
+            accountServiceSwitchChanging = true;
+            control.setChecked(result.optBoolean("enabled", true));
+            accountServiceSwitchChanging = false;
+            control.setEnabled(true);
+        });
+    }
+
+    private void setAccountServiceEnabled(boolean enabled, Switch control) {
+        if (accountServiceSwitchChanging) return;
+        control.setEnabled(false);
+        JSONObject body = new JSONObject();
+        try { body.put("enabled", enabled); } catch (Exception ignored) {}
+        requestAsync("POST", "/v1/admin/server", body, true, result -> {
+            if (result == null) {
+                accountServiceSwitchChanging = true;
+                control.setChecked(!enabled);
+                accountServiceSwitchChanging = false;
+                control.setEnabled(true);
+                return;
+            }
+            boolean confirmed = result.optBoolean("enabled", enabled);
+            accountServiceSwitchChanging = true;
+            control.setChecked(confirmed);
+            accountServiceSwitchChanging = false;
+            control.setEnabled(true);
+            toast(confirmed ? "云端账号服务器已开启" : "云端账号服务器已关闭；账号数据保留，管理员仍可重新开启");
+        });
+    }
+
+    private void showUsers(JSONArray users, int totalCount, int filteredCount) {
         LinearLayout page = column();
+        TextView title = text("EffectCraft 账号管理", 22, true);
+        page.addView(title, new LinearLayout.LayoutParams(-1, dp(44)));
+
+        accountCountView = text("云端已注册账号：" + totalCount + " 个", 18, true);
+        accountCountView.setTextColor(Color.rgb(40, 90, 150));
+        page.addView(accountCountView, new LinearLayout.LayoutParams(-1, dp(36)));
+        accountFilterCountView = text("当前显示 " + (users == null ? 0 : users.length()) + " 个 / 匹配 " + filteredCount + " 个", 12, false);
+        accountFilterCountView.setTextColor(Color.rgb(95, 103, 115));
+        page.addView(accountFilterCountView, new LinearLayout.LayoutParams(-1, dp(28)));
+
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("账号管理 · 共 " + (users == null ? 0 : users.length()) + " 个账号", 22, true);
-        top.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
         Button switchServer = button("切换服务器");
-        top.addView(switchServer);
+        Button refresh = button("刷新账号");
+        LinearLayout.LayoutParams half = new LinearLayout.LayoutParams(0, dp(44), 1);
+        half.rightMargin = dp(4);
+        top.addView(switchServer, half);
+        LinearLayout.LayoutParams half2 = new LinearLayout.LayoutParams(0, dp(44), 1);
+        half2.leftMargin = dp(4);
+        top.addView(refresh, half2);
         switchServer.setOnClickListener(v -> switchCloudServer());
-        Button refresh = button("刷新");
-        top.addView(refresh);
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
+
+        addAccountServiceControl(page);
         addGlobalNodePanel(page);
+
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
         Button search = button("搜索账号");
         page.addView(search, new LinearLayout.LayoutParams(-1, dp(46)));
         search.setOnClickListener(v -> loadUsers(searchInput.getText().toString()));
+
         ScrollView scroll = new ScrollView(this);
         rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
@@ -515,6 +597,7 @@ public final class MainActivity extends Activity {
         LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(-1, 0, 1);
         scrollParams.topMargin = dp(12);
         page.addView(scroll, scrollParams);
+
         Button logout = button("退出管理员账号");
         page.addView(logout, new LinearLayout.LayoutParams(-1, dp(46)));
         logout.setOnClickListener(v -> {
@@ -552,15 +635,23 @@ public final class MainActivity extends Activity {
         String wechat = user.optString("wechat", "");
         String until = user.optString("banned_until", "");
         boolean banned = !until.isEmpty() && !until.equals("null");
-        LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
-        row.setPadding(dp(10), dp(9), dp(8), dp(9));
-        row.setBackground(rounded(Color.WHITE));
-        row.setTag(id);
-        LinearLayout.LayoutParams rp = new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT);
-        rp.bottomMargin = dp(8);
-        rows.addView(row, rp);
+
+        // One vertical card per account: details on top, full-width action row below.
+        // This prevents the Ban/Unban controls from colliding with account text on small phones.
+        LinearLayout card = new LinearLayout(this);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setGravity(Gravity.CENTER_VERTICAL);
+        card.setPadding(dp(10), dp(9), dp(10), dp(9));
+        card.setBackground(rounded(Color.WHITE));
+        card.setTag(id);
+        LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT);
+        cardParams.bottomMargin = dp(8);
+        rows.addView(card, cardParams);
+
+        LinearLayout details = new LinearLayout(this);
+        details.setOrientation(LinearLayout.HORIZONTAL);
+        details.setGravity(Gravity.CENTER_VERTICAL);
+        card.addView(details, new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         String avatarUrl = user.optString("avatar_url", "");
         if (!avatarUrl.isEmpty()) {
@@ -568,22 +659,24 @@ public final class MainActivity extends Activity {
             avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
             avatar.setBackground(rounded(Color.rgb(66, 105, 180)));
             avatar.setClipToOutline(true);
-            row.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+            details.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
             loadAvatar(avatar, avatarUrl);
         } else {
             TextView avatar = text(name.isEmpty() ? "?" : name.substring(0, 1), 20, true);
             avatar.setGravity(Gravity.CENTER);
             avatar.setTextColor(Color.WHITE);
             avatar.setBackground(rounded(Color.rgb(66, 105, 180)));
-            row.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+            details.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
         }
 
         LinearLayout info = new LinearLayout(this);
         info.setOrientation(LinearLayout.VERTICAL);
-        info.setPadding(dp(10), 0, dp(6), 0);
+        info.setPadding(dp(10), 0, dp(4), 0);
         TextView label = text(name, 15, true);
-        TextView ids = text("QQ " + qq + "  ·  微信 " + wechat, 11, false);
+        TextView ids = text("QQ " + (qq.isEmpty() ? "未填写" : qq) + "  ·  微信 " + (wechat.isEmpty() ? "未填写" : wechat), 11, false);
         ids.setTextColor(Color.rgb(95, 103, 115));
+        label.setMaxLines(1);
+        ids.setMaxLines(2);
         info.addView(label);
         info.addView(ids);
         if (banned) {
@@ -591,31 +684,24 @@ public final class MainActivity extends Activity {
             ban.setTextColor(Color.rgb(180, 58, 58));
             info.addView(ban);
         }
-        row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        details.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        details.setOnClickListener(v -> showUserDetails(user));
 
-        // Keep both actions visible for every account. Reapplying a ban is allowed
-        // so the administrator can extend or change its expiry; unban is disabled
-        // only when the account is not currently banned.
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
-
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(-1, dp(44));
+        actionsParams.topMargin = dp(8);
         Button banButton = button("封禁");
         Button unbanButton = button("解禁");
         unbanButton.setEnabled(banned);
-
-        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)
-        );
-        actionParams.leftMargin = dp(3);
-        actionParams.rightMargin = dp(3);
-        actions.addView(banButton, actionParams);
-        actions.addView(unbanButton, actionParams);
-        row.addView(actions, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
-
-        row.setOnClickListener(v -> showUserDetails(user));
+        LinearLayout.LayoutParams actionLeft = new LinearLayout.LayoutParams(0, dp(42), 1);
+        actionLeft.rightMargin = dp(4);
+        LinearLayout.LayoutParams actionRight = new LinearLayout.LayoutParams(0, dp(42), 1);
+        actionRight.leftMargin = dp(4);
+        actions.addView(banButton, actionLeft);
+        actions.addView(unbanButton, actionRight);
+        card.addView(actions, actionsParams);
         banButton.setOnClickListener(v -> chooseBan(id));
         unbanButton.setOnClickListener(v -> unban(id));
     }
