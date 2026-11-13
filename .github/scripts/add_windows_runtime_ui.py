@@ -41,6 +41,7 @@ def main() -> None:
 """
     action_replacement = """        Start(String),
         PrepareRuntime(String, usize),
+        TestAexPlugin(String),
         ReturnToConfirm(String, usize),
         Cancel,
 """
@@ -87,8 +88,10 @@ def main() -> None:
             ImportState::RuntimeSetup { path, native_count, request_id, status } => {
                 let mut open = true;
                 let mut return_to_import = false;
-                let ready = status.starts_with("READY:");
-                let failed = status.starts_with("ERROR:");
+                let mut test_plugin = false;
+                let ready = status.starts_with("READY:") || status.starts_with("EXIT:0");
+                let failed = status.starts_with("ERROR:")
+                    || (status.starts_with("EXIT:") && !status.starts_with("EXIT:0"));
                 let screen = ctx.content_rect();
                 egui::Window::new("Windows x86/x64 兼容运行环境")
                     .id(Id::new("effectcraft-windows-runtime-setup"))
@@ -111,14 +114,24 @@ def main() -> None:
                             ui.heading("兼容运行环境安装失败");
                         }
                         ui.label(status.as_str());
-                        if ready {
+                        if status.starts_with("READY:") {
                             ui.add_space(6.0);
-                            ui.small("注意：环境安装成功不等于当前 .aex/.dll 已经能够运行。仍需执行架构匹配、宿主加载、参数和渲染测试。");
+                            ui.small("宿主已安装。下面可以对当前导入包中的第一个 .aex 文件做一次隔离运行测试；测试通过也不代表所有插件功能均兼容。");
+                        } else if status.starts_with("EXIT:") {
+                            ui.small("进程退出码只表示宿主进程的结束状态；仍需核对日志和实际渲染输出。");
+                        }
+                        if ready {
+                            ui.add_space(8.0);
+                            if ui.button("测试当前导入包中的第一个 AEX 插件").clicked() {
+                                test_plugin = true;
+                            }
                         }
                         ui.add_space(8.0);
                         if ui.button("返回插件移植").clicked() { return_to_import = true; }
                     });
-                if return_to_import || !open {
+                if test_plugin {
+                    action = Some(Action::TestAexPlugin(path.clone()));
+                } else if return_to_import || !open {
                     action = Some(Action::ReturnToConfirm(path.clone(), *native_count));
                 } else if !ready && !failed {
                     ctx.request_repaint_after(Duration::from_millis(250));
@@ -175,6 +188,23 @@ def main() -> None:
                         path, native_count, request_id: String::new(),
                         status: format!("ERROR: {error}"),
                     });
+                }
+            }
+        }
+        Some(Action::TestAexPlugin(path)) => {
+            match crate::start_windows_compat_aex_test(&path) {
+                Ok(request_id) => {
+                    if let Some(ImportState::RuntimeSetup { request_id: current, status, .. }) =
+                        app.plugin_import.as_mut()
+                    {
+                        *current = request_id;
+                        *status = "RUNNING: 正在启动架构匹配的 AEX 宿主…".into();
+                    }
+                }
+                Err(error) => {
+                    if let Some(ImportState::RuntimeSetup { status, .. }) = app.plugin_import.as_mut() {
+                        *status = format!("ERROR: {error}");
+                    }
                 }
             }
         }
