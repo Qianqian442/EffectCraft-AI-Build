@@ -14,12 +14,45 @@ use crate::EffectcraftApp;
 use egui::{Align2, Color32, Id, Order, Sense, Stroke, StrokeKind, Vec2, pos2, vec2};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::io::{Read, Write};
-use std::net::{TcpStream, ToSocketAddrs};
+use std::io::{BufRead, BufReader, Read, Write};
+use std::net::{TcpListener, TcpStream, ToSocketAddrs};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::time::Duration;
 
 const DEFAULT_SERVER: &str = "p2p://auto";
+const ACCOUNT_EVENT_PROXY: std::net::SocketAddr = std::net::SocketAddr::new(
+    std::net::IpAddr::V4(std::net::Ipv4Addr::LOCALHOST), 8790,
+);
+static ACCOUNT_EVENT_LISTENER_STARTED: AtomicBool = AtomicBool::new(false);
+
+fn start_account_event_listener() -> Option<Receiver<Value>> {
+    if ACCOUNT_EVENT_LISTENER_STARTED.swap(true, Ordering::AcqRel) {
+        return None;
+    }
+    let (sender, receiver) = mpsc::channel::<Value>();
+    std::thread::spawn(move || {
+        let listener = match TcpListener::bind(ACCOUNT_EVENT_PROXY) {
+            Ok(listener) => listener,
+            Err(error) => {
+                eprintln!("EffectCraft account event listener could not bind: {error}");
+                ACCOUNT_EVENT_LISTENER_STARTED.store(false, Ordering::Release);
+                return;
+            }
+        };
+        for incoming in listener.incoming() {
+            let Ok(stream) = incoming else { continue; };
+            let mut line = String::new();
+            if BufReader::new(stream).read_line(&mut line).is_ok() {
+                if let Ok(event) = serde_json::from_str::<Value>(&line) {
+                    let _ = sender.send(event);
+                }
+            }
+        }
+        ACCOUNT_EVENT_LISTENER_STARTED.store(false, Ordering::Release);
+    });
+    Some(receiver)
+}
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum Mode {
@@ -96,7 +129,7 @@ pub(crate) struct AccountState {
     status: String,
     pending: Option<Receiver<Result<HttpResult, String>>>,
     pending_action: Option<Action>,
-    last_verified: Option<std::time::Instant>,
+    events: Option<Receiver<Value>>,
 }
 
 impl Default for AccountState {
@@ -126,7 +159,7 @@ impl Default for AccountState {
             status: String::new(),
             pending: None,
             pending_action: None,
-            last_verified: None,
+            events: None,
         }
     }
 }
@@ -137,6 +170,9 @@ impl AccountState {
     }
 
     fn ensure_loaded(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        if self.events.is_none() {
+            self.events = start_account_event_listener();
+        }
         if self.loaded {
             return;
         }
@@ -276,7 +312,6 @@ impl AccountState {
                     if let Some(user) = response.body.get("user").cloned().and_then(|v| serde_json::from_value::<User>(v).ok()) {
                         self.user = Some(user);
                         self.mode = Mode::Editor;
-                        self.last_verified = Some(std::time::Instant::now());
                         self.status.clear();
                         self.persist(config);
                     } else {
@@ -311,6 +346,34 @@ impl AccountState {
                     }
                 }
             },
+        }
+    }
+
+    fn poll_events(&mut self) {
+        let event = match self.events.as_ref().map(|rx| rx.try_recv()) {
+            Some(Ok(event)) => Some(event),
+            Some(Err(TryRecvError::Disconnected)) | Some(Err(TryRecvError::Empty)) | None => None,
+        };
+        let Some(event) = event else { return; };
+        if event.get("type").and_then(Value::as_str) != Some("account_status_changed") {
+            return;
+        }
+        match event.get("status").and_then(Value::as_str).unwrap_or("") {
+            "banned" => {
+                self.banned_until = event.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
+                self.ban_reason = event.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
+                self.mode = Mode::Banned;
+                self.status = "管理员已封禁此账号".to_string();
+            }
+            "unbanned" => {
+                self.banned_until.clear();
+                self.ban_reason.clear();
+                if self.user.is_some() {
+                    self.mode = Mode::Editor;
+                    self.status = "管理员已解除封禁".to_string();
+                }
+            }
+            _ => {}
         }
     }
 
@@ -446,12 +509,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
     let config = config.as_deref();
     app.account.ensure_loaded(config);
     app.account.poll(config);
-    if app.account.mode == Mode::Editor
-        && app.account.pending.is_none()
-        && app.account.last_verified.map_or(true, |last| last.elapsed() > std::time::Duration::from_secs(10))
-    {
-        app.account.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
-    }
+    app.account.poll_events();
 
     if app.account.mode == Mode::Editor {
         if app.ui.start_screen {
