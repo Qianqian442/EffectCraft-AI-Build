@@ -297,7 +297,7 @@ public final class MainActivity extends Activity {
         usernameInput.setText("admin");
         page.addView(usernameInput);
         page.addView(text("管理员密码", 13, true));
-        passwordInput = field("输入本机管理员密码；首次设置输入新密码", true);
+        passwordInput = field("输入云端管理员密码", true);
         page.addView(passwordInput);
         loginButton = button("登录管理后台");
         page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
@@ -320,7 +320,7 @@ public final class MainActivity extends Activity {
         // leading/trailing whitespace added by mobile clipboard or IME input.
         String pass = passwordInput.getText().toString().trim();
         if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) {
-            toast("请填写服务器地址、管理员账号和密码");
+            toast("请填写管理员账号和密码");
             return;
         }
         JSONObject body = new JSONObject();
@@ -413,8 +413,6 @@ public final class MainActivity extends Activity {
                         getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
                     }
                 }
-            } catch (AdminCredentialMismatchException e) {
-                error = e.getMessage();
             } catch (Exception e) {
                 error = "无法连接云端 HTTPS 账号服务：" + e.getMessage();
             } finally {
