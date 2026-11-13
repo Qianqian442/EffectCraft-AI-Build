@@ -228,6 +228,25 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     # Replace external companion-package calls with explicit, in-process Android service calls.
     java = builder / "templates/android/SafActivity.java"
     j = java.read_text(encoding="utf-8")
+    # The Kotlin AI components are staged in com.artcraft.effectcraft.aiassistant,
+    # while SafActivity is generated in com.artcraft.effectcraft. Import both
+    # explicitly so javac can resolve the in-APK model manager and inference service.
+    ai_imports = (
+        "import com.artcraft.effectcraft.aiassistant.InferenceService;\\n"
+        "import com.artcraft.effectcraft.aiassistant.PluginManagerActivity;\\n"
+    )
+    if "import com.artcraft.effectcraft.aiassistant.InferenceService;" not in j:
+        package_end = j.find("\\n")
+        if package_end < 0 or not j.startswith("package "):
+            raise SystemExit("Could not locate the generated Android launcher package declaration.")
+        j = j[:package_end + 1] + "\\n" + ai_imports + j[package_end + 1:]
+    elif "import com.artcraft.effectcraft.aiassistant.PluginManagerActivity;" not in j:
+        j = j.replace(
+            "import com.artcraft.effectcraft.aiassistant.InferenceService;\\n",
+            "import com.artcraft.effectcraft.aiassistant.InferenceService;\\n"
+            "import com.artcraft.effectcraft.aiassistant.PluginManagerActivity;\\n",
+            1,
+        )
     j = replace_java_method(j, "public static boolean isAiPluginInstalled()",
         """    public static boolean isAiPluginInstalled() {
         return aiActivity.get() != null;
