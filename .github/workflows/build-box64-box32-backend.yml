@@ -14,6 +14,7 @@ on:
       - 'windows-compat/tools/patch_box64_resolver_bionic.py'
       - 'windows-compat/tools/patch_box64_netdb_r_bionic.py'
       - 'windows-compat/tools/patch_box64_posix_spawn_bionic.py'
+      - 'windows-compat/tools/patch_box64_box32_alloc_bionic.py'
 
 permissions:
   contents: read
@@ -58,6 +59,7 @@ jobs:
           python3 windows-compat/tools/patch_box64_resolver_bionic.py third_party/box64
           python3 windows-compat/tools/patch_box64_netdb_r_bionic.py third_party/box64
           python3 windows-compat/tools/patch_box64_posix_spawn_bionic.py third_party/box64
+          python3 windows-compat/tools/patch_box64_box32_alloc_bionic.py third_party/box64
 
       - name: Verify obstack ABI structure layout for Android AArch64
         run: |
