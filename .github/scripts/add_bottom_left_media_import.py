@@ -34,6 +34,7 @@ def patch_visual_media_picker(root: Path) -> None:
         source,
         '    const MEDIA: &[&str] = &[\n',
         '    const VISUAL_MEDIA: &[&str] = &[\n        "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp", "exr", "dpx", "cin", "svg", "eps", "tga", "hdr",\n    ];\n    const MEDIA: &[&str] = &[\n',
+        "mp4", "m4v", "mov", "mkv", "webm", "avi", "3gp", "3g2", "mpg", "mpeg", "m2v", "mts", "m2ts", "ts", "wmv", "flv", "ogv", "vob", "hevc", "h264",
         "visual media extension list",
     )
     source = replace_once(
@@ -142,7 +143,7 @@ def main() -> None:
     new_lift = "    full.max.y - 64.0 - bottom"
     media = replace_once(media, old_lift, new_lift, "import progress-card reserved-height calculation")
     media_path.write_text(media, encoding="utf-8")
-    print("Installed a direct image/video-only multi-select shortcut; it bypasses the general Import Files dialog and imports in the background.")
+    print("Installed one bottom-left media-import shortcut with a combined image/video multi-select picker; the general Import Files dialog remains available.")
 
 
 if __name__ == "__main__":
