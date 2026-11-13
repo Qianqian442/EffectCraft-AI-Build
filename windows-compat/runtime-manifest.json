@@ -461,5 +461,27 @@
     "November 12, 2026: the Android NDK Box64 BOX32 build failed in libc_net32.c because Bionic exposes struct __res_state as incomplete; 32-bit Box32 support is not built yet.",
     "November 13, 2026: Android runtime launcher now wraps app-private Bionic host executables through /system/bin/linker64 and selects HODLL64 for x86_64 PE plus HODLL for 32-bit WoW64 PE; unit/instrumented validation is pending.",
     "No real Windows PE or AEX plug-in has yet been launched and rendered on an Android ARM64 device through this integration."
+  ],
+  "android_bionic_alternatives": [
+    {
+      "id": "piperella-hangover-bionic-11.9",
+      "source_repository": "https://github.com/Piperella/Piperella-Hangover-Bionic",
+      "source_revision": "cd0d2b48da092a6a662a10d0b0b1ce189bbd3981",
+      "release_tag": "hangover-bionic-11.9-build19",
+      "release_date": "2026-07-14",
+      "release_asset": {
+        "file": "hangover-bionic-aarch64.tar",
+        "bytes": 339589120,
+        "sha256": "09cc7c2f43a1607d64b5f79e916939d0fefc8e1d094d09aee923abc4b8608793"
+      },
+      "role": "Bionic-native Hangover 11.9 Wine runtime for Android ARM64 with fresh FEX-2607 ARM64EC/WoW64 DLLs, Box64 WoW64 DLL, Wayland driver, PulseAudio support, linker64/W^X/wineserver path hardening.",
+      "integration_status": "source-and-release-audited; not integrated into EffectCraft and not device-tested",
+      "limitations": [
+        "release is from July 2026 and uses FEX-2607, older than the currently audited FEXCore 2611.1 WCP",
+        "Wayland output requires a compatible compositor; EffectCraft needs a headless/offscreen or Surface-backed host integration",
+        "the release tar is about 340 MB and must remain an optional on-demand runtime, not part of the base APK",
+        "package-level SBOM and redistribution-license review are required before bundling or redistributing"
+      ]
+    }
   ]
 }
