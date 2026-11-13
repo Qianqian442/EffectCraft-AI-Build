@@ -52,7 +52,7 @@ def main() -> None:
     missing = [item for item in required if item not in check]
     if missing:
         raise SystemExit(f"Android preview fill verification failed: {missing}")
-    print("Android preview now grows into the existing viewer's empty margins without moving controls; non-Android fit behavior is unchanged.")
+    print("Applied a larger Android composition image inside the unchanged viewer area; all controls keep their original positions. Non-Android fit behavior is unchanged.")
 
 
 if __name__ == "__main__":
