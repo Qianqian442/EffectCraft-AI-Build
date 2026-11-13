@@ -151,3 +151,5 @@ jobs:
           gh workflow run build-effectcraft-ai.yml --ref "$GITHUB_REF_NAME"
           gh workflow run build-account-admin.yml --ref "$GITHUB_REF_NAME"
           echo "Dispatched both APK builds with the same HTTPS endpoint pool." >> "$GITHUB_STEP_SUMMARY"
+
+# Re-run deployment after required repository secrets are configured.
