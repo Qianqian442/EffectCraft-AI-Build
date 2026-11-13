@@ -463,8 +463,8 @@ jobs:
       - name: Convert account gate to cloud HTTPS and real-time ban notifications
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
-          AE_ACCOUNT_API_URLS: ${{ vars.AE_ACCOUNT_API_URLS }}
+          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL || 'https://ae-cloud-account-api.q1939023856.workers.dev' }}
+          AE_ACCOUNT_API_URLS: ${{ vars.AE_ACCOUNT_API_URLS || vars.AE_ACCOUNT_API_URL || 'https://ae-cloud-account-api.q1939023856.workers.dev' }}
         run: |
           python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
           python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
