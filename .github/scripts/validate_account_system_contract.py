@@ -83,11 +83,45 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
-        "Main APK revalidates user ban state every ten seconds while editing",
+        "Main APK receives administrator ban/unban events without periodic account polling",
         ".github/scripts/add_home_lan_account_gate.py",
         (
-            'Duration::from_secs(10)',
+            "start_account_event_listener",
+            "ACCOUNT_EVENT_PROXY",
+            "fn poll_events(&mut self)",
+            'self.mode = Mode::Banned',
+            'self.mode = Mode::Editor',
             '"/v1/me"',
+        ),
+    ),
+    (
+        "P2P routes account status pushes only from the pinned administrator identity",
+        "p2p-bridge/src/lib.rs",
+        (
+            "NotifyAccountStatus",
+            '"/v1/events/push"',
+            "connected_accounts",
+            "pinned_admin_peer.as_ref() == Some(&peer)",
+            "forward_to_local_client_event",
+            "CLIENT_EVENT_PROXY",
+        ),
+    ),
+    (
+        "Administrator sends ban and unban changes to logged-in P2P devices",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/LanAccountServer.java",
+        (
+            "NativeP2P.notifyAccountStatus",
+            'nowBanned ? "banned" : "unbanned"',
+            "Push to every authenticated P2P client",
+        ),
+    ),
+    (
+        "Admin APK exposes the native account-status push command",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/NativeP2P.java",
+        (
+            "nativeNotifyAccountStatus",
+            "static void notifyAccountStatus",
+            "Account status push was not queued",
         ),
     ),
     (
@@ -158,7 +192,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "Mode::Unavailable => centered_window",
             "Mode::Banned => centered_window",
             "为防止离线绕过封禁，软件暂时保持锁定",
-            'Duration::from_secs(10)',
+            "fn poll_events(&mut self)",
         ),
     ),
     (
