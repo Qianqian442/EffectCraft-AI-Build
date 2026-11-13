@@ -11,7 +11,6 @@ on:
       - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/install_ai_plugin_bridge.py'
-      - '.github/scripts/integrate_deepseek_single_apk.py'
       - 'android-ai-plugin/**'
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/upgrade_export_preflight.py'
@@ -70,7 +69,7 @@ jobs:
           python-version: '3.12'
       - name: Compile patch scripts
         run: |
-          python3 -m py_compile .github/scripts/patch_export_dialog.py .github/scripts/upgrade_export_preflight.py .github/scripts/integrate_video_ai.py .github/scripts/add_android_gallery_export.py .github/scripts/add_qq_project_share.py .github/scripts/add_account_avatar_picker.py .github/scripts/patch_gradle_maven_mirrors.py .github/scripts/integrate_deepseek_single_apk.py .github/scripts/add_bottom_left_media_import.py
+          python3 -m py_compile .github/scripts/patch_export_dialog.py .github/scripts/upgrade_export_preflight.py .github/scripts/integrate_video_ai.py .github/scripts/add_android_gallery_export.py .github/scripts/add_qq_project_share.py .github/scripts/add_account_avatar_picker.py .github/scripts/patch_gradle_maven_mirrors.py .github/scripts/install_ai_plugin_bridge.py .github/scripts/add_bottom_left_media_import.py
 
   build:
     needs: validate-patches
@@ -113,14 +112,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: build-assets
-
-      - name: Check out llama.cpp Android inference runtime
-        uses: actions/checkout@v4
-        with:
-          repository: ggml-org/llama.cpp
-          ref: master
-          path: llama.cpp
-          submodules: recursive
 
       - name: Add fallback Maven mirrors to the actual Android builder
         shell: bash
@@ -351,15 +342,14 @@ jobs:
           print("Embedded the supplied Ae avatar in the draggable AI bubble.")
           PY
 
-      - name: Integrate DeepSeek model manager and inference into the main APK
+      - name: Install the standalone DeepSeek plugin bridge in the main APK
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
-          LLAMA_CPP_DIR: ${{ github.workspace }}/llama.cpp
         run: |
           set -euo pipefail
-          python3 -m py_compile build-assets/.github/scripts/integrate_deepseek_single_apk.py
-          python3 build-assets/.github/scripts/integrate_deepseek_single_apk.py
+          python3 -m py_compile build-assets/.github/scripts/install_ai_plugin_bridge.py
+          python3 build-assets/.github/scripts/install_ai_plugin_bridge.py
 
       - name: Preserve project import and configure centered export dialog
         env:
@@ -967,8 +957,312 @@ jobs:
           grep -Eq '^classes[0-9]*[.]dex$' "$APK_ENTRIES"
           grep -Fxq "lib/arm64-v8a/libeffectcraft-ai-video-worker.so" "$APK_ENTRIES"
           grep -Fxq "lib/arm64-v8a/libeffectcraft_p2p.so" "$APK_ENTRIES"
-          if grep -Eq '^assets/models/DeepSeek-.*\.gguf$' "$APK_ENTRIES"; then
+          if grep -Eq '^assets/models/DeepSeek-.*\.gguf
+          grep -Fxq "assets/models/rife-v4.6/flownet.bin" "$APK_ENTRIES"
+          grep -Fxq "assets/models/realesrgan-x4plus.bin" "$APK_ENTRIES"
+          P2P_DEX_STRINGS="$(mktemp)"
+          while IFS= read -r DEX; do
+            unzip -p "$APK" "$DEX" | strings
+          done < <(grep -E '^classes[0-9]*[.]dex$' "$APK_ENTRIES") > "$P2P_DEX_STRINGS"
+          grep -Fq "NativeP2P" "$P2P_DEX_STRINGS"
+          rm -f "$P2P_DEX_STRINGS" "$APK_ENTRIES"
+          echo "Verified APK contains DEX, P2P transport, RIFE 4.6, Real-ESRGAN x4 and Android native worker; DeepSeek GGUF is excluded from the host APK."
+          echo "Verified APK: $APK ($SIZE bytes)"
+          sha256sum "$APK"
+
+      - name: Verify APK signature, Android manifest and alignment
+        if: success()
+        working-directory: artcraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          APK_SIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          test -x "$APK_SIGNER"
+          test -x "$AAPT"
+          test -x "$ZIPALIGN"
+
+          echo "Checking Android 12-compatible APK V3 signature and signer certificate..."
+          SIGNATURE_REPORT="$("$APK_SIGNER" verify --verbose --print-certs "$APK")"
+          printf '%s\n' "$SIGNATURE_REPORT"
+          # V3 is supported from Android 9 onward and is sufficient for the Android 12 target.
+          # V3 is the required scheme for this Android 12 (API 31) target.
+          # Android 9+ verifies V3; V1 is only needed for legacy Android and V2 is not
+          # a prerequisite when a valid V3 signing block is present.
+          for SCHEME in \
+            "Verified using v3 scheme (APK Signature Scheme v3): true"; do
+            printf '%s\n' "$SIGNATURE_REPORT" | grep -Fq "$SCHEME" || {
+              echo "Required APK signature scheme missing: $SCHEME" >&2
+              exit 1
+            }
+          done
+          EXPECTED_CERT="$(keytool -list -v -keystore keys/artcraft-builder.jks \
+            -storepass "$(<keys/.keystore-password)" -alias artcraftbuilder \
+            | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          ACTUAL_CERT="$(printf '%s\n' "$SIGNATURE_REPORT" \
+            | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          test -n "$EXPECTED_CERT"
+          test -n "$ACTUAL_CERT"
+          test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+          # The persistent keystore is the canonical project identity; the same key is checked
+          # both before release and during every later build.
+          echo "Verified APK uses the persistent project signing certificate."
+
+          echo "Checking ZIP alignment..."
+          "$ZIPALIGN" -c -v 4 "$APK"
+
+          BADGING="$("$AAPT" dump badging "$APK")"
+          printf '%s\n' "$BADGING" | grep -Fq "package: name='com.artcraft.effectcraft'"
+          printf '%s\n' "$BADGING" | grep -Fq "sdkVersion:'28'"
+          printf '%s\n' "$BADGING" | grep -Fq "native-code: 'arm64-v8a'"
+          echo "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:|launchable-activity:)"
+          echo "APK signature, manifest, ABI and alignment checks passed."
+
+      - name: Detect built APK for direct download
+        id: apk_available
+        if: always() && steps.build_apk.outcome == 'success'
+        working-directory: artcraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          if [[ -n "$APK" && -s "$APK" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "APK is available for release upload: $APK"
+            stat -c 'APK size: %s bytes' "$APK"
+            sha256sum "$APK"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "No non-empty APK was produced; skipping download publication."
+          fi
+
+      - name: Upload standalone APK artifact
+        if: success() && steps.apk_available.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Android-APK
+          path: artcraft/output/effectcraft-0.21.1.apk
+          compression-level: 0
+          retention-days: 7
+
+      - name: Ensure Cargo cache directories exist
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.cargo/registry" "$HOME/.cargo/git"
+
+      - name: Save Cargo dependency cache
+        if: always() && steps.build_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: effectcraft-deps-cache-v2-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}-${{ github.run_id }}
+
+      - name: Upload build log if build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Android-build-log
+          path: |
+            artcraft/logs/*.log
+            artcraft/output/*.txt
+          if-no-files-found: ignore
+          retention-days: 30
+
+  publish:
+    name: Publish APK download (no device install test)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the verified APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-Android-APK
+          path: release
+      - name: Verify artifact transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/effectcraft-0.21.1.apk"
+          test -s "$APK"
+          stat -c 'APK size: %s bytes' "$APK"
+          sha256sum "$APK"
+      - name: Publish standalone APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: effectcraft-ai-${{ github.run_number }}
+          name: EffectCraft 0.21.1 Android APK (Build ${{ github.run_number }})
+          body: |
+            Standalone EffectCraft Android APK.
+            Build-time APK integrity, signature, manifest, ARM64 ABI and ZIP-alignment checks passed.
+            No Android emulator or device installation test is run in this workflow.
+          files: release/effectcraft-0.21.1.apk
+          draft: false
+          prerelease: true
+ "$APK_ENTRIES"; then
             echo "DeepSeek GGUF must remain excluded from the host APK." >&2
+            exit 1
+          fi
+          if grep -Eq '^lib/(arm64-v8a|armeabi-v7a|x86|x86_64)/lib(ggml[^/]*|llama[^/]*|ai-chat\.so|omp\.so)
+          grep -Fxq "assets/models/rife-v4.6/flownet.bin" "$APK_ENTRIES"
+          grep -Fxq "assets/models/realesrgan-x4plus.bin" "$APK_ENTRIES"
+          P2P_DEX_STRINGS="$(mktemp)"
+          while IFS= read -r DEX; do
+            unzip -p "$APK" "$DEX" | strings
+          done < <(grep -E '^classes[0-9]*[.]dex$' "$APK_ENTRIES") > "$P2P_DEX_STRINGS"
+          grep -Fq "NativeP2P" "$P2P_DEX_STRINGS"
+          rm -f "$P2P_DEX_STRINGS" "$APK_ENTRIES"
+          echo "Verified APK contains DEX, P2P transport, RIFE 4.6, Real-ESRGAN x4 and Android native worker; DeepSeek GGUF is excluded from the host APK."
+          echo "Verified APK: $APK ($SIZE bytes)"
+          sha256sum "$APK"
+
+      - name: Verify APK signature, Android manifest and alignment
+        if: success()
+        working-directory: artcraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          test -n "$APK"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/35.0.0"
+          APK_SIGNER="$BUILD_TOOLS/apksigner"
+          AAPT="$BUILD_TOOLS/aapt"
+          ZIPALIGN="$BUILD_TOOLS/zipalign"
+          test -x "$APK_SIGNER"
+          test -x "$AAPT"
+          test -x "$ZIPALIGN"
+
+          echo "Checking Android 12-compatible APK V3 signature and signer certificate..."
+          SIGNATURE_REPORT="$("$APK_SIGNER" verify --verbose --print-certs "$APK")"
+          printf '%s\n' "$SIGNATURE_REPORT"
+          # V3 is supported from Android 9 onward and is sufficient for the Android 12 target.
+          # V3 is the required scheme for this Android 12 (API 31) target.
+          # Android 9+ verifies V3; V1 is only needed for legacy Android and V2 is not
+          # a prerequisite when a valid V3 signing block is present.
+          for SCHEME in \
+            "Verified using v3 scheme (APK Signature Scheme v3): true"; do
+            printf '%s\n' "$SIGNATURE_REPORT" | grep -Fq "$SCHEME" || {
+              echo "Required APK signature scheme missing: $SCHEME" >&2
+              exit 1
+            }
+          done
+          EXPECTED_CERT="$(keytool -list -v -keystore keys/artcraft-builder.jks \
+            -storepass "$(<keys/.keystore-password)" -alias artcraftbuilder \
+            | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          ACTUAL_CERT="$(printf '%s\n' "$SIGNATURE_REPORT" \
+            | awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}')"
+          test -n "$EXPECTED_CERT"
+          test -n "$ACTUAL_CERT"
+          test "$ACTUAL_CERT" = "$EXPECTED_CERT"
+          # The persistent keystore is the canonical project identity; the same key is checked
+          # both before release and during every later build.
+          echo "Verified APK uses the persistent project signing certificate."
+
+          echo "Checking ZIP alignment..."
+          "$ZIPALIGN" -c -v 4 "$APK"
+
+          BADGING="$("$AAPT" dump badging "$APK")"
+          printf '%s\n' "$BADGING" | grep -Fq "package: name='com.artcraft.effectcraft'"
+          printf '%s\n' "$BADGING" | grep -Fq "sdkVersion:'28'"
+          printf '%s\n' "$BADGING" | grep -Fq "native-code: 'arm64-v8a'"
+          echo "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:|launchable-activity:)"
+          echo "APK signature, manifest, ABI and alignment checks passed."
+
+      - name: Detect built APK for direct download
+        id: apk_available
+        if: always() && steps.build_apk.outcome == 'success'
+        working-directory: artcraft
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find output -maxdepth 1 -type f -name '*.apk' -print -quit)"
+          if [[ -n "$APK" && -s "$APK" ]]; then
+            echo "available=true" >> "$GITHUB_OUTPUT"
+            echo "APK is available for release upload: $APK"
+            stat -c 'APK size: %s bytes' "$APK"
+            sha256sum "$APK"
+          else
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "No non-empty APK was produced; skipping download publication."
+          fi
+
+      - name: Upload standalone APK artifact
+        if: success() && steps.apk_available.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Android-APK
+          path: artcraft/output/effectcraft-0.21.1.apk
+          compression-level: 0
+          retention-days: 7
+
+      - name: Ensure Cargo cache directories exist
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.cargo/registry" "$HOME/.cargo/git"
+
+      - name: Save Cargo dependency cache
+        if: always() && steps.build_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: effectcraft-deps-cache-v2-${{ runner.os }}-${{ hashFiles('artcraft/source/effectcraft/Cargo.lock') }}-${{ github.run_id }}
+
+      - name: Upload build log if build fails
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Android-build-log
+          path: |
+            artcraft/logs/*.log
+            artcraft/output/*.txt
+          if-no-files-found: ignore
+          retention-days: 30
+
+  publish:
+    name: Publish APK download (no device install test)
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the verified APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-Android-APK
+          path: release
+      - name: Verify artifact transfer
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/effectcraft-0.21.1.apk"
+          test -s "$APK"
+          stat -c 'APK size: %s bytes' "$APK"
+          sha256sum "$APK"
+      - name: Publish standalone APK release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: effectcraft-ai-${{ github.run_number }}
+          name: EffectCraft 0.21.1 Android APK (Build ${{ github.run_number }})
+          body: |
+            Standalone EffectCraft Android APK.
+            Build-time APK integrity, signature, manifest, ARM64 ABI and ZIP-alignment checks passed.
+            No Android emulator or device installation test is run in this workflow.
+          files: release/effectcraft-0.21.1.apk
+          draft: false
+          prerelease: true
+ "$APK_ENTRIES"; then
+            echo "DeepSeek llama.cpp native libraries must live in the separate plugin, not the host APK." >&2
             exit 1
           fi
           grep -Fxq "assets/models/rife-v4.6/flownet.bin" "$APK_ENTRIES"
