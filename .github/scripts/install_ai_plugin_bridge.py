@@ -25,6 +25,8 @@ def main() -> None:
     cargo = ui / "Cargo.toml"
     c = cargo.read_text(encoding="utf-8")
     c = "\n".join(x for x in c.splitlines() if "llama-cpp-2 =" not in x and "llama-cpp-sys-2 =" not in x) + "\n"
+    if "llama-cpp-2 =" in c or "llama-cpp-sys-2 =" in c:
+        raise SystemExit("The main APK must not link llama.cpp; DeepSeek inference belongs to the separate signed plugin.")
     if 'jni = "0.22"' not in c:
         c = once(c, "[dev-dependencies]\n",
                  '[target.\'cfg(target_os = "android")\'.dependencies]\njni = "0.22"\n\n[dev-dependencies]\n',
