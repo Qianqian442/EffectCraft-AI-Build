@@ -312,7 +312,7 @@ def apply_local_ban_cache(source: str) -> str:
 
     # Extend the generated WebSocket handler with a local monotonic countdown.
     poll_events_pattern = re.compile(
-        r"    fn poll_events\\(&mut self\\) \\{.*?\\n    \\}\\n",
+        r"    fn poll_events\(&mut self\) \{.*?\n    \}\n",
         re.S,
     )
     local_events = r'''    fn poll_events(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
