@@ -31,7 +31,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ptitSeb/box64
-          ref: 4dbba1300a8d74c7c385f0d8a4e453c740622f9f
+          ref: 6441fcfaeb69487039b0fd8cfb948c9e3f18c3d6
           path: third_party/box64
           submodules: recursive
 
