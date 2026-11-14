@@ -23,8 +23,8 @@ def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     assets = Path(os.environ.get("BUILD_ASSETS_DIR", Path(__file__).resolve().parents[2])).resolve()
     api_url = os.environ.get("AE_ACCOUNT_API_URL", "").strip().rstrip("/")
-    if not api_url.startswith("https://") or not api_url.endswith(".workers.dev"):
-        raise SystemExit("AE_ACCOUNT_API_URL must be the deployed HTTPS Cloudflare workers.dev URL")
+    if not api_url.startswith("https://") or not (api_url.endswith(".workers.dev") or api_url.endswith(".pages.dev")):
+        raise SystemExit("AE_ACCOUNT_API_URL must be a verified HTTPS Cloudflare workers.dev or pages.dev URL")
 
     account_path = root / "crates/ui-egui/src/account.rs"
     lib_path = root / "crates/ui-egui/src/lib.rs"
