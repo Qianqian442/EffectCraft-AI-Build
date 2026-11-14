@@ -24,6 +24,14 @@ def patch_activity(builder: Path) -> None:
         print("Android shared-storage SAF fallback already configured.")
         return
 
+    # Picture/video imports use Android's scoped Photo Picker and do not need broad storage access.
+    source = replace_once(
+        source,
+        "import android.provider.DocumentsContract;\n",
+        "import android.provider.DocumentsContract;\nimport android.provider.MediaStore;\n",
+        "Android Photo Picker MediaStore import",
+    )
+
     class_anchor = 'public final class __CLASS__ extends NativeActivity {\n'
     permission_fields = r'''
     // EFFECTCRAFT_ANDROID_PERMISSION_ON_IMPORT_V1
@@ -122,7 +130,49 @@ def patch_activity(builder: Path) -> None:
         });
     }'''
     new_open_method = '''    public void safRequestOpen(long id, boolean multiple) {
-        requestAllFilesAccessThen(() -> launchSafOpenPicker(id, multiple));
+        if (multiple) {
+            // Media imports are pictures and videos only. The Android Photo Picker grants
+            // access only to selected items and never asks for all-files permission.
+            runOnUiThread(() -> launchSafMediaPicker(id));
+        } else {
+            requestAllFilesAccessThen(() -> launchSafOpenPicker(id, false));
+        }
+    }
+
+    private void launchSafMediaPicker(long id) {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Intent intent = new Intent(MediaStore.ACTION_PICK_IMAGES);
+                int maximum = MediaStore.getPickImagesMaxLimit();
+                if (maximum > 1) {
+                    intent.putExtra(MediaStore.EXTRA_PICK_IMAGES_MAX, maximum);
+                }
+                requestIds.put(REQ_OPEN, id);
+                startActivityForResult(intent, REQ_OPEN);
+            } else {
+                launchLegacyMediaPicker(id);
+            }
+        } catch (android.content.ActivityNotFoundException unavailable) {
+            Log.i(TAG, "Android Photo Picker unavailable; using image/video-only Documents picker.", unavailable);
+            launchLegacyMediaPicker(id);
+        } catch (Exception error) {
+            enqueueError(id, "open", error.toString());
+        }
+    }
+
+    private void launchLegacyMediaPicker(long id) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "image/*", "video/*" });
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            requestIds.put(REQ_OPEN, id);
+            startActivityForResult(intent, REQ_OPEN);
+        } catch (Exception error) {
+            enqueueError(id, "open", error.toString());
+        }
     }
 
     private void launchSafOpenPicker(long id, boolean multiple) {
