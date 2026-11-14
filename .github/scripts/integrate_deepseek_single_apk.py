@@ -99,6 +99,25 @@ def main() -> None:
     elif "minSdk = 28" not in lg:
         raise SystemExit("Unexpected llama.cpp Android library minSdk; refusing an unsafe patch.")
 
+    # The host APK generator already places AGP and Kotlin Gradle plugins on the
+    # shared build classpath. Resolving version-catalog aliases again in this included
+    # library module causes Gradle's "plugin already on the classpath with an unknown
+    # version" error. Apply the host-resolved plugin implementations without requesting
+    # a second plugin version.
+    old_plugin_block = """plugins {
+    alias(libs.plugins.android.library)
+    alias(libs.plugins.jetbrains.kotlin.android)
+}"""
+    new_plugin_block = """plugins {
+    id("com.android.library")
+    id("org.jetbrains.kotlin.android")
+}"""
+    if old_plugin_block in lg:
+        lg = once(lg, old_plugin_block, new_plugin_block, "llama.cpp host Gradle plugin classpath alignment")
+    elif new_plugin_block not in lg:
+        raise SystemExit("Unexpected llama.cpp Android library plugin block; refusing an unsafe Gradle patch.")
+    lib_gradle.write_text(lg, encoding="utf-8")
+
     logging = llama / "examples/llama.android/lib/src/main/cpp/logging.h"
     log_text = logging.read_text(encoding="utf-8")
     old_log = """static inline int ai_should_log(int prio) {
