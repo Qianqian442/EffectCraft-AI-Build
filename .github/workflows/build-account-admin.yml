@@ -240,6 +240,9 @@ jobs:
           grep -Fq 'postDelayed(loginTimeout, LOGIN_OPERATION_TIMEOUT_MS)' "$ACTIVITY"
           grep -Fq 'cancelLoginOperation(false)' "$ACTIVITY"
           grep -Fq 'operationId != loginOperationId' "$ACTIVITY"
+          grep -Fq 'loginUiHandler.removeCallbacks(loginTimeout)' "$ACTIVITY"
+          grep -Fq 'if (worker != null) worker.interrupt()' "$ACTIVITY"
+          grep -Fq 'EffectCraft-login-cancel-cleanup' "$ACTIVITY"
           grep -Fq 'public static synchronized String requestPermissionForTask' "$VPN"
           grep -Fq '正在准备 Cloudflare WARP 设备与连接' admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java
           grep -Fq 'openTlsSocket(host, Collections.singletonList(address), 5000, 5000)' "$TRANSPORT"
