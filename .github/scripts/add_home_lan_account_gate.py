@@ -541,6 +541,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
+                    egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                     ui.label("QQ号");
                     ui.text_edit_singleline(&mut app.account.edit_qq);
                     ui.label("微信号");
@@ -575,6 +576,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     if !app.account.status.is_empty() {
                         ui.label(&app.account.status);
                     }
+                    });
                 });
         }
         return;
@@ -583,6 +585,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
     blocking_overlay(ctx);
     match app.account.mode {
         Mode::Auth => centered_window(ctx, "账号注册 / 登录", vec2(420.0, 570.0), |ui| {
+            egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.vertical_centered(|ui| {
                 ui.heading("EffectCraft 账号");
                 ui.label("通过 P2P 自动连接管理员手机账号节点");
@@ -606,12 +609,12 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 ui.text_edit_singleline(&mut app.account.qq);
                 ui.label("微信号");
                 ui.text_edit_singleline(&mut app.account.wechat);
+                ui.label("头像图片地址（可选，https 图片链接）");
+                ui.text_edit_singleline(&mut app.account.avatar_url);
                 ui.label("名字");
                 ui.text_edit_singleline(&mut app.account.name);
                 ui.label("密码（至少8位）");
                 ui.add(egui::TextEdit::singleline(&mut app.account.password).password(true));
-                ui.label("头像图片地址（可选，https 图片链接）");
-                ui.text_edit_singleline(&mut app.account.avatar_url);
             } else {
                 ui.label("QQ号或微信号");
                 ui.text_edit_singleline(&mut app.account.login_identifier);
@@ -632,6 +635,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 ui.add_space(8.0);
                 ui.label(&app.account.status);
             }
+            });
         }),
         Mode::Checking => centered_window(ctx, "账号验证中", vec2(360.0, 230.0), |ui| {
             ui.vertical_centered(|ui| {
