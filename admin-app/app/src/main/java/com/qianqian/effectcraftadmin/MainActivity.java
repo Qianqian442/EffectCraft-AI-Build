@@ -353,7 +353,7 @@ public final class MainActivity extends Activity {
         TextView status = text(message, 15, false);
         page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
         page.addView(text(isCloudflareMode()
-            ? "正在连接 Cloudflare 云端账号服务；若直连不通，将检测公开代理的 TLS 隧道。"
+            ? "正在通过内置 Cloudflare WARP 加密隧道连接账号服务；无需经过管理员手机中转。"
             : "正在连接本机账号数据库，并通过 P2P 为其他手机提供加密账号服务。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
@@ -427,7 +427,7 @@ public final class MainActivity extends Activity {
             loginButton.setText("正在验证…");
         }
         if (loginStatus != null) loginStatus.setText(isCloudflareMode()
-            ? "正在通过 HTTPS / 公开代理隧道验证 Cloudflare 管理员账号…"
+            ? "正在通过 Cloudflare WARP 加密隧道验证管理员账号…"
             : "正在等待本机 SQLite 服务就绪并校验管理员密码…");
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
             if (result == null) {
