@@ -1,3 +1,4 @@
+# Validate Windows compatibility sources, Bionic bridge and Android module
 name: Validate EffectCraft Windows Plug-in Compatibility
 
 on:
