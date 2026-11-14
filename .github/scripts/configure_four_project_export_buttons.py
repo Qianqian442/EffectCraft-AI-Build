@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Configure four project exporters and reveal QQ sharing only after a successful export."""
+"""Configure five project exporters and reveal QQ sharing only after a successful export."""
 from __future__ import annotations
 
 import os
@@ -26,6 +26,7 @@ def main() -> None:
     let mut export_nodevideo = false;
     let mut export_capcut = false;"""
     new_state = """    let mut export_aep = false;
+    let mut export_mobile_effectcraft_project = false;
     let mut export_alight_motion = false;
     let mut export_nodevideo = false;
     let mut export_capcut = false;
@@ -62,6 +63,9 @@ def main() -> None:
             if ui.button("Ae 工程导出（.aep）").clicked() {
                 export_aep = true;
             }
+            if ui.button("Ae 手机版工程导出（.ecproj）").clicked() {
+                export_mobile_effectcraft_project = true;
+            }
             if ui.button("AM 工程导出（.xml）").clicked() {
                 export_alight_motion = true;
             }
@@ -71,7 +75,8 @@ def main() -> None:
             if ui.button("CapCut 工程导出（.zip）").clicked() {
                 export_capcut = true;
             }
-            ui.small("四种格式分别导出；不支持转换的项目内容会在导出报告中说明。");
+            ui.small("电脑版 After Effects 使用 .aep；手机端保存为 EffectCraft .ecproj 工程，可由手机版 EffectCraft 再次打开。");
+            ui.small("AM、NV、CapCut 分别导出；不支持转换的项目内容会在导出报告中说明。");
             if let Some(path) = last_exported_path.as_ref() {
                 ui.separator();
                 ui.label("工程已成功导出");
@@ -115,7 +120,15 @@ def main() -> None:
         }
     }
 """
-    source = replace_once(source, aep_anchor, aep_addition + aep_anchor, "AE project export command dispatch")
+    mobile_addition = """    if export_mobile_effectcraft_project {
+        ui.ctx().data_mut(|d| { d.remove_temp::<String>(export_path_id); });
+        match crate::menus::invoke(app, ui.ctx(), "file.saveCopy", json!({})) {
+            Ok(_) => {},
+            Err(error) => app.ui.status = error,
+        }
+    }
+"""
+    source = replace_once(source, aep_anchor, aep_addition + mobile_addition + aep_anchor, "desktop and mobile Ae project export command dispatch")
 
     for variable, command, label in [
         ("export_alight_motion", "file.exportAlightMotion", "AM"),
@@ -171,7 +184,9 @@ def main() -> None:
     frontend.write_text(front_source, encoding="utf-8")
 
     if source.count('ui.button("Ae 工程导出（.aep）")') != 1:
-        raise SystemExit("Ae project export button was not installed exactly once")
+        raise SystemExit("Desktop Ae project export button was not installed exactly once")
+    if source.count('ui.button("Ae 手机版工程导出（.ecproj）")') != 1:
+        raise SystemExit("Mobile EffectCraft project export button was not installed exactly once")
     for label in ["AM 工程导出（.xml）", "NV 工程导出（.zip）", "CapCut 工程导出（.zip）"]:
         if source.count(f'ui.button("{label}")') != 1:
             raise SystemExit(f"Expected exactly one export button: {label}")
@@ -183,10 +198,26 @@ def main() -> None:
     if "effectcraft.projectExported" not in front_source:
         raise SystemExit("Project export completion event handler is missing")
 
+    # file.saveCopy is EffectCraft's native mobile project format (.ecproj). Emit the
+    # same completion event only after write_output has successfully written the file.
+    project_engine = root / "crates/engine/src/cmd/file_more.rs"
+    engine_source = project_engine.read_text(encoding="utf-8")
+    write_anchor = "    s.write_output(path, json.as_bytes())?;"
+    write_event = write_anchor + '\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": path, "format": "Ae 手机版（EffectCraft）"}) });'
+    if write_event not in engine_source:
+        if engine_source.count(write_anchor) != 1:
+            raise SystemExit("Could not safely hook the native .ecproj export completion event")
+        engine_source = engine_source.replace(write_anchor, write_event, 1)
+        project_engine.write_text(engine_source, encoding="utf-8")
+    if "file.saveCopy" not in engine_source or "Ae 手机版（EffectCraft）" not in engine_source:
+        raise SystemExit("The mobile EffectCraft project export success event is not connected")
+    if '"file.saveCopy" => ("path", Ask::Save(project_as(" copy", "ecproj"))),' not in front_source:
+        raise SystemExit("The native EffectCraft .ecproj save picker is missing")
+
     header.write_text(source, encoding="utf-8")
-    print("Installed four separate project export controls: Ae, AM, NV and CapCut.")
-    print("The QQ share button remains hidden until one of those project exports succeeds.")
-    print("The share action sends the exact last exported project file, not a separate .ecproj copy.")
+    print("Installed five project export controls: desktop Ae, mobile EffectCraft .ecproj, AM, NV and CapCut.")
+    print("QQ sharing remains hidden until one of those five project exports succeeds.")
+    print("The share action sends the exact last exported project file; it does not claim to bundle source media.")
 
 
 if __name__ == "__main__":
