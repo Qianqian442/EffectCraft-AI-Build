@@ -69,7 +69,8 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
     let config = s.config.as_ref().and_then(|c| c.dir())
         .ok_or_else(|| err("No writable app project directory is available for package extraction"))?;
     let stem = Path::new(path).file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| "Imported_Project".into());
-    let root = config.join("Imported-Projects").join(safe_name(&stem));
+    let import_id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+    let root = config.join("Imported-Projects").join(format!("{}-{import_id}", safe_name(&stem)));
     std::fs::create_dir_all(&root).map_err(|e| err(format!("Cannot create import directory: {e}")))?;
     let file = std::fs::File::open(path).map_err(|e| err(format!("Cannot read ZIP package: {e}")))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| err(format!("Invalid project ZIP: {e}")))?;
@@ -121,7 +122,7 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
             project_file = Some(destination);
         }
     }
-    let file = project_file.ok_or_else(|| err("This ZIP does not contain a NodeVideo .nv project or an Alight Motion XML project"))?;
+    let file = project_file.ok_or_else(|| err("此 ZIP 不包含 EffectCraft 手机版工程（.ecproj/.ecprojx）、NodeVideo .nv、Alight Motion XML 或 CapCut 工程文件"))?;
     let file_ext = ext(&file.to_string_lossy());
     Ok((file.to_string_lossy().to_string(), root.to_string_lossy().to_string()))
 }
@@ -1115,17 +1116,30 @@ fn export_capcut(s: &Session, path: &str) -> Result<J> {
     Ok(json!({"path":path,"format":"capcut-draft-zip","exportedTracks":render_index,"warnings":warning,"sourceComp":comp_id.0}))
 }
 
+fn notify_exported_project(s: &mut Session, path: &str, format: &str) {
+    s.events.push(crate::Event::Frontend {
+        command: "effectcraft.projectExported".into(),
+        params: json!({"path": path, "format": format}),
+    });
+}
+
 fn export_alight_command(s: &mut Session, p: &J) -> Result<J> {
     let path=p.get("path").and_then(J::as_str).ok_or_else(||err("缺少导出路径"))?;
-    export_alight_xml(s,path)
+    let result = export_alight_xml(s,path)?;
+    notify_exported_project(s, path, "AM");
+    Ok(result)
 }
 fn export_nodevideo_command(s: &mut Session, p: &J) -> Result<J> {
     let path=p.get("path").and_then(J::as_str).ok_or_else(||err("缺少导出路径"))?;
-    export_nodevideo(s,path)
+    let result = export_nodevideo(s,path)?;
+    notify_exported_project(s, path, "NV");
+    Ok(result)
 }
 fn export_capcut_command(s: &mut Session, p: &J) -> Result<J> {
     let path=p.get("path").and_then(J::as_str).ok_or_else(||err("缺少导出路径"))?;
-    export_capcut(s,path)
+    let result = export_capcut(s,path)?;
+    notify_exported_project(s, path, "CapCut");
+    Ok(result)
 }
 
 pub fn specs() -> Vec<CommandSpec> {

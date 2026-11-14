@@ -13,11 +13,15 @@ on:
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
       - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/configure_four_project_export_buttons.py'
       - '.github/scripts/add_project_import_formats.py'
+      - '.github/scripts/backport_aep_export.py'
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/add_chroma_key_effect.py'
+      - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
+      - '.github/scripts/audit_zh_hans_uncatalogued.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   pull_request:
     branches: [main]
@@ -27,11 +31,16 @@ on:
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
       - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/configure_four_project_export_buttons.py'
       - '.github/scripts/add_project_import_formats.py'
+      - '.github/scripts/backport_aep_export.py'
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/configure_four_project_export_buttons.py'
       - '.github/scripts/add_qq_project_share.py'
+      - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
+      - '.github/scripts/audit_zh_hans_uncatalogued.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
@@ -64,6 +73,17 @@ jobs:
           ref: v0.21.1
           path: effectcraft
 
+      - name: Check out upstream native After Effects exporter source
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/effectcraft
+          ref: ce9eaec65015a5508c72af0e2351cd02612c9450
+          path: upstream-aep-export
+          sparse-checkout: |
+            crates/aep/src/export.rs
+            crates/aep/src/export
+            crates/engine/src/cmd/aep.rs
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -83,6 +103,8 @@ jobs:
             .github/scripts/add_curve_quick_access.py \
             .github/scripts/add_startup_attribution_notice.py \
             .github/scripts/patch_export_dialog.py \
+            .github/scripts/configure_four_project_export_buttons.py \
+            .github/scripts/backport_aep_export.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_am_nv_project_import.py \
             .github/scripts/add_chroma_key_effect.py
@@ -138,7 +160,12 @@ jobs:
           fi
           python3 .github/scripts/patch_export_dialog.py
 
-      - name: Validate Android complete-project QQ share bridge
+      - name: Configure five project export buttons with complete mobile media collection
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 .github/scripts/configure_four_project_export_buttons.py
+
+      - name: Validate post-export direct QQ project sharing
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
@@ -147,10 +174,20 @@ jobs:
           python3 .github/scripts/add_android_gallery_export.py
           python3 .github/scripts/add_qq_project_share.py
           grep -F 'EFFECTCRAFT_SHARE_FILEPROVIDER_V1' artcraft/lib/android_project.py
-          grep -F 'shareProjectPackage' artcraft/templates/android/SafActivity.java
-          grep -F 'share_project_package' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
+          grep -F 'EFFECTCRAFT_ANDROID_EXPORT_FILE_QQ_SHARE_V2' artcraft/templates/android/SafActivity.java
+          grep -F 'qqSend.setPackage("com.tencent.mobileqq")' artcraft/templates/android/SafActivity.java
+          grep -F '分享到QQ或其他应用' artcraft/templates/android/SafActivity.java
+          grep -F 'share_exported_project' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
+          grep -F 'EffectCraft 手机版完整工程导出（含素材）' artcraft/source/effectcraft/crates/ui-egui/src/header.rs
+          grep -F 'let mut missing_media: Vec<String> = Vec::new();' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F 'pairs.push((src.clone(), dst));' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F 'new_paths.push(format!("(Footage)/{filename}"));' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F '工程素材收集不完整' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F 'zipProjectDirectory(projectRoot, sharePayload)' artcraft/templates/android/SafActivity.java
+          grep -F 'private static void addProjectFiles' artcraft/templates/android/SafActivity.java
+          grep -F 'import java.io.FileOutputStream;' artcraft/templates/android/SafActivity.java
 
-      - name: Validate the original AE menu and connect AEP/AEPX to Import Project
+      - name: Validate the single unified AM/NV/AE/CapCut project import control
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: |
@@ -158,6 +195,27 @@ jobs:
           python3 .github/scripts/add_am_nv_project_import.py
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
+          grep -F '导入am/NV/Ae/capcut工程' effectcraft/crates/engine/src/menus.rs
+          grep -F 'file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip"' effectcraft/crates/ui-egui/src/menus/frontend.rs
+          grep -F 'matches!(ext(&actual).as_str(), "ecproj" | "ecprojx")' .github/scripts/am_nv.rs
+          grep -F 'super::import_project::import_project' .github/scripts/am_nv.rs
+          grep -F 'MAX_ZIP_TOTAL' .github/scripts/am_nv.rs
+          grep -F 'MAX_ZIP_ENTRIES' .github/scripts/am_nv.rs
+
+      - name: Backport native Ae project export for Rust/UI compile validation
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          AEP_EXPORT_SOURCE_DIR: ${{ github.workspace }}/upstream-aep-export
+        run: python3 .github/scripts/backport_aep_export.py
+
+      - name: Apply the same Simplified Chinese Android defaults and UI controls as the APK
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: |
+          python3 -m py_compile .github/scripts/add_chinese_group_puppet_keyframe_ui.py
+          python3 .github/scripts/add_chinese_group_puppet_keyframe_ui.py
+          grep -F 'language: String = "zh-hans".into(),' effectcraft/crates/engine/src/settings/prefs/sections.rs
+          grep -F '"zh-hans"' effectcraft/crates/ui-egui/src/i18n.rs
 
       - name: Apply standalone DeepSeek AI plugin bridge
         env:
@@ -185,3 +243,36 @@ jobs:
         env:
           CARGO_BUILD_JOBS: '2'
         run: cargo check -p effectcraft-engine -p effectcraft-ui-egui
+
+      - name: Audit cataloged and uncatalogued Simplified Chinese UI and runtime text
+        working-directory: effectcraft
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: |
+          set -o pipefail
+          python3 -m py_compile "$GITHUB_WORKSPACE/.github/scripts/audit_zh_hans_uncatalogued.py"
+          python3 "$GITHUB_WORKSPACE/.github/scripts/audit_zh_hans_uncatalogued.py" 2>&1 | tee zh-hans-localization-audit.log
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("crates/ui-egui/src/i18n.rs")
+          source = path.read_text(encoding="utf-8")
+          old = "let shown: Vec<&String> = missing.iter().take(SHOWN).collect();"
+          new = "let shown: Vec<&String> = missing.iter().take(if code == \"zh-hans\" { usize::MAX } else { SHOWN }).collect();"
+          if new not in source:
+              if source.count(old) != 1:
+                  raise SystemExit("Could not expand the Simplified Chinese missing-translation report")
+              source = source.replace(old, new, 1)
+              path.write_text(source, encoding="utf-8")
+          PY
+          cargo test -p effectcraft-ui-egui --lib missing_translations_report -- --nocapture 2>&1 | tee -a zh-hans-localization-audit.log
+          cargo test -p effectcraft-ui-egui --lib catalog_row_counts_report -- --nocapture 2>&1 | tee -a zh-hans-localization-audit.log
+          cargo test -p effectcraft-ui-egui --lib menu_catalogs_have_no_stale_or_duplicate_rows -- --nocapture 2>&1 | tee -a zh-hans-localization-audit.log
+
+      - name: Upload Simplified Chinese localization audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-zh-Hans-localization-audit
+          path: effectcraft/zh-hans-localization-audit.log
+          if-no-files-found: ignore
+          retention-days: 14
