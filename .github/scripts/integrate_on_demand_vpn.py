@@ -46,7 +46,7 @@ def main() -> None:
 
     source = builder_script.read_text(encoding="utf-8")
     if MARKER not in source:
-        anchor = "# The shared update checker (templates/android/UpdateCheck.java) is installed next to every"
+        anchor = 'python3 "$ROOT/lib/android_project.py" "$ROOT" "$ANDROID_DIR" "$APP" "$APP_VERSION"'
         block = r'''# EFFECTCRAFT_CLOUDFLARE_MASQUE_VPN_INTEGRATION_V1
 # Inject the native Cloudflare MASQUE bridge after the Android project has been
 # generated, but before the launcher is compiled and packaged.
