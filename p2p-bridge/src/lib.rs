@@ -1052,3 +1052,11 @@ mod tests {
         assert_eq!(decoded.path, "/v1/login");
     }
 }
+
+#[no_mangle]
+pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeClearVpnProxyConfig(
+    _env: JNIEnv,
+    _class: JClass,
+) {
+    vpn_proxy::clear_worker_config();
+}
