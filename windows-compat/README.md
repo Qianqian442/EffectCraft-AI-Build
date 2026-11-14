@@ -352,14 +352,46 @@ The Winlator rootfs is a distribution of many packages, not one license. Do not 
 This branch now contains an experimental Android runtime installer/manager, architecture routing, an isolated aexlo worker, and a Bionic launcher command that invokes app-private native executables through /system/bin/linker64. The runtime is not yet proven to execute a Windows PE or AEX plug-in on an Android ARM64 device.
 
 Verified build and audit results:
-- Android NDK CI successfully produced a Bionic ARM64 Box64 artifact and FEXCore ARM64EC/WoW64 PE DLL artifacts.
+- Android NDK CI successfully produced a Bionic ARM64 Box64 artifact and FEXCore ARM64EC/WoW64 PE DLL artifacts. A later BOX32=ON build also compiled and packaged successfully (run 43392590850; artifact SHA-256 0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5).
 - Windows CI successfully built the x64 aexlo host worker and sample Noise AEX; the sample worker's Windows-native CPU render test passed.
 - WCP package size/SHA-256 checks and profile metadata inspection passed for Box64 Bionic, Box64EC, WowBox64, FEXCore 2611.1, and GE-Proton 11.0-7.1 x86_64/ARM64EC packages.
 - The WCP profile inspection failure caused by assuming profile.json was at the archive root has been fixed; the new run passed.
 
 Known blockers from actual CI:
 - The x86_64 Bionic Proton binary failed under Box64 on ARM64 Linux with unresolved __libc_init and a segmentation fault. This exact Box64 + Bionic Proton pair is not supported by current evidence; the selector now prefers ARM64EC/FEXCore for x86 and x64 PE.
-- The Android NDK Box64 BOX32 build failed in libc_net32.c because Bionic exposes struct __res_state as incomplete. BOX32 is not built yet.
+- The Android NDK Box64 BOX32 build now succeeds after Bionic resolver/netdb/posix_spawn/signal/thread/allocator compatibility patches. Run 43392590850 linked all 658 objects, produced an Android ARM64 ELF64 PIE using /system/bin/linker64, and uploaded a checksum-verified artifact. A 32-bit x86 ELF runtime test and Windows PE/AEX test are still pending.
 - Android archive tests validate safe extraction and WCP installation, not Windows process execution. Actual Wine startup, real PE execution, and AEX parameter/render tests on an Android ARM64 device remain pending.
 
 A successful source build, static PE inspection, or package checksum is not an end-to-end compatibility result. Keep every backend marked experimental until a real Android ARM64 device test has loaded and rendered a real Windows plug-in.
+
+
+## 2026-11-14: preferred Bionic-native PE runtime candidate
+
+A new source audit found that the current Termux package repository maintains a Bionic-native Hangover Wine 11.16 build. This is now the preferred integration target for Windows PE execution, while the existing Winlator/Proton route remains a fallback and comparison path.
+
+- Termux package recipe: https://github.com/termux/termux-packages/tree/master/x11-packages/hangover-wine
+- Audited Termux repository revision: e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9 (2026-11-13)
+- Hangover release: hangover-11.16 (2026-08-30)
+- Wine architecture build flags: i386, aarch64, arm64ec
+- x86_64 Windows PE: ARM64EC Wine + FEX libarm64ecfex.dll
+- x86 Windows PE: WoW64 + FEX libwow64fex.dll, with wowbox64.dll as the alternative emulator DLL
+
+This design keeps Wine native on ARM64/Bionic and emulates the guest Windows PE code only. It avoids the failed Linux Box64 + Bionic Proton combination that stopped at unresolved __libc_init. Hangover upstream documents that one emulator is enough for a use case, with the ARM64EC FEX DLL required for x86_64.
+
+The Termux recipe uses OpenGL, Vulkan, PulseAudio and SDL, but explicitly disables OpenCL and ALSA. The current CLVK artifact only covers precompiled SPIR-V/OpenCL IL paths and its Wine ICD bridge remains unverified. DXVK/Vulkan support is device/driver-dependent; the upstream Hangover documentation warns that Vulkan 1.3 and required extensions may be missing on some ARM64 hardware.
+
+The complete audit, pinned source revisions, build flags, package hashes, license gates, and M0–M5 status are recorded in [the Termux Hangover Bionic audit](audits/2026-11-14-termux-hangover-bionic-11.16.md).
+
+Current upstream FEX is newer than the FEX branch bundled by Hangover 11.16. EffectCraft is updating its CI build to compile the current FEX ARM64EC and WoW64 PE DLLs and validate their PE machine types and required Wine CPU exports. These new DLLs will remain experimental until tested with Wine and on Android; the Hangover 11.16 package DLLs remain the baseline candidate.
+
+Termux issue #27663 documented historical x86/x64 startup problems. The issue was closed after the reporter installed all Hangover subpackages and regenerated the Wine prefix. EffectCraft must install the full matching emulator DLL set and create clean isolated prefixes rather than relying on a partial package install.
+
+### Next integration sequence
+
+1. Reproduce the Termux Bionic package from pinned inputs and generate a complete package/SBOM/license inventory.
+2. Add an EffectCraft private-storage Hangover installer and Bionic linker64 launcher; rewrite Termux prefix paths and runtime directories safely.
+3. Run minimal x86 and x86_64 Windows PE fixtures on ARM64 Android before integrating the AEX worker.
+4. Run the x64 aexlo host and sample AEX through Hangover; then add a real third-party plug-in.
+5. Add Android Surface/headless rendering, input, audio, and per-device GPU compatibility tests.
+
+No Android device has yet demonstrated a Windows PE/AEX load and render through this project. The Termux source audit and CI builds are progress toward that test, not a compatibility breakthrough.
