@@ -95,7 +95,7 @@ def apply_local_ban_cache(source: str) -> str:
     # Remove the orphaned partial send-method prefix left at the join point before
     # the avatar picker methods; the complete send() definition follows those methods.
     source, orphan_count = re.subn(
-        r"(?m)^    fn send\\(&mut self,\\s*(?=^    fn start_avatar_picker\\()",
+        r"(?m)^    fn send\(&mut self,\s*(?=^    fn start_avatar_picker\()",
         "",
         source,
         count=1,
