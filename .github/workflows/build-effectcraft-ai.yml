@@ -693,6 +693,7 @@ jobs:
           grep -Fq 'registerDevice()' "$RUNNER_TEMP/warp-bridge-api.txt"
           grep -Fq 'startTunnel(java.lang.String, long)' "$RUNNER_TEMP/warp-bridge-api.txt"
           grep -Fq 'stopTunnel()' "$RUNNER_TEMP/warp-bridge-api.txt"
+          grep -Fq 'setScannerStorage(java.lang.String, java.lang.String)' "$RUNNER_TEMP/warp-bridge-api.txt"
           unzip -l "$RUNNER_TEMP/effectcraft-warp-masque.aar" | grep -E 'jni/arm64-v8a/.*\.so'
 
       - name: Integrate direct Cloudflare MASQUE VPN into the main APK
@@ -702,8 +703,14 @@ jobs:
           BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
           WARP_AAR_PATH: ${{ runner.temp }}/effectcraft-warp-masque.aar
         run: |
+          set -euo pipefail
           python3 -m py_compile ${{ github.workspace }}/build-assets/.github/scripts/integrate_on_demand_vpn.py
           python3 ${{ github.workspace }}/build-assets/.github/scripts/integrate_on_demand_vpn.py
+          grep -Fq 'func SetScannerStorage(path string, networkIdentity string)' build-assets/warp-mobile/endpoint_scanner.go
+          grep -Fq 'scanCloudflareHTTP2(ctx, tlsConfig, defaultH2)' build-assets/warp-mobile/mobile.go
+          grep -Fq 'callWarp("setScannerStorage"' build-assets/p2p-bridge/android/EffectCraftVpnService.java
+          grep -Fq 'private static String scannerNetworkIdentity(Context context)' build-assets/p2p-bridge/android/EffectCraftVpnService.java
+          grep -Fq 'android.permission.ACCESS_NETWORK_STATE' build-assets/.github/scripts/integrate_on_demand_vpn.py
 
       - name: Install cargo-ndk
         shell: bash
