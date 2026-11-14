@@ -1,6 +1,12 @@
 package com.artcraft.effectcraft;
 
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.SharedPreferences;
+import android.os.Build;
+import android.text.Html;
+import android.text.method.LinkMovementMethod;
+import android.widget.TextView;
 import android.content.Context;
 import android.content.Intent;
 import android.net.wifi.WifiManager;
@@ -17,6 +23,9 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Starts the same encrypted libp2p node used by the administrator app. */
 final class NativeP2P {
@@ -94,6 +103,54 @@ final class NativeP2P {
             nativeClearVpnProxyConfig();
         } catch (Throwable error) {
             Log.w(TAG, "Could not clear the temporary VPN credentials", error);
+        }
+    }
+
+    /** Ask for the Cloudflare WARP terms only before the first per-device registration. */
+    static boolean requestCloudflareTermsConsent() {
+        Activity activity = launcherActivity.get();
+        if (activity == null || activity.isFinishing()) return false;
+        SharedPreferences prefs = activity.getSharedPreferences("effectcraft_warp", Context.MODE_PRIVATE);
+        if (prefs.getBoolean("cloudflare_terms_accepted", false)) return true;
+
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicBoolean accepted = new AtomicBoolean(false);
+        activity.runOnUiThread(() -> {
+            try {
+                if (activity.isFinishing()) {
+                    latch.countDown();
+                    return;
+                }
+                TextView message = new TextView(activity);
+                message.setText(Html.fromHtml(
+                    "首次启用 Cloudflare WARP 时，会向 Cloudflare 注册本设备的专用隧道身份，并保存加密后的设备密钥。<br><br>" +
+                    "继续前请阅读并同意 <a href=\"https://www.cloudflare.com/application/terms/\">Cloudflare 服务条款</a>。<br><br>" +
+                    "账号请求将通过本机内置 VPN 直接连接 Cloudflare；不会把所有手机应用流量交给 VPN。",
+                    Build.VERSION.SDK_INT >= 24 ? Html.FROM_HTML_MODE_LEGACY : 0));
+                message.setMovementMethod(LinkMovementMethod.getInstance());
+                int padding = (int) (20 * activity.getResources().getDisplayMetrics().density);
+                message.setPadding(padding, padding / 2, padding, padding / 2);
+                new AlertDialog.Builder(activity)
+                    .setTitle("启用 Cloudflare WARP")
+                    .setView(message)
+                    .setPositiveButton("同意并继续", (dialog, which) -> {
+                        prefs.edit().putBoolean("cloudflare_terms_accepted", true).apply();
+                        accepted.set(true);
+                        latch.countDown();
+                    })
+                    .setNegativeButton("暂不启用", (dialog, which) -> latch.countDown())
+                    .setOnCancelListener(dialog -> latch.countDown())
+                    .show();
+            } catch (Throwable error) {
+                Log.e(TAG, "Could not display Cloudflare terms consent", error);
+                latch.countDown();
+            }
+        });
+        try {
+            return latch.await(4, TimeUnit.MINUTES) && accepted.get();
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
         }
     }
 
