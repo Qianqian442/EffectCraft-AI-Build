@@ -12,6 +12,7 @@ fi
 git -C "$UPSTREAM" fetch --depth=1 origin "$PINNED_USQUE_COMMIT"
 git -C "$UPSTREAM" checkout --detach "$PINNED_USQUE_COMMIT"
 USQUE_SOURCE_DIR="$UPSTREAM" python3 "$ROOT/.github/scripts/patch_usque_for_android.py"
+grep -Fq 'golang.org/x/mobile ' "$WARP_DIR/go.mod" || { echo "golang.org/x/mobile must be included in warp-mobile/go.mod" >&2; exit 1; }
 mkdir -p "$(dirname "$OUTPUT")"
 cd "$WARP_DIR"
 go mod download
