@@ -240,12 +240,14 @@ jobs:
           CARGO_BUILD_JOBS: '2'
         run: cargo check -p effectcraft-engine -p effectcraft-ui-egui
 
-      - name: Audit every cataloged Simplified Chinese menu, panel, dialog and setting string
+      - name: Audit cataloged and uncatalogued Simplified Chinese UI and runtime text
         working-directory: effectcraft
         env:
           CARGO_BUILD_JOBS: '2'
         run: |
           set -o pipefail
+          python3 -m py_compile "$GITHUB_WORKSPACE/.github/scripts/audit_zh_hans_uncatalogued.py"
+          python3 "$GITHUB_WORKSPACE/.github/scripts/audit_zh_hans_uncatalogued.py" 2>&1 | tee zh-hans-localization-audit.log
           python3 - <<'PY'
           from pathlib import Path
           path = Path("crates/ui-egui/src/i18n.rs")
