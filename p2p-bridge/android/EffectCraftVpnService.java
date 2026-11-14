@@ -66,6 +66,7 @@ public final class EffectCraftVpnService extends VpnService {
     private static volatile boolean permissionGranted;
     private static volatile boolean taskActive;
     private static volatile String lastError = "";
+    private static volatile String activeWorkerIpCsv = "";
 
     private ParcelFileDescriptor tunInterface;
     private Thread startThread;
@@ -125,18 +126,19 @@ public final class EffectCraftVpnService extends VpnService {
     }
 
     /** Called immediately before one Cloudflare account API operation. */
-    public static String startForTask(Context context, String host) {
+    public static synchronized String startForTask(Context context, String host) {
         if (!isAllowedHost(host)) return "ERROR:账号 VPN 只允许配置的 workers.dev 账号服务器";
-        if (taskActive) return "OK";
+        if (taskActive) {
+            return activeWorkerIpCsv.isEmpty()
+                ? "ERROR:Cloudflare VPN 已占用，但尚未确认账号服务器路由"
+                : "OK|" + activeWorkerIpCsv;
+        }
 
+        boolean vpnMayBeActive = false;
         try {
-            // Ask Android for VPN consent before registering a WARP device, so a
-            // user who declines does not leave an unused Cloudflare device identity.
+            // Android permission is requested before any network or WARP setup.
             if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
 
-            // Persist scanner scores in this app's private storage, partitioned
-            // by a hashed transport/DNS/subnet fingerprint. No Wi-Fi SSID or
-            // location permission is read or requested.
             callWarp("setScannerStorage", new Class<?>[]{String.class, String.class},
                 new java.io.File(context.getFilesDir(), "warp-endpoint-scores.json").getAbsolutePath(),
                 scannerNetworkIdentity(context));
@@ -146,42 +148,84 @@ public final class EffectCraftVpnService extends VpnService {
                 if (!NativeP2P.requestCloudflareTermsConsent()) {
                     return "CLOUDFLARE_TERMS_REQUIRED";
                 }
-                // First-time registration is a direct Cloudflare enrollment call.
-                // It creates a per-device MASQUE key; the private key is persisted encrypted.
                 Object registered = callWarp("registerDevice", new Class<?>[0]);
                 bundle = registered == null ? "" : registered.toString();
                 if (bundle.isEmpty()) return "ERROR:Cloudflare 没有返回 WARP 设备配置";
                 saveEncryptedBundle(context, bundle);
             }
 
-            JSONObject json = new JSONObject(bundle);
-            List<InetAddress> workers = resolveWorkerAddresses(host);
-            if (workers.isEmpty()) return "ERROR:Worker DNS 没有返回可用的公网地址";
+            // Step 1: establish a bootstrap WARP route to numeric Cloudflare DoH
+            // resolver addresses. Never resolve the Worker using the carrier DNS.
+            List<InetAddress> resolverIps = CloudflareDnsOverHttps.resolverAddressesForTunnel();
+            String bootstrap = startTunnelForAddresses(context, host, bundle, resolverIps);
+            if (!"OK".equals(bootstrap)) return bootstrap;
+            vpnMayBeActive = true;
 
-            Intent intent = new Intent(context.getApplicationContext(), EffectCraftVpnService.class)
-                .setAction(ACTION_START)
-                .putExtra("worker_host", host)
-                .putExtra("bundle_json", bundle)
-                .putExtra("worker_ips", toCsv(workers));
-            lastError = "";
-            stopping = false;
-            Context app = context.getApplicationContext();
-            if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(intent);
-            else app.startService(intent);
-
-            long deadline = System.currentTimeMillis() + 50000L;
-            while (System.currentTimeMillis() < deadline) {
-                if (taskActive) return "OK";
-                if (!lastError.isEmpty()) return "ERROR:" + lastError;
-                Thread.sleep(150L);
+            // Step 2: resolve the Worker over TLS-verified Cloudflare DoH while
+            // 1.1.1.1 / 1.0.0.1 traffic is routed through the bootstrap tunnel.
+            List<InetAddress> workers = CloudflareDnsOverHttps.resolveWorkerAddresses(host);
+            if (workers == null || workers.isEmpty()) {
+                throw new IllegalStateException("Cloudflare DoH 没有返回可用的 Worker 公网地址");
             }
-            return "ERROR:Cloudflare WARP 在 50 秒内未能建立 MASQUE 隧道";
+
+            // Step 3: replace the bootstrap route with only the authenticated
+            // Worker addresses; the MASQUE endpoints remain outside the TUN.
+            String stoppedBootstrap = stopForTask(context);
+            vpnMayBeActive = false;
+            if (!"OK".equals(stoppedBootstrap)) {
+                throw new IllegalStateException("Cloudflare DNS 引导隧道未确认关闭：" + stoppedBootstrap);
+            }
+
+            String workerCsv = toCsv(workers);
+            String workerTunnel = startTunnelForAddresses(context, host, bundle, workers);
+            if (!"OK".equals(workerTunnel)) return workerTunnel;
+            vpnMayBeActive = true;
+            activeWorkerIpCsv = workerCsv;
+
+            // The local Rust caller receives the exact pinned IP list. It will
+            // use a custom ureq resolver while retaining the Worker URL hostname
+            // for TLS SNI, HTTP Host and certificate verification.
+            return "OK|" + workerCsv;
         } catch (SecurityException denied) {
             return "VPN_PERMISSION_REQUIRED";
         } catch (Throwable error) {
             Log.e(TAG, "Could not start Cloudflare WARP task", error);
             return "ERROR:" + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
+        } finally {
+            if (vpnMayBeActive && !taskActive) {
+                // The service may have partially established a TUN before a
+                // timeout/cancellation; ask it to clean up even in that case.
+                stopForTask(context);
+            }
         }
+    }
+
+    private static String startTunnelForAddresses(
+        Context context, String host, String bundle, List<InetAddress> routes
+    ) throws Exception {
+        if (taskActive) {
+            String stopped = stopForTask(context);
+            if (!"OK".equals(stopped)) return "ERROR:替换 Cloudflare VPN 路由前未能关闭旧隧道：" + stopped;
+        }
+        Intent intent = new Intent(context.getApplicationContext(), EffectCraftVpnService.class)
+            .setAction(ACTION_START)
+            .putExtra("worker_host", host)
+            .putExtra("bundle_json", bundle)
+            .putExtra("worker_ips", toCsv(routes));
+        lastError = "";
+        activeWorkerIpCsv = "";
+        stopping = false;
+        Context app = context.getApplicationContext();
+        if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(intent);
+        else app.startService(intent);
+
+        long deadline = System.currentTimeMillis() + 50000L;
+        while (System.currentTimeMillis() < deadline) {
+            if (taskActive) return "OK";
+            if (!lastError.isEmpty()) return "ERROR:" + lastError;
+            Thread.sleep(150L);
+        }
+        return "ERROR:Cloudflare WARP 在 50 秒内未能建立 MASQUE 隧道";
     }
 
     /** Stop immediately after the account API request completes or fails. */
@@ -192,7 +236,10 @@ public final class EffectCraftVpnService extends VpnService {
             context.getApplicationContext().startService(stop);
             long deadline = System.currentTimeMillis() + 9000L;
             while (System.currentTimeMillis() < deadline) {
-                if (!taskActive) return "OK";
+                if (!taskActive) {
+                    activeWorkerIpCsv = "";
+                    return "OK";
+                }
                 Thread.sleep(80L);
             }
             return "ERROR:Cloudflare WARP 关闭确认超时";
