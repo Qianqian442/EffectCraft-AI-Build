@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Show exactly four project-format export buttons and one generic share action."""
+"""Configure four project exporters and reveal QQ sharing only after a successful export."""
 from __future__ import annotations
 
 import os
@@ -29,8 +29,17 @@ def main() -> None:
     let mut export_alight_motion = false;
     let mut export_nodevideo = false;
     let mut export_capcut = false;
-    let mut share_project_package = false;"""
+    let mut share_exported_project: Option<String> = None;"""
     source = replace_once(source, old_state, new_state, "project export action state")
+
+    source = replace_once(
+        source,
+        '    let comp_rate = app.session.active_comp().map(|c| c.frame_rate.as_f64());\n',
+        '    let comp_rate = app.session.active_comp().map(|c| c.frame_rate.as_f64());\n'
+        '    let export_path_id = egui::Id::new("effectcraft-last-successful-project-export");\n'
+        '    let last_exported_path: Option<String> = ui.ctx().data(|d| d.get_temp(export_path_id));\n',
+        "last successfully exported project path state",
+    )
 
     old_buttons = """            ui.label("工程分享");
             if ui.button("完整导出工程（包含素材）").clicked() {
@@ -62,12 +71,15 @@ def main() -> None:
             if ui.button("CapCut 工程导出（.zip）").clicked() {
                 export_capcut = true;
             }
-            ui.small("以上四个按钮分别生成对应软件的工程格式；目标软件不支持的项目内容会在导出报告中说明。");
-            if ui.button("打包并分享到QQ").clicked() {
-                share_project_package = true;
-            }
-            ui.small("自动收集工程文件和引用素材，优先发送到QQ；未安装QQ时提供系统分享方式。");"""
-    source = replace_once(source, old_buttons, new_buttons, "four project export buttons and share action")
+            ui.small("四种格式分别导出；不支持转换的项目内容会在导出报告中说明。");
+            if let Some(path) = last_exported_path.as_ref() {
+                ui.separator();
+                ui.label("工程已成功导出");
+                if ui.button("分享到QQ").clicked() {
+                    share_exported_project = Some(path.clone());
+                }
+            }"""
+    source = replace_once(source, old_buttons, new_buttons, "four project export buttons and conditional QQ share button")
 
     old_project_actions = """    if collect_project_files {
         match crate::menus::invoke(app, ui.ctx(), "file.collectFiles", json!({})) {
@@ -82,49 +94,99 @@ def main() -> None:
         }
     }
 """
-    new_project_actions = """    if share_project_package {
-        match crate::menus::invoke(app, ui.ctx(), "file.collectFiles", json!({})) {
-            Ok(export) => {
-                if let Some(project_path) = export.get("project").and_then(|value| value.as_str()) {
-                    match crate::android_gallery::share_project_package(project_path) {
-                        Ok(()) => {
-                            app.ui.status = "工程及引用素材正在打包；随后选择手机中的分享应用。".into();
-                            open = false;
-                        }
-                        Err(error) => app.ui.status = format!("工程分享失败：{error}"),
-                    }
-                } else {
-                    app.ui.status = "工程已收集，但没有取得工程文件路径，无法分享。".into();
-                }
-            }
-            Err(error) => app.ui.status = format!("收集工程素材失败：{error}"),
+    new_project_actions = """    if let Some(export_path) = share_exported_project.as_deref() {
+        match crate::android_gallery::share_exported_project(export_path) {
+            Ok(()) => app.ui.status = "正在将刚刚导出的工程文件发送到 QQ；如不可用会打开系统分享面板。".into(),
+            Err(error) => app.ui.status = format!("分享到 QQ 失败：{error}"),
         }
     }
 """
-    source = replace_once(source, old_project_actions, new_project_actions, "generic project share action")
+    source = replace_once(source, old_project_actions, new_project_actions, "share the exact exported project file")
 
+    # Remove stale successful-export state before starting any new format export. The
+    # engine only sets it again after the chosen save path has actually been written.
     aep_anchor = """    if export_alight_motion {
         match crate::menus::invoke(app, ui.ctx(), "file.exportAlightMotion", json!({})) {"""
     aep_addition = """    if export_aep {
+        ui.ctx().data_mut(|d| { d.remove_temp::<String>(export_path_id); });
         match crate::menus::invoke(app, ui.ctx(), "file.exportAep", json!({})) {
-            Ok(_) => open = false,
+            Ok(_) => {},
             Err(error) => app.ui.status = error,
         }
     }
 """
     source = replace_once(source, aep_anchor, aep_addition + aep_anchor, "AE project export command dispatch")
 
+    for variable, command, label in [
+        ("export_alight_motion", "file.exportAlightMotion", "AM"),
+        ("export_nodevideo", "file.exportNodeVideo", "NV"),
+        ("export_capcut", "file.exportCapCut", "CapCut"),
+    ]:
+        old = f"""    if {variable} {{
+        match crate::menus::invoke(app, ui.ctx(), "{command}", json!({{}})) {{
+            Ok(_) => open = false,
+            Err(error) => app.ui.status = error,
+        }}
+    }}"""
+        new = f"""    if {variable} {{
+        ui.ctx().data_mut(|d| {{ d.remove_temp::<String>(export_path_id); }});
+        match crate::menus::invoke(app, ui.ctx(), "{command}", json!({{}})) {{
+            Ok(_) => {{}},
+            Err(error) => app.ui.status = error,
+        }}
+    }}"""
+        source = replace_once(source, old, new, f"{label} export asynchronous save action")
+
+    # The Android picker answers asynchronously, so the engine emits this frontend event
+    # only after its export function successfully writes the selected destination.
+    frontend = root / "crates/ui-egui/src/menus/frontend.rs"
+    front_source = frontend.read_text(encoding="utf-8")
+    front_source = replace_once(
+        front_source,
+        '        "mediaBrowser.copySourcePath" => {\n',
+        """        "effectcraft.projectExported" => {
+            let path = p.get("path").and_then(Value::as_str)
+                .filter(|path| !path.trim().is_empty())
+                .ok_or("project export notification has no output path")?;
+            let export_path_id = egui::Id::new("effectcraft-last-successful-project-export");
+            ctx.data_mut(|data| data.insert_temp(export_path_id, path.to_string()));
+            app.ui.status = format!("工程已成功导出：{}", std::path::Path::new(path).file_name().and_then(|name| name.to_str()).unwrap_or(path));
+            ctx.request_repaint();
+            Value::Null
+        }
+        "mediaBrowser.copySourcePath" => {
+""",
+        "project export success event handler",
+    )
+    front_source = replace_once(
+        front_source,
+        '        "file.exportLottie" => ("path", Ask::Save("Animation.json".into())),\n',
+        '        "file.exportLottie" => ("path", Ask::Save("Animation.json".into())),\n'
+        '        "file.exportAep" => ("path", Ask::Save("Project.aep".into())),\n'
+        '        "file.exportAlightMotion" => ("path", Ask::Save("AlightMotion.xml".into())),\n'
+        '        "file.exportNodeVideo" => ("path", Ask::Save("NodeVideo.zip".into())),\n'
+        '        "file.exportCapCut" => ("path", Ask::Save("CapCut.zip".into())),\n',
+        "save pickers for the four project export formats",
+    )
+    frontend.write_text(front_source, encoding="utf-8")
+
     if source.count('ui.button("Ae 工程导出（.aep）")') != 1:
         raise SystemExit("Ae project export button was not installed exactly once")
     for label in ["AM 工程导出（.xml）", "NV 工程导出（.zip）", "CapCut 工程导出（.zip）"]:
         if source.count(f'ui.button("{label}")') != 1:
             raise SystemExit(f"Expected exactly one export button: {label}")
-    if "file.exportAep" not in source or "share_project_package(project_path)" not in source:
-        raise SystemExit("The AE export or project share action is not connected")
+    if 'ui.button("分享到QQ")' not in source or "share_exported_project(export_path)" not in source:
+        raise SystemExit("Conditional QQ share action is not connected")
+    for command in ["file.exportAep", "file.exportAlightMotion", "file.exportNodeVideo", "file.exportCapCut"]:
+        if command not in front_source:
+            raise SystemExit(f"Missing save picker for {command}")
+    if "effectcraft.projectExported" not in front_source:
+        raise SystemExit("Project export completion event handler is missing")
 
     header.write_text(source, encoding="utf-8")
-    print("Installed four separate project export controls: AE, AM, NV and CapCut.")
-    print("Added a separate generic package-and-share action through the Android Sharesheet.")
+    print("Installed four separate project export controls: Ae, AM, NV and CapCut.")
+    print("The QQ share button remains hidden until one of those project exports succeeds.")
+    print("The share action sends the exact last exported project file, not a separate .ecproj copy.")
 
 
 if __name__ == "__main__":
