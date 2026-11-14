@@ -74,12 +74,23 @@ export class AccountSessionHub {
       if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
         return new Response("WebSocket upgrade required", { status: 426 });
       }
+      const accountId = String(url.searchParams.get("account_id") || "");
+      if (!/^[a-zA-Z0-9_-]{1,80}$/.test(accountId)) {
+        return Response.json({ error: "invalid account identity" }, { status: 400 });
+      }
       const pair = new WebSocketPair();
       const [client, server] = Object.values(pair);
       this.ctx.acceptWebSocket(server);
-      // Replay the most recent status on every new connection. The client
-      // compares it with its just-verified state and only calls /v1/me if different.
-      const lastStatus = await this.ctx.storage.get("last_status");
+      server.serializeAttachment({ accountId });
+
+      // The same hibernating socket carries account ban/unban and global
+      // server state events; no second socket or timed polling is needed.
+      const serverState = await this.ctx.storage.get("server_state") || {
+        enabled: true, changed_at: null, changed_by: "bootstrap", event_id: null
+      };
+      server.send(JSON.stringify({ type: "server_state_changed", ...serverState }));
+
+      const lastStatus = await this.ctx.storage.get("last_status:" + accountId);
       if (lastStatus && ["banned", "unbanned"].includes(lastStatus.status)) {
         server.send(JSON.stringify({
           type: "account_status_changed",
@@ -92,17 +103,21 @@ export class AccountSessionHub {
 
     if (url.pathname === "/notify" && request.method === "POST") {
       const event = await request.json();
-      if (!event || event.type !== "account_status_changed" ||
+      const accountId = String(event?.account_id || "");
+      if (!/^[a-zA-Z0-9_-]{1,80}$/.test(accountId) ||
+          !event || event.type !== "account_status_changed" ||
           !["banned", "unbanned"].includes(event.status)) {
         return Response.json({ error: "invalid event" }, { status: 400 });
       }
-      await this.ctx.storage.put("last_status", {
+      await this.ctx.storage.put("last_status:" + accountId, {
         status: event.status,
         banned_until: event.status === "banned" ? event.banned_until : null
       });
       const payload = JSON.stringify(event);
       let delivered = 0;
       for (const socket of this.ctx.getWebSockets()) {
+        const attachment = socket.deserializeAttachment() || {};
+        if (attachment.accountId !== accountId) continue;
         try {
           socket.send(payload);
           delivered++;
@@ -111,6 +126,46 @@ export class AccountSessionHub {
         }
       }
       return Response.json({ delivered });
+    }
+
+    if (url.pathname === "/server/state" && request.method === "GET") {
+      const server = await this.ctx.storage.get("server_state") || {
+        enabled: true, changed_at: null, changed_by: "bootstrap", event_id: null
+      };
+      return Response.json({ server });
+    }
+
+    if (url.pathname === "/server/set-state" && request.method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body.enabled !== "boolean" || !body.changed_by) {
+        return Response.json({ error: "invalid server state" }, { status: 400 });
+      }
+      const previous = await this.ctx.storage.get("server_state") || {
+        enabled: true, changed_at: null, changed_by: "bootstrap", event_id: null
+      };
+      if (previous.enabled === body.enabled) {
+        return Response.json({ server: previous, changed: false, notification_delivered: 0 });
+      }
+      const serverState = {
+        enabled: body.enabled,
+        changed_at: new Date().toISOString(),
+        changed_by: String(body.changed_by).slice(0, 80),
+        event_id: crypto.randomUUID()
+      };
+      await this.ctx.storage.put("server_state", serverState);
+      const payload = JSON.stringify({ type: "server_state_changed", ...serverState });
+      let delivered = 0;
+      for (const socket of this.ctx.getWebSockets()) {
+        try {
+          // Keep sockets open after shutdown so the later "server enabled"
+          // event can reach the same clients immediately.
+          socket.send(payload);
+          delivered++;
+        } catch (_) {
+          try { socket.close(1011, "server state notification failed"); } catch (_) {}
+        }
+      }
+      return Response.json({ server: serverState, changed: true, notification_delivered: delivered });
     }
 
     return new Response("Not found", { status: 404 });

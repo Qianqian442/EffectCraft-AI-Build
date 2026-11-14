@@ -62,6 +62,8 @@ public final class MainActivity extends Activity {
     private TextView p2pStatusView;
     private String serviceStartError = "";
     private boolean serverToggleChanging = false;
+    private boolean cloudServerToggleChanging = false;
+    private boolean cloudServerEnabled = true;
     private final Handler p2pUiHandler = new Handler(Looper.getMainLooper());
     private final Runnable p2pStatusRefresh = new Runnable() {
         @Override public void run() {
@@ -176,7 +178,7 @@ public final class MainActivity extends Activity {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
-        TextView label = text("账号服务器开关", 14, true);
+        TextView label = text("本机局域网服务开关", 14, true);
         row.addView(label, new LinearLayout.LayoutParams(0, dp(48), 1));
         Switch control = new Switch(this);
         control.setTextOn("开启");
@@ -185,7 +187,75 @@ public final class MainActivity extends Activity {
         control.setOnCheckedChangeListener((button, enabled) -> setNodeServerEnabled(enabled, control));
         row.addView(control, new LinearLayout.LayoutParams(-2, dp(48)));
         parent.addView(row);
-        parent.addView(text("开启：本机 SQLite 账号库和加密 P2P 节点对外服务；关闭：停止节点与账号服务。", 11, false));
+        parent.addView(text("只控制本机局域网 SQLite 服务；不代表 Ae 云端服务器的总开关。", 11, false));
+    }
+
+    private void addCloudServerToggle(LinearLayout parent) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = text("Ae 服务器总开关", 14, true);
+        row.addView(label, new LinearLayout.LayoutParams(0, dp(48), 1));
+        Switch control = new Switch(this);
+        control.setTextOn("开启");
+        control.setTextOff("关闭");
+        control.setChecked(false);
+        control.setEnabled(false);
+        control.setOnCheckedChangeListener((button, enabled) -> setCloudServerEnabled(enabled, control));
+        row.addView(control, new LinearLayout.LayoutParams(-2, dp(48)));
+        parent.addView(row);
+        parent.addView(text("关闭后，所有主 APK 自动退出编辑状态并显示停服页面；开启后，在线设备收到恢复通知。离线设备下次连接时同步状态。", 11, false));
+
+        requestAsync("GET", "/v1/admin/server", null, true, result -> {
+            if (result == null || result.optJSONObject("server") == null) {
+                control.setEnabled(false);
+                toast("无法读取 Ae 服务器状态，开关保持锁定");
+                return;
+            }
+            cloudServerEnabled = result.optJSONObject("server").optBoolean("enabled", true);
+            cloudServerToggleChanging = true;
+            control.setChecked(cloudServerEnabled);
+            cloudServerToggleChanging = false;
+            control.setEnabled(true);
+        });
+    }
+
+    private void setCloudServerEnabled(boolean enabled, Switch control) {
+        if (cloudServerToggleChanging) return;
+        boolean previous = cloudServerEnabled;
+        control.setEnabled(false);
+        JSONObject body = new JSONObject();
+        try { body.put("enabled", enabled); }
+        catch (Exception error) {
+            control.setEnabled(true);
+            cloudServerToggleChanging = true;
+            control.setChecked(previous);
+            cloudServerToggleChanging = false;
+            toast("服务器开关数据准备失败");
+            return;
+        }
+        requestAsync("POST", "/v1/admin/server", body, true, result -> {
+            JSONObject state = result == null ? null : result.optJSONObject("server");
+            if (state == null) {
+                cloudServerToggleChanging = true;
+                control.setChecked(previous);
+                cloudServerToggleChanging = false;
+                cloudServerEnabled = previous;
+                control.setEnabled(true);
+                return;
+            }
+            cloudServerEnabled = state.optBoolean("enabled", previous);
+            int delivered = result.optInt("notification_delivered", 0);
+            cloudServerToggleChanging = true;
+            control.setChecked(cloudServerEnabled);
+            cloudServerToggleChanging = false;
+            control.setEnabled(true);
+            if (cloudServerEnabled) {
+                toast("Ae 服务器已开启，已向 " + delivered + " 台在线设备发送恢复通知");
+            } else {
+                toast("Ae 服务器已关闭，已向 " + delivered + " 台在线设备发送停服通知");
+            }
+        });
     }
 
     /** The administrator phone is the account authority; P2P carries authenticated account RPC. */
@@ -198,6 +268,7 @@ public final class MainActivity extends Activity {
         panel.addView(text(isCloudflareMode()
             ? "账号注册、登录、查询、封禁和解禁由 Cloudflare Workers + D1 统一处理。本机节点开关只控制独立 P2P 节点，不替代云端账号服务。"
             : "账号数据保存在本机 SQLite；用户注册、登录、资料修改和封禁状态均由本机校验。", 12, false));
+        if (isCloudflareMode()) addCloudServerToggle(panel);
         addNodeServerToggle(panel);
         p2pStatusView = text(readP2PStatus(), 11, false);
         p2pStatusView.setTextColor(Color.rgb(75, 84, 98));

@@ -62,7 +62,8 @@ def main() -> None:
         "    event_started: bool,\n"
         "    node_event_started: bool,\n"
         "    notification_pending: Option<String>,\n"
-        "    last_event_signature: Option<String>,",
+        "    last_event_signature: Option<String>,\n"
+        "    last_server_state: Option<bool>,",
         "account event state fields",
     )
     source = replace_once(
@@ -75,7 +76,8 @@ def main() -> None:
         "            event_started: false,\n"
         "            node_event_started: false,\n"
         "            notification_pending: None,\n"
-        "            last_event_signature: None,",
+        "            last_event_signature: None,\n"
+        "            last_server_state: None,",
         "account event state initialization",
     )
     source = replace_once(
@@ -213,7 +215,29 @@ def main() -> None:
         };
         match received {
             Some(Ok(event)) => {
-                if event.get("type").and_then(Value::as_str) == Some("account_status_changed") {
+                let event_type = event.get("type").and_then(Value::as_str).unwrap_or("");
+                if event_type == "server_state_changed" {
+                    let enabled = event.get("enabled").and_then(Value::as_bool).unwrap_or(false);
+                    if self.last_server_state != Some(enabled) {
+                        self.last_server_state = Some(enabled);
+                        if !enabled {
+                            // Stop the editor immediately. Keep the same event
+                            // socket open so the later enable event can restore access.
+                            self.pending = None;
+                            self.pending_action = None;
+                            self.mode = Mode::ServerClosed;
+                            self.status = "当前服务器已关闭，请等待开发者开启服务器".to_string();
+                        } else if self.mode == Mode::ServerClosed || self.mode == Mode::Unavailable {
+                            if self.token.is_some() {
+                                self.mode = Mode::Checking;
+                                self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+                            } else {
+                                self.mode = Mode::Auth;
+                                self.status.clear();
+                            }
+                        }
+                    }
+                } else if event_type == "account_status_changed" {
                     let status = event.get("status").and_then(Value::as_str).unwrap_or("");
                     let banned_until = event.get("banned_until").and_then(Value::as_str).unwrap_or("");
                     let signature = format!("{status}:{banned_until}");
@@ -227,7 +251,12 @@ def main() -> None:
                     }
                 }
             }
-            Some(Err(error)) => self.status = error,
+            Some(Err(error)) => {
+                self.status = error;
+                if self.mode == Mode::Editor {
+                    self.mode = Mode::Unavailable;
+                }
+            }
             None => {}
         }
         if self.pending.is_none() && self.token.is_some() {
@@ -289,7 +318,7 @@ def main() -> None:
         raise SystemExit(f"HTTPS transport replacement expected once, found {substitutions}")
 
     live_event_call = (
-        "    if matches!(app.account.mode, Mode::Editor | Mode::Banned) {\n"
+        "    if matches!(app.account.mode, Mode::Editor | Mode::Banned | Mode::ServerClosed | Mode::Unavailable) {\n"
         "        app.account.start_events();\n"
         "        if app.account.mode == Mode::Editor {\n"
         "            app.account.start_node_events();\n"
@@ -314,6 +343,17 @@ def main() -> None:
             "    app.account.poll(config);\n" + live_event_call,
             "start push events without periodic account polling",
         )
+    source = replace_once(
+        source,
+        "    fn retry(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n"
+        "        self.status.clear();",
+        "    fn retry(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n"
+        "        self.event_started = false;\n"
+        "        self.events = None;\n"
+        "        self.status.clear();",
+        "restart server notification socket when the user retries",
+    )
+
     source = source.replace(
         'ui.label("仅连接家中的 Wi-Fi 账号服务器");',
         'ui.label("连接云端账号服务器，支持不同地区和网络");',

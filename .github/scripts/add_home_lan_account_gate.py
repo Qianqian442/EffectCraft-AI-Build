@@ -29,6 +29,7 @@ enum Mode {
     Unavailable,
     Success,
     Banned,
+    ServerClosed,
     Editor,
 }
 
@@ -38,6 +39,7 @@ enum Action {
     Login,
     Register,
     Profile,
+    ServerState,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
@@ -253,6 +255,12 @@ impl AccountState {
                     self.mode = Mode::Unavailable;
                 }
             }
+            Ok(response) if response.body.get("detail")
+                .and_then(|detail| detail.get("server_closed"))
+                .and_then(Value::as_bool) == Some(true) => {
+                self.mode = Mode::ServerClosed;
+                self.status = "当前服务器已关闭，请等待开发者开启服务器".to_string();
+            }
             Ok(response) if response.status == 423 => {
                 let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
                 self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
@@ -293,6 +301,24 @@ impl AccountState {
                         self.mode = Mode::Success;
                         self.password.clear();
                         self.persist(config);
+                    }
+                }
+                Action::ServerState => {
+                    let enabled = response.body.get("server")
+                        .and_then(|server| server.get("enabled"))
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false);
+                    if enabled {
+                        if self.token.is_some() {
+                            self.mode = Mode::Checking;
+                            self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+                        } else {
+                            self.mode = Mode::Auth;
+                            self.status.clear();
+                        }
+                    } else {
+                        self.mode = Mode::ServerClosed;
+                        self.status = "当前服务器已关闭，请等待开发者开启服务器".to_string();
                     }
                 }
                 Action::Profile => {
@@ -593,6 +619,20 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 ui.add_space(18.0);
                 if ui.button("OK").clicked() {
                     ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            });
+        }),
+        Mode::ServerClosed => centered_window(ctx, "服务器已关闭", vec2(420.0, 280.0), |ui| {
+            ui.vertical_centered(|ui| {
+                ui.heading("当前服务器已关闭");
+                ui.add_space(12.0);
+                ui.label("请等待开发者开启服务器。");
+                ui.add_space(18.0);
+                if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新检查服务器状态")).clicked() {
+                    app.account.event_started = false;
+                    app.account.events = None;
+                    app.account.mode = Mode::Checking;
+                    app.account.send(Action::ServerState, "GET", "/v1/server/state", Value::Null, config);
                 }
             });
         }),

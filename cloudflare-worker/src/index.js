@@ -286,13 +286,17 @@ async function revokeNodeAccount(env, accountId, reason = "account banned") {
   return Number(result.revoked || 0);
 }
 
+function globalAccountSessionStub(env) {
+  const id = env.ACCOUNT_SESSIONS.idFromName("__ae_global_account_sessions__");
+  return env.ACCOUNT_SESSIONS.get(id);
+}
+
 async function notifyAccountStatus(env, accountId, status, bannedUntil = null) {
-  const id = env.ACCOUNT_SESSIONS.idFromName(accountId);
-  const stub = env.ACCOUNT_SESSIONS.get(id);
-  const res = await stub.fetch("https://account-session.internal/notify", {
+  const res = await globalAccountSessionStub(env).fetch("https://account-session.internal/notify", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
+      account_id: accountId,
       type: "account_status_changed",
       status,
       banned_until: bannedUntil,
@@ -304,15 +308,53 @@ async function notifyAccountStatus(env, accountId, status, bannedUntil = null) {
   return Number(result.delivered || 0);
 }
 
+async function readGlobalServerState(env) {
+  const res = await globalAccountSessionStub(env).fetch("https://account-session.internal/server/state");
+  if (!res.ok) throw new HttpError(503, "服务器状态服务暂时不可用");
+  const value = await res.json();
+  return value.server || { enabled: true, changed_at: null, changed_by: "bootstrap" };
+}
+
+async function ensureServerEnabled(env) {
+  const state = await readGlobalServerState(env);
+  if (!state.enabled) {
+    throw new HttpError(503, "当前服务器已关闭，请等待开发者开启服务器", { server_closed: true });
+  }
+  return state;
+}
+
+async function publicServerState(request, env) {
+  return response({ server: await readGlobalServerState(env) });
+}
+
+async function adminServerState(request, env) {
+  await readToken(env, request, "admin");
+  return response({ server: await readGlobalServerState(env) });
+}
+
+async function adminSetServerState(request, env) {
+  const claims = await readToken(env, request, "admin");
+  const body = await readJson(request);
+  if (typeof body.enabled !== "boolean") return fail(422, "enabled 必须是布尔值");
+  const res = await globalAccountSessionStub(env).fetch("https://account-session.internal/server/set-state", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ enabled: body.enabled, changed_by: claims.sub })
+  });
+  if (!res.ok) return fail(503, "服务器开关状态保存失败");
+  return response(await res.json());
+}
+
 async function accountEvents(request, env) {
   const claims = await readToken(env, request, "user");
   if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
     return fail(426, "需要 WebSocket 连接");
   }
-  const id = env.ACCOUNT_SESSIONS.idFromName(claims.sub);
-  // Forward the original Upgrade request intact; constructing a new Request can
-  // drop platform-specific WebSocket upgrade metadata.
-  return env.ACCOUNT_SESSIONS.get(id).fetch(request);
+  const target = new URL(request.url);
+  target.searchParams.set("account_id", claims.sub);
+  // Preserve the WebSocket upgrade while routing every user through one
+  // shared Durable Object. The same socket carries server and account events.
+  return globalAccountSessionStub(env).fetch(new Request(target.toString(), request));
 }
 
 async function adminBan(request, env, id) {
@@ -441,6 +483,15 @@ async function route(request, env) {
   }
   if (!env.DB) return fail(503, "云端数据库尚未绑定");
   try {
+    if (request.method === "GET" && url.pathname === "/v1/server/state") return await publicServerState(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/admin/server") return await adminServerState(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/admin/server") return await adminSetServerState(request, env);
+
+    const serverGuardedPath =
+      (request.method === "POST" && ["/v1/register", "/v1/login", "/v1/profile"].includes(url.pathname)) ||
+      (request.method === "GET" && ["/v1/me", "/v1/nodes/network", "/v1/nodes/events"].includes(url.pathname));
+    if (serverGuardedPath) await ensureServerEnabled(env);
+
     if (request.method === "GET" && url.pathname === "/v1/events") return await accountEvents(request, env);
     if (request.method === "GET" && url.pathname === "/v1/nodes/network") return await nodeNetworkState(request, env);
     if (request.method === "GET" && url.pathname === "/v1/nodes/events") return await nodeNetworkEvents(request, env);
