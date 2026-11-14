@@ -32,7 +32,25 @@ struct WorkerConfig {
 }
 
 static WORKER_CONFIG: OnceLock<Mutex<Option<WorkerConfig>>> = OnceLock::new();
+static VPN_CONTROL_TOKEN: OnceLock<Mutex<Option<String>>> = OnceLock::new();
 static ADMIN_PEER: OnceLock<Mutex<Option<PeerId>>> = OnceLock::new();
+
+fn vpn_control_token_slot() -> &'static Mutex<Option<String>> {
+    VPN_CONTROL_TOKEN.get_or_init(|| Mutex::new(None))
+}
+
+pub fn set_vpn_control_token(token: &str) -> Result<(), String> {
+    if token.len() != 64 || !token.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err("本地 VPN 控制密钥格式无效".to_string());
+    }
+    let mut slot = vpn_control_token_slot().lock().map_err(|_| "VPN 控制密钥锁不可用".to_string())?;
+    *slot = Some(token.to_string());
+    Ok(())
+}
+
+pub fn get_vpn_control_token() -> Option<String> {
+    vpn_control_token_slot().lock().ok().and_then(|slot| slot.clone())
+}
 
 fn worker_config() -> &'static Mutex<Option<WorkerConfig>> {
     WORKER_CONFIG.get_or_init(|| Mutex::new(None))
