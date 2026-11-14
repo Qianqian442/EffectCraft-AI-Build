@@ -29,8 +29,11 @@ def main() -> None:
     account_path = root / "crates/ui-egui/src/account.rs"
     lib_path = root / "crates/ui-egui/src/lib.rs"
     module_source = assets / ".github/native/public_proxy_pool.rs"
+    bootstrap_source = Path(os.environ.get("PUBLIC_PROXY_BOOTSTRAP_FILE", "")).resolve()
     if not account_path.is_file() or not lib_path.is_file() or not module_source.is_file():
         raise SystemExit("Missing generated account.rs, ui-egui/lib.rs, or public_proxy_pool.rs")
+    if not bootstrap_source.is_file() or bootstrap_source.stat().st_size == 0:
+        raise SystemExit("Missing non-empty build-time public proxy bootstrap snapshot")
 
     account = account_path.read_text(encoding="utf-8")
     lib = lib_path.read_text(encoding="utf-8")
@@ -74,7 +77,9 @@ def main() -> None:
     lib = replace_once(lib, module_declaration, module_new, "public proxy module declaration")
 
     destination = root / "crates/ui-egui/src/public_proxy_pool.rs"
+    bootstrap_destination = root / "crates/ui-egui/src/public_proxy_bootstrap.txt"
     destination.write_text(module_source.read_text(encoding="utf-8"), encoding="utf-8")
+    bootstrap_destination.write_text(bootstrap_source.read_text(encoding="utf-8"), encoding="utf-8")
     account_path.write_text(account, encoding="utf-8")
     lib_path.write_text(lib, encoding="utf-8")
 
@@ -88,6 +93,8 @@ def main() -> None:
         raise SystemExit("UI crate must depend on workspace tungstenite")
     if "rustls-tls-webpki-roots" not in workspace:
         raise SystemExit("WSS TLS validation must use the WebPKI root certificates")
+    if bootstrap_destination.stat().st_size == 0:
+        raise SystemExit("Public proxy bootstrap snapshot is empty")
     print("Integrated dynamic public proxy candidates for HTTPS and WSS Cloudflare account traffic.")
     print("Direct HTTPS remains preferred; only real Worker health-checked HTTP CONNECT/SOCKS5 routes are used.")
     print("TLS certificate verification remains enabled; account POST operations are never blindly replayed.")
