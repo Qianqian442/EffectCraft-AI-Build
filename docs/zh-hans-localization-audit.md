@@ -37,7 +37,13 @@ cargo test -p effectcraft-ui-egui --lib missing_translations_report -- --nocaptu
 
 This reports untranslated fixed menu and panel/dialog source strings for each catalog language, including Simplified Chinese. It is a report, not a zero-missing gate: the upstream test intentionally does not fail the build for missing translations. Its output must be reviewed before claiming full localization.
 
+The validation workflow also runs `.github/scripts/audit_zh_hans_uncatalogued.py`. It scans direct UI literals, dialog/window titles, and common engine error/toast/status call sites that are not necessarily wired into the translation catalog. Its output is a **manual-review candidate list**, not a proof that every line is user-visible or untranslated; it must be reviewed in context.
+
 The Android build patch also keeps Simplified Chinese as the default language for new installs and resolves a stored `system` preference to Simplified Chinese on Android. An explicit language selected by the user remains unchanged.
+
+## After Effects desktop versus mobile EffectCraft
+
+Adobe After Effects project export remains the desktop `.aep` format. The complete mobile package added here is EffectCraft's own `.ecproj` format plus its referenced media; it is not an Adobe After Effects mobile project. A different mobile application's project format requires that target application's name and a sample project so its real import/export schema can be verified.
 
 ## Acceptance criteria for calling the interface fully Chinese
 
