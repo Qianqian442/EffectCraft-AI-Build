@@ -138,7 +138,40 @@ if len(activities) != 1:
     raise SystemExit(f"Expected one generated NativeActivity, found {len(activities)}")
 activity_path, activity = activities[0]
 if "EFFECTCRAFT_VPN_PERMISSION_RESULT_V1" not in activity:
-    callback = """
+    import re
+
+    callback_body = """
+        // EFFECTCRAFT_VPN_PERMISSION_RESULT_V1
+        if (requestCode == EffectCraftVpnService.PERMISSION_REQUEST_CODE) {
+            NativeP2P.onVpnPermissionActivityResult(resultCode);
+        }
+    """
+    # The upstream launcher may already override onActivityResult for its
+    # document picker. Reuse that override instead of declaring a duplicate.
+    signature = re.compile(
+        r"protected\\s+void\\s+onActivityResult\\s*\\(\\s*int\\s+requestCode\\s*,\\s*"
+        r"int\\s+resultCode\\s*,\\s*(?:[\\w.]+\\.)?Intent\\s+data\\s*\\)\\s*\\{"
+    )
+    match = signature.search(activity)
+    if match:
+        open_brace = activity.find("{", match.start(), match.end())
+        depth = 0
+        close_brace = -1
+        for index in range(open_brace, len(activity)):
+            if activity[index] == "{":
+                depth += 1
+            elif activity[index] == "}":
+                depth -= 1
+                if depth == 0:
+                    close_brace = index
+                    break
+        if close_brace < 0:
+            raise SystemExit("Could not locate existing onActivityResult closing brace")
+        method_body = activity[open_brace + 1:close_brace]
+        if "NativeP2P.onVpnPermissionActivityResult" not in method_body:
+            activity = activity[:close_brace] + callback_body + activity[close_brace:]
+    else:
+        callback = """
     // EFFECTCRAFT_VPN_PERMISSION_RESULT_V1
     @Override
     protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
@@ -148,10 +181,10 @@ if "EFFECTCRAFT_VPN_PERMISSION_RESULT_V1" not in activity:
         }
     }
 """
-    end = activity.rfind("}")
-    if end < 0:
-        raise SystemExit("Generated NativeActivity has no closing brace")
-    activity = activity[:end] + callback + activity[end:]
+        end = activity.rfind("}")
+        if end < 0:
+            raise SystemExit("Generated NativeActivity has no closing brace")
+        activity = activity[:end] + callback + activity[end:]
     activity_path.write_text(activity, encoding="utf-8")
 
 print("Registered main-APK Cloudflare MASQUE VpnService, ARM64 engine AAR and Android permission callback.")
