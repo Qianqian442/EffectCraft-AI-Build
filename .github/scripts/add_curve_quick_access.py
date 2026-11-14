@@ -349,6 +349,8 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                 .id(egui::Id::new("effectcraft-android-curve-picker-window"))
                 .default_pos(ctx.content_rect().center() - vec2(210.0, 88.0))
                 .default_size(vec2(430.0, 174.0))
+                .title_bar(true)
+                .movable(true)
                 .resizable(false)
                 .collapsible(false)
                 .open(&mut open)
