@@ -193,8 +193,10 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "account_service_state",
             "account_service_enabled",
             "socket.send(payload)",
+            'socket.close(4002, "global account service disabled")',
         ),
     ),
+
     (
         "Cloudflare admin APK toggle controls all users and preserves admin recovery access",
         "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
