@@ -463,7 +463,7 @@ public final class MainActivity extends Activity {
             loginButton.setText("正在验证…");
         }
         if (loginStatus != null) loginStatus.setText(isCloudflareMode()
-            ? "正在通过 Cloudflare WARP 加密隧道验证管理员账号…"
+            ? "正在检查 VPN 授权并解析 Cloudflare 账号服务器地址…"
             : "正在等待本机 SQLite 服务就绪并校验管理员密码…");
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
             if (result == null) {
