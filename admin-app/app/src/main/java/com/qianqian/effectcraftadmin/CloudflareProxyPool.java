@@ -74,53 +74,39 @@ final class CloudflareProxyPool {
 
         URL endpoint = new URL(baseUrl.replaceAll("/+$", "") + path);
         String workerHost = endpoint.getHost();
-        String vpnStatus = AdminAccountVpnService.startForTask(context, workerHost);
+
+        // Do not trust carrier-provided plaintext DNS for workers.dev. Resolve
+        // through Cloudflare's authenticated DoH endpoint before installing the
+        // split-tunnel route, then pin the HTTPS socket to those returned IPs.
+        java.util.List<java.net.InetAddress> workerAddresses =
+            CloudflareHttpsTransport.resolveWorkerAddresses(workerHost);
+
+        String vpnStatus = AdminAccountVpnService.startForTask(context, workerHost, workerAddresses);
         if (!"OK".equals(vpnStatus)) {
             throw new java.io.IOException("管理版 Cloudflare WARP 启动失败：" + vpnStatus);
         }
 
-        HttpsURLConnection connection = null;
         try {
-            // The app's Worker IP routes use the MASQUE TUN. Proxy.NO_PROXY is
-            // deliberate: the request must not silently fall back to a relay.
-            connection = openHttps(endpoint);
-            connection.setRequestMethod(method);
-            connection.setRequestProperty("Accept", "application/json");
-            connection.setRequestProperty("Cache-Control", "no-store");
-            connection.setRequestProperty("Connection", "close");
-            connection.setUseCaches(false);
-
-            if (token != null && !token.isEmpty()) {
-                connection.setRequestProperty("Authorization", "Bearer " + token);
-            }
-            if (body != null) {
-                byte[] requestBytes = body.toString().getBytes(StandardCharsets.UTF_8);
-                if (requestBytes.length > 65536) {
-                    throw new IllegalArgumentException("账号请求数据超过限制");
-                }
-                connection.setDoOutput(true);
-                connection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                try (java.io.OutputStream output = connection.getOutputStream()) {
-                    output.write(requestBytes);
-                }
-            }
-
-            int status = connection.getResponseCode();
-            InputStream input = status >= 200 && status < 400
-                ? connection.getInputStream() : connection.getErrorStream();
-            byte[] responseBytes = readBounded(input, MAX_RESPONSE_BYTES);
+            CloudflareHttpsTransport.Response response = CloudflareHttpsTransport.execute(
+                workerHost,
+                endpoint.getFile(),
+                method,
+                body,
+                token,
+                workerAddresses
+            );
             JSONObject parsed;
             try {
-                parsed = responseBytes.length == 0
+                parsed = response.body.length == 0
                     ? new JSONObject()
-                    : new JSONObject(new String(responseBytes, StandardCharsets.UTF_8));
+                    : new JSONObject(new String(response.body, StandardCharsets.UTF_8));
             } catch (org.json.JSONException invalidJson) {
                 throw new java.io.IOException("Cloudflare 账号服务返回了无法识别的数据", invalidJson);
             }
-            return new ApiResponse(status, parsed, "Cloudflare WARP 直连");
+            return new ApiResponse(response.status, parsed, "Cloudflare WARP 直连（Cloudflare DoH）");
         } catch (Exception error) {
-            // Never retry a POST: the Worker may have applied a ban/unban before
-            // a response interruption. Do not risk submitting the same action twice.
+            // Never retry a POST after HTTP bytes have been sent: the Worker may
+            // already have applied a ban/unban before a response interruption.
             String cause = error.getMessage() == null
                 ? error.getClass().getSimpleName()
                 : error.getMessage();
@@ -129,39 +115,10 @@ final class CloudflareProxyPool {
                 error
             );
         } finally {
-            if (connection != null) connection.disconnect();
             String stopped = AdminAccountVpnService.stopForTask(context);
             if (!"OK".equals(stopped)) {
                 android.util.Log.w("EffectCraftAdminWARP", "VPN stop confirmation: " + stopped);
             }
-        }
-    }
-
-    private static HttpsURLConnection openHttps(URL endpoint) throws Exception {
-        java.net.URLConnection opened = endpoint.openConnection(Proxy.NO_PROXY);
-        if (!(opened instanceof HttpsURLConnection)) {
-            throw new java.io.IOException("账号 API 未建立 HTTPS 连接");
-        }
-        HttpsURLConnection connection = (HttpsURLConnection) opened;
-        // Keep the platform certificate chain and hostname verification intact.
-        connection.setConnectTimeout(CONNECT_TIMEOUT_MS);
-        connection.setReadTimeout(READ_TIMEOUT_MS);
-        connection.setInstanceFollowRedirects(false);
-        return connection;
-    }
-
-    private static byte[] readBounded(InputStream input, int limit) throws Exception {
-        if (input == null) return new byte[0];
-        try (InputStream in = input; ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            byte[] buffer = new byte[8192];
-            int total = 0;
-            int read;
-            while ((read = in.read(buffer)) != -1) {
-                total += read;
-                if (total > limit) throw new java.io.IOException("Cloudflare 响应超过大小限制");
-                output.write(buffer, 0, read);
-            }
-            return output.toByteArray();
         }
     }
 }
