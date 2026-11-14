@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Add a fixed bottom-left shortcut to EffectCraft's existing media import command."""
+"""Put media import inside the Project panel and auto-add imported media to the active composition."""
+
 from __future__ import annotations
 
 import os
 from pathlib import Path
 
 
-MARKER = "EFFECTCRAFT_ANDROID_BOTTOM_LEFT_MEDIA_IMPORT_V1"
+PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_FOOTER_IMPORT_V2"
+FINISH_MARKER = "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V2"
+FIT_MARKER = "EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2"
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -14,70 +17,116 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
         return source
     count = source.count(old)
     if count != 1:
-        raise SystemExit(f"{label}: expected one insertion point, found {count}")
+        raise SystemExit(f"{label}: expected exactly one insertion point, found {count}")
     return source.replace(old, new, 1)
+
+
+def patch_project_panel_import_button(root: Path) -> None:
+    path = root / "crates/ui-egui/src/panels/project.rs"
+    source = path.read_text(encoding="utf-8")
+    if PROJECT_MARKER not in source:
+        anchor = "    let depth = app.session.project.settings.bit_depth.label();\n"
+        button = r'''    // EFFECTCRAFT_ANDROID_PROJECT_FOOTER_IMPORT_V2
+    // Keep Import Media inside the Project panel: a floating screen-corner button
+    // overlapped the Timeline's Add Keyframe control on narrow Android layouts.
+    let import_rect = Rect::from_min_size(pos2(x + 2.0, foot.min.y + 3.0), vec2(24.0, 22.0));
+    let import_response = ui
+        .put(import_rect, egui::Button::new("＋"))
+        .on_hover_text(crate::i18n::tr("Import Media"));
+    app.auto.add_response("project.importMedia", &import_response, "导入素材");
+    if import_response.clicked()
+        && let Err(error) = crate::menus::invoke(app, &ctx, "file.import", json!({}))
+    {
+        app.ui.status = error;
+    }
+    x += 28.0;
+'''
+        source = replace_once(source, anchor, button + anchor, "Project panel media import button")
+        if PROJECT_MARKER not in source:
+            raise SystemExit("Project panel media import marker was not installed")
+        path.write_text(source, encoding="utf-8")
+
+
+def patch_file_import_auto_add(root: Path) -> None:
+    path = root / "crates/engine/src/cmd/file.rs"
+    source = path.read_text(encoding="utf-8")
+    if FINISH_MARKER not in source:
+        old = '''fn finish_import(s: &mut Session, r: &mut Value, target: Option<ItemId>, p: &Value) {
+    let errors = if b_p(p, "newComp").unwrap_or(false) { new_comp(s, r) } else { add_to_comp(s, r, target, p) };'''
+        new = '''fn finish_import(s: &mut Session, r: &mut Value, target: Option<ItemId>, p: &Value) {
+    // EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V2
+    // A regular media import also creates a layer in the currently active composition.
+    // Explicit addToComp=false remains an opt-out, and New Comp keeps its own workflow.
+    let errors = if b_p(p, "newComp").unwrap_or(false) {
+        new_comp(s, r)
+    } else {
+        let mut params = p.clone();
+        if params.get("addToComp").is_none() && target.is_some() {
+            params["addToComp"] = json!(true);
+        }
+        if params.get("addToComp").and_then(Value::as_bool) == Some(true)
+            && params.get("fitToComp").is_none()
+        {
+            params["fitToComp"] = json!(true);
+        }
+        add_to_comp(s, r, target, &params)
+    };'''
+        source = replace_once(source, old, new, "Default add imported media to active comp")
+
+        old_rest = '    let rest = ids("items").into_iter().filter(|i| !in_comps.contains(i) && !comps.contains(i) && !s.project.item(ItemId(*i)).is_some_and(|it| it.is_folder()));'
+        new_rest = '''    // Data footage and folders are project assets, not visual/audio composition layers.
+    let rest = ids("items").into_iter().filter(|i| {
+        !in_comps.contains(i)
+            && !comps.contains(i)
+            && s.project.item(ItemId(*i)).is_some_and(|it| {
+                !it.is_folder()
+                    && !matches!(&it.kind, ItemKind::Footage(f) if f.kind == FootageKind::Data)
+            })
+    });'''
+        source = replace_once(source, old_rest, new_rest, "Exclude data footage from automatic composition layers")
+
+        source = source.replace(
+            'addToComp?: bool (also add them to the active comp, at time?, index?, position? as in layer.addItem)',
+            'addToComp?: bool (default true when a comp is active; also add them to the active comp), fitToComp?: bool (uniformly fit each new layer inside the comp frame)'
+        )
+        path.write_text(source, encoding="utf-8")
+
+
+def patch_layer_add_item_fit(root: Path) -> None:
+    path = root / "crates/engine/src/cmd/layer/create.rs"
+    source = path.read_text(encoding="utf-8")
+    if FIT_MARKER in source:
+        return
+    anchor = '        let mut l = build::layer(proj, &comp, &it.name, src, size, dur);\n'
+    fit = r'''        // EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2
+        // Preserve the source aspect ratio while enlarging small media or shrinking large
+        // media so the complete image/video is visible inside the composition frame.
+        if b_p(p, "fitToComp").unwrap_or(false) {
+            let fit_scale = (comp.width as f64 / size.0.max(1) as f64)
+                .min(comp.height as f64 / size.1.max(1) as f64);
+            if let Some(scale) = l.props.prop_mut("transform/scale") {
+                let z = match scale.value {
+                    KV::Vec3(v) => v[2],
+                    _ => 100.0,
+                };
+                scale.value = KV::Vec3([100.0 * fit_scale, 100.0 * fit_scale, z]);
+            }
+        }
+'''
+    source = replace_once(source, anchor, fit + anchor, "Fit imported media to composition frame")
+    path.write_text(source, encoding="utf-8")
 
 
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
-    frame_path = root / "crates/ui-egui/src/app/frame.rs"
-    media_path = root / "crates/ui-egui/src/panels/media_panels.rs"
-    if not root.is_dir() or not frame_path.is_file() or not media_path.is_file():
-        raise SystemExit("EFFECTCRAFT_DIR must point to EffectCraft source with app/frame.rs and panels/media_panels.rs")
-
-    frame = frame_path.read_text(encoding="utf-8")
-    if MARKER not in frame:
-        anchor = """        let lift = panels::media_panels::import_card(self, ui, full);
-        self.draw_toast(ui, full, lift);"""
-        replacement = """        let lift = panels::media_panels::import_card(self, ui, full);
-        self.draw_material_import_quick_entry(&ctx, full);
-        self.draw_toast(ui, full, lift + 48.0);"""
-        frame = replace_once(frame, anchor, replacement, "root frame quick-entry call")
-
-        method_anchor = "    fn draw_toast(&mut self, ui: &mut egui::Ui, full: egui::Rect, lift: f32) {"
-        method = r'''    // EFFECTCRAFT_ANDROID_BOTTOM_LEFT_MEDIA_IMPORT_V1
-    /// A persistent shortcut that opens the very same multi-file picker as File > Import.
-    fn draw_material_import_quick_entry(&mut self, ctx: &egui::Context, full: egui::Rect) {
-        let position = egui::pos2(full.min.x + 16.0, full.max.y - 52.0);
-        let mut clicked = false;
-        let mut button_rect = None;
-        egui::Area::new(egui::Id::new("effectcraft-bottom-left-media-import"))
-            .order(egui::Order::Foreground)
-            .fixed_pos(position)
-            .movable(false)
-            .show(ctx, |ui| {
-                let response = ui.add_sized(
-                    egui::vec2(132.0, 36.0),
-                    egui::Button::new("＋ 导入素材"),
-                );
-                clicked = response.clicked();
-                button_rect = Some(response.rect);
-            });
-        if let Some(rect) = button_rect {
-            self.auto.add("quick.importMedia", rect, "导入素材");
-        }
-        if clicked
-            && let Err(error) = crate::menus::invoke(self, ctx, "file.import", serde_json::json!({}))
-        {
-            self.ui.status = error;
-        }
-    }
-
-'''
-        frame = replace_once(frame, method_anchor, method + method_anchor, "quick-entry drawing method")
-        if MARKER not in frame:
-            raise SystemExit("Quick-entry marker was not installed")
-        frame_path.write_text(frame, encoding="utf-8")
-
-    media = media_path.read_text(encoding="utf-8")
-    old_bottom = "    let mut bottom = full.max.y - 16.0;"
-    new_bottom = "    // Leave room below for the persistent bottom-left media-import shortcut.\n    let mut bottom = full.max.y - 64.0;"
-    media = replace_once(media, old_bottom, new_bottom, "import progress-card bottom anchor")
-    old_lift = "    full.max.y - 16.0 - bottom"
-    new_lift = "    full.max.y - 64.0 - bottom"
-    media = replace_once(media, old_lift, new_lift, "import progress-card reserved-height calculation")
-    media_path.write_text(media, encoding="utf-8")
-    print("Installed the bottom-left Import Media shortcut, routed to file.import, and reserved space for import progress cards and toasts.")
+    if not root.is_dir():
+        raise SystemExit("EFFECTCRAFT_DIR must point to the checked-out EffectCraft source")
+    patch_project_panel_import_button(root)
+    patch_file_import_auto_add(root)
+    patch_layer_add_item_fit(root)
+    print("Moved the media import shortcut into the Project panel footer to avoid Timeline overlap.")
+    print("Regular imports now create a layer in the active composition and fit it to the comp frame.")
+    print("Imported files remain in the Project panel and their layers appear in the Timeline.")
 
 
 if __name__ == "__main__":
