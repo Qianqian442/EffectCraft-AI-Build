@@ -521,9 +521,9 @@ fn next_api_server(current: &str) -> Option<&'static str> {
     # replace_once deliberately skips empty replacements, so remove this obsolete
     # LAN listener startup with a checked regex after removing its implementation.
     source, listener_start_count = re.subn(
-        r"(?m)^        if self\\.events\\.is_none\\(\\) \\{\\n"
-        r"            self\\.events = start_account_event_listener\\(\\);\\n"
-        r"        \\}\\n",
+        r"(?m)^        if self\.events\.is_none\(\) \{\n"
+        r"            self\.events = start_account_event_listener\(\);\n"
+        r"        \}\n",
         "",
         source,
         count=1,
