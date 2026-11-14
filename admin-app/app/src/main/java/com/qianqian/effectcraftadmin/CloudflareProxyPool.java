@@ -153,7 +153,14 @@ final class CloudflareProxyPool {
             if (route.candidate != null) markGood(route.candidate);
             return new ApiResponse(status, parsed, route.label());
         } catch (Exception error) {
-            if (route.candidate != null) markBad(route.candidate);
+            if (route.candidate != null) {
+                markBad(route.candidate);
+            } else {
+                synchronized (LOCK) {
+                    directHealthy = false;
+                    directCheckedAt = 0;
+                }
+            }
             // Never retry a submitted POST: a read timeout may happen after the
             // Worker has already processed a registration, ban or profile update.
             throw new java.io.IOException(
