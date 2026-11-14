@@ -376,7 +376,7 @@ public final class MainActivity extends Activity {
         TextView title = text("Ae账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
         page.addView(text(isCloudflareMode()
-            ? "管理端连接统一 Cloudflare 账号服务；网络不通时自动检测可用的公开 HTTPS 隧道。"
+            ? "管理端通过内置 Cloudflare WARP 加密隧道直接连接账号服务；不经过公共 HTTPS 代理或管理员手机中转。"
             : "本机账号管理：账号数据库保存在这部管理员手机上。", 14, false));
         page.addView(text(isCloudflareMode()
             ? "主 APK 和管理版 APK 共用同一 Cloudflare 账号数据库。"
