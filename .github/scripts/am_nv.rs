@@ -69,7 +69,8 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
     let config = s.config.as_ref().and_then(|c| c.dir())
         .ok_or_else(|| err("No writable app project directory is available for package extraction"))?;
     let stem = Path::new(path).file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| "Imported_Project".into());
-    let root = config.join("Imported-Projects").join(safe_name(&stem));
+    let import_id = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();
+    let root = config.join("Imported-Projects").join(format!("{}-{import_id}", safe_name(&stem)));
     std::fs::create_dir_all(&root).map_err(|e| err(format!("Cannot create import directory: {e}")))?;
     let file = std::fs::File::open(path).map_err(|e| err(format!("Cannot read ZIP package: {e}")))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| err(format!("Invalid project ZIP: {e}")))?;
