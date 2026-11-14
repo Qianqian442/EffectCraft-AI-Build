@@ -501,10 +501,14 @@ where
     let request = request.into_client_request()?;
     let direct_error = match tungstenite::connect(request.clone()) {
         Ok(connection) => return Ok(connection),
-        Err(error @ WebSocketError::Http(ref response)) if response.status().as_u16() == 401 => {
-            return Err(error);
+        Err(error) => {
+            // A real Worker 401 means the request reached Cloudflare and the
+            // credential was rejected; trying a proxy cannot repair it.
+            if matches!(&error, WebSocketError::Http(response) if response.status().as_u16() == 401) {
+                return Err(error);
+            }
+            error
         }
-        Err(error) => error,
     };
 
     let host = request.uri().host().ok_or_else(|| {
