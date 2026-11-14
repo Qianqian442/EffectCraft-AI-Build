@@ -259,29 +259,53 @@ func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string
 
 	go func() {
 		defer close(current.done)
+		var defaultH2 *net.TCPAddr
+		for _, candidate := range endpoints {
+			if tcp, ok := candidate.(*net.TCPAddr); ok {
+				defaultH2 = tcp
+				break
+			}
+		}
+		selectedH2 := scanCloudflareHTTP2(ctx, tlsConfig, defaultH2)
+		selected := make([]net.Addr, 0, 6)
+		selected = append(selected, selectedH2...)
+		for _, candidate := range endpoints {
+			if _, isUDP := candidate.(*net.UDPAddr); isUDP && len(selected) < 6 {
+				selected = append(selected, candidate)
+			}
+		}
+		if len(selected) == 0 {
+			selected = endpoints
+		}
+		if len(selected) > 6 {
+			selected = selected[:6]
+		}
 		api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
 			TLSConfig: tlsConfig,
 			KeepalivePeriod: 30 * time.Second,
-			Endpoint: endpoints[0],
-			Endpoints: endpoints,
+			Endpoint: selected[0],
+			Endpoints: selected,
 			Device: device,
 			MTU: 1280,
 			ReconnectDelay: 250 * time.Millisecond,
 			AlwaysReconnect: true,
-			UseHTTP2: false,
+			UseHTTP2: func() bool { _, ok := selected[0].(*net.TCPAddr); return ok }(),
 			OnConnected: func(endpoint net.Addr) {
 				mu.Lock()
 				if session == current && current.active { state, lastError = "connected", "" }
+				recordEndpointScanSuccess(endpoint, 0)
 				mu.Unlock()
 			},
 			OnConnectError: func(endpoint net.Addr, connectErr error) {
 				mu.Lock()
 				if session == current && current.active { state, lastError = "retrying", connectErr.Error() }
+				recordEndpointScanFailure(endpoint)
 				mu.Unlock()
 			},
 			OnDisconnected: func(endpoint net.Addr, disconnectErr error) {
 				mu.Lock()
 				if session == current && current.active { state, lastError = "retrying", disconnectErr.Error() }
+				recordEndpointScanFailure(endpoint)
 				mu.Unlock()
 			},
 		})
