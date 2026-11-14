@@ -207,7 +207,7 @@ def main() -> None:
     engine_source = replace_once(
         engine_source,
         "    let mut plan: Vec<(ItemId, Vec<(String, String)>)> = vec![];",
-        "    let mut missing_media: Vec<String> = Vec::new();\\n    let mut plan: Vec<(ItemId, Vec<(String, String)>)> = vec![];",
+        "    let mut missing_media: Vec<String> = Vec::new();\n    let mut plan: Vec<(ItemId, Vec<(String, String)>)> = vec![];",
         "complete mobile project preflight state",
     )
     engine_source = replace_once(
@@ -234,7 +234,7 @@ def main() -> None:
         "abort complete export before copying if any source media is missing",
     )
     write_anchor = "    s.write_output_with(&protected, &out, proj.to_json().as_bytes())?;"
-    write_event = write_anchor + '\\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": out, "format": "Ae 手机版完整工程（含素材）"}) });'
+    write_event = write_anchor + '\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": out, "format": "Ae 手机版完整工程（含素材）"}) });'
     if write_event not in engine_source:
         if engine_source.count(write_anchor) != 1:
             raise SystemExit("Could not safely add the complete mobile project export success event")
