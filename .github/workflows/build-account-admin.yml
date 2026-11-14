@@ -2,7 +2,7 @@ name: Build EffectCraft Account Admin APK
 
 on:
   push:
-    branches: [main, feature/own-on-demand-vpn]
+    branches: [main, feature/own-on-demand-vpn, feature/admin-ae-account-branding]
     paths:
       - 'admin-app/**'
       - '.github/scripts/fetch_public_proxy_bootstrap.py'
