@@ -175,9 +175,9 @@ jobs:
           grep -F '分享到QQ或其他应用' artcraft/templates/android/SafActivity.java
           grep -F 'share_exported_project' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
           grep -F 'EffectCraft 手机版完整工程导出（含素材）' artcraft/source/effectcraft/crates/ui-egui/src/header.rs
-          grep -F 'let mut errors: Vec<String> = Vec::new();' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
-          grep -F 'pairs.push((src.clone(), dst, relative));' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
-          grep -F 'new_paths.push(relative.clone());' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F 'let mut missing_media: Vec<String> = Vec::new();' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F 'pairs.push((src.clone(), dst));' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F 'new_paths.push(format!("(Footage)/{filename}"));' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
           grep -F '工程素材收集不完整' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
           grep -F 'zipProjectDirectory(projectRoot, sharePayload)' artcraft/templates/android/SafActivity.java
           grep -F 'private static void addProjectFiles' artcraft/templates/android/SafActivity.java
