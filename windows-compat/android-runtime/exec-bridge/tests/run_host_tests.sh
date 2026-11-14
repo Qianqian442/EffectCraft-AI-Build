@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")" && pwd)"
-WORK="$ROOT/build-host-test"
+WORK="/tmp/effectcraft-exec-bridge-host-test"
 mkdir -p "$WORK/runtime" "$WORK/bin"
 CC=cc
 CFLAGS="-O2 -g -Wall -Wextra -Werror -fPIE"
