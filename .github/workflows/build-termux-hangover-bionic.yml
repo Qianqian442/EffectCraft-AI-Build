@@ -87,7 +87,8 @@ jobs:
             done
             echo "All pinned SDK packages are present; continuing despite sdkmanager's post-install exit status."
           fi
-          test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang"
+          test -f "$NDK/source.properties"
+          test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
           "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version
 
       - name: Repoint Termux build paths to the EffectCraft private runtime prefix
