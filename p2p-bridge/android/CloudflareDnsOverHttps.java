@@ -31,7 +31,7 @@ import javax.net.ssl.SSLSocket;
 import javax.net.ssl.SSLSocketFactory;
 
 /**
- * Direct, certificate-verified Cloudflare HTTPS transport for the account Worker.
+ * Direct, certificate-verified Cloudflare DNS-over-HTTPS resolver for the account Worker.
  *
  * Worker DNS is obtained from Cloudflare DoH over TCP/443 using numeric resolver
  * addresses. The Worker connection is then opened to those authenticated DNS
@@ -48,7 +48,7 @@ final class CloudflareDnsOverHttps {
 
     private static final List<InetAddress> CLOUDFLARE_DOH_IPS = createResolverAddresses();
 
-    private CloudflareHttpsTransport() {}
+    private CloudflareDnsOverHttps() {}
 
     static final class Response {
         final int status;
