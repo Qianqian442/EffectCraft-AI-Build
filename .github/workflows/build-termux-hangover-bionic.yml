@@ -87,14 +87,24 @@ jobs:
             dpkg-deb -x "$package" "$destination"
           done
 
-          find artifacts/unpacked -type f \( -name 'wine64' -o -name 'wineserver' -o -name 'wineboot' \) -print > artifacts/WINE-ELF-FILES.txt
+          : > artifacts/WINE-ELF-FILES.txt
+          while IFS= read -r -d '' binary; do
+            base="$(basename "$binary")"
+            case "$base" in wine64|wineserver|wineboot)
+              if file -Lb "$binary" | grep -q 'ELF 64-bit.*ARM aarch64'; then
+                echo "$binary" >> artifacts/WINE-ELF-FILES.txt
+              fi
+              ;;
+            esac
+          done < <(find -L artifacts/unpacked -type f -print0)
           if [[ ! -s artifacts/WINE-ELF-FILES.txt ]]; then
-            echo "No Wine executable payload found in the built packages." >&2
+            echo "No native ARM64 Wine executable payload found in the built packages." >&2
+            find artifacts/unpacked -type f -print >&2
             exit 1
           fi
           while IFS= read -r binary; do
             echo "===== $binary ====="
-            file "$binary"
+            file -L "$binary"
             readelf -h "$binary" | grep -E 'Class:|Machine:'
             readelf -l "$binary" | grep -F '/system/bin/linker64'
           done < artifacts/WINE-ELF-FILES.txt
@@ -108,8 +118,10 @@ jobs:
             }
           done
 
-          python3 -m pip install --disable-pip-version-check pefile
-          python3 - <<'PY'
+          python3 -m venv "$RUNNER_TEMP/pefile-venv"
+          source "$RUNNER_TEMP/pefile-venv/bin/activate"
+          python -m pip install --disable-pip-version-check pefile
+          python - <<'PY'
           import pefile
           from pathlib import Path
           files = {}
@@ -119,11 +131,26 @@ jobs:
           expected = {"libarm64ecfex.dll", "libwow64fex.dll", "wowbox64.dll"}
           if set(files) != expected:
               raise SystemExit(f"emulator DLL set mismatch: {sorted(files)}")
+          def chpe_version(pe):
+              directory = pe.OPTIONAL_HEADER.DATA_DIRECTORY[10]
+              if not directory.VirtualAddress:
+                  return None
+              offset = pe.get_offset_from_rva(directory.VirtualAddress)
+              size = int.from_bytes(pe.__data__[offset:offset + 4], "little")
+              if size < 0xD0:
+                  return None
+              chpe_va = int.from_bytes(pe.__data__[offset + 0xC8:offset + 0xD0], "little")
+              if not chpe_va:
+                  return None
+              return int.from_bytes(pe.__data__[pe.get_offset_from_rva(chpe_va - pe.OPTIONAL_HEADER.ImageBase):][:4], "little")
+
           for name, path in sorted(files.items()):
               pe = pefile.PE(str(path), fast_load=False)
-              print(f"{name}: PE machine=0x{pe.FILE_HEADER.Machine:04x}, size={path.stat().st_size}")
-              if name == "libarm64ecfex.dll" and pe.FILE_HEADER.Machine != 0x8664:
-                  raise SystemExit("libarm64ecfex.dll is not an x86-64 PE")
+              chpe = chpe_version(pe)
+              print(f"{name}: PE machine=0x{pe.FILE_HEADER.Machine:04x}, CHPE={chpe}, size={path.stat().st_size}")
+              if name == "libarm64ecfex.dll":
+                  if pe.FILE_HEADER.Machine != 0x8664 or chpe != 1:
+                      raise SystemExit("libarm64ecfex.dll lacks expected x86-64 ARM64EC CHPE metadata")
               if name == "libwow64fex.dll" and pe.FILE_HEADER.Machine != 0xAA64:
                   raise SystemExit("libwow64fex.dll is not an ARM64 WoW64 emulator PE")
           PY
