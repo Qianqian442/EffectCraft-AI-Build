@@ -23,9 +23,9 @@ def main() -> None:
     #[cfg(not(target_os = "android"))]
     let fit_padding = 40.0;
     #[cfg(target_os = "android")]
-    let fit = ((area.width() - fit_padding) / cw)
+    let fit = (((area.width() - fit_padding) / cw)
         .max((area.height() - fit_padding) / ch)
-        .max(0.01);
+        .max(0.01) * 1.06);
     #[cfg(not(target_os = "android"))]
     let fit = ((area.width() - fit_padding) / cw)
         .min((area.height() - fit_padding) / ch)
@@ -48,6 +48,7 @@ def main() -> None:
         "Dock geometry, panel boundaries, toolbars, buttons and their hit targets remain unchanged.",
         "let fit = ((area.width() - fit_padding) / cw)",
         ".max((area.height() - fit_padding) / ch)",
+        "* 1.06",
     )
     missing = [item for item in required if item not in check]
     if missing:
