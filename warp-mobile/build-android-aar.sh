@@ -16,6 +16,11 @@ grep -Fq 'golang.org/x/mobile ' "$WARP_DIR/go.mod" || { echo "golang.org/x/mobil
 grep -Fq 'tool golang.org/x/mobile/cmd/gobind' "$WARP_DIR/go.mod" || { echo "gobind must be declared as a go.mod tool dependency" >&2; exit 1; }
 mkdir -p "$(dirname "$OUTPUT")"
 cd "$WARP_DIR"
+# Go 1.26's gomobile checks the generated gobind package as a declared tool.
+# Run the official command so the active module graph is updated, then assert
+# that the binding package is resolvable before starting the expensive bind.
+go get -tool golang.org/x/mobile/cmd/gobind
+go list golang.org/x/mobile/bind >/dev/null
 go mod download
 gomobile bind -target=android/arm64 -androidapi=26 -javapkg=com.effectcraft.warp -o "$OUTPUT" .
 test -s "$OUTPUT"
