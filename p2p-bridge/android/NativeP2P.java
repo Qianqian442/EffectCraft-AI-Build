@@ -47,6 +47,7 @@ final class NativeP2P {
 
     private static native String nativeStartClient(String filesDirectory);
     private static native String nativeStatus();
+    private static native String nativeConfigureVpnProxy(String workerHost, String workerIpsCsv, String secret);
 
     static synchronized void start(Context context) {
         applicationContext = context.getApplicationContext();
@@ -68,6 +69,15 @@ final class NativeP2P {
         } catch (Throwable error) {
             // Network setup must never prevent the editor itself from launching.
             Log.e(TAG, "P2P node unavailable; local editing remains available", error);
+        }
+    }
+
+    static String configureVpnProxy(String workerHost, String workerIpsCsv, String secret) {
+        try {
+            return nativeConfigureVpnProxy(workerHost, workerIpsCsv, secret);
+        } catch (Throwable error) {
+            Log.e(TAG, "Could not configure the private account VPN bridge", error);
+            return "ERROR:" + error.getClass().getSimpleName();
         }
     }
 
