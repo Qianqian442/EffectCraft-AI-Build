@@ -46,7 +46,7 @@ def main() -> None:
 
     source = builder_script.read_text(encoding="utf-8")
     if MARKER not in source:
-        anchor = 'python3 "$ROOT/lib/android_project.py" "$ROOT" "$ANDROID_DIR" "$APP" "$APP_VERSION"\n# MIN_SDK feeds cargo-ndk'
+        anchor = 'source "$ANDROID_DIR/.artcraft-gradle.properties"'
         block = r'''# EFFECTCRAFT_CLOUDFLARE_MASQUE_VPN_INTEGRATION_V1
 # Inject the native Cloudflare MASQUE bridge after the Android project has been
 # generated, but before the launcher is compiled and packaged.
@@ -159,7 +159,7 @@ PY
 fi
 
 '''
-        source = replace_once(source, anchor, anchor + "\n" + block, "Android Cloudflare MASQUE post-generation injection point")
+        source = replace_once(source, anchor, block + anchor, "Android Cloudflare MASQUE post-generation injection point")
         builder_script.write_text(source, encoding="utf-8")
 
     print(f"Installed Cloudflare MASQUE AAR at {aar_target}")
