@@ -208,18 +208,22 @@ public final class AdminAccountVpnService extends VpnService {
         if (!isAllowedHost(host)) return "ERROR:账号 VPN 只允许配置的 workers.dev 账号服务器";
         if (taskActive) return "OK";
 
+        String stage = "检查 Android VPN 授权";
         try {
             // Ask Android for VPN consent before registering a WARP device, so a
             // user who declines does not leave an unused Cloudflare device identity.
             if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
+            stage = "读取本机加密的 WARP 设备身份";
 
             String bundle = loadEncryptedBundle(context);
             if (bundle == null) {
+                stage = "等待 Cloudflare 服务条款确认";
                 if (!requestCloudflareTermsConsent(context)) {
                     return "CLOUDFLARE_TERMS_REQUIRED";
                 }
                 // First-time registration is a direct Cloudflare enrollment call.
                 // It creates a per-device MASQUE key; the private key is persisted encrypted.
+                stage = "首次向 Cloudflare 注册 WARP 设备并登记 MASQUE 密钥（此步骤需要手机网络能访问 Cloudflare 注册接口）";
                 Object registered = callWarp("registerDevice", new Class<?>[0]);
                 bundle = registered == null ? "" : registered.toString();
                 if (bundle.isEmpty()) return "ERROR:Cloudflare 没有返回 WARP 设备配置";
@@ -227,9 +231,11 @@ public final class AdminAccountVpnService extends VpnService {
             }
 
             JSONObject json = new JSONObject(bundle);
+            stage = "解析 Cloudflare Worker 账号服务域名";
             List<InetAddress> workers = resolveWorkerAddresses(host);
             if (workers.isEmpty()) return "ERROR:Worker DNS 没有返回可用的公网地址";
 
+            stage = "启动 Android 内置 WARP VPN 服务";
             Intent intent = new Intent(context.getApplicationContext(), AdminAccountVpnService.class)
                 .setAction(ACTION_START)
                 .putExtra("worker_host", host)
@@ -251,8 +257,9 @@ public final class AdminAccountVpnService extends VpnService {
         } catch (SecurityException denied) {
             return "VPN_PERMISSION_REQUIRED";
         } catch (Throwable error) {
-            Log.e(TAG, "Could not start Cloudflare WARP task", error);
-            return "ERROR:" + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
+            Log.e(TAG, "Could not start Cloudflare WARP task during: " + stage, error);
+            return "ERROR【" + stage + "】："
+                + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
         }
     }
 
