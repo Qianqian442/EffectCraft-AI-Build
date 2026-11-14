@@ -172,7 +172,52 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             '"preferred_peer_id": preferred_peer_id',
             '127.0.0.1:8789',
         ),
+    ),,
+    (
+        "Cloudflare account service is controlled by an admin-only D1-backed global switch",
+        "cloudflare-worker/src/index.js",
+        (
+            "account_service_settings",
+            "requireAccountServiceEnabled",
+            "/v1/admin/account-service",
+            "account_service_disabled",
+            'url.pathname.startsWith("/v1/") && !url.pathname.startsWith("/v1/admin/")',
+            "adminSetAccountServiceState",
+        ),
     ),
+    (
+        "Global Cloudflare service changes are pushed over existing online node WebSockets",
+        "cloudflare-worker/src/node_network_hub.js",
+        (
+            "/account-service-state",
+            "account_service_state",
+            "account_service_enabled",
+            "socket.send(payload)",
+        ),
+    ),
+    (
+        "Cloudflare admin APK toggle controls all users and preserves admin recovery access",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
+        (
+            "/v1/admin/account-service",
+            "云端账号服务器开关（全体用户）",
+            "所有用户的注册、登录和账号验证均已暂停",
+            "管理员仍可登录本管理版并重新开启",
+            "if (isCloudflareMode())",
+        ),
+    ),
+    (
+        "Main APK receives global service state pushes without adding HTTP polling",
+        ".github/scripts/convert_account_gate_to_cloud.py",
+        (
+            "event_sender: Option<mpsc::Sender<Result<Value, String>>>",
+            "account_service_state",
+            "service_disabled",
+            "service_enabled",
+            "app.account.poll_events(config)",
+            "Drain already-open event channels locally",
+        ),
+    )
 ]
 
 
