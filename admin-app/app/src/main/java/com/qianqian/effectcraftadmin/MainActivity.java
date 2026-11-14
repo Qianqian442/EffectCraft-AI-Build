@@ -393,7 +393,18 @@ public final class MainActivity extends Activity {
         page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
         loginStatus = text("请输入管理员密码；本机注册人数为 0 时，首次登录会采用本次输入密码。", 12, false);
         loginStatus.setTextColor(Color.rgb(95, 103, 115));
-        page.addView(loginStatus, new LinearLayout.LayoutParams(-1, dp(36)));
+        loginStatus.setGravity(Gravity.TOP);
+        loginStatus.setMaxLines(10);
+        loginStatus.setTextIsSelectable(true);
+        loginStatus.setOnClickListener(v -> {
+            if (loginStatus != null && loginStatus.getText() != null) {
+                showLoginErrorDetails(loginStatus.getText().toString());
+            }
+        });
+        LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT);
+        statusParams.topMargin = dp(6);
+        statusParams.bottomMargin = dp(8);
+        page.addView(loginStatus, statusParams);
         loginButton.setOnClickListener(v -> doAdminLogin());
         page.addView(text("管理员账号固定为 admin。本机尚无注册账号时，首次登录会将本次输入的密码保存为管理员密码；注册账号后不再允许通过此入口重设。", 12, false));
         setRoot(page);
@@ -407,6 +418,31 @@ public final class MainActivity extends Activity {
                 .setCancelable(false)
                 .show();
         }
+    }
+
+    private void showLoginErrorDetails(String detail) {
+        if (detail == null || detail.trim().isEmpty()) return;
+        TextView message = new TextView(this);
+        message.setText(detail);
+        message.setTextSize(14);
+        message.setTextIsSelectable(true);
+        message.setPadding(dp(18), dp(12), dp(18), dp(12));
+        ScrollView scroll = new ScrollView(this);
+        scroll.setFillViewport(false);
+        scroll.addView(message, new ScrollView.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+        new AlertDialog.Builder(this)
+            .setTitle("登录失败 · 完整诊断")
+            .setView(scroll)
+            .setPositiveButton("复制错误详情", (dialog, which) -> {
+                ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                if (clipboard != null) {
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Ae账号管理登录诊断", detail));
+                    toast("完整错误详情已复制");
+                }
+            })
+            .setNegativeButton("关闭", null)
+            .show();
     }
 
     private void doAdminLogin() {
@@ -603,14 +639,15 @@ public final class MainActivity extends Activity {
             JSONObject finalResult = result;
             String finalError = error;
             runOnUiThread(() -> {
-                if (finalError != null) {
-                    toast(finalError);
-                    if (auth && (finalError.contains("401") || finalError.contains("登录已失效")
-                        || finalError.contains("账号权限不足"))) showLogin();
-                }
+                boolean loginFailure = finalError != null && "/v1/admin/login".equals(path);
+                if (finalError != null && !loginFailure) toast(finalError);
+                if (auth && finalError != null && (finalError.contains("401")
+                    || finalError.contains("登录已失效") || finalError.contains("账号权限不足"))) showLogin();
                 if (callback != null) callback.done(finalResult);
-                if (finalError != null && "/v1/admin/login".equals(path) && loginStatus != null) {
-                    loginStatus.setText("登录失败诊断：" + finalError);
+                if (loginFailure) {
+                    String diagnostic = "登录失败诊断：" + finalError;
+                    if (loginStatus != null) loginStatus.setText(diagnostic);
+                    showLoginErrorDetails(diagnostic);
                 }
             });
         });
