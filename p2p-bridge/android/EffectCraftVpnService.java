@@ -67,6 +67,7 @@ public final class EffectCraftVpnService extends VpnService {
     private static volatile boolean taskActive;
     private static volatile String lastError = "";
     private static volatile String activeWorkerIpCsv = "";
+    private static volatile CountDownLatch stopCompletionLatch;
 
     private ParcelFileDescriptor tunInterface;
     private Thread startThread;
@@ -135,6 +136,7 @@ public final class EffectCraftVpnService extends VpnService {
         }
 
         boolean vpnMayBeActive = false;
+        boolean keepWorkerTunnelForAccountRequest = false;
         try {
             // Android permission is requested before any network or WARP setup.
             if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
@@ -181,6 +183,7 @@ public final class EffectCraftVpnService extends VpnService {
             String workerTunnel = startTunnelForAddresses(context, host, bundle, workers);
             if (!"OK".equals(workerTunnel)) return workerTunnel;
             activeWorkerIpCsv = workerCsv;
+            keepWorkerTunnelForAccountRequest = true;
 
             // The local Rust caller receives the exact pinned IP list. It will
             // use a custom ureq resolver while retaining the Worker URL hostname
@@ -192,9 +195,9 @@ public final class EffectCraftVpnService extends VpnService {
             Log.e(TAG, "Could not start Cloudflare WARP task", error);
             return "ERROR:" + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
         } finally {
-            if (vpnMayBeActive && !taskActive) {
-                // The service may have partially established a TUN before a
-                // timeout/cancellation; ask it to clean up even in that case.
+            if (vpnMayBeActive && !keepWorkerTunnelForAccountRequest) {
+                // Always stop a bootstrap or partial tunnel on DNS failure,
+                // cancellation, failed route replacement or startup timeout.
                 stopForTask(context);
             }
         }
@@ -222,6 +225,10 @@ public final class EffectCraftVpnService extends VpnService {
         long deadline = System.currentTimeMillis() + 50000L;
         while (System.currentTimeMillis() < deadline) {
             if (taskActive) return "OK";
+            if (stopping) {
+                stopForTask(context);
+                return "ERROR:Cloudflare VPN 启动已取消";
+            }
             if (!lastError.isEmpty()) {
                 String detail = lastError;
                 stopForTask(context);
@@ -235,21 +242,21 @@ public final class EffectCraftVpnService extends VpnService {
 
     /** Stop immediately after the account API request completes or fails. */
     public static String stopForTask(Context context) {
+        CountDownLatch latch = new CountDownLatch(1);
+        stopCompletionLatch = latch;
         try {
             Intent stop = new Intent(context.getApplicationContext(), EffectCraftVpnService.class)
                 .setAction(ACTION_STOP);
             context.getApplicationContext().startService(stop);
-            long deadline = System.currentTimeMillis() + 9000L;
-            while (System.currentTimeMillis() < deadline) {
-                if (!taskActive) {
-                    activeWorkerIpCsv = "";
-                    return "OK";
-                }
-                Thread.sleep(80L);
+            if (!latch.await(9, TimeUnit.SECONDS)) {
+                return "ERROR:Cloudflare WARP 关闭确认超时";
             }
-            return "ERROR:Cloudflare WARP 关闭确认超时";
+            activeWorkerIpCsv = "";
+            return taskActive ? "ERROR:Cloudflare WARP 隧道仍处于活动状态" : "OK";
         } catch (Throwable error) {
             return "ERROR:" + error.getClass().getSimpleName();
+        } finally {
+            if (stopCompletionLatch == latch) stopCompletionLatch = null;
         }
     }
 
@@ -515,6 +522,8 @@ public final class EffectCraftVpnService extends VpnService {
             stopTunnel();
             stopForeground(true);
             stopSelf(startId);
+            CountDownLatch latch = stopCompletionLatch;
+            if (latch != null) latch.countDown();
             return START_NOT_STICKY;
         }
         if (ACTION_START.equals(action)) {
