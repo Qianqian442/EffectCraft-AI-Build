@@ -69,6 +69,8 @@ public final class EffectCraftVpnService extends VpnService {
 
     private ParcelFileDescriptor tunInterface;
     private Thread startThread;
+    private Thread stateMonitorThread;
+    private volatile String lastNotificationText = "";
     private static volatile boolean stopping;
 
     private static Object callWarp(String methodName, Class<?>[] parameterTypes, Object... args) throws Exception {
@@ -373,6 +375,8 @@ public final class EffectCraftVpnService extends VpnService {
                 tunnelState = bridgeString("state");
                 if ("connected".equals(tunnelState)) {
                     taskActive = true;
+                    updateNotificationText("已连接到 Cloudflare 服务器");
+                    startTunnelStateMonitor();
                     Log.i(TAG, "Cloudflare MASQUE tunnel connected; account API task may proceed");
                     return;
                 }
@@ -473,10 +477,10 @@ public final class EffectCraftVpnService extends VpnService {
         if (ACTION_START.equals(action)) {
             try {
                 if (Build.VERSION.SDK_INT >= 34) {
-                    startForeground(NOTIFICATION_ID, buildNotification(),
+                    startForeground(NOTIFICATION_ID, buildNotification("正在连接 Cloudflare 服务器…"),
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED);
                 } else {
-                    startForeground(NOTIFICATION_ID, buildNotification());
+                    startForeground(NOTIFICATION_ID, buildNotification("正在连接 Cloudflare 服务器…"));
                 }
             } catch (Throwable error) {
                 lastError = "Android 拒绝启动 WARP VPN 前台服务：" + error.getClass().getSimpleName();
@@ -530,16 +534,59 @@ public final class EffectCraftVpnService extends VpnService {
         }
     }
 
-    private Notification buildNotification() {
+    private Notification buildNotification(String contentText) {
         Notification.Builder builder = Build.VERSION.SDK_INT >= 26
             ? new Notification.Builder(this, CHANNEL_ID)
             : new Notification.Builder(this);
         return builder
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
             .setContentTitle("EffectCraft Cloudflare WARP")
-            .setContentText("正在建立账号专用加密隧道")
+            .setContentText(contentText)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build();
+    }
+
+    /** Updates the existing WARP notification; it never creates a second notification. */
+    private void updateNotificationText(String contentText) {
+        if (contentText == null || contentText.equals(lastNotificationText)) return;
+        lastNotificationText = contentText;
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) manager.notify(NOTIFICATION_ID, buildNotification(contentText));
+    }
+
+    /** Keep the same notification in sync with the live MASQUE session state. */
+    private void startTunnelStateMonitor() {
+        if (stateMonitorThread != null && stateMonitorThread.isAlive()) return;
+        stateMonitorThread = new Thread(() -> {
+            String lastState = "connected";
+            while (taskActive && !stopping) {
+                try {
+                    String current = bridgeString("state");
+                    if (!current.equals(lastState)) {
+                        lastState = current;
+                        if ("connected".equals(current)) {
+                            updateNotificationText("已连接到 Cloudflare 服务器");
+                        } else if ("retrying".equals(current) || "connecting".equals(current)) {
+                            updateNotificationText("Cloudflare 连接中断，正在重连…");
+                        } else if ("disconnected".equals(current)) {
+                            updateNotificationText("Cloudflare 连接已断开");
+                        }
+                    }
+                    Thread.sleep(700L);
+                } catch (InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    return;
+                } catch (Throwable error) {
+                    Log.w(TAG, "Could not refresh Cloudflare notification state", error);
+                    try { Thread.sleep(1000L); } catch (InterruptedException stop) {
+                        Thread.currentThread().interrupt();
+                        return;
+                    }
+                }
+            }
+        }, "EffectCraft-Cloudflare-Notification");
+        stateMonitorThread.setDaemon(true);
+        stateMonitorThread.start();
     }
 }
