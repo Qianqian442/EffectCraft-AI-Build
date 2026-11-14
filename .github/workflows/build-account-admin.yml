@@ -278,7 +278,7 @@ jobs:
           print("Verified first-time enrollment precedes the built-in VPN handover.")
           api = Path("admin-app/app/src/main/java/com/qianqian/effectcraftadmin/CloudflareProxyPool.java").read_text()
           start = api.index("static ApiResponse request(")
-          end = api.index("\\n    }", start)
+          end = api.index("\n    }", start)
           request = api[start:end]
           permission_at = request.index("requestPermissionForTask(context)")
           bootstrap_at = request.index("resolverAddressesForTunnel()")
