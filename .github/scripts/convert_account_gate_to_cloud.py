@@ -57,8 +57,7 @@ def main() -> None:
     source = replace_once(
         source,
         "    pending: Option<Receiver<Result<HttpResult, String>>>,\n"
-        "    pending_action: Option<Action>,\n"
-        "    last_verified: Option<std::time::Instant>,",
+        "    pending_action: Option<Action>,",
         "    pending: Option<Receiver<Result<HttpResult, String>>>,\n"
         "    pending_action: Option<Action>,\n"
         "    events: Option<Receiver<Result<Value, String>>>,\n"
@@ -70,8 +69,7 @@ def main() -> None:
     source = replace_once(
         source,
         "            pending: None,\n"
-        "            pending_action: None,\n"
-        "            last_verified: None,",
+        "            pending_action: None,",
         "            pending: None,\n"
         "            pending_action: None,\n"
         "            events: None,\n"
@@ -333,23 +331,32 @@ def main() -> None:
     if substitutions != 1:
         raise SystemExit(f"HTTPS transport replacement expected once, found {substitutions}")
 
-    source = replace_once(
-        source,
-        "    if app.account.mode == Mode::Editor\n"
-        "        && app.account.pending.is_none()\n"
-        "        && app.account.last_verified.map_or(true, |last| last.elapsed() > std::time::Duration::from_secs(10))\n"
-        "    {\n"
-        '        app.account.send(Action::Verify, "GET", "/v1/me", Value::Null, config);\n'
-        "    }",
-        "    if matches!(app.account.mode, Mode::Editor | Mode::Banned) {\n"
-        "        app.account.start_events();\n"
-        "        if app.account.mode == Mode::Editor {\n"
-        "            app.account.start_node_events();\n"
-        "        }\n"
-        "        app.account.poll_events(config);\n"
-        "    }",
-        "remove 10-second polling and listen for events",
+    live_event_call = (
+        "    if matches!(app.account.mode, Mode::Editor | Mode::Banned) {\\n"
+        "        app.account.start_events();\\n"
+        "        if app.account.mode == Mode::Editor {\\n"
+        "            app.account.start_node_events();\\n"
+        "        }\\n"
+        "        app.account.poll_events(config);\\n"
+        "    }"
     )
+    periodic_block = (
+        "    if app.account.mode == Mode::Editor\\n"
+        "        && app.account.pending.is_none()\\n"
+        "        && app.account.last_verified.map_or(true, |last| last.elapsed() > std::time::Duration::from_secs(10))\\n"
+        "    {\\n"
+        '        app.account.send(Action::Verify, "GET", "/v1/me", Value::Null, config);\\n'
+        "    }"
+    )
+    if periodic_block in source:
+        source = source.replace(periodic_block, live_event_call, 1)
+    elif live_event_call not in source:
+        source = replace_once(
+            source,
+            "    app.account.poll(config);",
+            "    app.account.poll(config);\\n" + live_event_call,
+            "start push events without periodic account polling",
+        )
     source = source.replace(
         'ui.label("仅连接家中的 Wi-Fi 账号服务器");',
         'ui.label("连接云端账号服务器，支持不同地区和网络");',
