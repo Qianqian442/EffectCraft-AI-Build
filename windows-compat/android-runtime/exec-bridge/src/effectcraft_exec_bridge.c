@@ -96,6 +96,103 @@ static bool ec_is_native_bionic_elf(const char *path) {
 #endif
 }
 
+static const char *ec_env_value(char *const envp[], const char *key) {
+    if (!envp) return NULL;
+    size_t key_len = strlen(key);
+    for (size_t i = 0; envp[i]; ++i) {
+        if (strncmp(envp[i], key, key_len) == 0 && envp[i][key_len] == '=') {
+            return envp[i] + key_len + 1;
+        }
+    }
+    return NULL;
+}
+
+static bool ec_env_contains(char *const envp[], const char *key) {
+    return ec_env_value(envp, key) != NULL;
+}
+
+static char *ec_join_env_values(const char *first, const char *second) {
+    if (!first || !*first) return second ? strdup(second) : NULL;
+    if (!second || !*second || strcmp(first, second) == 0) return strdup(first);
+    if (strstr(second, first)) return strdup(second);
+    if (strstr(first, second)) return strdup(first);
+    size_t n = strlen(first) + strlen(second) + 2;
+    char *joined = malloc(n);
+    if (!joined) return NULL;
+    snprintf(joined, n, "%s:%s", first, second);
+    return joined;
+}
+
+/* Keep the linker preload and runtime search paths alive when Wine supplies a
+ * reduced custom envp for a helper process. Only used for native runtime ELFs. */
+static char **ec_merge_runtime_env(char *const child_envp[], size_t *allocated_count) {
+    char *const *source = child_envp ? child_envp : environ;
+    size_t count = 0;
+    while (source && source[count]) ++count;
+
+    const char *current_root = getenv("EFFECTCRAFT_RUNTIME_ROOT");
+    const char *current_preload = getenv("LD_PRELOAD");
+    const char *current_library_path = getenv("LD_LIBRARY_PATH");
+#ifdef EFFECTCRAFT_HOST_TEST
+    const char *current_test_linker = getenv("EFFECTCRAFT_TEST_LINKER");
+#endif
+
+    const char *child_preload = ec_env_value((char *const *)source, "LD_PRELOAD");
+    const char *child_library_path = ec_env_value((char *const *)source, "LD_LIBRARY_PATH");
+    char *merged_preload = ec_join_env_values(current_preload, child_preload);
+    char *merged_library_path = ec_join_env_values(current_library_path, child_library_path);
+    if ((current_preload && !merged_preload) ||
+        (current_library_path && !merged_library_path)) {
+        free(merged_preload);
+        free(merged_library_path);
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    size_t capacity = count + 5;
+    char **result = calloc(capacity, sizeof(char *));
+    if (!result) {
+        free(merged_preload);
+        free(merged_library_path);
+        errno = ENOMEM;
+        return NULL;
+    }
+
+    size_t out = 0;
+    for (size_t i = 0; i < count; ++i) {
+        if (strncmp(source[i], "LD_PRELOAD=", 11) == 0 ||
+            strncmp(source[i], "LD_LIBRARY_PATH=", 16) == 0 ||
+            strncmp(source[i], "EFFECTCRAFT_RUNTIME_ROOT=", 25) == 0) {
+            continue;
+        }
+#ifdef EFFECTCRAFT_HOST_TEST
+        if (strncmp(source[i], "EFFECTCRAFT_TEST_LINKER=", 24) == 0) continue;
+#endif
+        result[out++] = source[i];
+    }
+
+    if (merged_preload) {
+        if (asprintf(&result[out++], "LD_PRELOAD=%s", merged_preload) < 0) result[out - 1] = NULL;
+    }
+    if (merged_library_path) {
+        if (asprintf(&result[out++], "LD_LIBRARY_PATH=%s", merged_library_path) < 0) result[out - 1] = NULL;
+    }
+    if (current_root) {
+        if (asprintf(&result[out++], "EFFECTCRAFT_RUNTIME_ROOT=%s", current_root) < 0) result[out - 1] = NULL;
+    }
+#ifdef EFFECTCRAFT_HOST_TEST
+    if (current_test_linker) {
+        if (asprintf(&result[out++], "EFFECTCRAFT_TEST_LINKER=%s", current_test_linker) < 0) result[out - 1] = NULL;
+    }
+#endif
+    result[out] = NULL;
+
+    free(merged_preload);
+    free(merged_library_path);
+    *allocated_count = out;
+    return result;
+}
+
 static int ec_execve_wrapped(const char *path, char *const argv[], char *const envp[]) {
     char *canonical = NULL;
     if (!ec_path_is_under_root(path, &canonical)) {
@@ -126,8 +223,25 @@ static int ec_execve_wrapped(const char *path, char *const argv[], char *const e
     linker_argv[1] = canonical;
     for (size_t i = 1; i < argc; ++i) linker_argv[i + 1] = argv[i];
 
-    int result = ec_raw_execve(linker, linker_argv, envp ? envp : environ);
+    size_t merged_env_count = 0;
+    char **merged_envp = ec_merge_runtime_env(envp, &merged_env_count);
+    if (!merged_envp) {
+        free(linker_argv);
+        free(canonical);
+        return -1;
+    }
+
+    int result = ec_raw_execve(linker, linker_argv, merged_envp);
     int saved_errno = errno;
+    for (size_t i = 0; i < merged_env_count; ++i) {
+        if (merged_envp[i] && (strncmp(merged_envp[i], "LD_PRELOAD=", 11) == 0 ||
+            strncmp(merged_envp[i], "LD_LIBRARY_PATH=", 16) == 0 ||
+            strncmp(merged_envp[i], "EFFECTCRAFT_RUNTIME_ROOT=", 25) == 0 ||
+            strncmp(merged_envp[i], "EFFECTCRAFT_TEST_LINKER=", 24) == 0)) {
+            free(merged_envp[i]);
+        }
+    }
+    free(merged_envp);
     free(linker_argv);
     free(canonical);
     errno = saved_errno;
