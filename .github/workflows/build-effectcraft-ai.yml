@@ -230,39 +230,6 @@ jobs:
           BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
         run: python3 ${{ github.workspace }}/build-assets/.github/scripts/integrate_p2p_bridge.py
 
-      - name: Build ARM64 Cloudflare MASQUE engine for the main APK
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.26.3'
-          cache: false
-
-      - name: Generate and verify the Cloudflare MASQUE Android AAR
-        shell: bash
-        run: |
-          set -euo pipefail
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          go install golang.org/x/mobile/cmd/gobind@latest
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-          gomobile init
-          chmod +x build-assets/warp-mobile/build-android-aar.sh
-          WARP_AAR_OUTPUT="$RUNNER_TEMP/effectcraft-warp-masque.aar" \
-            bash build-assets/warp-mobile/build-android-aar.sh
-          test -s "$RUNNER_TEMP/effectcraft-warp-masque.aar"
-          unzip -tq "$RUNNER_TEMP/effectcraft-warp-masque.aar"
-          unzip -p "$RUNNER_TEMP/effectcraft-warp-masque.aar" classes.jar > "$RUNNER_TEMP/warp-classes.jar"
-          jar tf "$RUNNER_TEMP/warp-classes.jar" | grep -E 'com/effectcraft/warp/.*\.class'
-          unzip -l "$RUNNER_TEMP/effectcraft-warp-masque.aar" | grep -E 'jni/arm64-v8a/.*\.so'
-
-      - name: Integrate direct Cloudflare MASQUE VPN into the main APK
-        env:
-          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
-          WARP_AAR_PATH: ${{ runner.temp }}/effectcraft-warp-masque.aar
-        run: |
-          python3 -m py_compile ${{ github.workspace }}/build-assets/.github/scripts/integrate_on_demand_vpn.py
-          python3 ${{ github.workspace }}/build-assets/.github/scripts/integrate_on_demand_vpn.py
-
       - name: Apply the AI assistant and export changes
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
@@ -698,6 +665,41 @@ jobs:
           sdkmanager --install "platform-tools" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "ndk;27.2.12479018" "ndk;29.0.13113456" "cmake;3.31.6"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Build ARM64 Cloudflare MASQUE engine for the main APK
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.3'
+          cache: false
+
+      - name: Generate and verify the Cloudflare MASQUE Android AAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          GO_BIN="$(go env GOPATH)/bin"
+          echo "$GO_BIN" >> "$GITHUB_PATH"
+          export PATH="$GO_BIN:$PATH"
+          gomobile init
+          chmod +x build-assets/warp-mobile/build-android-aar.sh
+          WARP_AAR_OUTPUT="$RUNNER_TEMP/effectcraft-warp-masque.aar" \
+            bash build-assets/warp-mobile/build-android-aar.sh
+          test -s "$RUNNER_TEMP/effectcraft-warp-masque.aar"
+          unzip -tq "$RUNNER_TEMP/effectcraft-warp-masque.aar"
+          unzip -p "$RUNNER_TEMP/effectcraft-warp-masque.aar" classes.jar > "$RUNNER_TEMP/warp-classes.jar"
+          jar tf "$RUNNER_TEMP/warp-classes.jar" | grep -E 'com/effectcraft/warp/.*\.class'
+          unzip -l "$RUNNER_TEMP/effectcraft-warp-masque.aar" | grep -E 'jni/arm64-v8a/.*\.so'
+
+      - name: Integrate direct Cloudflare MASQUE VPN into the main APK
+        env:
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
+          WARP_AAR_PATH: ${{ runner.temp }}/effectcraft-warp-masque.aar
+        run: |
+          python3 -m py_compile ${{ github.workspace }}/build-assets/.github/scripts/integrate_on_demand_vpn.py
+          python3 ${{ github.workspace }}/build-assets/.github/scripts/integrate_on_demand_vpn.py
 
       - name: Install cargo-ndk
         shell: bash
