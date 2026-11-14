@@ -145,7 +145,7 @@ if source.count(old) != 1:
 source = source.replace(old, new, 1)
 
 source = source.replace('env["USQUE_ENDPOINT"] = cfg.Endpoint.String()', 'env["USQUE_ENDPOINT"] = endpoint.Address.String()')
-source = source.replace('''				if cfg.UseHTTP2 {''', '''				if endpoint.UseHTTP2 {''', 1)
+source = source.replace('''					if cfg.UseHTTP2 {''', '''					if endpoint.UseHTTP2 {''', 1)
 source = source.replace('''		log.Printf("Tunnel connection lost: %v. Reconnecting...", err)
 
 		if cfg.OnDisconnect != "" {''','''		log.Printf("Tunnel connection lost via %s: %v. Reconnecting...", endpoint.Address, err)
