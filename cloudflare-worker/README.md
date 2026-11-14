@@ -62,6 +62,19 @@ After the run succeeds, open the deployment log to find the Worker `workers.dev`
 
 Check that `https://...workers.dev/health` returns `{"ok":true,"service":"Ae Cloud Account API","database":true}`.
 
+
+## Deployment verification note
+
+A documentation-only update to this file can be used to start the repository's deployment workflow because the workflow watches `cloudflare-worker/**`. A successful run must show all of the following before the APK builds are dispatched:
+
+1. D1 schema application completed.
+2. Worker deployment printed the actual `workers.dev` URL.
+3. Worker runtime secrets were configured.
+4. `GET /health` returned `ok: true` and `database: true`.
+5. The repository variable `AE_ACCOUNT_API_URL` was saved.
+
+A successful GitHub-hosted health check confirms that the Worker and D1 are responding from the GitHub runner only. It does not prove mainland mobile-carrier reachability; test China Mobile, China Unicom, and China Telecom separately before claiming nationwide availability.
+
 ## Main APK build
 
 After the actual Worker URL is known, set the repository Actions **variable** (not a secret) `AE_ACCOUNT_API_URL` to the exact base URL, for example `https://ae-cloud-account-api.<your-workers-dev-subdomain>.workers.dev`. The main APK workflow checks for this variable and only then runs the cloud-account conversion step. The admin APK accepts the same HTTPS URL in its server address field.
