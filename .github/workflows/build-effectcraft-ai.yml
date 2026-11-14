@@ -708,6 +708,10 @@ jobs:
           python3 ${{ github.workspace }}/build-assets/.github/scripts/integrate_on_demand_vpn.py
           grep -Fq 'func SetScannerStorage(path string, networkIdentity string)' build-assets/warp-mobile/endpoint_scanner.go
           grep -Fq 'scanCloudflareHTTP2(ctx, tlsConfig, defaultH2)' build-assets/warp-mobile/mobile.go
+          grep -Fq 'var cloudflareH2Ports = []int{443, 500, 1701, 4500, 4443, 8443, 8095}' build-assets/warp-mobile/endpoint_scanner.go
+          grep -Fq 'scannerProbeTimeout    = 3500 * time.Millisecond' build-assets/warp-mobile/endpoint_scanner.go
+          grep -Fq 'TestMakeH2CandidatesIncludesAlternativeTCPPorts' build-assets/warp-mobile/endpoint_scanner_test.go
+          grep -Fq 'HTTP/3 QUIC (UDP)' build-assets/warp-mobile/mobile.go
           grep -Fq 'callWarp("setScannerStorage"' build-assets/p2p-bridge/android/EffectCraftVpnService.java
           grep -Fq 'private static String scannerNetworkIdentity(Context context)' build-assets/p2p-bridge/android/EffectCraftVpnService.java
           grep -Fq 'android.permission.ACCESS_NETWORK_STATE' build-assets/.github/scripts/integrate_on_demand_vpn.py
