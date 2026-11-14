@@ -12,7 +12,7 @@ from pathlib import Path
 ROOTS = (Path("crates/ui-egui/src"), Path("crates/engine/src"))
 PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("direct-ui", re.compile(
-        r'\b(?:ui|menu_ui|sub_ui)\.(?:label|small|heading|button|hyperlink|checkbox|radio|selectable_label)\s*\([^,\n]*?"((?:\\.|[^"\\])*)"',
+        r'\b(?:ui|menu_ui|sub_ui)\.(?:label|small|heading|button|hyperlink|checkbox|radio|selectable_label)\s*\([^ )]*?"((?:\\.|[^"\\])*)"',
         re.DOTALL,
     )),
     ("window-or-widget-title", re.compile(
@@ -45,7 +45,7 @@ def main() -> None:
         if not root.is_dir():
             continue
         for path in root.rglob("*.rs"):
-            if "i18n" in path.parts:
+            if "i18n" in path.parts or path.name.startswith("i18n"):
                 continue
             try:
                 source = path.read_text(encoding="utf-8")
@@ -57,6 +57,10 @@ def main() -> None:
                 for match in pattern.finditer(source):
                     literal = clean_literal(match.group(1))
                     if not literal or not re.search(r"[A-Za-z]", literal):
+                        continue
+                    # Ignore literals already passed through the translation helper.
+                    call_prefix = source[match.start():match.start(1)]
+                    if re.search(r"\btr(?:_args)?\s*\(", call_prefix):
                         continue
                     prefix = source[:match.start()]
                     line = prefix.count("\n") + 1
