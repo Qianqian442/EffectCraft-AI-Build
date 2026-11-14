@@ -227,6 +227,9 @@ jobs:
           grep -Fq 'new Class<?>[]{String.class, long.class, String.class, String.class}' "$VPN"
           grep -Fq 'func RegisterDevice() (string, error)' "$MOBILE"
           grep -Fq 'func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string) error' "$MOBILE"
+          grep -Fq 'tcp://"+net.JoinHostPort(config.DefaultEndpointH2V4, "443")' "$MOBILE"
+          grep -Fq 'case *net.TCPAddr, *net.UDPAddr:' .github/scripts/patch_usque_for_android.py
+          grep -Fq 'useHTTP2 = true' .github/scripts/patch_usque_for_android.py
           if grep -R -n -E 'TProxyService|hev[.]socks5|公开代理' admin-app/app/src/main/java; then
             echo "Legacy proxy-relay VPN code must not remain in the admin APK." >&2
             exit 1
