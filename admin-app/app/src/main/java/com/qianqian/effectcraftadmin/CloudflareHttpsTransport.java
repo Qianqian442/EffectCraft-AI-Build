@@ -68,6 +68,7 @@ final class CloudflareHttpsTransport {
         Set<InetAddress> resolved = new LinkedHashSet<>();
         Exception lastError = null;
         for (int type : new int[] {1, 28}) {
+            if (type == 28 && !resolved.isEmpty()) break;
             String target = "/dns-query?name="
                 + URLEncoder.encode(host, "UTF-8")
                 + "&type=" + type;
@@ -167,7 +168,7 @@ final class CloudflareHttpsTransport {
         for (InetAddress address : addresses) {
             SSLSocket socket = null;
             try {
-                socket = openTlsSocket(host, Collections.singletonList(address));
+                socket = openTlsSocket(host, Collections.singletonList(address), 5000, 5000);
                 OutputStream output = socket.getOutputStream();
                 String request = "GET " + target + " HTTP/1.1\r\n"
                     + "Host: " + host + "\r\n"
@@ -196,14 +197,20 @@ final class CloudflareHttpsTransport {
     }
 
     private static SSLSocket openTlsSocket(String host, List<InetAddress> addresses) throws Exception {
+        return openTlsSocket(host, addresses, CONNECT_TIMEOUT_MS, READ_TIMEOUT_MS);
+    }
+
+    private static SSLSocket openTlsSocket(
+        String host, List<InetAddress> addresses, int connectTimeoutMs, int readTimeoutMs
+    ) throws Exception {
         Exception lastError = null;
         SSLSocketFactory factory = (SSLSocketFactory) SSLSocketFactory.getDefault();
         for (InetAddress address : addresses) {
             Socket underlay = new Socket();
             try {
-                underlay.connect(new InetSocketAddress(address, 443), CONNECT_TIMEOUT_MS);
+                underlay.connect(new InetSocketAddress(address, 443), connectTimeoutMs);
                 SSLSocket tls = (SSLSocket) factory.createSocket(underlay, host, 443, true);
-                tls.setSoTimeout(READ_TIMEOUT_MS);
+                tls.setSoTimeout(readTimeoutMs);
 
                 SSLParameters parameters = tls.getSSLParameters();
                 parameters.setEndpointIdentificationAlgorithm("HTTPS");
