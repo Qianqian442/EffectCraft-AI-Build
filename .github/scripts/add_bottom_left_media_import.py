@@ -105,7 +105,12 @@ def patch_layer_add_item_fit(root: Path) -> None:
         // Preserve the source aspect ratio while enlarging small media or shrinking large
         // media so the complete image/video is visible inside the composition frame.
         let can_fit_to_comp = match &it.kind {
-            ItemKind::Footage(f) => f.has_video && f.width > 0 && f.height > 0,
+            ItemKind::Footage(f) => matches!(
+                f.kind,
+                effectcraft_project::FootageKind::Still
+                    | effectcraft_project::FootageKind::Sequence
+                    | effectcraft_project::FootageKind::Video
+            ) && f.width > 0 && f.height > 0,
             ItemKind::Comp(_) | ItemKind::Solid(_) => size.0 > 0 && size.1 > 0,
             ItemKind::Folder => false,
         };
