@@ -222,7 +222,7 @@ jobs:
           grep -Fq 'AdminAccountVpnService' "$MANIFEST"
           grep -Fq 'Proxy.NO_PROXY' "$API"
           grep -Fq 'com.effectcraft.warp.Warpandroid' "$VPN"
-          if grep -R -n -E 'TProxyService|hev\\.socks5|公开代理' admin-app/app/src/main/java; then
+          if grep -R -n -E 'TProxyService|hev[.]socks5|公开代理' admin-app/app/src/main/java; then
             echo "Legacy proxy-relay VPN code must not remain in the admin APK." >&2
             exit 1
           fi
@@ -236,7 +236,7 @@ jobs:
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libeffectcraft_p2p.so'
-          NATIVE_COUNT="$(unzip -Z1 app/build/outputs/apk/debug/app-debug.apk | grep 'lib/arm64-v8a/' | grep '\\.so          echo "Additional packaged native libraries: $NATIVE_COUNT"
+          NATIVE_COUNT="$(unzip -Z1 app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/' | grep -F '.so' | grep -vF 'libeffectcraft_p2p.so' | wc -l)"
           test "$NATIVE_COUNT" -ge 1
           cp app/build/outputs/apk/debug/app-debug.apk ../EffectCraft-Account-Admin.apk
 
