@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -52,10 +53,26 @@ type tunnelSession struct {
 
 var (
 	mu sync.Mutex
+	registrationMu sync.Mutex
 	session *tunnelSession
 	state = "disconnected"
 	lastError = ""
 )
+
+// configureDirectRegistrationClient performs first-use Cloudflare enrollment
+// through ordinary direct HTTPS. It deliberately disables HTTP proxies and
+// bounds DNS, TCP, TLS, response-header and total request time.
+func configureDirectRegistrationClient() {
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 15 * time.Second}
+	transport := &http.Transport{
+		Proxy: nil,
+		DialContext: dialer.DialContext,
+		TLSHandshakeTimeout: 5 * time.Second,
+		ResponseHeaderTimeout: 8 * time.Second,
+		ForceAttemptHTTP2: true,
+	}
+	http.DefaultClient = &http.Client{Transport: transport, Timeout: 15 * time.Second}
+}
 
 
 // endpointAddressIP extracts and validates a numeric IP from the endpoint fields
@@ -82,6 +99,10 @@ func endpointAddressIP(raw string) (string, error) {
 // key for MASQUE, and return the per-device tunnel configuration. The caller
 // must obtain and persist user consent before invoking this function.
 func RegisterDevice() (string, error) {
+	registrationMu.Lock()
+	defer registrationMu.Unlock()
+	configureDirectRegistrationClient()
+
 	registered, err := api.Register("Android", internal.DefaultLocale, "", true)
 	if err != nil {
 		return "", fmt.Errorf("Cloudflare WARP device registration failed: %w", err)
@@ -115,18 +136,41 @@ func RegisterDevice() (string, error) {
 		return "", errors.New("Cloudflare MASQUE enrollment returned no usable endpoint IP")
 	}
 
-	// Mainland-friendly first attempt: MASQUE over HTTP/2 on TCP/443.
-	// QUIC/HTTP3 is retained as a fallback only; endpoint certificates remain
-	// pinned to the public key returned by Cloudflare's MASQUE enrollment.
-	endpoints := make([]string, 0, 3)
-	if config.DefaultEndpointH2V4 != "" {
-		endpoints = append(endpoints, "tcp://"+net.JoinHostPort(config.DefaultEndpointH2V4, "443"))
+	// Try Cloudflare's consumer MASQUE HTTP/2 edge first over TCP/443.
+	// The second H2 address is a same-service Cloudflare edge candidate; the
+	// server public-key pin is checked for every endpoint before use.
+	endpoints := make([]string, 0, 16)
+	h2Addresses := []string{config.DefaultEndpointH2V4, "162.159.198.10"}
+	seenH2 := make(map[string]bool)
+	for _, address := range h2Addresses {
+		address = strings.TrimSpace(address)
+		if address == "" || seenH2[address] {
+			continue
+		}
+		if net.ParseIP(address) == nil {
+			return "", fmt.Errorf("invalid Cloudflare HTTP/2 MASQUE address %q", address)
+		}
+		seenH2[address] = true
+		endpoints = append(endpoints, "tcp://"+net.JoinHostPort(address, "443"))
 	}
-	if ipv4 != "" {
-		endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv4, "443"))
+
+	// Cloudflare documents these MASQUE UDP ports as default/fallback options.
+	// Keep them after the TCP/443 candidates so networks that block QUIC do not
+	// stall the first connection attempt.
+	masqueUDPPorts := []int{443, 500, 1701, 4500, 4443, 8443, 8095}
+	udpAddressV4 := ipv4
+	if udpAddressV4 == "" {
+		udpAddressV4 = config.DefaultEndpointH2V4
+	}
+	if udpAddressV4 != "" {
+		for _, port := range masqueUDPPorts {
+			endpoints = append(endpoints, "quic://"+net.JoinHostPort(udpAddressV4, strconv.Itoa(port)))
+		}
 	}
 	if ipv6 != "" {
-		endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv6, "443"))
+		for _, port := range masqueUDPPorts {
+			endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv6, strconv.Itoa(port)))
+		}
 	}
 
 	tunnelConfig := config.Config{
