@@ -39,7 +39,7 @@ pub fn is_allowed_destination(host: &str, port: u16) -> bool {
     })
 }
 
-fn is_public_ip(ip: IpAddr) -> bool {
+pub fn is_public_ip(ip: IpAddr) -> bool {
     match ip {
         IpAddr::V4(ip) => {
             !ip.is_private()
