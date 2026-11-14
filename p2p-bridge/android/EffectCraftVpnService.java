@@ -8,6 +8,11 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.net.VpnService;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
+import android.net.LinkProperties;
+import android.net.LinkAddress;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
@@ -127,6 +132,13 @@ public final class EffectCraftVpnService extends VpnService {
             // user who declines does not leave an unused Cloudflare device identity.
             if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
 
+            // Persist scanner scores in this app's private storage, partitioned
+            // by a hashed transport/DNS/subnet fingerprint. No Wi-Fi SSID or
+            // location permission is read or requested.
+            callWarp("setScannerStorage", new Class<?>[]{String.class, String.class},
+                new java.io.File(context.getFilesDir(), "warp-endpoint-scores.json").getAbsolutePath(),
+                scannerNetworkIdentity(context));
+
             String bundle = loadEncryptedBundle(context);
             if (bundle == null) {
                 if (!NativeP2P.requestCloudflareTermsConsent()) {
@@ -184,6 +196,42 @@ public final class EffectCraftVpnService extends VpnService {
             return "ERROR:Cloudflare WARP 关闭确认超时";
         } catch (Throwable error) {
             return "ERROR:" + error.getClass().getSimpleName();
+        }
+    }
+
+    private static String scannerNetworkIdentity(Context context) {
+        try {
+            ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            if (manager == null) return "unknown";
+            Network active = manager.getActiveNetwork();
+            if (active == null) return "no-active-network";
+            NetworkCapabilities capabilities = manager.getNetworkCapabilities(active);
+            String transport = "other";
+            if (capabilities != null) {
+                if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) transport = "wifi";
+                else if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)) transport = "cellular";
+                else if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)) transport = "ethernet";
+                else if (capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) transport = "vpn";
+            }
+            StringBuilder identity = new StringBuilder(transport);
+            LinkProperties properties = manager.getLinkProperties(active);
+            if (properties != null) {
+                identity.append("|if=").append(properties.getInterfaceName());
+                for (InetAddress dns : properties.getDnsServers()) {
+                    identity.append("|dns=").append(dns.getHostAddress());
+                }
+                for (LinkAddress link : properties.getLinkAddresses()) {
+                    InetAddress address = link.getAddress();
+                    if (!address.isLoopbackAddress() && !address.isLinkLocalAddress()) {
+                        identity.append("|subnet=").append(address.getHostAddress())
+                            .append('/').append(link.getPrefixLength());
+                    }
+                }
+            }
+            return identity.toString();
+        } catch (Throwable error) {
+            Log.w(TAG, "Could not identify the active network for WARP endpoint scoring", error);
+            return "unknown";
         }
     }
 
