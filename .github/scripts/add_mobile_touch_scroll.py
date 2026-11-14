@@ -183,9 +183,9 @@ def patch_timeline_android_drag_handles(root: Path) -> None:
     old_trim = """const TRIM_OUTSIDE: f32 = 4.0;
 const TRIM_INSIDE: f32 = 5.0;"""
     new_trim = """#[cfg(target_os = "android")]
-const TRIM_OUTSIDE: f32 = 14.0;
+const TRIM_OUTSIDE: f32 = 20.0;
 #[cfg(target_os = "android")]
-const TRIM_INSIDE: f32 = 16.0;
+const TRIM_INSIDE: f32 = 24.0;
 #[cfg(not(target_os = "android"))]
 const TRIM_OUTSIDE: f32 = 4.0;
 #[cfg(not(target_os = "android"))]
@@ -216,7 +216,7 @@ const TRIM_INSIDE: f32 = 5.0;"""
         let ctx = g.tl.ctx.clone();
         let comp = g.tl.comp.clone();
         let graph_x1 = g.tl.graph_x1;
-        let hit_half_width = if cfg!(target_os = "android") { 18.0 } else { 7.0 };
+        let hit_half_width = if cfg!(target_os = "android") { 26.0 } else { 7.0 };
         let hit = Rect::from_min_max(
             pos2(cx - hit_half_width, ruler.min.y + 3.0),
             pos2(cx + hit_half_width, ruler.max.y),
@@ -263,6 +263,59 @@ const TRIM_INSIDE: f32 = 5.0;"""
     print("Android timeline: enlarged In/Out trim hit zones, added a direct draggable playhead handle, and preserved scrub edge-scrolling.")
 
 
+
+def patch_viewer_drag_auto_keyframe(root: Path) -> None:
+    """Create Position keys automatically when a layer is moved directly on the canvas."""
+    path = root / "crates/ui-egui/src/panels/viewer.rs"
+    source = path.read_text(encoding="utf-8")
+    old = """                for (lid, p0, ax, ay) in layers {
+                    let v = json!([p0[0] + ax[0] * d[0] + ay[0] * d[1], p0[1] + ax[1] * d[0] + ay[1], p0[2] + ax[2] * d[0] + ay[2] * d[1]]);
+"""
+    new = """                for (lid, p0, ax, ay) in layers {
+                    // Create Position keys on the first real movement in this drag. Further
+                    // frames update that same key; moving again at another CTI creates a new key.
+                    if d[0].abs() > 0.000_001 || d[1].abs() > 0.000_001 {
+                        let key_props = app.session.active_comp()
+                            .and_then(|comp| comp.layer(lid))
+                            .map(|layer| {
+                                let local_time = layer.layer_time(app.session.time());
+                                let mut props = Vec::new();
+                                if let Some(transform) = layer.transform() {
+                                    if let Some(position) = transform.get("position") {
+                                        if !position.keys.iter().any(|key| key.time == local_time) {
+                                            props.push(position.uid);
+                                        }
+                                    } else {
+                                        for axis in ["positionX", "positionY", "positionZ"] {
+                                            if let Some(position) = transform.get(axis)
+                                                && !position.keys.iter().any(|key| key.time == local_time)
+                                            {
+                                                props.push(position.uid);
+                                            }
+                                        }
+                                    }
+                                }
+                                props
+                            })
+                            .unwrap_or_default();
+                        for prop in key_props {
+                            let _ = app.session.execute("prop.addKey", json!({"layer": lid.0, "prop": prop}));
+                        }
+                    }
+                    let v = json!([p0[0] + ax[0] * d[0] + ay[0] * d[1], p0[1] + ax[1] * d[0] + ay[1] * d[1], p0[2] + ax[2] * d[0] + ay[2] * d[1]]);
+"""
+    if "EFFECTCRAFT_ANDROID_CANVAS_DRAG_AUTO_POSITION_KEY_V1" not in source:
+        source = replace_once(source, old, new, "canvas drag auto Position keyframes")
+        source = source.replace(
+            "Gesture::Move { layers, start, snap_src } => {",
+            "Gesture::Move { layers, start, snap_src } => {\n                // EFFECTCRAFT_ANDROID_CANVAS_DRAG_AUTO_POSITION_KEY_V1",
+            1,
+        )
+    if "prop.addKey" not in source or "EFFECTCRAFT_ANDROID_CANVAS_DRAG_AUTO_POSITION_KEY_V1" not in source:
+        raise SystemExit("Canvas drag auto-keyframe verification failed")
+    path.write_text(source, encoding="utf-8")
+
+
 def patch_preview_clock(root: Path) -> None:
     path = root / "crates/ui-egui/src/app/frame.rs"
     source = path.read_text(encoding="utf-8")
@@ -291,6 +344,7 @@ def main() -> None:
     patch_project_panel(root)
     patch_timeline(root)
     patch_timeline_android_drag_handles(root)
+    patch_viewer_drag_auto_keyframe(root)
     patch_preview_clock(root)
 
 
