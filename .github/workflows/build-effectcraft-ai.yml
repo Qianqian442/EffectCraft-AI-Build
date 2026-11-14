@@ -8,6 +8,8 @@ on:
       - 'p2p-bridge/**'
       - '.github/scripts/integrate_p2p_bridge.py'
       - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/configure_four_project_export_buttons.py'
+      - '.github/scripts/backport_aep_export.py'
       - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/install_ai_plugin_bridge.py'
@@ -73,6 +75,10 @@ jobs:
         run: |
           python3 -m py_compile \
             .github/scripts/patch_export_dialog.py \
+            .github/scripts/configure_four_project_export_buttons.py \
+            .github/scripts/backport_aep_export.py \
+            .github/scripts/add_project_import_formats.py \
+            .github/scripts/add_am_nv_project_import.py \
             .github/scripts/upgrade_export_preflight.py \
             .github/scripts/integrate_video_ai.py \
             .github/scripts/add_android_gallery_export.py \
@@ -122,6 +128,17 @@ jobs:
           repository: storytold/effectcraft
           ref: v0.21.1
           path: artcraft/source/effectcraft
+
+      - name: Check out upstream native After Effects exporter source
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/effectcraft
+          ref: ce9eaec65015a5508c72af0e2351cd02612c9450
+          path: upstream-aep-export
+          sparse-checkout: |
+            crates/aep/src/export.rs
+            crates/aep/src/export
+            crates/engine/src/cmd/aep.rs
 
       - name: Check out project branding assets
         uses: actions/checkout@v4
@@ -359,7 +376,7 @@ jobs:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: python3 build-assets/.github/scripts/add_android_gallery_export.py
 
-      - name: Add complete project ZIP sharing to QQ and Android apps
+      - name: Add complete project ZIP sharing to Android Sharesheet
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
@@ -367,6 +384,10 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_qq_project_share.py
           python3 build-assets/.github/scripts/add_qq_project_share.py
 
+      - name: Configure four project export buttons and the generic share action
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/configure_four_project_export_buttons.py
 
       - name: Integrate RIFE and Real-ESRGAN into actual export frames
         env:
@@ -414,7 +435,7 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_plugin_migration_progress.py
           python3 build-assets/.github/scripts/add_plugin_migration_progress.py
 
-      - name: Route AE projects through the original Import Project control
+      - name: Unify AM, NV, AE and CapCut project import under File > Import
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_project_import_formats.py
@@ -425,6 +446,14 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_am_nv_project_import.py
           python3 build-assets/.github/scripts/add_am_nv_project_import.py
+
+      - name: Backport native After Effects .aep project export
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          AEP_EXPORT_SOURCE_DIR: ${{ github.workspace }}/upstream-aep-export
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/backport_aep_export.py
+          python3 build-assets/.github/scripts/backport_aep_export.py
 
       - name: Add Simplified Chinese, Puppet shortcut, project grouping and single-item keyframes
         env:
