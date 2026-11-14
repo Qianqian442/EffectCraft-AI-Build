@@ -87,6 +87,13 @@ pub fn by_effect(effect: &str) -> Option<&'static EffectMap> {
 def patch_engine(root, upstream):
     upstream_aep = (upstream / "crates/engine/src/cmd/aep.rs").read_text()
     export_fn = extract_rust_fn(upstream_aep, "fn export_aep(s: &mut Session, p: &Value) -> Result<Value>")
+    write_anchor = '    s.services.write_file(&path, &res.bytes).map_err(|e| EngineError::Other(format!("cannot write {path}: {e}")))?;'
+    export_fn = once(
+        export_fn,
+        write_anchor,
+        write_anchor + '\\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": path, "format": "Ae"}) });',
+        "emit the AE export-complete event only after the .aep file is written",
+    )
     export_fn = export_fn.replace(
         "AepExportError::Refused(_) => {\n            EngineError::Refused { losses: e.to_string(), advice: \"nothing was written: pass allowLosses to export anyway, or dryRun for the full report\" }\n        }",
         "AepExportError::Refused(_) => EngineError::Other(format!(\"{e} (nothing was written; inspect the report before exporting with allowLosses)\")),"
