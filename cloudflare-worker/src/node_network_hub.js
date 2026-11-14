@@ -50,6 +50,9 @@ export class NodeNetworkHub {
         try {
           socket.send(payload);
           delivered++;
+          if (!state.enabled) {
+            try { socket.close(4002, "global account service disabled"); } catch (_) {}
+          }
         } catch (_) {
           try { socket.close(1011, "account service state notification failed"); } catch (_) {}
         }
