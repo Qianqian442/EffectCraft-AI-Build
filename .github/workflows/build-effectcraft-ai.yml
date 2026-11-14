@@ -477,6 +477,13 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
           python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
 
+      - name: Preserve generated account source for Rust diagnostics
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p artcraft/logs
+          cp artcraft/source/effectcraft/crates/ui-egui/src/account.rs artcraft/logs/account-generated.rs
+
       - name: Add independent connected Puppet pin rigs
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
@@ -1097,6 +1104,7 @@ jobs:
           name: EffectCraft-Android-build-log
           path: |
             artcraft/logs/*.log
+            artcraft/logs/account-generated.rs
             artcraft/output/*.txt
           if-no-files-found: ignore
           retention-days: 30
