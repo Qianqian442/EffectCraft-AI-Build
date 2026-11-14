@@ -59,13 +59,8 @@ def main() -> None:
     if replaced != 1:
         raise SystemExit(f"Cloudflare account HTTP request replacement expected once, found {replaced}")
 
-    websocket_calls = account.count("tungstenite::connect(request)")
-    if websocket_calls != 2:
-        raise SystemExit(f"Expected two authenticated WSS connections, found {websocket_calls}")
-    account = account.replace(
-        "tungstenite::connect(request)",
-        "crate::public_proxy_pool::connect_websocket(request)",
-    )
+    if "tungstenite::connect(request)" in account or "connect_websocket(request)" in account:
+        raise SystemExit("Persistent WSS loops must remain disabled; only one-shot account tasks may start the VPN.")
     account = account.replace(
         "//! EFFECTCRAFT_CLOUDFLARE_ACCOUNT_GATE_V1",
         f"//! EFFECTCRAFT_CLOUDFLARE_ACCOUNT_GATE_V1\n//! {MARKER}",
@@ -95,9 +90,9 @@ def main() -> None:
         raise SystemExit("WSS TLS validation must use the WebPKI root certificates")
     if bootstrap_destination.stat().st_size == 0:
         raise SystemExit("Public proxy bootstrap snapshot is empty")
-    print("Integrated dynamic public proxy candidates for HTTPS and WSS Cloudflare account traffic.")
-    print("Direct HTTPS remains preferred; candidate routes are transport-probed without Worker health requests.")
-    print("TLS certificate verification remains enabled; account POST operations are never blindly replayed.")
+    print("Integrated account HTTPS request routing through the task-scoped private VPN.")
+    print("Persistent WebSocket notifications and heartbeats are disabled; no timed Worker polling is added.")
+    print("TLS certificate verification remains enabled; POST requests are never blindly replayed after an ambiguous failure.")
 
 
 if __name__ == "__main__":
