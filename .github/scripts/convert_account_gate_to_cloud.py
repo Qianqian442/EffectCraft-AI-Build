@@ -131,6 +131,20 @@ def main() -> None:
         'ui.text_edit_singleline(&mut app.account.server_url);',
         'ui.add_enabled(false, egui::TextEdit::singleline(&mut app.account.server_url));',
     )
+
+    # The server endpoint stays in the signed build configuration only. Do not
+    # show the workers.dev hostname, a disabled URL field, or instructions that
+    # reveal the configured host in the main APK account screen.
+    source = source.replace('ui.label("云端账号服务地址");', "")
+    source = source.replace('ui.label("Cloudflare HTTPS 服务地址");', "")
+    source = source.replace(
+        'ui.small("此地址由构建配置自动设置，账号通信优先直连 Cloudflare，连接失败时自动检测公开代理隧道。");',
+        "",
+    )
+    source = source.replace(
+        'ui.add_enabled(false, egui::TextEdit::singleline(&mut app.account.server_url));',
+        "",
+    )
     source = source.replace(
         'ui.button("保存节点地址并重新连接")',
         'ui.button("重新检测连接")',
