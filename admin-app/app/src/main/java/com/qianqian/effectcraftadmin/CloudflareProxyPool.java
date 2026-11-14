@@ -292,7 +292,7 @@ final class CloudflareProxyPool {
             DataOutputStream output = new DataOutputStream(socket.getOutputStream());
             if ("http".equals(candidate.protocol)) {
                 byte[] request = ("CONNECT " + host + ":" + port + " HTTP/1.1\r\n"
-                    + "Host: " + host + ":" + port + "\\r\\n"
+                    + "Host: " + host + ":" + port + "\r\n"
                     + "Proxy-Connection: keep-alive\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
                 output.write(request);
                 output.flush();
