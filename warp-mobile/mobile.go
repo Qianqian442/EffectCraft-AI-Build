@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/http"
 	"os"
 	"strconv"
 	"strings"
@@ -43,16 +44,36 @@ type deviceBundle struct {
 }
 
 var (
-	mu        sync.Mutex
-	session   *tunnelSession
-	state     = "disconnected"
-	lastError = ""
+	mu             sync.Mutex
+	registrationMu sync.Mutex
+	session        *tunnelSession
+	state          = "disconnected"
+	lastError      = ""
 )
+
+// configureDirectRegistrationClient forces Cloudflare device registration
+// to use the phone's own network directly, never an environment HTTP proxy.
+// Every network phase is bounded so a blocked Cloudflare API cannot hang login.
+func configureDirectRegistrationClient() {
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 15 * time.Second}
+	transport := &http.Transport{
+		Proxy:                 nil,
+		DialContext:           dialer.DialContext,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ResponseHeaderTimeout: 8 * time.Second,
+		ForceAttemptHTTP2:     true,
+	}
+	http.DefaultClient = &http.Client{Transport: transport, Timeout: 15 * time.Second}
+}
 
 // RegisterDevice enrolls a unique MASQUE identity for this Android installation.
 // The caller must obtain the user's explicit Cloudflare Terms consent before calling it.
 // The returned JSON must be stored encrypted with Android Keystore protection.
 func RegisterDevice() (string, error) {
+	registrationMu.Lock()
+	defer registrationMu.Unlock()
+	configureDirectRegistrationClient()
+
 	account, err := api.Register("Android", internal.DefaultLocale, "", true)
 	if err != nil {
 		return "", fmt.Errorf("Cloudflare WARP device registration failed: %w", err)
