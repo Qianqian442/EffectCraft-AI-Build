@@ -93,6 +93,7 @@ new = '''func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
 	}
 
 	packetBufferPool := NewNetBuffer(cfg.MTU + datagramContextIDHeadroom)
+	var activeAttemptCancel context.CancelFunc
 '''
 if source.count(old) != 1:
     raise SystemExit("MaintainTunnel initialization anchor mismatch")
@@ -112,9 +113,39 @@ source = source.replace(old, '''			endpoint.Address,
 			endpoint.UseHTTP2,
 ''', 1)
 
+old_connect = '''		udpConn, tr, ipConn, rsp, err := ConnectTunnel(
+			ctx,
+			cfg.TLSConfig,
+			internal.DefaultQuicConfig(cfg.KeepalivePeriod, cfg.InitialPacketSize),
+			internal.ConnectURI,
+			endpoint.Address,
+			endpoint.UseHTTP2,
+		)
+'''
+new_connect = '''		attemptCtx, attemptCancel := context.WithCancel(ctx)
+		attemptTimer := time.AfterFunc(6*time.Second, attemptCancel)
+		udpConn, tr, ipConn, rsp, err := ConnectTunnel(
+			attemptCtx,
+			cfg.TLSConfig,
+			internal.DefaultQuicConfig(cfg.KeepalivePeriod, cfg.InitialPacketSize),
+			internal.ConnectURI,
+			endpoint.Address,
+			endpoint.UseHTTP2,
+		)
+		attemptTimer.Stop()
+		attemptExpired := attemptCtx.Err() != nil
+		if attemptExpired && err == nil {
+			err = errors.New("MASQUE endpoint handshake exceeded the 6-second attempt limit")
+		}
+'''
+if source.count(old_connect) != 1:
+    raise SystemExit("Main ConnectTunnel call block mismatch")
+source = source.replace(old_connect, new_connect, 1)
+
 old = '''			log.Printf("Failed to connect tunnel: %v", err)
 			if ipConn != nil {'''
-new = '''			log.Printf("Failed to connect tunnel via %s: %v", endpoint.Address, err)
+new = '''			attemptCancel()
+			log.Printf("Failed to connect tunnel via %s: %v", endpoint.Address, err)
 			if cfg.OnConnectError != nil { cfg.OnConnectError(endpoint.Address, err) }
 			advanceEndpoint()
 			if ipConn != nil {'''
@@ -124,7 +155,8 @@ source = source.replace(old, new, 1)
 
 old = '''			log.Printf("Tunnel connection failed: %s", rsp.Status)
 			_ = ipConn.Close()'''
-new = '''			connectErr := fmt.Errorf("MASQUE endpoint %s returned %s", endpoint.Address, rsp.Status)
+new = '''			attemptCancel()
+			connectErr := fmt.Errorf("MASQUE endpoint %s returned %s", endpoint.Address, rsp.Status)
 			log.Printf("Tunnel connection failed: %s", connectErr)
 			if cfg.OnConnectError != nil { cfg.OnConnectError(endpoint.Address, connectErr) }
 			advanceEndpoint()
@@ -136,7 +168,8 @@ source = source.replace(old, new, 1)
 old = '''		log.Println("Connected to MASQUE server")
 
 		if cfg.OnConnect != "" {'''
-new = '''		log.Printf("Connected to MASQUE server via %s", endpoint.Address)
+new = '''		activeAttemptCancel = attemptCancel
+		log.Printf("Connected to MASQUE server via %s", endpoint.Address)
 		if cfg.OnConnected != nil { cfg.OnConnected(endpoint.Address) }
 
 		if cfg.OnConnect != "" {'''
@@ -155,9 +188,50 @@ source = source.replace('''		log.Printf("Tunnel connection lost: %v. Reconnectin
 		if cfg.OnDisconnect != "" {''',1)
 source = source.replace('env["USQUE_ENDPOINT"] = cfg.Endpoint.String()', 'env["USQUE_ENDPOINT"] = endpoint.Address.String()')
 
+source = source.replace(
+    '\t\t_ = ipConn.Close()\n\n\t\tdone := make(chan struct{})',
+    '\t\t_ = ipConn.Close()\n\t\tif activeAttemptCancel != nil { activeAttemptCancel(); activeAttemptCancel = nil }\n\n\t\tdone := make(chan struct{})',
+    1,
+)
+
 if "cfg.Endpoint.String()" in source or "cfg.UseHTTP2 {" in source:
     raise SystemExit("stale single-endpoint transport reference remains")
 if source.count("Endpoints         []TunnelEndpoint") != 1:
     raise SystemExit("mixed-transport endpoint field was not installed")
 path.write_text(source, encoding="utf-8")
-print("Patched usque for Android TUN descriptors, UDP MASQUE with TCP/HTTP2 fallback, endpoint failover and state callbacks.")
+
+# Force direct Cloudflare HTTP/2 dialing. Never honor system proxy variables.
+masque_path = root / "api/masque.go"
+masque_source = masque_path.read_text(encoding="utf-8")
+if '\t"time"\n' not in masque_source:
+    masque_source = masque_source.replace('\t"strings"\n', '\t"strings"\n\t"time"\n', 1)
+proxy_line = '\tproxyURL, _ := http.ProxyFromEnvironment(&http.Request{URL: parsedURI})'
+if masque_source.count(proxy_line) != 1:
+    raise SystemExit("HTTP/2 MASQUE proxy selection anchor mismatch")
+masque_source = masque_source.replace(
+    proxy_line,
+    '\tvar proxyURL *url.URL // Direct Cloudflare underlay only; no proxy or relay.',
+    1,
+)
+dialer_line = 'dialer := &net.Dialer{}'
+if masque_source.count(dialer_line) < 1:
+    raise SystemExit("HTTP/2 MASQUE dialer anchor missing")
+masque_source = masque_source.replace(
+    dialer_line,
+    'dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 15 * time.Second}',
+)
+handshake_line = 'if err := tlsConn.HandshakeContext(ctx); err != nil {'
+if masque_source.count(handshake_line) < 1:
+    raise SystemExit("HTTP/2 MASQUE TLS handshake anchor missing")
+masque_source = masque_source.replace(
+    handshake_line,
+    'handshakeCtx, handshakeCancel := context.WithTimeout(ctx, 5*time.Second)\n'
+    '\t\t\t\tif err := tlsConn.HandshakeContext(handshakeCtx); err != nil {\n'
+    '\t\t\t\t\thandshakeCancel()',
+)
+masque_source = masque_source.replace(
+    '\t\t\t\treturn tlsConn, nil',
+    '\t\t\t\thandshakeCancel()\n\t\t\t\treturn tlsConn, nil',
+)
+masque_path.write_text(masque_source, encoding="utf-8")
+print("Patched usque for Android TUN descriptors, direct bounded MASQUE over HTTP/2/TCP and endpoint failover.")
