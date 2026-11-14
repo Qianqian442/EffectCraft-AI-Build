@@ -119,7 +119,8 @@ final class CloudflareHttpsTransport {
         if (!isValidHost(workerHost) || workerAddresses == null || workerAddresses.isEmpty()) {
             throw new IOException("Cloudflare Worker 的可信地址列表为空");
         }
-        if (requestTarget == null || !requestTarget.startsWith("/v1/")
+        if (requestTarget == null
+            || !(requestTarget.startsWith("/v1/") || ("/health".equals(requestTarget) && "GET".equals(method)))
             || requestTarget.contains("..") || requestTarget.contains("#")
             || requestTarget.contains("\r") || requestTarget.contains("\n")) {
             throw new IllegalArgumentException("账号 API 路径无效");
@@ -166,6 +167,11 @@ final class CloudflareHttpsTransport {
         } finally {
             try { socket.close(); } catch (IOException ignored) {}
         }
+    }
+
+    /** Performs a safe, read-only Worker health check over the already-established task VPN. */
+    static Response probeWorker(String workerHost, List<InetAddress> workerAddresses) throws Exception {
+        return execute(workerHost, "/health", "GET", null, null, workerAddresses);
     }
 
     private static byte[] requestJson(String host, List<InetAddress> addresses, String target) throws Exception {
