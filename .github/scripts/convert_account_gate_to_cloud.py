@@ -766,8 +766,7 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
         }
     }.map_err(|error| format!("云端 HTTPS 请求失败：{error}"))?;
     let status = response.status().as_u16();
-    let mut body_text = String::new();
-    response.body_mut().read_to_string(&mut body_text).map_err(|error| error.to_string())?;
+    let body_text = response.body_mut().read_to_string().map_err(|error| error.to_string())?;
     let value = serde_json::from_str::<Value>(&body_text)
         .unwrap_or_else(|_| json!({"detail": "服务器返回了无法识别的数据"}));
     Ok(HttpResult { status, body: value })
@@ -883,8 +882,8 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
 
     if "fn http_request_single" not in source or "API_SERVER_POOL" not in source or "切换服务器" not in source:
         raise SystemExit("Cloud endpoint failover or server-switch controls were not installed.")
-    if 'let mut response = if method == "GET" {' not in source or "request.send_empty()" not in source:
-        raise SystemExit("Cloud HTTP GET/POST method-specific request builders were not generated correctly.")
+    if 'let mut response = if method == "GET" {' not in source or "request.send_empty()" not in source or "response.body_mut().read_to_string()" not in source:
+        raise SystemExit("Cloud HTTP GET/POST request builders or response reader were not generated correctly.")
     print(f"Cloud HTTPS account gate installed with {len(api_urls)} configured endpoint(s), automatic failover, and live ban/unban notifications; no periodic polling.")
 
 
