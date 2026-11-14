@@ -46,7 +46,7 @@ final class CloudflareHttpsTransport {
     private static final int MAX_HEADER_LINE_BYTES = 16 * 1024;
     private static final int MAX_DNS_ADDRESSES = 16;
 
-    private static final List<InetAddress> CLOUDFLARE_DOH_IPS = resolverAddresses();
+    private static final List<InetAddress> CLOUDFLARE_DOH_IPS = createResolverAddresses();
 
     private CloudflareHttpsTransport() {}
 
@@ -220,7 +220,7 @@ final class CloudflareHttpsTransport {
                 if (!javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier().verify(host, session)) {
                     throw new IOException("TLS 证书主机名与 " + host + " 不匹配");
                 }
-                String protocol = tls.getApplicationProtocol();
+                String protocol = Build.VERSION.SDK_INT >= 29 ? tls.getApplicationProtocol() : "";
                 if (protocol != null && !protocol.isEmpty() && !"http/1.1".equals(protocol)) {
                     throw new IOException("Cloudflare TLS 协商了不支持的 HTTP 协议：" + protocol);
                 }
@@ -355,21 +355,15 @@ final class CloudflareHttpsTransport {
         return line.toString("US-ASCII");
     }
 
-    private static InetAddress[] resolverAddresses() {
+    private static List<InetAddress> createResolverAddresses() {
+        List<InetAddress> result = new ArrayList<>(2);
         try {
-            return new InetAddress[] {
-                InetAddress.getByAddress(new byte[] {1, 1, 1, 1}),
-                InetAddress.getByAddress(new byte[] {1, 0, 0, 1})
-            };
+            result.add(InetAddress.getByAddress(new byte[] {1, 1, 1, 1}));
+            result.add(InetAddress.getByAddress(new byte[] {1, 0, 0, 1}));
+            return result;
         } catch (Exception impossible) {
             throw new ExceptionInInitializerError(impossible);
         }
-    }
-
-    private static List<InetAddress> resolverAddressesAsList() {
-        List<InetAddress> result = new ArrayList<>();
-        Collections.addAll(result, CLOUDFLARE_DOH_IPS);
-        return result;
     }
 
     private static InetAddress parseNumericAddress(String value) {
