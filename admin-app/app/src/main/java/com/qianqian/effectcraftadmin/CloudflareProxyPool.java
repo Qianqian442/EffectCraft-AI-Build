@@ -40,18 +40,39 @@ final class CloudflareProxyPool {
     private static final int CONNECT_TIMEOUT_MS = 2200;
     private static final int READ_TIMEOUT_MS = 3500;
 
-    private static final String[] FEEDS = new String[] {
-        "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/cn.txt",
-        "https://proxy-scraper.de/country/cn/proxies.txt",
-        "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/countries/cn.txt",
-        "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/hk.txt",
-        "https://proxy-scraper.de/country/hk/proxies.txt",
-        "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/jp.txt",
-        "https://proxy-scraper.de/country/jp/proxies.txt",
-        "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/sg.txt",
-        "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/https.txt",
-        "https://proxy-scraper.de/https.txt",
-        "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/socks5.txt",
+    private static final class Feed {
+        final String url;
+        final String defaultProtocol;
+        Feed(String url, String defaultProtocol) {
+            this.url = url;
+            this.defaultProtocol = defaultProtocol;
+        }
+    }
+
+    private static final Feed[] FEEDS = new Feed[] {
+        // Main feed with protocol-prefixed entries: mainland and nearby regions first.
+        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/cn.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/hk.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/jp.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/sg.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/https.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/socks5.txt", "socks5"),
+        // Independent second feed. Protocol is inferred from the list file.
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/http.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/https.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/socks5.txt", "socks5"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/http.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/https.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/socks5.txt", "socks5"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/http.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/https.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/socks5.txt", "socks5"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/http.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/https.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/socks5.txt", "socks5"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/http.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/https.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/socks5.txt", "socks5"),
     };
 
     private static final LinkedHashMap<String, Candidate> CANDIDATES = new LinkedHashMap<>();
@@ -273,15 +294,14 @@ final class CloudflareProxyPool {
             lastFeedRefresh = now;
         }
 
-        Context appContext = context.getApplicationContext();
         Thread refresher = new Thread(() -> {
             long deadline = System.currentTimeMillis() + 9000L;
             try {
-                for (String feed : FEEDS) {
+                for (Feed feed : FEEDS) {
                     if (System.currentTimeMillis() >= deadline) break;
                     HttpURLConnection connection = null;
                     try {
-                        connection = (HttpURLConnection) new URL(feed).openConnection(Proxy.NO_PROXY);
+                        connection = (HttpURLConnection) new URL(feed.url).openConnection(Proxy.NO_PROXY);
                         connection.setConnectTimeout(1800);
                         connection.setReadTimeout(2200);
                         connection.setRequestMethod("GET");
@@ -291,7 +311,7 @@ final class CloudflareProxyPool {
                         byte[] bytes = readBounded(connection.getInputStream(), 1024 * 1024);
                         String body = new String(bytes, StandardCharsets.UTF_8);
                         for (String line : body.split("\\r?\\n")) {
-                            Candidate candidate = parseCandidate(line);
+                            Candidate candidate = parseCandidate(line, feed.defaultProtocol);
                             if (candidate == null) continue;
                             synchronized (LOCK) { addCandidateLocked(candidate); }
                         }
@@ -350,6 +370,10 @@ final class CloudflareProxyPool {
     }
 
     private static Candidate parseCandidate(String raw) {
+        return parseCandidate(raw, "socks5");
+    }
+
+    private static Candidate parseCandidate(String raw, String defaultProtocol) {
         if (raw == null) return null;
         String line = raw.trim();
         if (line.isEmpty() || line.startsWith("#") || line.length() > 160) return null;
@@ -360,7 +384,7 @@ final class CloudflareProxyPool {
             protocol = line.substring(0, marker).toLowerCase(java.util.Locale.ROOT);
             endpoint = line.substring(marker + 3);
         } else {
-            protocol = "socks5";
+            protocol = defaultProtocol;
             endpoint = line;
         }
         if (!"http".equals(protocol) && !"socks5".equals(protocol) && !"socks5h".equals(protocol)) return null;
