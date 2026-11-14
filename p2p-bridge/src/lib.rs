@@ -399,7 +399,7 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
 
     let mut vpn_control = swarm.behaviour().vpn_stream.new_control();
     let mut incoming_vpn_streams = vpn_control
-        .accept(libp2p::StreamProtocol::new(vpn_stream::PROTOCOL_NAME))
+        .accept(StreamProtocol::new(vpn_stream::PROTOCOL_NAME))
         .expect("VPN stream protocol is registered only once");
     let vpn_stream_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
 
