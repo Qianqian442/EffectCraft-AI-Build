@@ -52,7 +52,7 @@ def main() -> None:
 # generated, but before the launcher is compiled and packaged.
 if [[ "$APP" == "effectcraft" ]]; then
     P2P_CRATE="$ROOT/$SRC/p2p-bridge"
-    python3 - "$ANDROID_DIR" "$P2P_CRATE/android/EffectCraftVpnService.java" "$P2P_CRATE/android/effectcraft-warp-masque.aar" <<'PY'
+    python3 - "$ANDROID_DIR" "$P2P_CRATE/android/EffectCraftVpnService.java" "$P2P_CRATE/android/effectcraft-warp-masque.aar" "$P2P_CRATE/android/CloudflareDnsOverHttps.java" <<'PY'
 from pathlib import Path
 import shutil
 import sys
@@ -61,19 +61,21 @@ import xml.etree.ElementTree as ET
 android_dir = Path(sys.argv[1])
 service_source = Path(sys.argv[2])
 aar_source = Path(sys.argv[3])
+dns_source = Path(sys.argv[4])
 java_root = android_dir / "java"
 manifest_path = android_dir / "AndroidManifest.xml"
 gradle_path = android_dir / "android" / "build.gradle"
 
 if not java_root.is_dir():
     raise SystemExit(f"Cloudflare MASQUE Android Java directory missing: {java_root}")
-for path in (manifest_path, gradle_path, service_source, aar_source):
+for path in (manifest_path, gradle_path, service_source, aar_source, dns_source):
     if not path.is_file():
         raise SystemExit(f"Cloudflare MASQUE Android build input missing: {path}")
 
 package_dir = java_root / "com" / "artcraft" / "effectcraft"
 package_dir.mkdir(parents=True, exist_ok=True)
 shutil.copy2(service_source, package_dir / "EffectCraftVpnService.java")
+shutil.copy2(dns_source, package_dir / "CloudflareDnsOverHttps.java")
 
 aar_dir = android_dir / "android" / "libs"
 aar_dir.mkdir(parents=True, exist_ok=True)
