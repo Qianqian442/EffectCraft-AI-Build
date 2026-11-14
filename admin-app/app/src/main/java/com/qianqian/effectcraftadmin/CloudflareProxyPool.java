@@ -124,6 +124,28 @@ final class CloudflareProxyPool {
             }
             ensureNotCancelled();
 
+            // A live MASQUE tunnel does not prove that this Worker route works.
+            // Probe the exact Worker hostname and route before any account POST.
+            CloudflareHttpsTransport.Response health = CloudflareHttpsTransport.probeWorker(
+                workerHost, workerAddresses);
+            JSONObject healthBody;
+            try {
+                healthBody = health.body.length == 0
+                    ? new JSONObject()
+                    : new JSONObject(new String(health.body, StandardCharsets.UTF_8));
+            } catch (org.json.JSONException invalidHealth) {
+                throw new java.io.IOException("账号服务器已响应，但健康检查数据无法识别", invalidHealth);
+            }
+            if (health.status != 200 || !healthBody.optBoolean("ok", false)) {
+                if (health.status == 503 || !healthBody.optBoolean("database", true)) {
+                    throw new java.io.IOException("Cloudflare 账号服务器可访问，但云端数据库尚未就绪（HTTP "
+                        + health.status + "）");
+                }
+                throw new java.io.IOException("Cloudflare 账号服务器健康检查未通过（HTTP "
+                    + health.status + "）");
+            }
+            ensureNotCancelled();
+
             CloudflareHttpsTransport.Response response = CloudflareHttpsTransport.execute(
                 workerHost,
                 endpoint.getFile(),
