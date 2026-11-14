@@ -37,8 +37,6 @@ def main() -> None:
     )
     source = replace_once(
         source,
-        "use std::io::{Read, Write};\n"
-        "use std::net::{TcpStream, ToSocketAddrs};\n"
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::time::Duration;\n"
         "use tungstenite::client::IntoClientRequest;\n"

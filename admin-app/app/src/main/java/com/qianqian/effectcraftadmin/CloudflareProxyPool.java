@@ -250,9 +250,9 @@ final class CloudflareProxyPool {
             DataInputStream input = new DataInputStream(socket.getInputStream());
             DataOutputStream output = new DataOutputStream(socket.getOutputStream());
             if ("http".equals(candidate.protocol)) {
-                byte[] request = ("CONNECT " + host + ":" + port + " HTTP/1.1\\r\\n"
+                byte[] request = ("CONNECT " + host + ":" + port + " HTTP/1.1\r\n"
                     + "Host: " + host + ":" + port + "\\r\\n"
-                    + "Proxy-Connection: keep-alive\\r\\n\\r\\n").getBytes(StandardCharsets.US_ASCII);
+                    + "Proxy-Connection: keep-alive\r\n\r\n").getBytes(StandardCharsets.US_ASCII);
                 output.write(request);
                 output.flush();
                 String status = readAsciiLine(input, 4096);
@@ -306,9 +306,9 @@ final class CloudflareProxyPool {
         while (line.size() < maxBytes) {
             int value = input.read();
             if (value < 0) return line.size() == 0 ? null : line.toString("US-ASCII");
-            if (value == '\\n') {
+            if (value == '\n') {
                 byte[] bytes = line.toByteArray();
-                int length = bytes.length > 0 && bytes[bytes.length - 1] == '\\r' ? bytes.length - 1 : bytes.length;
+                int length = bytes.length > 0 && bytes[bytes.length - 1] == '\r' ? bytes.length - 1 : bytes.length;
                 return new String(bytes, 0, length, StandardCharsets.US_ASCII);
             }
             line.write(value);
