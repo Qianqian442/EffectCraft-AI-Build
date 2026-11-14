@@ -157,9 +157,9 @@ public final class EffectCraftVpnService extends VpnService {
             // Step 1: establish a bootstrap WARP route to numeric Cloudflare DoH
             // resolver addresses. Never resolve the Worker using the carrier DNS.
             List<InetAddress> resolverIps = CloudflareDnsOverHttps.resolverAddressesForTunnel();
+            vpnMayBeActive = true;
             String bootstrap = startTunnelForAddresses(context, host, bundle, resolverIps);
             if (!"OK".equals(bootstrap)) return bootstrap;
-            vpnMayBeActive = true;
 
             // Step 2: resolve the Worker over TLS-verified Cloudflare DoH while
             // 1.1.1.1 / 1.0.0.1 traffic is routed through the bootstrap tunnel.
@@ -177,9 +177,9 @@ public final class EffectCraftVpnService extends VpnService {
             }
 
             String workerCsv = toCsv(workers);
+            vpnMayBeActive = true;
             String workerTunnel = startTunnelForAddresses(context, host, bundle, workers);
             if (!"OK".equals(workerTunnel)) return workerTunnel;
-            vpnMayBeActive = true;
             activeWorkerIpCsv = workerCsv;
 
             // The local Rust caller receives the exact pinned IP list. It will
@@ -222,9 +222,14 @@ public final class EffectCraftVpnService extends VpnService {
         long deadline = System.currentTimeMillis() + 50000L;
         while (System.currentTimeMillis() < deadline) {
             if (taskActive) return "OK";
-            if (!lastError.isEmpty()) return "ERROR:" + lastError;
+            if (!lastError.isEmpty()) {
+                String detail = lastError;
+                stopForTask(context);
+                return "ERROR:" + detail;
+            }
             Thread.sleep(150L);
         }
+        stopForTask(context);
         return "ERROR:Cloudflare WARP 在 50 秒内未能建立 MASQUE 隧道";
     }
 
@@ -312,15 +317,6 @@ public final class EffectCraftVpnService extends VpnService {
             return (b[0] & 0xfe) != 0xfc;
         }
         return false;
-    }
-
-    private static List<InetAddress> resolveWorkerAddresses(String host) throws Exception {
-        List<InetAddress> addresses = new ArrayList<>();
-        for (InetAddress address : InetAddress.getAllByName(host)) {
-            if (isPublicAddress(address) && !addresses.contains(address)) addresses.add(address);
-            if (addresses.size() >= 16) break;
-        }
-        return addresses;
     }
 
     private static String toCsv(List<InetAddress> addresses) {
