@@ -23,64 +23,77 @@ func isolateScannerState(t *testing.T) {
 func TestMakeH2CandidatesPrioritizesKnownFastEndpoints(t *testing.T) {
 	defaultEndpoint := &net.TCPAddr{IP: net.ParseIP("162.159.198.2").To4(), Port: 443}
 	snapshot := map[string]endpointScanRecord{
-		"162.159.198.9:443": {Score: 5, RTTMillis: 80},
-		"162.159.198.8:443": {Score: 3, RTTMillis: 140},
-		"162.159.198.7:443": {Score: 1, RTTMillis: 250},
+		"162.159.198.9:8443": {Score: 5, RTTMillis: 80},
+		"162.159.198.8:443":  {Score: 3, RTTMillis: 140},
+		"162.159.198.7:1701": {Score: 1, RTTMillis: 250},
 	}
 	got := makeH2Candidates(defaultEndpoint, snapshot)
 	if len(got) < 4 {
 		t.Fatalf("expected three cached endpoints plus default, got %d", len(got))
 	}
-	if got[0].IP.String() != "162.159.198.9" {
-		t.Fatalf("first endpoint = %s, want highest-scored endpoint 162.159.198.9", got[0])
-	}
-	if got[1].IP.String() != "162.159.198.8" {
-		t.Fatalf("second endpoint = %s, want 162.159.198.8", got[1])
-	}
-	if got[2].IP.String() != "162.159.198.7" {
-		t.Fatalf("third endpoint = %s, want third cached endpoint 162.159.198.7", got[2])
-	}
-	if got[3].IP.String() != "162.159.198.2" {
-		t.Fatalf("fourth endpoint = %s, want configured default 162.159.198.2", got[3])
+	want := []string{"162.159.198.9:8443", "162.159.198.8:443", "162.159.198.7:1701", "162.159.198.2:443"}
+	for i, expected := range want {
+		if got[i].String() != expected {
+			t.Fatalf("candidate %d = %s, want %s", i, got[i], expected)
+		}
 	}
 }
 
-func TestMakeH2CandidatesOnlyReturnsCloudflareH2Range(t *testing.T) {
+func TestMakeH2CandidatesOnlyReturnsCloudflareH2RangeAndPorts(t *testing.T) {
 	defaultEndpoint := &net.TCPAddr{IP: net.ParseIP("1.1.1.1").To4(), Port: 443}
 	snapshot := map[string]endpointScanRecord{
-		"1.1.1.1:443":             {Score: 9, RTTMillis: 1},
-		"162.159.198.10:8443":     {Score: 8, RTTMillis: 2},
-		"162.159.199.2:443":       {Score: 7, RTTMillis: 3},
-		"162.159.198.11:443":      {Score: 4, RTTMillis: 100},
+		"1.1.1.1:443":         {Score: 9, RTTMillis: 1},
+		"162.159.198.10:8443": {Score: 8, RTTMillis: 2},
+		"162.159.199.2:443":   {Score: 7, RTTMillis: 3},
+		"162.159.198.11:443":  {Score: 4, RTTMillis: 100},
+		"162.159.198.12:80":   {Score: 10, RTTMillis: 1},
+		"162.159.198.1:443":   {Score: 10, RTTMillis: 1},
 	}
 	got := makeH2Candidates(defaultEndpoint, snapshot)
 	if len(got) == 0 {
 		t.Fatal("expected at least one Cloudflare H2 candidate")
 	}
 	for _, endpoint := range got {
-		ip := endpoint.IP.To4()
-		if ip == nil || ip[0] != 162 || ip[1] != 159 || ip[2] != 198 || endpoint.Port != 443 {
+		if !isCloudflareH2Endpoint(endpoint) {
 			t.Fatalf("scanner returned an unapproved endpoint: %s", endpoint)
 		}
 	}
-	if got[0].IP.String() != "162.159.198.11" {
-		t.Fatalf("first endpoint = %s, want valid cached Cloudflare address", got[0])
+	if got[0].String() != "162.159.198.10:8443" {
+		t.Fatalf("first endpoint = %s, want highest-scored valid endpoint 162.159.198.10:8443", got[0])
 	}
 }
 
-func TestEndpointScoreRecordsOnlyCloudflareTCP443(t *testing.T) {
+func TestMakeH2CandidatesIncludesAlternativeTCPPorts(t *testing.T) {
+	defaultEndpoint := &net.TCPAddr{IP: net.ParseIP("162.159.198.2").To4(), Port: 443}
+	got := makeH2Candidates(defaultEndpoint, nil)
+	seen := map[int]bool{}
+	for _, endpoint := range got {
+		if endpoint.IP.Equal(defaultEndpoint.IP) {
+			seen[endpoint.Port] = true
+		}
+	}
+	for _, port := range []int{443, 500, 1701, 4500, 4443, 8443, 8095} {
+		if !seen[port] {
+			t.Fatalf("candidate list did not include Cloudflare TCP fallback port %d on the default H2 address", port)
+		}
+	}
+}
+
+func TestEndpointScoreRecordsOnlyCloudflareTCPH2Endpoints(t *testing.T) {
 	isolateScannerState(t)
 	udp := &net.UDPAddr{IP: net.ParseIP("162.159.198.2").To4(), Port: 443}
 	wrongIP := &net.TCPAddr{IP: net.ParseIP("1.1.1.1").To4(), Port: 443}
-	wrongPort := &net.TCPAddr{IP: net.ParseIP("162.159.198.2").To4(), Port: 8443}
+	wrongPort := &net.TCPAddr{IP: net.ParseIP("162.159.198.2").To4(), Port: 80}
+	wrongRange := &net.TCPAddr{IP: net.ParseIP("162.159.199.2").To4(), Port: 443}
 	recordEndpointScanSuccess(udp, 100000000)
 	recordEndpointScanSuccess(wrongIP, 100000000)
 	recordEndpointScanSuccess(wrongPort, 100000000)
+	recordEndpointScanSuccess(wrongRange, 100000000)
 	if snapshot := endpointRecordSnapshot(); len(snapshot) != 0 {
-		t.Fatalf("invalid endpoint types or ranges were recorded: %#v", snapshot)
+		t.Fatalf("invalid endpoint types, ports or ranges were recorded: %#v", snapshot)
 	}
 
-	valid := &net.TCPAddr{IP: net.ParseIP("162.159.198.2").To4(), Port: 443}
+	valid := &net.TCPAddr{IP: net.ParseIP("162.159.198.2").To4(), Port: 8443}
 	recordEndpointScanSuccess(valid, 100000000)
 	snapshot := endpointRecordSnapshot()
 	if snapshot[valid.String()].Score != 1 {
