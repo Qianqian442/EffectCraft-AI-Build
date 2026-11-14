@@ -15,6 +15,7 @@ on:
       - 'android-ai-plugin/**'
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/upgrade_export_preflight.py'
+      - '.github/scripts/verify_android_source_patches.py'
       - '.github/scripts/ai_assistant_local.rs'
       - 'assets/ae-avatar.png'
       - '.github/native/**'
@@ -73,6 +74,7 @@ jobs:
         run: |
           python3 -m py_compile \
             .github/scripts/patch_export_dialog.py \
+            .github/scripts/verify_android_source_patches.py \
             .github/scripts/upgrade_export_preflight.py \
             .github/scripts/integrate_video_ai.py \
             .github/scripts/add_android_gallery_export.py \
@@ -510,6 +512,11 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/fix_viewer_drag_selection.py
           python3 build-assets/.github/scripts/fix_viewer_drag_selection.py
+
+      - name: Verify final Android source patches and repair missing export helper
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/verify_android_source_patches.py
 
       - name: Save generated AI assistant source for offline integration
         if: always()
