@@ -51,7 +51,7 @@ jobs:
       - name: Install the pinned Termux Android SDK and NDK r30
         working-directory: termux-packages
         run: |
-          set -euo pipefail
+          set -eu
           mkdir -p "$RUNNER_TEMP/lib"
           export ANDROID_HOME="$RUNNER_TEMP/lib/android-sdk-9123335"
           export NDK="$RUNNER_TEMP/lib/android-ndk-r30"
@@ -61,6 +61,28 @@ jobs:
           ./scripts/setup-android-sdk.sh
           test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang"
           "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version
+
+      - name: Repoint Termux build paths to the EffectCraft private runtime prefix
+        working-directory: termux-packages
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/properties.sh")
+          source = path.read_text(encoding="utf-8")
+          replacements = [
+              ('TERMUX_APP__PACKAGE_NAME="com.termux"', 'TERMUX_APP__PACKAGE_NAME="com.artcraft.effectcraft"'),
+              ('TERMUX__ROOTFS_SUBDIR="files"', 'TERMUX__ROOTFS_SUBDIR="files/windows-compat"'),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f"Expected exactly one Termux path setting: {old}")
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8")
+          print("Termux paths now target /data/data/com.artcraft.effectcraft/files/windows-compat.")
+          PY
+          git diff -- scripts/properties.sh > ../termux-hangover-effectcraft-prefix.patch
+          test -s ../termux-hangover-effectcraft-prefix.patch
 
       - name: Make the upstream package recipe fail closed in CI
         working-directory: termux-packages
@@ -85,14 +107,15 @@ jobs:
         run: |
           set -euo pipefail
           ./build-package.sh -a aarch64 -i -j 2 hangover-wine
+          ./build-package.sh -a aarch64 -i -j 2 termux-exec
 
       - name: Inspect package metadata, Bionic ELF and Hangover PE payloads
         run: |
           set -euo pipefail
           mkdir -p artifacts/packages artifacts/unpacked
-          mapfile -t packages < <(find termux-packages/output -type f -name 'hangover*.deb' -print | sort)
-          if (( ${#packages[@]} < 4 )); then
-            printf 'Expected at least four Hangover .deb packages, found %s\n' "${#packages[@]}" >&2
+          mapfile -t packages < <(find termux-packages/output -type f \( -name 'hangover*.deb' -o -name 'termux-exec*.deb' \) -print | sort)
+          if (( ${#packages[@]} < 5 )); then
+            printf 'Expected at least four Hangover packages plus termux-exec, found %s\n' "${#packages[@]}" >&2
             find termux-packages/output -type f -name '*.deb' -print >&2
             exit 1
           fi
@@ -129,6 +152,18 @@ jobs:
             readelf -h "$binary" | grep -E 'Class:|Machine:'
             readelf -l "$binary" | grep -F '/system/bin/linker64'
           done < artifacts/WINE-ELF-FILES.txt
+
+          find artifacts/unpacked -type f -name 'libtermux-exec-ld-preload.so' -print > artifacts/TERMUX-EXEC-LIBRARY.txt
+          if [[ ! -s artifacts/TERMUX-EXEC-LIBRARY.txt ]]; then
+            echo "termux-exec LD_PRELOAD library was not packaged." >&2
+            exit 1
+          fi
+          while IFS= read -r exec_library; do
+            echo "===== $exec_library ====="
+            file "$exec_library"
+            readelf -h "$exec_library" | grep -E 'Class:|Machine:'
+            strings "$exec_library" | grep -F '/data/data/com.artcraft.effectcraft/files/windows-compat'
+          done < artifacts/TERMUX-EXEC-LIBRARY.txt
 
           find artifacts/unpacked -type f \( -name 'libarm64ecfex.dll' -o -name 'libwow64fex.dll' -o -name 'wowbox64.dll' \) -print > artifacts/EMULATOR-PE-FILES.txt
           for expected in libarm64ecfex.dll libwow64fex.dll wowbox64.dll; do
@@ -180,6 +215,7 @@ jobs:
         run: |
           set -euo pipefail
           cp termux-hangover-ci-recipe.patch artifacts/
+          cp termux-hangover-effectcraft-prefix.patch artifacts/
           cat > artifacts/BUILD-INFO.txt <<'EOF'
           Termux Hangover 11.16 Bionic package reproduction
           Termux package source: termux/termux-packages
@@ -187,11 +223,14 @@ jobs:
           Package: x11-packages/hangover-wine
           Wine source tag: AndreRH/wine hangover-11.16
           Target architecture: aarch64 / Android Bionic
-          CI-only recipe change: replace interactive "make -k || bash" with fail-closed make -k
+          EffectCraft application ID: com.artcraft.effectcraft
+          Runtime prefix: /data/data/com.artcraft.effectcraft/files/windows-compat/usr
+          Included process launcher: termux-exec 2.5.0 (Apache-2.0)
+          CI-only recipe changes: EffectCraft package/rootfs path overrides; replace interactive "make -k || bash" with fail-closed make -k
           This is a cross-build/package inspection, not an Android device execution test.
           EOF
           (cd artifacts && find packages -type f -name '*.deb' -print0 | sort -z | xargs -0 sha256sum) > artifacts/PACKAGE-SHA256SUMS.txt
-          tar --zstd -cf artifacts/termux-hangover-11.16-aarch64-packages.tar.zst -C artifacts packages BUILD-INFO.txt PACKAGE-FILES.txt PACKAGE-SHA256SUMS.txt WINE-ELF-FILES.txt EMULATOR-PE-FILES.txt termux-hangover-ci-recipe.patch
+          tar --zstd -cf artifacts/termux-hangover-11.16-aarch64-packages.tar.zst -C artifacts packages BUILD-INFO.txt PACKAGE-FILES.txt PACKAGE-SHA256SUMS.txt WINE-ELF-FILES.txt EMULATOR-PE-FILES.txt TERMUX-EXEC-LIBRARY.txt termux-hangover-ci-recipe.patch termux-hangover-effectcraft-prefix.patch
           sha256sum artifacts/termux-hangover-11.16-aarch64-packages.tar.zst > artifacts/termux-hangover-11.16-aarch64-packages.tar.zst.sha256
 
       - name: Upload reproduced Bionic Hangover packages and audit
