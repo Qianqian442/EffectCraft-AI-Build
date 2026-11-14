@@ -80,7 +80,8 @@ jobs:
             .github/workflows/build-windows-compat-fallbacks.yml \
             .github/workflows/build-aexlo-x86-host.yml \
             .github/workflows/build-box64-box32-backend.yml \
-            .github/workflows/build-effectcraft-exec-bridge.yml
+            .github/workflows/build-effectcraft-exec-bridge.yml \
+            .github/workflows/build-termux-hangover-bionic.yml
 
       - name: Set up Java for runtime selector checks
         uses: actions/setup-java@v4
