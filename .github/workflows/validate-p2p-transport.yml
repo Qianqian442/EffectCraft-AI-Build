@@ -2,7 +2,7 @@ name: Validate EffectCraft P2P transport
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/own-on-demand-vpn]
     paths:
       - 'p2p-bridge/**'
       - '.github/workflows/validate-p2p-transport.yml'
