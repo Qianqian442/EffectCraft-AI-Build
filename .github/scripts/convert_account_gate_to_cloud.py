@@ -239,6 +239,7 @@ def main() -> None:
                             // socket open so the later enable event can restore access.
                             self.pending = None;
                             self.pending_action = None;
+                            self.pending_started = None;
                             self.mode = Mode::ServerClosed;
                             self.status = "当前服务器已关闭，请等待开发者开启服务器".to_string();
                         } else if self.mode == Mode::ServerClosed || self.mode == Mode::Unavailable {
