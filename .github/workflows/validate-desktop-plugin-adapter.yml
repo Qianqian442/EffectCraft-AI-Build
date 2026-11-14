@@ -20,6 +20,8 @@ on:
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/add_chroma_key_effect.py'
+      - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
+      - '.github/scripts/audit_zh_hans_uncatalogued.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   pull_request:
     branches: [main]
@@ -37,6 +39,8 @@ on:
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/configure_four_project_export_buttons.py'
       - '.github/scripts/add_qq_project_share.py'
+      - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
+      - '.github/scripts/audit_zh_hans_uncatalogued.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
