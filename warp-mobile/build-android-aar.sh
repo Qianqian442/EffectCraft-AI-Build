@@ -14,6 +14,7 @@ git -C "$UPSTREAM" checkout --detach "$PINNED_USQUE_COMMIT"
 USQUE_SOURCE_DIR="$UPSTREAM" python3 "$ROOT/.github/scripts/patch_usque_for_android.py"
 (
   cd "$WARP_DIR"
+  go mod tidy
   go mod download
   go test ./...
 )
