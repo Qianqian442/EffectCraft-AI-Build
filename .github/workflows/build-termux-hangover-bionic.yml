@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/build-termux-hangover-bionic.yml'
       - 'windows-compat/research/termux-hangover-bionic-11.16-2026-11-14.md'
+      - 'windows-compat/termux/Dockerfile'
 
 permissions:
   contents: read
