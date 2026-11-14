@@ -12,32 +12,41 @@ import urllib.request
 from pathlib import Path
 
 FEEDS = [
-    # Mainland / nearby regions first (type://IP:PORT)
-    "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/cn.txt",
-    "https://proxy-scraper.de/country/cn/proxies.txt",
-    "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/countries/cn.txt",
-    "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/hk.txt",
-    "https://proxy-scraper.de/country/hk/proxies.txt",
-    "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/jp.txt",
-    "https://proxy-scraper.de/country/jp/proxies.txt",
-    "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/sg.txt",
-    # TLS-verified CONNECT/SOCKS candidates and a plain SOCKS5 feed.
-    "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/https.txt",
-    "https://proxy-scraper.de/https.txt",
-    "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/socks5.txt",
+    # Maintained feed with typed entries (http:// / socks5:// prefixes).
+    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/cn.txt", "http"),
+    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/hk.txt", "http"),
+    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/jp.txt", "http"),
+    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/sg.txt", "http"),
+    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/https.txt", "http"),
+    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/socks5.txt", "socks5"),
+    # Second independent maintained source: unprefixed endpoints, typed by file.
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/http.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/https.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/socks5.txt", "socks5"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/http.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/https.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/socks5.txt", "socks5"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/http.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/https.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/socks5.txt", "socks5"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/http.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/https.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/socks5.txt", "socks5"),
+    # Additional general pools as fallback.
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/http.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/https.txt", "http"),
+    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/socks5.txt", "socks5"),
 ]
-
 MAX_BODY = 1_000_000
 MAX_ENTRIES = 600
 
 
-def valid_endpoint(line: str) -> str | None:
+def valid_endpoint(line: str, default_protocol: str) -> str | None:
     value = line.strip()
     if not value or value.startswith("#") or len(value) > 160:
         return None
     if "://" not in value:
-        # The only unprefixed list we include is socks5.txt.
-        value = "socks5://" + value
+        value = default_protocol + "://" + value
     scheme, endpoint = value.split("://", 1)
     scheme = scheme.lower()
     if scheme not in {"http", "socks5", "socks5h"}:
@@ -78,14 +87,14 @@ def main() -> int:
 
     result: list[str] = []
     seen: set[str] = set()
-    for url in FEEDS:
+    for url, default_protocol in FEEDS:
         try:
             content = download(url)
         except Exception as error:
             print(f"Feed unavailable: {url} ({type(error).__name__})")
             continue
         for line in content.splitlines():
-            candidate = valid_endpoint(line)
+            candidate = valid_endpoint(line, default_protocol)
             if candidate and candidate not in seen:
                 seen.add(candidate)
                 result.append(candidate)
