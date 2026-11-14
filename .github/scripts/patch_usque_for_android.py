@@ -20,7 +20,7 @@ if start < 0 or end < 0 or start >= end:
     raise SystemExit("platform-specific TUN adapter block not found")
 source = source[:start] + source[end:]
 
-old = '\tHookEnv           map[string]string\n'
+old = '\tHookEnv map[string]string\n'
 new = (
     '\tHookEnv           map[string]string\n'
     '\tEndpoints         []net.Addr\n'
