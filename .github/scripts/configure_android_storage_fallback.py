@@ -389,6 +389,103 @@ def patch_builder(builder: Path) -> None:
         raise SystemExit("Startup storage-permission request was not removed")
     path.write_text(source, encoding="utf-8")
 
+
+    # EFFECTCRAFT_ANDROID_VISUAL_MEDIA_BUILDER_V1: filter Android's native DocumentsUI picker.
+    bridge_template = builder / "templates/android/saf_bridge.rs"
+    bridge_source = bridge_template.read_text(encoding="utf-8")
+    request_anchor = "        pub fn request_save(&self, id: u64, name: &str) -> Result<(), String> {"
+    request_media = """        pub fn request_open_media(&self, id: u64, multiple: bool) -> Result<(), String> {
+            self.vm
+                .attach_current_thread(|env| -> jni::errors::Result<()> {
+                    let activity_raw = self.app.activity_as_ptr() as jni::sys::jobject;
+                    let activity = unsafe { env.as_cast_raw::<JObject>(&activity_raw)? };
+                    env.call_method(
+                        &*activity,
+                        jni_str!("safRequestOpenMedia"),
+                        jni_sig!("(JZ)V"),
+                        &[JValue::Long(id as i64), JValue::Bool(multiple)],
+                    )?;
+                    Ok(())
+                })
+                .map_err(|e| e.to_string())
+        }
+
+"""
+    if "pub fn request_open_media(&self" not in bridge_source:
+        bridge_source = replace_once(bridge_source, request_anchor, request_media + request_anchor,
+                                     "Android visual-media SAF JNI request")
+
+    pick_anchor = "        /// Blocking folder picker: a real directory path"
+    pick_media = """        /// Blocking image/video picker used by EffectCraft's dedicated visual-media import.
+        pub fn pick_open_media_blocking(&self, id: u64, multiple: bool, timeout: Duration) -> Result<PickAnswer, String> {
+            let _nonblocking = NonblockingCallbacks::enable();
+            self.request_open_media(id, multiple)?;
+            self.wait_answer(id, timeout)
+        }
+
+"""
+    if "pub fn pick_open_media_blocking" not in bridge_source:
+        bridge_source = replace_once(bridge_source, pick_anchor, pick_media + pick_anchor,
+                                     "Android visual-media SAF blocking picker")
+    bridge_template.write_text(bridge_source, encoding="utf-8")
+
+    if "EFFECTCRAFT_ANDROID_VISUAL_MEDIA_BUILDER_V1" not in source:
+        state_old = """fn saf_open_paths_many(bridge: &saf::Bridge, state: &SafState) -> Vec<String> {
+    let id = saf_next_id(state);
+    match bridge.pick_open_blocking(id, true, saf::PICK_TIMEOUT) {
+        Ok(saf::PickAnswer::Paths(paths)) => paths,
+        Ok(saf::PickAnswer::Cancelled) => Vec::new(),
+        Err(error) => {
+            log::error!("Android open picker: {error}");
+            Vec::new()
+        }
+    }
+}
+"""
+        state_new = state_old + """// EFFECTCRAFT_ANDROID_VISUAL_MEDIA_BUILDER_V1
+fn saf_open_media_paths_many(bridge: &saf::Bridge, state: &SafState) -> Vec<String> {
+    let id = saf_next_id(state);
+    match bridge.pick_open_media_blocking(id, true, saf::PICK_TIMEOUT) {
+        Ok(saf::PickAnswer::Paths(paths)) => paths,
+        Ok(saf::PickAnswer::Cancelled) => Vec::new(),
+        Err(error) => {
+            log::error!("Android image/video picker: {error}");
+            Vec::new()
+        }
+    }
+}
+"""
+        source = replace_once(source, state_old, state_new, "EffectCraft visual-media SAF helper")
+        services_sig = "fn saf_dialog_async(bridge: saf::Bridge, state: Arc<SafState>, dialog: effectcraft_ui_egui::FileDialog, done: effectcraft_ui_egui::DialogDone) {"
+        media_predicate = """// EFFECTCRAFT_ANDROID_VISUAL_MEDIA_BUILDER_V1
+fn is_visual_media_extensions(exts: &[String]) -> bool {
+    !exts.is_empty() && exts.iter().all(|ext| {
+        matches!(ext.to_ascii_lowercase().as_str(),
+            "png" | "jpg" | "jpeg" | "gif" | "webp" | "tif" | "tiff" | "bmp"
+            | "exr" | "dpx" | "cin" | "svg" | "eps" | "tga" | "hdr"
+            | "mp4" | "m4v" | "mov" | "mkv" | "webm" | "avi" | "3gp" | "3g2"
+            | "mpg" | "mpeg" | "m2v" | "mts" | "m2ts" | "ts" | "wmv" | "flv"
+            | "ogv" | "vob" | "hevc" | "h264"
+        )
+    })
+}
+
+"""
+        source = replace_once(source, services_sig, media_predicate + services_sig,
+                              "EffectCraft image/video MIME filter")
+        match_old = "            FileDialog::Open { many: true, .. } => saf_open_paths_many(&bridge, &state),"
+        match_new = """            FileDialog::Open { exts, many: true } if is_visual_media_extensions(&exts) => {
+                saf_open_media_paths_many(&bridge, &state)
+            }
+            FileDialog::Open { many: true, .. } => saf_open_paths_many(&bridge, &state),"""
+        source = replace_once(source, match_old, match_new, "EffectCraft visual-media picker dispatch")
+    if "EFFECTCRAFT_ANDROID_VISUAL_MEDIA_BUILDER_V1" not in source:
+        raise SystemExit("Visual-media SAF integration marker was not installed in build-common.sh")
+    if "safRequestOpenMedia" not in bridge_source or "pick_open_media_blocking" not in bridge_source:
+        raise SystemExit("Visual-media SAF bridge methods were not installed")
+    path.write_text(source, encoding="utf-8")
+
+
     # Route QQ / Files / browser ACTION_VIEW handoffs for AEP documents to the AEP
     # importer, rather than treating them as native EffectCraft project files.
     incoming_old = """    "effectcraft": '''        if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {
