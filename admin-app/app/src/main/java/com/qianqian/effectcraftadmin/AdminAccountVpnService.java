@@ -210,6 +210,17 @@ public final class AdminAccountVpnService extends VpnService {
         if (latch != null) latch.countDown();
     }
 
+    /** Check/request Android VPN consent before the account endpoint bootstrap lookup. */
+    public static synchronized String requestPermissionForTask(Context context) {
+        try {
+            return ensurePermission(context) ? "OK" : "VPN_PERMISSION_REQUIRED";
+        } catch (Throwable error) {
+            Log.e(TAG, "Could not obtain Android VPN permission", error);
+            return "ERROR:" + (error.getMessage() == null
+                ? error.getClass().getSimpleName() : error.getMessage());
+        }
+    }
+
     /** Called immediately before one Cloudflare account API operation. */
     public static synchronized String startForTask(Context context, String host, List<InetAddress> workers) {
         if (!isAllowedHost(host)) return "ERROR:账号 VPN 只允许配置的 workers.dev 账号服务器";
