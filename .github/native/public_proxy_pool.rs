@@ -21,6 +21,7 @@ const BAD_COOLDOWN: Duration = Duration::from_secs(15 * 60);
 const GOOD_TTL: Duration = Duration::from_secs(2 * 60);
 const MAX_FEED_BYTES: usize = 1_000_000;
 const MAX_POOL_SIZE: usize = 600;
+const MAX_PER_FEED: usize = 80;
 const MAX_TEST_COUNT: usize = 18;
 const MAX_SCAN_TIME: Duration = Duration::from_secs(28);
 
@@ -185,7 +186,7 @@ fn fetch_feed(feed: &Feed, deadline: Instant) -> Vec<Candidate> {
     if body.len() > MAX_FEED_BYTES {
         return Vec::new();
     }
-    body.lines().take(MAX_POOL_SIZE)
+    body.lines().take(MAX_PER_FEED)
         .filter_map(|line| parse_line(line, feed.default_protocol, feed.prefixed))
         .collect()
 }
