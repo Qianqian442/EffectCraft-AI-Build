@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - 'admin-app/**'
+      - 'cloudflare-worker/**'
+      - '.github/scripts/convert_account_gate_to_cloud.py'
       - 'p2p-bridge/**'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_account_avatar_picker.py'
