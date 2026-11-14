@@ -57,6 +57,7 @@ final class CloudflareProxyPool {
     private static final LinkedHashMap<String, Candidate> CANDIDATES = new LinkedHashMap<>();
     private static final Map<String, Long> FAILED_UNTIL = new LinkedHashMap<>();
     private static boolean bootstrapLoaded;
+    private static boolean refreshingFeeds;
     private static long lastFeedRefresh;
     private static long directCheckedAt;
     private static boolean directHealthy;
@@ -267,34 +268,48 @@ final class CloudflareProxyPool {
     private static void refreshFeeds(Context context) {
         long now = System.currentTimeMillis();
         synchronized (LOCK) {
-            if (now - lastFeedRefresh < FEED_REFRESH_MS) return;
+            if (refreshingFeeds || now - lastFeedRefresh < FEED_REFRESH_MS) return;
+            refreshingFeeds = true;
             lastFeedRefresh = now;
         }
-        long deadline = System.currentTimeMillis() + 9000L;
-        for (String feed : FEEDS) {
-            if (System.currentTimeMillis() >= deadline) break;
-            HttpURLConnection connection = null;
+
+        Context appContext = context.getApplicationContext();
+        Thread refresher = new Thread(() -> {
+            long deadline = System.currentTimeMillis() + 9000L;
             try {
-                connection = (HttpURLConnection) new URL(feed).openConnection(Proxy.NO_PROXY);
-                connection.setConnectTimeout(1800);
-                connection.setReadTimeout(2200);
-                connection.setRequestMethod("GET");
-                connection.setRequestProperty("Accept", "text/plain");
-                connection.setInstanceFollowRedirects(false);
-                if (connection.getResponseCode() != 200) continue;
-                byte[] bytes = readBounded(connection.getInputStream(), 1024 * 1024);
-                String body = new String(bytes, StandardCharsets.UTF_8);
-                for (String line : body.split("\\r?\\n")) {
-                    Candidate candidate = parseCandidate(line);
-                    if (candidate == null) continue;
-                    synchronized (LOCK) { addCandidateLocked(candidate); }
+                for (String feed : FEEDS) {
+                    if (System.currentTimeMillis() >= deadline) break;
+                    HttpURLConnection connection = null;
+                    try {
+                        connection = (HttpURLConnection) new URL(feed).openConnection(Proxy.NO_PROXY);
+                        connection.setConnectTimeout(1800);
+                        connection.setReadTimeout(2200);
+                        connection.setRequestMethod("GET");
+                        connection.setRequestProperty("Accept", "text/plain");
+                        connection.setInstanceFollowRedirects(false);
+                        if (connection.getResponseCode() != 200) continue;
+                        byte[] bytes = readBounded(connection.getInputStream(), 1024 * 1024);
+                        String body = new String(bytes, StandardCharsets.UTF_8);
+                        for (String line : body.split("\\\\r?\\\\n")) {
+                            Candidate candidate = parseCandidate(line);
+                            if (candidate == null) continue;
+                            synchronized (LOCK) { addCandidateLocked(candidate); }
+                        }
+                    } catch (Exception ignored) {
+                        // Keep last-known and build-time bootstrap entries on feed outages.
+                    } finally {
+                        if (connection != null) connection.disconnect();
+                    }
                 }
-            } catch (Exception ignored) {
-                // Keep last-known and build-time bootstrap entries on feed outages.
             } finally {
-                if (connection != null) connection.disconnect();
+                synchronized (LOCK) {
+                    refreshingFeeds = false;
+                    lastFeedRefresh = System.currentTimeMillis();
+                }
             }
-        }
+        }, "EffectCraftProxyFeedRefresh");
+        refresher.setDaemon(true);
+        refresher.start();
     }
 
     private static List<Candidate> candidateSnapshot() {
