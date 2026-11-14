@@ -230,7 +230,9 @@ jobs:
           grep -Fq 'AdminAccountVpnService.stopForTask' "$API"
           grep -Fq 'AdminAccountVpnService' "$MANIFEST"
           grep -Fq 'CloudflareHttpsTransport.resolveWorkerAddresses' "$API"
+          grep -Fq 'CloudflareHttpsTransport.probeWorker' "$API"
           grep -Fq 'CloudflareHttpsTransport.execute' "$API"
+          grep -Fq '"/health"' "$TRANSPORT"
           grep -Fq 'AdminAccountVpnService.requestPermissionForTask(context)' "$API"
           grep -Fq 'private static void ensureNotCancelled()' "$API"
           grep -Fq '本次账号操作已取消' "$API"
@@ -310,12 +312,16 @@ jobs:
           resolve_at = request.index("resolveWorkerAddresses(workerHost)")
           bootstrap_stop_at = request.index("stopForTask(context)", resolve_at)
           account_start_at = request.index("startForTask(context, workerHost, workerAddresses)")
-          if not (permission_at < bootstrap_at < resolve_at < bootstrap_stop_at < account_start_at):
-              raise SystemExit("The account flow must request VPN consent, establish the DNS bootstrap tunnel, resolve the Worker over WARP, stop the bootstrap tunnel, and then establish the Worker-only tunnel.")
+          health_at = request.index("CloudflareHttpsTransport.probeWorker")
+          account_request_at = request.index("CloudflareHttpsTransport.execute")
+          if not (permission_at < bootstrap_at < resolve_at < bootstrap_stop_at < account_start_at < health_at < account_request_at):
+              raise SystemExit("The account flow must establish the DoH bootstrap, resolve the Worker over WARP, install the Worker tunnel, verify /health, and only then send account credentials.")
           transport = Path("admin-app/app/src/main/java/com/qianqian/effectcraftadmin/CloudflareHttpsTransport.java").read_text()
           if "if (type == 28 && !resolved.isEmpty()) break;" not in transport:
               raise SystemExit("The DNS bootstrap must not wait for AAAA when usable A records already exist.")
-          print("Verified VPN consent precedes the bounded Cloudflare DoH bootstrap.")
+          if '"/health".equals(requestTarget) && "GET".equals(method)' not in transport:
+              raise SystemExit("Only GET /health should be permitted as the Worker reachability preflight.")
+          print("Verified VPN consent, Cloudflare DoH, Worker-only routing and the read-only health preflight before account operations.")
           PY
           if grep -R -n -E 'TProxyService|hev[.]socks5|公开代理' admin-app/app/src/main/java; then
             echo "Legacy proxy-relay VPN code must not remain in the admin APK." >&2
