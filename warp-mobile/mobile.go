@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/x509"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/Diniboy1123/usque/api"
 	"github.com/Diniboy1123/usque/config"
+	"github.com/Diniboy1123/usque/internal"
 )
 
 
@@ -54,6 +56,100 @@ var (
 	state = "disconnected"
 	lastError = ""
 )
+
+
+// endpointAddressIP extracts and validates a numeric IP from the endpoint fields
+// returned by Cloudflare. The API may serialize an endpoint as "IP:0" or
+// "[IPv6]:0"; the MASQUE port is selected separately.
+func endpointAddressIP(raw string) (string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", nil
+	}
+	if host, _, err := net.SplitHostPort(raw); err == nil {
+		raw = host
+	}
+	raw = strings.Trim(raw, "[]")
+	ip := net.ParseIP(raw)
+	if ip == nil {
+		return "", fmt.Errorf("Cloudflare returned a non-numeric MASQUE endpoint address: %q", raw)
+	}
+	return ip.String(), nil
+}
+
+// RegisterDevice performs the supported Cloudflare enrollment sequence:
+// register a personal WARP device, create a P-256 key pair, enroll its public
+// key for MASQUE, and return the per-device tunnel configuration. The caller
+// must obtain and persist user consent before invoking this function.
+func RegisterDevice() (string, error) {
+	registered, err := api.Register("Android", internal.DefaultLocale, "", true)
+	if err != nil {
+		return "", fmt.Errorf("Cloudflare WARP device registration failed: %w", err)
+	}
+	if registered == nil || registered.ID == "" || registered.Token == "" {
+		return "", errors.New("Cloudflare WARP registration returned an incomplete device identity")
+	}
+
+	privateKeyDER, publicKeyDER, err := internal.GenerateEcKeyPair()
+	if err != nil {
+		return "", fmt.Errorf("generate MASQUE device key pair: %w", err)
+	}
+	enrolled, err := api.EnrollKey(registered.ID, registered.Token, publicKeyDER, "EffectCraft Android")
+	if err != nil {
+		return "", fmt.Errorf("Cloudflare MASQUE key enrollment failed: %w", err)
+	}
+	if enrolled == nil || len(enrolled.Config.Peers) == 0 {
+		return "", errors.New("Cloudflare MASQUE enrollment returned no tunnel peer")
+	}
+
+	peer := enrolled.Config.Peers[0]
+	ipv4, err := endpointAddressIP(peer.Endpoint.V4)
+	if err != nil {
+		return "", err
+	}
+	ipv6, err := endpointAddressIP(peer.Endpoint.V6)
+	if err != nil {
+		return "", err
+	}
+	if ipv4 == "" && ipv6 == "" {
+		return "", errors.New("Cloudflare MASQUE enrollment returned no usable endpoint IP")
+	}
+
+	endpoints := make([]string, 0, 2)
+	if ipv4 != "" {
+		endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv4, "443"))
+	}
+	if ipv6 != "" {
+		endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv6, "443"))
+	}
+
+	tunnelConfig := config.Config{
+		PrivateKey:     base64.StdEncoding.EncodeToString(privateKeyDER),
+		EndpointV4:     ipv4,
+		EndpointV6:     ipv6,
+		EndpointH2V4:   config.DefaultEndpointH2V4,
+		EndpointH2V6:   config.DefaultEndpointH2V6,
+		EndpointPubKey: peer.PublicKey,
+		ID:             registered.ID,
+		AccessToken:    registered.Token,
+		IPv4:           enrolled.Config.Interface.Addresses.V4,
+		IPv6:           enrolled.Config.Interface.Addresses.V6,
+	}
+	configJSON, err := json.Marshal(tunnelConfig)
+	if err != nil {
+		return "", fmt.Errorf("encode MASQUE device configuration: %w", err)
+	}
+	bundle := map[string]string{
+		"config_json": string(configJSON),
+		"endpoints":   strings.Join(endpoints, ";"),
+		"sni":         internal.ConnectSNI,
+	}
+	result, err := json.Marshal(bundle)
+	if err != nil {
+		return "", fmt.Errorf("encode Cloudflare WARP device bundle: %w", err)
+	}
+	return string(result), nil
+}
 
 // StartTunnel takes ownership of the detached Android VpnService TUN fd.
 // endpointList must contain Cloudflare-provided MASQUE IP:UDP-port values separated by ';'.
@@ -136,6 +232,8 @@ func parseEndpoints(value string) ([]net.Addr, error) {
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" { continue }
+		part = strings.TrimPrefix(part, "quic://")
+		part = strings.TrimPrefix(part, "udp://")
 		host, portText, err := net.SplitHostPort(part)
 		if err != nil { return nil, fmt.Errorf("invalid MASQUE endpoint %q: %w", part, err) }
 		ip := net.ParseIP(host)
