@@ -82,7 +82,9 @@ jobs:
             .github/scripts/integrate_deepseek_single_apk.py \
             .github/scripts/fix_viewer_drag_selection.py \
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
-            .github/scripts/add_bottom_left_media_import.py
+            .github/scripts/add_bottom_left_media_import.py \
+            .github/scripts/configure_android_storage_fallback.py \
+            .github/scripts/add_curve_quick_access.py
 
   build:
     needs: validate-patches
