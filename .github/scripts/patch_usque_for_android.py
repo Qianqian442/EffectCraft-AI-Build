@@ -128,7 +128,7 @@ old_connect = '''\t\tudpConn, tr, ipConn, rsp, err := ConnectTunnel(
 \t\t)
 '''
 new_connect = '''\t\tattemptCtx, attemptCancel := context.WithCancel(ctx)
-\t\tattemptTimer := time.AfterFunc(4*time.Second, attemptCancel)
+\t\tattemptTimer := time.AfterFunc(6*time.Second, attemptCancel)
 \t\tudpConn, tr, ipConn, rsp, err := ConnectTunnel(
 \t\t\tattemptCtx,
 \t\t\tcfg.TLSConfig,
@@ -140,7 +140,7 @@ new_connect = '''\t\tattemptCtx, attemptCancel := context.WithCancel(ctx)
 \t\tattemptTimer.Stop()
 \t\tattemptExpired := attemptCtx.Err() != nil
 \t\tif attemptExpired && err == nil {
-\t\t\terr = errors.New("MASQUE endpoint handshake exceeded the 4-second attempt limit")
+\t\t\terr = errors.New("MASQUE endpoint handshake exceeded the 6-second attempt limit")
 \t\t}
 '''
 if source.count(old_connect) != 1:
