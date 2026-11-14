@@ -260,7 +260,8 @@ func scanCloudflareHTTP2(ctx context.Context, baseTLS *tls.Config, defaultEndpoi
 					continue
 				}
 
-				recordEndpointScanSuccess(endpoint, rtt)
+				// A TLS/ALPN probe is not proof that Cloudflare accepted CONNECT-IP.
+				// Only OnConnected below awards a durable success score.
 				score := endpointRecordSnapshot()[endpoint.String()].Score
 				resultsMu.Lock()
 				results = append(results, scoredH2Endpoint{address: endpoint, score: score, rtt: rtt})
