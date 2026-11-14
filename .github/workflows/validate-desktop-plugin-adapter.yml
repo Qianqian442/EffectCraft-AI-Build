@@ -142,12 +142,12 @@ jobs:
           fi
           python3 .github/scripts/patch_export_dialog.py
 
-      - name: Configure the same four project export buttons and QQ share action used by the APK build
+      - name: Configure four project export buttons with post-export QQ sharing
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 .github/scripts/configure_four_project_export_buttons.py
 
-      - name: Validate direct QQ project share with system fallback
+      - name: Validate post-export direct QQ project sharing
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
@@ -156,10 +156,10 @@ jobs:
           python3 .github/scripts/add_android_gallery_export.py
           python3 .github/scripts/add_qq_project_share.py
           grep -F 'EFFECTCRAFT_SHARE_FILEPROVIDER_V1' artcraft/lib/android_project.py
-          grep -F 'shareProjectPackage' artcraft/templates/android/SafActivity.java
+          grep -F 'EFFECTCRAFT_ANDROID_EXPORT_FILE_QQ_SHARE_V2' artcraft/templates/android/SafActivity.java
           grep -F 'qqSend.setPackage("com.tencent.mobileqq")' artcraft/templates/android/SafActivity.java
           grep -F '分享到QQ或其他应用' artcraft/templates/android/SafActivity.java
-          grep -F 'share_project_package' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
+          grep -F 'share_exported_project' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
 
       - name: Validate the single unified AM/NV/AE/CapCut project import control
         env:
