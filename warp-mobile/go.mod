@@ -1,4 +1,4 @@
-module github.com/qianqian/effectcraft/warp-mobile
+module github.com/Diniboy1123/usque/mobileandroid
 
 go 1.26.3
 
@@ -7,9 +7,6 @@ require (
 	golang.org/x/mobile v0.0.0-20261011034528-197770444867
 )
 
-replace github.com/Diniboy1123/usque => ./upstream-usque
+tool golang.org/x/mobile/cmd/gobind
 
-tool (
-	golang.org/x/mobile/cmd/gobind
-	golang.org/x/mobile/cmd/gomobile
-)
+replace github.com/Diniboy1123/usque => ./upstream-usque
