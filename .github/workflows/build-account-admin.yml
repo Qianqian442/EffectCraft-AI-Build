@@ -233,7 +233,7 @@ jobs:
           grep -Fq 'CloudflareHttpsTransport.execute' "$API"
           grep -Fq 'AdminAccountVpnService.requestPermissionForTask(context)' "$API"
           grep -Fq 'public static synchronized String requestPermissionForTask' "$VPN"
-          grep -Fq '正在检查 VPN 授权并解析 Cloudflare 账号服务器地址' admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java
+          grep -Fq '正在先连接 Cloudflare VPN，再解析账号服务器地址' admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java
           grep -Fq 'openTlsSocket(host, Collections.singletonList(address), 5000, 5000)' "$TRANSPORT"
           grep -Fq 'resolverAddressesForTunnel' "$TRANSPORT"
           grep -Fq 'cloudflare-dns.com' "$TRANSPORT"
