@@ -365,6 +365,65 @@ async function nodeNetworkStub(env) {
   return env.NODE_NETWORK.get(id);
 }
 
+async function getAccountServiceState(env) {
+  const row = await env.DB.prepare(
+    "SELECT enabled, changed_at, changed_by FROM account_service_settings WHERE setting_key = 'global'"
+  ).first();
+  return {
+    enabled: row ? Number(row.enabled) !== 0 : true,
+    changed_at: row?.changed_at || null,
+    changed_by: row?.changed_by || "bootstrap"
+  };
+}
+
+async function requireAccountServiceEnabled(env) {
+  const state = await getAccountServiceState(env);
+  if (!state.enabled) {
+    throw new HttpError(503, "云端账号服务器已由管理员关闭，当前无法注册、登录或验证账号", {
+      code: "account_service_disabled",
+      account_service_enabled: false
+    });
+  }
+}
+
+async function adminAccountServiceState(request, env) {
+  await readToken(env, request, "admin");
+  return response({ account_service: await getAccountServiceState(env) });
+}
+
+async function adminSetAccountServiceState(request, env) {
+  const claims = await readToken(env, request, "admin");
+  const body = await readJson(request);
+  if (typeof body.enabled !== "boolean") return fail(422, "enabled 必须是布尔值");
+  const changedAt = new Date().toISOString();
+  await env.DB.prepare(
+    "INSERT INTO account_service_settings (setting_key, enabled, changed_at, changed_by) VALUES ('global', ?, ?, ?) " +
+    "ON CONFLICT(setting_key) DO UPDATE SET enabled = excluded.enabled, changed_at = excluded.changed_at, changed_by = excluded.changed_by"
+  ).bind(body.enabled ? 1 : 0, changedAt, claims.sub).run();
+
+  // Fan out over the already-open global node WebSocket hub. This is a one-off
+  // push on state changes, not a polling loop or one request per account.
+  let notified = 0;
+  try {
+    const stub = await nodeNetworkStub(env);
+    const pushed = await stub.fetch("https://node-network.internal/account-service-state", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled: body.enabled, changed_at: changedAt })
+    });
+    if (pushed.ok) {
+      const result = await pushed.json();
+      notified = Number(result.delivered || 0);
+    }
+  } catch (error) {
+    console.error("account-service-notification-error", error && error.message ? error.message : String(error));
+  }
+  return response({
+    account_service: await getAccountServiceState(env),
+    notification_delivered: notified
+  });
+}
+
 async function adminNetworkState(request, env) {
   await readToken(env, request, "admin");
   const stub = await nodeNetworkStub(env);
@@ -441,9 +500,14 @@ async function route(request, env) {
   }
   if (!env.DB) return fail(503, "云端数据库尚未绑定");
   try {
+    if (url.pathname.startsWith("/v1/") && !url.pathname.startsWith("/v1/admin/")) {
+      await requireAccountServiceEnabled(env);
+    }
     if (request.method === "GET" && url.pathname === "/v1/events") return await accountEvents(request, env);
     if (request.method === "GET" && url.pathname === "/v1/nodes/network") return await nodeNetworkState(request, env);
     if (request.method === "GET" && url.pathname === "/v1/nodes/events") return await nodeNetworkEvents(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/admin/account-service") return await adminAccountServiceState(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/admin/account-service") return await adminSetAccountServiceState(request, env);
     if (request.method === "GET" && url.pathname === "/v1/admin/network") return await adminNetworkState(request, env);
     if (request.method === "POST" && url.pathname === "/v1/admin/network") return await adminSetNetworkState(request, env);
     if (request.method === "GET" && url.pathname === "/v1/admin/network/nodes") return await adminNetworkNodes(request, env);
