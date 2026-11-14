@@ -471,9 +471,10 @@ def patch_timeline_keyframe_button(root: Path) -> None:
     // EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V2
     let keyframe_enabled = project_item.is_some() && selected_layer.is_some();
     let keyframe_height = (footer.height() - 2.0).max(18.0);
+    let keyframe_width = (graph_x0 - footer.min.x - 16.0).clamp(56.0, 112.0);
     let keyframe_rect = Rect::from_min_size(
         pos2(footer.min.x + 8.0, footer.center().y - keyframe_height * 0.5),
-        vec2(112.0, keyframe_height),
+        vec2(keyframe_width, keyframe_height),
     );
     let keyframe_hint = if keyframe_enabled {
         "添加关键帧（左侧已选素材对应的可移动图层）"
@@ -482,7 +483,8 @@ def patch_timeline_keyframe_button(root: Path) -> None:
     };
     // A high-contrast, wide touch target is always visible in the timeline footer.
     // It remains tappable when disabled so the required single-item selection is explained.
-    let keyframe_button = egui::Button::new("＋ 添加关键帧")
+    let keyframe_text = if keyframe_width < 96.0 { "＋ 关键帧" } else { "＋ 添加关键帧" };
+    let keyframe_button = egui::Button::new(keyframe_text)
         .fill(if keyframe_enabled { t.accent } else { t.field_bg })
         .min_size(keyframe_rect.size());
     let keyframe_response = ui.put(keyframe_rect, keyframe_button).on_hover_text(keyframe_hint);
@@ -518,7 +520,7 @@ def patch_timeline_keyframe_button(root: Path) -> None:
     source = replace_once(
         source,
         'let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));',
-        'let tgl = Rect::from_min_size(pos2(footer.min.x + 128.0, footer.min.y + 3.0), vec2(140.0, 18.0));',
+        'let tgl_x = keyframe_rect.max.x + 8.0;\\n    let tgl_width = (graph_x0 - 6.0 - tgl_x).max(0.0).min(140.0);\\n    let tgl = Rect::from_min_size(pos2(tgl_x, footer.min.y + 3.0), vec2(tgl_width, 18.0));',
         "Timeline footer spacing",
     )
     path.write_text(source, encoding="utf-8")
