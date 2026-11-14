@@ -410,11 +410,9 @@ public final class AdminAccountVpnService extends VpnService {
             socksReply(out, 8); throw new java.io.IOException("SOCKS address type unsupported");
         }
         int port = readU16(in);
-        if (!workerHost.equalsIgnoreCase(requestedHost) && !workerHost.equalsIgnoreCase(InetAddress.getByName(requestedHost).getHostName())) {
-            if (addressType == 3) {
-                socksReply(out, 2);
-                throw new java.io.IOException("SOCKS host outside Worker allowlist");
-            }
+        if (addressType == 3 && !workerHost.equalsIgnoreCase(requestedHost)) {
+            socksReply(out, 2);
+            throw new java.io.IOException("SOCKS host outside Worker allowlist");
         }
         if (port != 443) {
             socksReply(out, 2);
@@ -557,7 +555,6 @@ public final class AdminAccountVpnService extends VpnService {
     }
 
     private void stopTunnel() {
-        taskActive = false;
         try { if (socksServer != null) socksServer.close(); } catch (Exception ignored) {}
         socksServer = null;
         for (Socket socket : activeSockets) {
@@ -577,6 +574,7 @@ public final class AdminAccountVpnService extends VpnService {
             configFile.delete();
         }
         configFile = null;
+        taskActive = false;
         stopForeground(true);
     }
 
