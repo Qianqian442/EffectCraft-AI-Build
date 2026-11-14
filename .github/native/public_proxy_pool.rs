@@ -7,7 +7,7 @@
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, TcpStream};
+use std::net::{Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 use tungstenite::client::IntoClientRequest;
@@ -281,25 +281,28 @@ fn mark_bad(candidate: &Candidate) {
     }
 }
 
-fn healthy_worker(agent: &Agent, base_url: &str) -> bool {
-    let endpoint = format!("{}/health", base_url.trim_end_matches('/'));
-    let Ok(mut response) = agent.get(&endpoint).header("Accept", "application/json").call() else {
+// Probe transport reachability without consuming a Cloudflare Worker invocation.
+// A TCP connection to :443 (or a proxy CONNECT/SOCKS5 tunnel to :443) is enough
+// to select a route; the actual account request below performs the single HTTPS call.
+fn direct_transport_available(host: &str, port: u16) -> bool {
+    let Ok(addresses) = (host, port).to_socket_addrs() else {
         return false;
     };
-    if response.status().as_u16() != 200 {
-        return false;
-    }
-    let Ok(body) = response.body_mut().read_to_string() else { return false; };
-    let Ok(value) = serde_json::from_str::<Value>(&body) else { return false; };
-    value.get("ok").and_then(Value::as_bool) == Some(true)
-        && value.get("database").and_then(Value::as_bool) == Some(true)
+    addresses
+        .take(4)
+        .any(|address| TcpStream::connect_timeout(&address, Duration::from_secs(2)).is_ok())
+}
+
+fn proxy_transport_available(candidate: &Candidate, host: &str, port: u16) -> bool {
+    open_tunnel(candidate, host, port).is_ok()
 }
 
 fn select_http_route(base_url: &str) -> Result<(Agent, Option<Candidate>), String> {
-    // Prefer direct end-to-end TLS whenever the real Worker health endpoint works.
-    let direct = make_agent(None, Duration::from_secs(8))?;
-    if healthy_worker(&direct, base_url) {
-        return Ok((direct, None));
+    let host = base_url
+        .strip_prefix("https://")
+        .ok_or_else(|| "账号服务地址必须使用 HTTPS".to_string())?;
+    if direct_transport_available(host, 443) {
+        return Ok((make_agent(None, Duration::from_secs(8))?, None));
     }
 
     let deadline = Instant::now() + MAX_SCAN_TIME;
@@ -307,17 +310,13 @@ fn select_http_route(base_url: &str) -> Result<(Agent, Option<Candidate>), Strin
         if Instant::now() >= deadline {
             break;
         }
-        let Ok(agent) = make_agent(Some(&candidate), Duration::from_secs(3)) else {
-            mark_bad(&candidate);
-            continue;
-        };
-        if healthy_worker(&agent, base_url) {
+        if proxy_transport_available(&candidate, host, 443) {
             mark_good(&candidate);
-            return Ok((agent, Some(candidate)));
+            return Ok((make_agent(Some(&candidate), Duration::from_secs(8))?, Some(candidate)));
         }
         mark_bad(&candidate);
     }
-    Err("Cloudflare 直连失败，公开代理池没有找到通过 TLS 和账号数据库健康检查的节点。请稍后重试。".to_string())
+    Err("Cloudflare 直连失败，当前批次的代理节点无法建立到 Cloudflare 的安全传输通道。".to_string())
 }
 
 /// Selects a real Cloudflare route first, then sends one account request.
@@ -476,25 +475,10 @@ fn open_tunnel(candidate: &Candidate, host: &str, port: u16) -> io::Result<TcpSt
     Ok(stream)
 }
 
-fn websocket_candidates(base_url: &str) -> Vec<Candidate> {
-    let deadline = Instant::now() + MAX_SCAN_TIME;
-    let mut healthy = Vec::new();
-    for candidate in candidates_snapshot().into_iter().take(MAX_TEST_COUNT) {
-        if Instant::now() >= deadline {
-            break;
-        }
-        let Ok(agent) = make_agent(Some(&candidate), Duration::from_secs(3)) else {
-            mark_bad(&candidate);
-            continue;
-        };
-        if healthy_worker(&agent, base_url) {
-            mark_good(&candidate);
-            healthy.push(candidate);
-        } else {
-            mark_bad(&candidate);
-        }
-    }
-    healthy
+fn websocket_candidates() -> Vec<Candidate> {
+    // Do not call Worker /health once for every candidate. Each WSS handshake
+    // itself is the single Worker request for this live event channel.
+    candidates_snapshot()
 }
 
 /// Direct WSS first; then retry multiple verified HTTP CONNECT / SOCKS5 tunnels.
@@ -520,16 +504,17 @@ where
     let direct_error = match tungstenite::connect(request.clone()) {
         Ok(connection) => return Ok(connection),
         Err(error) => {
-            // A real Worker 401 means the request reached Cloudflare and the
-            // credential was rejected; trying a proxy cannot repair it.
-            if matches!(&error, WebSocketError::Http(response) if response.status().as_u16() == 401) {
+            // Any HTTP response means the request reached Cloudflare. Retrying
+            // another route would waste another Worker invocation and cannot fix an
+            // application-level response, so stop here.
+            if matches!(&error, WebSocketError::Http(_)) {
                 return Err(error);
             }
             error
         }
     };
     let base_url = format!("https://{host}");
-    let candidates = websocket_candidates(&base_url);
+    let candidates = websocket_candidates();
     let mut last_error = direct_error;
 
     for candidate in candidates {
@@ -566,7 +551,7 @@ where
                 return Ok((websocket, response));
             }
             Err(tungstenite::HandshakeError::Failure(error)) => {
-                if matches!(&error, WebSocketError::Http(response) if response.status().as_u16() == 401) {
+                if matches!(&error, WebSocketError::Http(_)) {
                     return Err(error);
                 }
                 last_error = error;
