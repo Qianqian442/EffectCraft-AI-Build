@@ -34,6 +34,7 @@ on:
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
+      - '.github/scripts/normalize_account_network_dependencies.py'
       - '.github/scripts/integrate_public_proxy_pool.py'
       - '.github/scripts/fetch_public_proxy_bootstrap.py'
       - '.github/scripts/validate_public_proxy_pool.sh'
@@ -537,6 +538,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/fix_viewer_drag_selection.py
           python3 build-assets/.github/scripts/fix_viewer_drag_selection.py
+
+      - name: Normalize and validate account network workspace dependencies
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/normalize_account_network_dependencies.py
+          python3 build-assets/.github/scripts/normalize_account_network_dependencies.py
 
       - name: Verify final Android source patches and repair missing export helper
         env:
