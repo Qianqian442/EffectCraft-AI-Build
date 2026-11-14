@@ -50,7 +50,7 @@ def main() -> None:
             }
             ui.small("QQ 分享建议：完整导出后压缩整个文件夹；接收方解压后导入其中的 .ecproj。");"""
     new_buttons = """            ui.label("工程导出");
-            if ui.button("AE 工程导出（.aep）").clicked() {
+            if ui.button("Ae 工程导出（.aep）").clicked() {
                 export_aep = true;
             }
             if ui.button("AM 工程导出（.xml）").clicked() {
@@ -114,8 +114,8 @@ def main() -> None:
 """
     source = replace_once(source, aep_anchor, aep_addition + aep_anchor, "AE project export command dispatch")
 
-    if source.count('ui.button("AE 工程导出（.aep）")') != 1:
-        raise SystemExit("AE project export button was not installed exactly once")
+    if source.count('ui.button("Ae 工程导出（.aep）")') != 1:
+        raise SystemExit("Ae project export button was not installed exactly once")
     for label in ["AM 工程导出（.xml）", "NV 工程导出（.zip）", "CapCut 工程导出（.zip）"]:
         if source.count(f'ui.button("{label}")') != 1:
             raise SystemExit(f"Expected exactly one export button: {label}")
