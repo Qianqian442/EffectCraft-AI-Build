@@ -82,8 +82,36 @@ if source.count('\t\t\tcfg.Endpoint,\n\t\t\tcfg.UseHTTP2,\n') != 1:
     raise SystemExit("ConnectTunnel endpoint argument anchor mismatch")
 source = source.replace('\t\t\tcfg.Endpoint,\n\t\t\tcfg.UseHTTP2,\n', '\t\t\tendpoint,\n\t\t\tuseHTTP2,\n', 1)
 
-# Give every Cloudflare endpoint a bounded handshake window. The context is
-# retained after success and cancelled only when the connection fails or stops.
+source = source.replace('''			log.Printf("Failed to connect tunnel: %v", err)
+			if ipConn != nil {''','''			log.Printf("Failed to connect tunnel via %s: %v", endpoint, err)
+			if cfg.OnConnectError != nil { cfg.OnConnectError(endpoint, err) }
+			advanceEndpoint()
+			if ipConn != nil {''',1)
+source = source.replace('''			log.Printf("Tunnel connection failed: %s", rsp.Status)
+			_ = ipConn.Close()''','''			connectErr := fmt.Errorf("MASQUE endpoint %s returned %s", endpoint, rsp.Status)
+			log.Printf("Tunnel connection failed: %s", connectErr)
+			if cfg.OnConnectError != nil { cfg.OnConnectError(endpoint, connectErr) }
+			advanceEndpoint()
+			_ = ipConn.Close()''',1)
+source = source.replace('''		log.Println("Connected to MASQUE server")
+
+		if cfg.OnConnect != "" {''','''		log.Printf("Connected to MASQUE server via %s", endpoint)
+		if cfg.OnConnected != nil { cfg.OnConnected(endpoint) }
+
+		if cfg.OnConnect != "" {''',1)
+source = source.replace('env["USQUE_ENDPOINT"] = cfg.Endpoint.String()', 'env["USQUE_ENDPOINT"] = endpoint.String()')
+if source.count('\t\t\t\t\tif cfg.UseHTTP2 {') != 1:
+    raise SystemExit("HTTP/2 packet-read branch anchor mismatch")
+source = source.replace('\t\t\t\t\tif cfg.UseHTTP2 {', '\t\t\t\t\tif useHTTP2 {', 1)
+source = source.replace('''		err = <-errChan
+		log.Printf("Tunnel connection lost: %v. Reconnecting...", err)
+''','''		err = <-errChan
+		log.Printf("Tunnel connection lost via %s: %v. Reconnecting...", endpoint, err)
+		if cfg.OnDisconnected != nil { cfg.OnDisconnected(endpoint, err) }
+		advanceEndpoint()
+''',1)
+# Bound each endpoint handshake. Keep its context alive after a successful
+# CONNECT-IP response, then cancel it only when the tunnel disconnects.
 if '\tvar activeAttemptCancel context.CancelFunc\n' not in source:
     source = source.replace(
         '\tpacketBufferPool := NewNetBuffer(cfg.MTU + datagramContextIDHeadroom)\n',
@@ -118,58 +146,58 @@ new_connect = '''\t\tattemptCtx, attemptCancel := context.WithCancel(ctx)
 if source.count(old_connect) != 1:
     raise SystemExit("ConnectTunnel call block mismatch while adding bounded attempt")
 source = source.replace(old_connect, new_connect, 1)
-if source.count('log.Printf("Failed to connect tunnel via %s: %v", endpoint, err)') != 1:
-    raise SystemExit("ConnectTunnel error callback anchor mismatch")
-source = source.replace(
-    'log.Printf("Failed to connect tunnel via %s: %v", endpoint, err)',
-    'attemptCancel()\n\t\t\tlog.Printf("Failed to connect tunnel via %s: %v", endpoint, err)',
-    1,
-)
-if source.count('connectErr := fmt.Errorf("MASQUE endpoint %s returned %s", endpoint, rsp.Status)') != 1:
-    raise SystemExit("MASQUE non-200 response anchor mismatch")
-source = source.replace(
-    'connectErr := fmt.Errorf("MASQUE endpoint %s returned %s", endpoint, rsp.Status)',
-    'attemptCancel()\n\t\t\tconnectErr := fmt.Errorf("MASQUE endpoint %s returned %s", endpoint, rsp.Status)',
-    1,
-)
-source = source.replace(
-    'log.Printf("Connected to MASQUE server via %s", endpoint)',
-    'activeAttemptCancel = attemptCancel\n\t\tlog.Printf("Connected to MASQUE server via %s", endpoint)',
-    1,
-)
-source = source.replace(
-    '\t\t_ = ipConn.Close()\n\n\t\tdone := make(chan struct{})',
-    '\t\t_ = ipConn.Close()\n\t\tif activeAttemptCancel != nil {\n\t\t\tactiveAttemptCancel()\n\t\t\tactiveAttemptCancel = nil\n\t\t}\n\n\t\tdone := make(chan struct{})',
-    1,
-)
-source = source.replace('''			log.Printf("Failed to connect tunnel: %v", err)
-			if ipConn != nil {''','''			log.Printf("Failed to connect tunnel via %s: %v", endpoint, err)
-			if cfg.OnConnectError != nil { cfg.OnConnectError(endpoint, err) }
-			advanceEndpoint()
-			if ipConn != nil {''',1)
-source = source.replace('''			log.Printf("Tunnel connection failed: %s", rsp.Status)
-			_ = ipConn.Close()''','''			connectErr := fmt.Errorf("MASQUE endpoint %s returned %s", endpoint, rsp.Status)
-			log.Printf("Tunnel connection failed: %s", connectErr)
-			if cfg.OnConnectError != nil { cfg.OnConnectError(endpoint, connectErr) }
-			advanceEndpoint()
-			_ = ipConn.Close()''',1)
-source = source.replace('''		log.Println("Connected to MASQUE server")
 
-		if cfg.OnConnect != "" {''','''		log.Printf("Connected to MASQUE server via %s", endpoint)
-		if cfg.OnConnected != nil { cfg.OnConnected(endpoint) }
+err_anchor = '''\t\tif err != nil {
+\t\t\tlog.Printf("Failed to connect tunnel via %s: %v", endpoint, err)'''
+if source.count(err_anchor) != 1:
+    raise SystemExit("ConnectTunnel error handler anchor mismatch")
+source = source.replace(
+    err_anchor,
+    '''\t\tif err != nil {
+\t\t\tattemptCancel()
+\t\t\tlog.Printf("Failed to connect tunnel via %s: %v", endpoint, err)''',
+    1,
+)
 
-		if cfg.OnConnect != "" {''',1)
-source = source.replace('env["USQUE_ENDPOINT"] = cfg.Endpoint.String()', 'env["USQUE_ENDPOINT"] = endpoint.String()')
-if source.count('\t\t\t\t\tif cfg.UseHTTP2 {') != 1:
-    raise SystemExit("HTTP/2 packet-read branch anchor mismatch")
-source = source.replace('\t\t\t\t\tif cfg.UseHTTP2 {', '\t\t\t\t\tif useHTTP2 {', 1)
-source = source.replace('''		err = <-errChan
-		log.Printf("Tunnel connection lost: %v. Reconnecting...", err)
-''','''		err = <-errChan
-		log.Printf("Tunnel connection lost via %s: %v. Reconnecting...", endpoint, err)
-		if cfg.OnDisconnected != nil { cfg.OnDisconnected(endpoint, err) }
-		advanceEndpoint()
-''',1)
+rsp_anchor = '''\t\tif rsp.StatusCode != 200 {
+\t\t\tconnectErr := fmt.Errorf("MASQUE endpoint %s returned %s", endpoint, rsp.Status)'''
+if source.count(rsp_anchor) != 1:
+    raise SystemExit("MASQUE non-200 handler anchor mismatch")
+source = source.replace(
+    rsp_anchor,
+    '''\t\tif rsp.StatusCode != 200 {
+\t\t\tattemptCancel()
+\t\t\tconnectErr := fmt.Errorf("MASQUE endpoint %s returned %s", endpoint, rsp.Status)''',
+    1,
+)
+
+connected_anchor = '''\t\tlog.Printf("Connected to MASQUE server via %s", endpoint)'''
+if source.count(connected_anchor) != 1:
+    raise SystemExit("MASQUE connected callback anchor mismatch")
+source = source.replace(
+    connected_anchor,
+    '''\t\tactiveAttemptCancel = attemptCancel
+\t\tlog.Printf("Connected to MASQUE server via %s", endpoint)''',
+    1,
+)
+
+lost_anchor = '''\t\t_ = ipConn.Close()
+
+\t\tdone := make(chan struct{})'''
+if source.count(lost_anchor) != 1:
+    raise SystemExit("MASQUE disconnect cancel anchor mismatch")
+source = source.replace(
+    lost_anchor,
+    '''\t\t_ = ipConn.Close()
+\t\tif activeAttemptCancel != nil {
+\t\t\tactiveAttemptCancel()
+\t\t\tactiveAttemptCancel = nil
+\t\t}
+
+\t\tdone := make(chan struct{})''',
+    1,
+)
+
 if "cfg.Endpoint.String()" in source:
     raise SystemExit("stale cfg.Endpoint reference")
 path.write_text(source, encoding="utf-8")
