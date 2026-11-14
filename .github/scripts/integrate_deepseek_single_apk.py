@@ -228,16 +228,17 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     j = java.read_text(encoding="utf-8")
     # The host Activity is in com.artcraft.effectcraft; the Kotlin components are
     # staged in the sibling aiassistant package and must be imported for javac.
+    newline = chr(10)
     ai_imports = (
-        "import com.artcraft.effectcraft.aiassistant.InferenceService;\\n"
-        "import com.artcraft.effectcraft.aiassistant.PluginManagerActivity;\\n"
+        "import com.artcraft.effectcraft.aiassistant.InferenceService;" + newline
+        + "import com.artcraft.effectcraft.aiassistant.PluginManagerActivity;" + newline
     )
     if "import com.artcraft.effectcraft.aiassistant.InferenceService;" not in j or \
             "import com.artcraft.effectcraft.aiassistant.PluginManagerActivity;" not in j:
         j = once(
             j,
-            "import android.content.Context;\\n",
-            "import android.content.Context;\\n" + ai_imports,
+            "import android.content.Context;" + newline,
+            "import android.content.Context;" + newline + ai_imports,
             "integrated DeepSeek Kotlin component imports",
         )
     j = replace_java_method(j, "public static boolean isAiPluginInstalled()",
