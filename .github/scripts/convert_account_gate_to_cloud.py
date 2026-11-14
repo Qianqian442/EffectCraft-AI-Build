@@ -20,13 +20,6 @@ def main() -> None:
     if not account_path.is_file():
         raise SystemExit("Run add_home_lan_account_gate.py before this account patch.")
     source = account_path.read_text(encoding="utf-8")
-    # The active product architecture uses the administrator phone as the
-    # source of truth. Never replace its P2P account API with a cloud database,
-    # even when an old CI variable is still configured.
-    if 'const DEFAULT_SERVER: &str = "p2p://auto";' in source:
-        print("P2P administrator-authority mode retained; cloud account override skipped.")
-        return
-
     api_url = os.environ.get("AE_ACCOUNT_API_URL", "").strip().rstrip("/")
     if not api_url.startswith("https://") or not api_url.endswith(".workers.dev"):
         raise SystemExit(
@@ -37,6 +30,7 @@ def main() -> None:
         source,
         "//! Home-Wi-Fi-only account gate. The account API is intentionally fail-closed:\n"
         "//! when a saved account cannot be checked against the home server, the editor stays locked.",
+        "//! EFFECTCRAFT_CLOUDFLARE_ACCOUNT_GATE_V1\n"
         "//! Cloud account gate. The account API is intentionally fail-closed:\n"
         "//! when a saved account cannot be checked against the cloud server, the editor stays locked.",
         "module documentation",
@@ -47,7 +41,7 @@ def main() -> None:
         "use std::net::{TcpStream, ToSocketAddrs};\n"
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::time::Duration;\n\n"
-        'const DEFAULT_SERVER: &str = "http://192.168.1.100:8787";',
+        'const DEFAULT_SERVER: &str = "p2p://auto";',
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::time::Duration;\n"
         "use tungstenite::client::IntoClientRequest;\n"
@@ -345,16 +339,30 @@ def main() -> None:
 
     workspace_manifest = root / "Cargo.toml"
     workspace = workspace_manifest.read_text(encoding="utf-8")
+    if 'ureq = { version = "3.5", features = ["socks-proxy"] }' not in workspace:
+        if 'ureq = "3.5"' in workspace:
+            workspace = workspace.replace(
+                'ureq = "3.5"',
+                'ureq = { version = "3.5", features = ["socks-proxy"] }',
+                1,
+            )
+        else:
+            workspace = replace_once(
+                workspace,
+                'serde_json = { version = "1", features = ["float_roundtrip"] }\n',
+                'serde_json = { version = "1", features = ["float_roundtrip"] }\n'
+                'ureq = { version = "3.5", features = ["socks-proxy"] }\n',
+                "workspace ureq SOCKS5 dependency",
+            )
     if 'tungstenite = { version = "0.30"' not in workspace:
         workspace = replace_once(
             workspace,
             'serde_json = { version = "1", features = ["float_roundtrip"] }\n',
             'serde_json = { version = "1", features = ["float_roundtrip"] }\n'
-            'ureq = "3.5"\n'
             'tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }\n',
-            "workspace HTTPS/WebSocket dependencies",
+            "workspace WebSocket dependency",
         )
-        workspace_manifest.write_text(workspace, encoding="utf-8")
+    workspace_manifest.write_text(workspace, encoding="utf-8")
 
     ui_manifest = root / "crates/ui-egui/Cargo.toml"
     ui = ui_manifest.read_text(encoding="utf-8")
