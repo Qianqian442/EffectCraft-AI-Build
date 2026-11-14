@@ -58,7 +58,7 @@ public final class AdminAccountVpnService extends VpnService {
     private static final String CHANNEL_ID = "effectcraft_admin_cloudflare_warp";
     private static final int NOTIFICATION_ID = 8401;
     private static final String APP_ID = "com.qianqian.effectcraftadmin";
-    private static final String BRIDGE_CLASS = "com.effectcraft.warp.Warpandroid";
+    private static final String BRIDGE_CLASS = "com.effectcraft.warp.warpandroid.Warpandroid";
     private static final String PREFS = "effectcraft_admin_warp";
     private static final String BUNDLE_KEY = "encrypted_device_bundle";
     private static final String KEY_ALIAS = "effectcraft.admin.cloudflare.warp.device.v1";
