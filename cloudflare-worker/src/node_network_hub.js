@@ -33,6 +33,30 @@ export class NodeNetworkHub {
       return Response.json({ enabled: (await this.ctx.storage.get("network_state"))?.enabled !== false, nodes });
     }
 
+    if (url.pathname === "/account-service-state" && request.method === "POST") {
+      const body = await request.json().catch(() => null);
+      if (!body || typeof body.enabled !== "boolean") {
+        return Response.json({ error: "invalid account service state" }, { status: 400 });
+      }
+      const state = {
+        enabled: body.enabled,
+        changed_at: body.changed_at || new Date().toISOString()
+      };
+      await this.ctx.storage.put("account_service_enabled", state.enabled);
+      await this.ctx.storage.put("account_service_changed_at", state.changed_at);
+      const payload = JSON.stringify({ type: "account_service_state", ...state });
+      let delivered = 0;
+      for (const socket of this.ctx.getWebSockets()) {
+        try {
+          socket.send(payload);
+          delivered++;
+        } catch (_) {
+          try { socket.close(1011, "account service state notification failed"); } catch (_) {}
+        }
+      }
+      return Response.json({ delivered, account_service: state });
+    }
+
     if (url.pathname === "/revoke-node" && request.method === "POST") {
       const body = await request.json().catch(() => null);
       const nodeId = String(body?.node_id || "");
@@ -97,6 +121,13 @@ export class NodeNetworkHub {
       this.ctx.acceptWebSocket(server);
       server.serializeAttachment({ nodeId, connectedAt: new Date().toISOString() });
       server.send(JSON.stringify({ type: "network_state", enabled: true, changed_at: state.changed_at || null }));
+      const accountServiceEnabled = await this.ctx.storage.get("account_service_enabled");
+      const accountServiceChangedAt = await this.ctx.storage.get("account_service_changed_at");
+      server.send(JSON.stringify({
+        type: "account_service_state",
+        enabled: accountServiceEnabled !== false,
+        changed_at: accountServiceChangedAt || null
+      }));
       return new Response(null, { status: 101, webSocket: client });
     }
 
