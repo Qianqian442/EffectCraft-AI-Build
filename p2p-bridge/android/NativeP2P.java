@@ -70,12 +70,13 @@ final class NativeP2P {
 
     private static native String nativeStartClient(String filesDirectory);
     private static native String nativeStatus();
-    private static native String nativeConfigureVpnProxy(String workerHost, String workerIpsCsv, String secret);
-    private static native void nativeClearVpnProxyConfig();
 
     static synchronized void start(Context context) {
         applicationContext = context.getApplicationContext();
         if (context instanceof Activity) launcherActivity = new WeakReference<>((Activity) context);
+        // The loopback task bridge is independent of the P2P node. Main-APK
+        // Cloudflare WARP requests must still work when no admin phone is online.
+        startVpnCommandServer(context.getApplicationContext());
         try {
             WifiManager wifi = (WifiManager) context.getApplicationContext()
                 .getSystemService(Context.WIFI_SERVICE);
@@ -86,8 +87,7 @@ final class NativeP2P {
             }
 
             String result = nativeStartClient(context.getFilesDir().getAbsolutePath());
-            Log.i(TAG, "P2P node start: " + result);
-            startVpnCommandServer(context.getApplicationContext());
+            Log.i(TAG, "P2P node start for non-account peer features: " + result);
             if (!watchdogScheduled) {
                 watchdogScheduled = true;
                 watchdogHandler.postDelayed(nodeWatchdog, 8000L);
@@ -95,14 +95,6 @@ final class NativeP2P {
         } catch (Throwable error) {
             // Network setup must never prevent the editor itself from launching.
             Log.e(TAG, "P2P node unavailable; local editing remains available", error);
-        }
-    }
-
-    static void clearVpnProxyConfig() {
-        try {
-            nativeClearVpnProxyConfig();
-        } catch (Throwable error) {
-            Log.w(TAG, "Could not clear the temporary VPN credentials", error);
         }
     }
 
@@ -183,15 +175,6 @@ final class NativeP2P {
 
     static void onVpnPermissionActivityResult(int resultCode) {
         EffectCraftVpnService.onPermissionResult(resultCode == Activity.RESULT_OK);
-    }
-
-    static String configureVpnProxy(String workerHost, String workerIpsCsv, String secret) {
-        try {
-            return nativeConfigureVpnProxy(workerHost, workerIpsCsv, secret);
-        } catch (Throwable error) {
-            Log.e(TAG, "Could not configure the private account VPN bridge", error);
-            return "ERROR:" + error.getClass().getSimpleName();
-        }
     }
 
     static String status() {
