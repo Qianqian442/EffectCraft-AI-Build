@@ -85,7 +85,7 @@ def main() -> None:
                     share_exported_project = Some(path.clone());
                 }
             }"""
-    source = replace_once(source, old_buttons, new_buttons, "four project export buttons and conditional QQ share button")
+    source = replace_once(source, old_buttons, new_buttons, "five project export buttons and conditional QQ share button")
 
     old_project_actions = """    if collect_project_files {
         match crate::menus::invoke(app, ui.ctx(), "file.collectFiles", json!({})) {
@@ -180,7 +180,7 @@ def main() -> None:
         '        "file.exportAlightMotion" => ("path", Ask::Save("AlightMotion.xml".into())),\n'
         '        "file.exportNodeVideo" => ("path", Ask::Save("NodeVideo.zip".into())),\n'
         '        "file.exportCapCut" => ("path", Ask::Save("CapCut.zip".into())),\n',
-        "save pickers for the four project export formats",
+        "save pickers for the desktop Ae, AM, NV and CapCut export formats",
     )
     frontend.write_text(front_source, encoding="utf-8")
 
@@ -199,15 +199,16 @@ def main() -> None:
     if "effectcraft.projectExported" not in front_source:
         raise SystemExit("Project export completion event handler is missing")
 
-    # Collect Files copies all referenced source footage into (Footage), rewrites paths
-    # relative to the exported .ecproj, and returns only after the collection has completed.
+    # patch_export_dialog.py already creates a dedicated folder and rewrites collected
+    # footage paths to (Footage)/relative-name. Add the missing-media guard and success
+    # event here, without duplicating or fighting that earlier portability patch.
     project_engine = root / "crates/engine/src/cmd/file_more.rs"
     engine_source = project_engine.read_text(encoding="utf-8")
     engine_source = replace_once(
         engine_source,
         "    let mut plan: Vec<(ItemId, Vec<(String, String)>)> = vec![];",
-        "    let mut errors: Vec<String> = Vec::new();\n    let mut plan: Vec<(ItemId, Vec<(String, String, String)>)> = vec![];",
-        "complete mobile project collection plan",
+        "    let mut missing_media: Vec<String> = Vec::new();\\n    let mut plan: Vec<(ItemId, Vec<(String, String)>)> = vec![];",
+        "complete mobile project preflight state",
     )
     engine_source = replace_once(
         engine_source,
@@ -215,63 +216,35 @@ def main() -> None:
             continue;
         }""",
         """        if f.missing || f.path.is_empty() {
-            errors.push(format!("{}：源素材缺失，无法制作完整工程包", it.name));
+            missing_media.push(format!("{}：源素材缺失，无法制作完整工程包", it.name));
             continue;
         }""",
         "refuse missing source footage in a full mobile project package",
     )
     engine_source = replace_once(
         engine_source,
-        '            let dst = format!("{folder}/(Footage)/{name}");',
-        '            let relative = format!("(Footage)/{name}");\n            let dst = format!("{folder}/{relative}");',
-        "relative media paths for portable mobile project packages",
-    )
-    engine_source = replace_once(
-        engine_source,
-        "            pairs.push((src.clone(), dst));",
-        "            pairs.push((src.clone(), dst, relative));",
-        "store relative and physical media paths separately",
-    )
-    engine_source = replace_once(
-        engine_source,
-        "        for (src, dst) in &pairs {",
-        "        for (src, dst, relative) in &pairs {",
-        "collect all source media into the package folder",
-    )
-    engine_source = replace_once(
-        engine_source,
-        "            new_paths.push(dst.clone());",
-        "            new_paths.push(relative.clone());",
-        "write portable relative source-media paths into .ecproj",
-    )
-    engine_source = replace_once(
-        engine_source,
-        "    let mut copied = 0;\n    let mut errors = vec![];\n    for (id, pairs) in plan {",
-        "    let mut copied = 0;\n    for (id, pairs) in plan {",
-        "reuse the preflight error accumulator",
-    )
-    engine_source = replace_once(
-        engine_source,
-        '    s.write_output_with(&protected, &out, proj.to_json().as_bytes())?;',
-        '''    if !errors.is_empty() {
+        "    // Collect Files makes its folder (and the footage folder inside it).",
+        """    if !missing_media.is_empty() {
         return Err(EngineError::Other(format!(
             "工程素材收集不完整，未生成可分享的完整工程包：{}",
-            errors.join("；")
+            missing_media.join("；")
         )));
     }
-    s.write_output_with(&protected, &out, proj.to_json().as_bytes())?;
-    s.events.push(crate::Event::Frontend {
-        command: "effectcraft.projectExported".into(),
-        params: json!({"path": out, "format": "Ae 手机版完整工程（含素材）"}),
-    });''',
-        "only reveal QQ sharing after every project asset has been saved",
+    // Collect Files makes its folder (and the footage folder inside it).""",
+        "abort complete export before copying if any source media is missing",
     )
+    write_anchor = "    s.write_output_with(&protected, &out, proj.to_json().as_bytes())?;"
+    write_event = write_anchor + '\\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": out, "format": "Ae 手机版完整工程（含素材）"}) });'
+    if write_event not in engine_source:
+        if engine_source.count(write_anchor) != 1:
+            raise SystemExit("Could not safely add the complete mobile project export success event")
+        engine_source = engine_source.replace(write_anchor, write_event, 1)
+    if "collection_root" not in engine_source or 'new_paths.push(format!("(Footage)/{filename}"));' not in engine_source:
+        raise SystemExit("The portable relative-footage path and dedicated collection-folder patch must be applied first")
+    if "工程素材收集不完整" not in engine_source or "effectcraft.projectExported" not in engine_source:
+        raise SystemExit("The full mobile project export must reject missing footage and emit success only after writing")
     if '"file.collectFiles" => ("folder", Ask::Folder),' not in front_source:
         raise SystemExit("The complete mobile project export must use the Android folder picker")
-    if "effectcraft.projectExported" not in engine_source:
-        raise SystemExit("The complete mobile project export success notification is missing")
-    if "工程素材收集不完整" not in engine_source or "new_paths.push(relative.clone())" not in engine_source:
-        raise SystemExit("Full-project packaging must refuse missing media and use portable relative footage paths")
 
     header.write_text(source, encoding="utf-8")
     print("Installed five project export controls: desktop Ae, complete mobile EffectCraft project, AM, NV and CapCut.")
