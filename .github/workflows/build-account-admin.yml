@@ -7,6 +7,8 @@ on:
       - 'admin-app/**'
       - '.github/scripts/fetch_public_proxy_bootstrap.py'
       - 'p2p-bridge/**'
+      - 'warp-mobile/**'
+      - '.github/scripts/patch_usque_for_android.py'
       - '.github/workflows/build-account-admin.yml'
   pull_request:
     branches: [main]
@@ -23,6 +25,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-masque-aar:
+    name: Build ARM64 Cloudflare MASQUE Android core prototype
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Go 1.26.3
+        uses: actions/setup-go@v6
+        with:
+          go-version: '1.26.3'
+          cache: false
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Install Android NDK
+        run: sdkmanager "ndk;27.2.12479018"
+      - name: Configure NDK
+        run: |
+          NDK="$ANDROID_HOME/ndk/27.2.12479018"
+          echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_ROOT=$NDK" >> "$GITHUB_ENV"
+      - name: Install gomobile and gobind
+        run: |
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          go install golang.org/x/mobile/cmd/gobind@latest
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - name: Initialize gomobile
+        run: gomobile init
+      - name: Build ARM64 AAR
+        run: |
+          chmod +x warp-mobile/build-android-aar.sh
+          warp-mobile/build-android-aar.sh
+      - name: Verify generated Java bridge and ARM64 native library
+        run: |
+          unzip -l warp-mobile/build/effectcraft-warp-masque.aar
+          unzip -p warp-mobile/build/effectcraft-warp-masque.aar classes.jar > "$RUNNER_TEMP/warp-classes.jar"
+          jar tf "$RUNNER_TEMP/warp-classes.jar" | grep -E 'com/effectcraft/warp|warpandroid'
+      - name: Upload MASQUE engine build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Cloudflare-MASQUE-ARM64-AAR
+          path: warp-mobile/build/effectcraft-warp-masque.aar
+          if-no-files-found: error
+          retention-days: 14
+
   build-admin:
     name: Build standalone account manager APK
     runs-on: ubuntu-24.04
