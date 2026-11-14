@@ -123,6 +123,10 @@ public final class EffectCraftVpnService extends VpnService {
         if (taskActive) return "OK";
 
         try {
+            // Ask Android for VPN consent before registering a WARP device, so a
+            // user who declines does not leave an unused Cloudflare device identity.
+            if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
+
             String bundle = loadEncryptedBundle(context);
             if (bundle == null) {
                 if (!NativeP2P.requestCloudflareTermsConsent()) {
@@ -136,10 +140,7 @@ public final class EffectCraftVpnService extends VpnService {
                 saveEncryptedBundle(context, bundle);
             }
 
-            if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
-
             JSONObject json = new JSONObject(bundle);
-            JSONObject deviceConfig = new JSONObject(json.getString("config_json"));
             List<InetAddress> workers = resolveWorkerAddresses(host);
             if (workers.isEmpty()) return "ERROR:Worker DNS 没有返回可用的公网地址";
 
