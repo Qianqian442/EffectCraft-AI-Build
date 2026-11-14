@@ -63,7 +63,7 @@ def main() -> None:
             if ui.button("Ae 工程导出（.aep）").clicked() {
                 export_aep = true;
             }
-            if ui.button("Ae 手机版工程导出（.ecproj）").clicked() {
+            if ui.button("Ae 手机版完整工程导出（含素材）").clicked() {
                 export_mobile_effectcraft_project = true;
             }
             if ui.button("AM 工程导出（.xml）").clicked() {
@@ -75,7 +75,8 @@ def main() -> None:
             if ui.button("CapCut 工程导出（.zip）").clicked() {
                 export_capcut = true;
             }
-            ui.small("电脑版 After Effects 使用 .aep；手机端保存为 EffectCraft .ecproj 工程，可由手机版 EffectCraft 再次打开。");
+            ui.small("电脑版 After Effects 使用 .aep；手机版完整工程会收集 .ecproj、图片、视频、音频和序列素材。");
+            ui.small("完整工程分享时自动压缩成 ZIP；接收方在文件→导入中选择 ZIP 即可导入。");
             ui.small("AM、NV、CapCut 分别导出；不支持转换的项目内容会在导出报告中说明。");
             if let Some(path) = last_exported_path.as_ref() {
                 ui.separator();
@@ -122,7 +123,7 @@ def main() -> None:
 """
     mobile_addition = """    if export_mobile_effectcraft_project {
         ui.ctx().data_mut(|d| { d.remove_temp::<String>(export_path_id); });
-        match crate::menus::invoke(app, ui.ctx(), "file.saveCopy", json!({})) {
+        match crate::menus::invoke(app, ui.ctx(), "file.collectFiles", json!({})) {
             Ok(_) => {},
             Err(error) => app.ui.status = error,
         }
@@ -185,8 +186,8 @@ def main() -> None:
 
     if source.count('ui.button("Ae 工程导出（.aep）")') != 1:
         raise SystemExit("Desktop Ae project export button was not installed exactly once")
-    if source.count('ui.button("Ae 手机版工程导出（.ecproj）")') != 1:
-        raise SystemExit("Mobile EffectCraft project export button was not installed exactly once")
+    if source.count('ui.button("Ae 手机版完整工程导出（含素材）")') != 1:
+        raise SystemExit("Complete mobile EffectCraft project export button was not installed exactly once")
     for label in ["AM 工程导出（.xml）", "NV 工程导出（.zip）", "CapCut 工程导出（.zip）"]:
         if source.count(f'ui.button("{label}")') != 1:
             raise SystemExit(f"Expected exactly one export button: {label}")
@@ -198,26 +199,84 @@ def main() -> None:
     if "effectcraft.projectExported" not in front_source:
         raise SystemExit("Project export completion event handler is missing")
 
-    # file.saveCopy is EffectCraft's native mobile project format (.ecproj). Emit the
-    # same completion event only after write_output has successfully written the file.
+    # Collect Files copies all referenced source footage into (Footage), rewrites paths
+    # relative to the exported .ecproj, and returns only after the collection has completed.
     project_engine = root / "crates/engine/src/cmd/file_more.rs"
     engine_source = project_engine.read_text(encoding="utf-8")
-    write_anchor = "    s.write_output(path, json.as_bytes())?;"
-    write_event = write_anchor + '\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": path, "format": "Ae 手机版（EffectCraft）"}) });'
-    if write_event not in engine_source:
-        if engine_source.count(write_anchor) != 1:
-            raise SystemExit("Could not safely hook the native .ecproj export completion event")
-        engine_source = engine_source.replace(write_anchor, write_event, 1)
-        project_engine.write_text(engine_source, encoding="utf-8")
-    if "file.saveCopy" not in engine_source or "Ae 手机版（EffectCraft）" not in engine_source:
-        raise SystemExit("The mobile EffectCraft project export success event is not connected")
-    if '"file.saveCopy" => ("path", Ask::Save(project_as(" copy", "ecproj"))),' not in front_source:
-        raise SystemExit("The native EffectCraft .ecproj save picker is missing")
+    engine_source = replace_once(
+        engine_source,
+        "    let mut plan: Vec<(ItemId, Vec<(String, String)>)> = vec![];",
+        "    let mut errors: Vec<String> = Vec::new();\\n    let mut plan: Vec<(ItemId, Vec<(String, String, String)>)> = vec![];",
+        "complete mobile project collection plan",
+    )
+    engine_source = replace_once(
+        engine_source,
+        """        if f.path.is_empty() {
+            continue;
+        }""",
+        """        if f.missing || f.path.is_empty() {
+            errors.push(format!("{}：源素材缺失，无法制作完整工程包", it.name));
+            continue;
+        }""",
+        "refuse missing source footage in a full mobile project package",
+    )
+    engine_source = replace_once(
+        engine_source,
+        '            let dst = format!("{folder}/(Footage)/{name}");',
+        '            let relative = format!("(Footage)/{name}");\\n            let dst = format!("{folder}/{relative}");',
+        "relative media paths for portable mobile project packages",
+    )
+    engine_source = replace_once(
+        engine_source,
+        "            pairs.push((src.clone(), dst));",
+        "            pairs.push((src.clone(), dst, relative));",
+        "store relative and physical media paths separately",
+    )
+    engine_source = replace_once(
+        engine_source,
+        "        for (src, dst) in &pairs {",
+        "        for (src, dst, relative) in &pairs {",
+        "collect all source media into the package folder",
+    )
+    engine_source = replace_once(
+        engine_source,
+        "            new_paths.push(dst.clone());",
+        "            new_paths.push(relative.clone());",
+        "write portable relative source-media paths into .ecproj",
+    )
+    engine_source = replace_once(
+        engine_source,
+        "    let mut copied = 0;\\n    let mut errors = vec![];\\n    for (id, pairs) in plan {",
+        "    let mut copied = 0;\\n    for (id, pairs) in plan {",
+        "reuse the preflight error accumulator",
+    )
+    engine_source = replace_once(
+        engine_source,
+        '    s.write_output_with(&protected, &out, proj.to_json().as_bytes())?;',
+        '''    if !errors.is_empty() {
+        return Err(EngineError::Other(format!(
+            "工程素材收集不完整，未生成可分享的完整工程包：{}",
+            errors.join("；")
+        )));
+    }
+    s.write_output_with(&protected, &out, proj.to_json().as_bytes())?;
+    s.events.push(crate::Event::Frontend {
+        command: "effectcraft.projectExported".into(),
+        params: json!({"path": out, "format": "Ae 手机版完整工程（含素材）"}),
+    });''',
+        "only reveal QQ sharing after every project asset has been saved",
+    )
+    if '"file.collectFiles" => ("folder", Ask::Folder),' not in front_source:
+        raise SystemExit("The complete mobile project export must use the Android folder picker")
+    if "effectcraft.projectExported" not in engine_source:
+        raise SystemExit("The complete mobile project export success notification is missing")
+    if "工程素材收集不完整" not in engine_source or "new_paths.push(relative.clone())" not in engine_source:
+        raise SystemExit("Full-project packaging must refuse missing media and use portable relative footage paths")
 
     header.write_text(source, encoding="utf-8")
-    print("Installed five project export controls: desktop Ae, mobile EffectCraft .ecproj, AM, NV and CapCut.")
-    print("QQ sharing remains hidden until one of those five project exports succeeds.")
-    print("The share action sends the exact last exported project file; it does not claim to bundle source media.")
+    print("Installed five project export controls: desktop Ae, complete mobile EffectCraft project, AM, NV and CapCut.")
+    print("The mobile export collects image, video, audio and sequence footage, and saves portable relative paths.")
+    print("QQ sharing is revealed only after the complete project folder is written successfully.")
 
 
 if __name__ == "__main__":
