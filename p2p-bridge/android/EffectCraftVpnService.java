@@ -64,7 +64,7 @@ public final class EffectCraftVpnService extends VpnService {
 
     private ParcelFileDescriptor tunInterface;
     private Thread startThread;
-    private volatile boolean stopping;
+    private static volatile boolean stopping;
 
     private static Object callWarp(String methodName, Class<?>[] parameterTypes, Object... args) throws Exception {
         try {
