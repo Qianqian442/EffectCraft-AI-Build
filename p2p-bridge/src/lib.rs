@@ -29,6 +29,7 @@ use serde::{Deserialize, Serialize};
 use tokio::{sync::mpsc::{self, UnboundedReceiver, UnboundedSender}, time::{interval, MissedTickBehavior}};
 
 mod vpn_stream;
+mod vpn_proxy;
 
 const DHT_PROTOCOL: StreamProtocol = StreamProtocol::new("/ipfs/kad/1.0.0");
 const RELAY_HOP_PROTOCOL: StreamProtocol = StreamProtocol::new("/libp2p/circuit/relay/0.2.0/hop");
@@ -375,6 +376,32 @@ pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeStatus(
     new_java_string(&mut env, snapshot_json())
 }
 
+#[no_mangle]
+pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeConfigureVpnProxy(
+    mut env: JNIEnv,
+    _class: JClass,
+    host: JString,
+    ip_csv: JString,
+    secret: JString,
+) -> jstring {
+    let host = match env.get_string(&host) {
+        Ok(value) => value.to_string_lossy().into_owned(),
+        Err(error) => return new_java_string(&mut env, format!("ERROR:Worker hostname: {error}")),
+    };
+    let ip_csv = match env.get_string(&ip_csv) {
+        Ok(value) => value.to_string_lossy().into_owned(),
+        Err(error) => return new_java_string(&mut env, format!("ERROR:Worker IP list: {error}")),
+    };
+    let secret = match env.get_string(&secret) {
+        Ok(value) => value.to_string_lossy().into_owned(),
+        Err(error) => return new_java_string(&mut env, format!("ERROR:SOCKS5 secret: {error}")),
+    };
+    match vpn_proxy::configure_worker(&host, &ip_csv, &secret) {
+        Ok(()) => new_java_string(&mut env, "OK".to_string()),
+        Err(error) => new_java_string(&mut env, format!("ERROR:{error}")),
+    }
+}
+
 fn new_java_string(env: &mut JNIEnv, value: String) -> jstring {
     match env.new_string(value) {
         Ok(value) => value.into_raw(),
@@ -402,6 +429,17 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
         .accept(StreamProtocol::new(vpn_stream::PROTOCOL_NAME))
         .expect("VPN stream protocol is registered only once");
     let vpn_stream_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
+
+    if !is_admin {
+        let control = vpn_control.clone();
+        tokio::spawn(async move {
+            if let Err(error) = vpn_proxy::run_local_socks_proxy(control).await {
+                set_snapshot(|state| {
+                    state.last_error = format!("local account VPN SOCKS5 bridge stopped: {error}");
+                });
+            }
+        });
+    }
 
     if let Err(error) = swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse().expect("valid TCP multiaddr")) {
         set_snapshot(|state| state.last_error = format!("TCP listener: {error}"));
@@ -528,6 +566,9 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                         }
                     }
                     SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Identify(identify::Event::Received { peer_id, info, .. })) => {
+                        if !is_admin && info.agent_version == ADMIN_AGENT_VERSION {
+                            vpn_proxy::set_admin_peer(peer_id);
+                        }
                         if is_admin && info.agent_version == CLIENT_AGENT_VERSION {
                             // Noise authenticates the peer key; this session marker
                             // only permits EffectCraft client peers to request egress.
