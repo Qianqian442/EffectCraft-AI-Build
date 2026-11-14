@@ -2,9 +2,13 @@ package warpandroid
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
 	"strconv"
@@ -14,8 +18,24 @@ import (
 
 	"github.com/Diniboy1123/usque/api"
 	"github.com/Diniboy1123/usque/config"
-	"github.com/Diniboy1123/usque/internal"
 )
+
+
+// generateClientCert mirrors the small upstream usque self-signed client
+// certificate helper without importing its Go-internal package. Server
+// authentication remains pinned by api.PrepareTlsConfig below.
+func generateClientCert(privKey *ecdsa.PrivateKey) ([][]byte, error) {
+	now := time.Now()
+	cert, err := x509.CreateCertificate(rand.Reader, &x509.Certificate{
+		SerialNumber: big.NewInt(0),
+		NotBefore: now,
+		NotAfter: now.Add(24 * time.Hour),
+	}, &x509.Certificate{}, &privKey.PublicKey, privKey)
+	if err != nil {
+		return nil, err
+	}
+	return [][]byte{cert}, nil
+}
 
 type tunDevice struct{ file *os.File }
 func (d *tunDevice) ReadPacket(buf []byte) (int, error) { return d.file.Read(buf) }
@@ -61,7 +81,7 @@ func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string
 	if err != nil { return fmt.Errorf("WARP private key: %w", err) }
 	endpointPubKey, err := cfg.GetEcEndpointPublicKey()
 	if err != nil { return fmt.Errorf("Cloudflare endpoint public key: %w", err) }
-	cert, err := internal.GenerateCert(privKey, &privKey.PublicKey)
+	cert, err := generateClientCert(privKey)
 	if err != nil { return fmt.Errorf("create MASQUE client certificate: %w", err) }
 	tlsConfig, err := api.PrepareTlsConfig(privKey, endpointPubKey, cert, sni, false)
 	if err != nil { return fmt.Errorf("prepare pinned MASQUE TLS: %w", err) }
