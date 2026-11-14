@@ -638,7 +638,7 @@ public final class AdminAccountVpnService extends VpnService {
             : new Notification.Builder(this);
         return builder
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("EffectCraft Cloudflare WARP")
+            .setContentTitle("Cloudflare 服务器")
             .setContentText(contentText)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
