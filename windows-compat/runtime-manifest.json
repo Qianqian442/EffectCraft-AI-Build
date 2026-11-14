@@ -25,7 +25,7 @@
       {
         "name": "Box64",
         "repository": "https://github.com/ptitSeb/box64",
-        "revision": "4dbba1300a8d74c7c385f0d8a4e453c740622f9f",
+        "revision": "6441fcfaeb69487039b0fd8cfb948c9e3f18c3d6",
         "license": "MIT",
         "role": "x86-64 Linux user-space dynamic translation for standard Wine containers"
       },
@@ -215,7 +215,7 @@
     {
       "id": "box64-box32",
       "repository": "https://github.com/ptitSeb/box64",
-      "revision": "4dbba1300a8d74c7c385f0d8a4e453c740622f9f",
+      "revision": "6441fcfaeb69487039b0fd8cfb948c9e3f18c3d6",
       "license": "MIT",
       "role": "Optional Box64 build with BOX32=ON, supporting 32-bit x86 Linux ELF programs inside the 64-bit ARM64 Box64 process",
       "build_options": [
