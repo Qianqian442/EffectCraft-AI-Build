@@ -335,16 +335,12 @@ def main() -> None:
 
     source = replace_once(
         source,
-        "    app.account.ensure_loaded(config);\n"
-        "    app.account.poll(config);\n"
         "    if app.account.mode == Mode::Editor\n"
         "        && app.account.pending.is_none()\n"
         "        && app.account.last_verified.map_or(true, |last| last.elapsed() > std::time::Duration::from_secs(10))\n"
         "    {\n"
         '        app.account.send(Action::Verify, "GET", "/v1/me", Value::Null, config);\n'
         "    }",
-        "    app.account.ensure_loaded(config);\n"
-        "    app.account.poll(config);\n"
         "    if matches!(app.account.mode, Mode::Editor | Mode::Banned) {\n"
         "        app.account.start_events();\n"
         "        if app.account.mode == Mode::Editor {\n"
