@@ -157,6 +157,7 @@ jobs:
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libeffectcraft_p2p.so'
+          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libhev-socks5-tunnel.so'
           cp app/build/outputs/apk/debug/app-debug.apk ../EffectCraft-Account-Admin.apk
 
       - name: Verify APK package integrity
