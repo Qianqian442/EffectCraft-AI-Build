@@ -375,6 +375,7 @@ def apply_local_ban_cache(source: str) -> str:
                     _ => {}
                 }
             }
+            Some(Ok(_)) => {}
             Some(Err(error)) => self.status = error,
             None => {}
         }
@@ -517,14 +518,20 @@ fn next_api_server(current: &str) -> Option<&'static str> {
         "            events: None,\n            event_started: false,",
         "cloud event receiver initialization",
     )
-    source = replace_once(
-        source,
-        "        if self.events.is_none() {\n"
-        "            self.events = start_account_event_listener();\n"
-        "        }\n",
+    # replace_once deliberately skips empty replacements, so remove this obsolete
+    # LAN listener startup with a checked regex after removing its implementation.
+    source, listener_start_count = re.subn(
+        r"(?m)^        if self\\.events\\.is_none\\(\\) \\{\\n"
+        r"            self\\.events = start_account_event_listener\\(\\);\\n"
+        r"        \\}\\n",
         "",
-        "remove local event-listener startup",
+        source,
+        count=1,
     )
+    if listener_start_count != 1:
+        raise SystemExit(
+            f"local TCP event-listener startup removal expected once, found {listener_start_count}"
+        )
 
     old_saved = (
         "                    // Preserve an explicitly pinned administrator identity. Upgrade\n"
@@ -736,16 +743,23 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
         .timeout_global(Some(Duration::from_secs(10)))
         .build()
         .into();
-    let mut request = if method == "GET" { agent.get(&endpoint) } else { agent.post(&endpoint) };
-    request = request.header("Accept", "application/json");
-    if let Some(token) = token {
-        request = request.header("Authorization", &format!("Bearer {token}"));
-    }
-    let mut response = if body.is_null() {
+    let mut response = if method == "GET" {
+        let mut request = agent.get(&endpoint).header("Accept", "application/json");
+        if let Some(token) = token {
+            request = request.header("Authorization", &format!("Bearer {token}"));
+        }
         request.call()
     } else {
-        let bytes = serde_json::to_vec(&body).map_err(|error| error.to_string())?;
-        request.header("Content-Type", "application/json").send(bytes.as_slice())
+        let mut request = agent.post(&endpoint).header("Accept", "application/json");
+        if let Some(token) = token {
+            request = request.header("Authorization", &format!("Bearer {token}"));
+        }
+        if body.is_null() {
+            request.call()
+        } else {
+            let bytes = serde_json::to_vec(&body).map_err(|error| error.to_string())?;
+            request.header("Content-Type", "application/json").send(bytes.as_slice())
+        }
     }.map_err(|error| format!("云端 HTTPS 请求失败：{error}"))?;
     let status = response.status().as_u16();
     let mut body_text = String::new();
