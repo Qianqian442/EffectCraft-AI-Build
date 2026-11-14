@@ -4,7 +4,7 @@ name: Build EffectCraft AI Android APK
 
 on:
   push:
-    branches: [main, feature/own-on-demand-vpn, feature/main-cloudflare-warp-vpn]
+    branches: [main, feature/own-on-demand-vpn, feature/main-cloudflare-warp-vpn, feature/main-hide-server-address]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - 'p2p-bridge/**'
