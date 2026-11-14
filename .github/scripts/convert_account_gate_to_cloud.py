@@ -254,8 +254,15 @@ def main() -> None:
                                 Ok(Message::Text(message)) => {
                                     if let Ok(value) = serde_json::from_str::<Value>(message.as_str()) {
                                         if value.get("type").and_then(Value::as_str) == Some("account_service_state") {
+                                            let disabled = value.get("enabled").and_then(Value::as_bool) == Some(false);
                                             if let Some(tx) = event_tx.as_ref() {
                                                 let _ = tx.send(Ok(value));
+                                            }
+                                            // Stop the node-event thread after the shutdown notice.
+                                            // Do not send further pings or reconnect while the global
+                                            // account service is disabled; Ae must be relaunched later.
+                                            if disabled {
+                                                return;
                                             }
                                         }
                                     }
