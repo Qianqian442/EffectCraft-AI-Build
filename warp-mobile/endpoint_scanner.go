@@ -129,7 +129,9 @@ func endpointRecordSnapshot() map[string]endpointScanRecord {
 }
 
 func recordEndpointScanSuccess(endpoint net.Addr, rtt time.Duration) {
-	if endpoint == nil {
+	tcp, ok := endpoint.(*net.TCPAddr)
+	if !ok || tcp == nil || tcp.Port != 443 || tcp.IP.To4() == nil ||
+		tcp.IP.To4()[0] != 162 || tcp.IP.To4()[1] != 159 || tcp.IP.To4()[2] != 198 {
 		return
 	}
 	scannerMu.Lock()
@@ -159,7 +161,9 @@ func recordEndpointScanSuccess(endpoint net.Addr, rtt time.Duration) {
 }
 
 func recordEndpointScanFailure(endpoint net.Addr) {
-	if endpoint == nil {
+	tcp, ok := endpoint.(*net.TCPAddr)
+	if !ok || tcp == nil || tcp.Port != 443 || tcp.IP.To4() == nil ||
+		tcp.IP.To4()[0] != 162 || tcp.IP.To4()[1] != 159 || tcp.IP.To4()[2] != 198 {
 		return
 	}
 	scannerMu.Lock()
