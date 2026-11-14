@@ -395,3 +395,14 @@ Termux issue #27663 documented historical x86/x64 startup problems. The issue wa
 5. Add Android Surface/headless rendering, input, audio, and per-device GPU compatibility tests.
 
 No Android device has yet demonstrated a Windows PE/AEX load and render through this project. The Termux source audit and CI builds are progress toward that test, not a compatibility breakthrough.
+
+
+### Important Android process-spawn and relocation blockers
+
+The Termux Hangover recipe links libandroid-spawn, but its source implements posix_spawn using fork/vfork plus execve/execvpe; it does not replace the separate linker64 execution shim. Termux itself injects a linker-aware LD_PRELOAD from https://github.com/termux-play-store/termux-exec to intercept execve/execv/execvp/execvpe/execl/execlp/execle/fexecve and route app-private native ELF files through /system/bin/linker64.
+
+EffectCraft cannot rely on the Termux app's environment. A first EffectCraft-owned exec bridge prototype is now in windows-compat/android-runtime/exec-bridge. It checks that a target is a native-architecture ELF under EFFECTCRAFT_RUNTIME_ROOT with PT_INTERP=/system/bin/linker64, then wraps it through linker64 while preserving argv[0]. It includes a host linker-shim test and a separate Android NDK ARM64 build. This is not yet an Android device test; raw syscall(SYS_execve) paths and all Wine child processes still need audit.
+
+The Termux Wine build also embeds its Termux prefix under /data/data/com.termux/files/usr/opt/hangover-wine. EffectCraft cannot access that other app's private directory. We must rebuild Wine with relocatable paths or prove WINELOADER, WINESERVER, WINEDLLPATH, data paths and helper paths work from EffectCraft's private storage. The Termux .deb packages are not drop-in app assets.
+
+The termux-exec package uses Apache-2.0 for code (MIT for site documentation); libandroid-spawn has a separate BSD-2-Clause license. Add both to the SBOM if any code is reused. The exec bridge prototype is an original compatibility shim, not a copy of Termux's implementation.
