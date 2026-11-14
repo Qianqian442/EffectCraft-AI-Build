@@ -78,11 +78,10 @@ def main() -> None:
     )
     source = replace_once(
         source,
-        '                    if saved.server_url.starts_with("http://") {\n'
-        "                        self.server_url = saved.server_url;\n"
-        "                    }\n"
-        "                    if !saved.token.is_empty() {\n"
-        "                        self.token = Some(saved.token);\n"
+        '                    if saved.server_url == self.server_url {\n'
+        "                        if !saved.token.is_empty() {\n"
+        "                            self.token = Some(saved.token);\n"
+        "                        }\n"
         "                    }",
         '                    if saved.server_url == self.server_url {\n'
         "                        if !saved.token.is_empty() {\n"
@@ -94,6 +93,42 @@ def main() -> None:
     source = source.replace(
         'self.status = "正在连接家中的账号服务器…".to_string();',
         'self.status = "正在连接云端账号服务器…".to_string();',
+    )
+    source = source.replace(
+        'self.status = "正在连接管理员账号节点…".to_string();',
+        'self.status = "正在连接云端账号服务器…".to_string();',
+    )
+    source = source.replace(
+        'ui.label("通过 P2P 自动连接管理员手机账号节点");',
+        'ui.label("通过 Cloudflare HTTPS 云端服务连接账号");',
+    )
+    source = source.replace(
+        'ui.label("账号节点连接方式");',
+        'ui.label("云端账号服务地址");',
+    )
+    source = source.replace(
+        'ui.small("请首次填写管理版复制的完整 p2p://管理员节点ID。为防止假节点窃取密码，未固定管理员身份前不会发送账号密码；保存后以后自动连接，无需逐次审批。");',
+        'ui.small("此地址由构建配置自动设置，账号通信优先直连 Cloudflare，连接失败时自动检测公开代理隧道。");',
+    )
+    source = source.replace(
+        'ui.label("管理员手机账号节点当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");',
+        'ui.label("Cloudflare 账号服务当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");',
+    )
+    source = source.replace(
+        'ui.label("请粘贴管理版“复制管理员节点 ID”得到的完整 p2p://地址；同 Wi-Fi 优先直连，跨网络自动尝试打洞和公共中继。");',
+        'ui.label("系统已尝试直连和可用的公开代理隧道，请检查网络后重试。");',
+    )
+    source = source.replace(
+        'ui.label("管理员节点地址");',
+        'ui.label("Cloudflare HTTPS 服务地址");',
+    )
+    source = source.replace(
+        'ui.text_edit_singleline(&mut app.account.server_url);',
+        'ui.add_enabled(false, egui::TextEdit::singleline(&mut app.account.server_url));',
+    )
+    source = source.replace(
+        'ui.button("保存节点地址并重新连接")',
+        'ui.button("重新检测连接")',
     )
     source = source.replace(
         '                        self.last_verified = Some(std::time::Instant::now());\n',
