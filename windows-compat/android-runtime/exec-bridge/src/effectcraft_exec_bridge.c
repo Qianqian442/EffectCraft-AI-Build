@@ -89,6 +89,7 @@ static bool ec_is_native_bionic_elf(const char *path) {
     close(fd);
 
 #ifdef EFFECTCRAFT_HOST_TEST
+    (void)has_android_interpreter;
     return true;
 #else
     return has_android_interpreter;
