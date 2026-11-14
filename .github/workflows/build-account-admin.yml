@@ -230,6 +230,16 @@ jobs:
           grep -Fq 'tcp://"+net.JoinHostPort(config.DefaultEndpointH2V4, "443")' "$MOBILE"
           grep -Fq 'case *net.TCPAddr, *net.UDPAddr:' .github/scripts/patch_usque_for_android.py
           grep -Fq 'useHTTP2 = true' .github/scripts/patch_usque_for_android.py
+          python3 - <<'PY'
+          from pathlib import Path
+          source = Path("admin-app/app/src/main/java/com/qianqian/effectcraftadmin/AdminAccountVpnService.java").read_text()
+          start = source.index("public static synchronized String startForTask")
+          end = source.index("/** Stop immediately after the account API request completes or fails. */", start)
+          method = source[start:end]
+          if method.index('callWarp("registerDevice"') > method.index("ensurePermission(context)"):
+              raise SystemExit("Initial Cloudflare enrollment must happen before EffectCraft claims Android's single VPN slot.")
+          print("Verified first-time enrollment precedes the built-in VPN handover.")
+          PY
           if grep -R -n -E 'TProxyService|hev[.]socks5|公开代理' admin-app/app/src/main/java; then
             echo "Legacy proxy-relay VPN code must not remain in the admin APK." >&2
             exit 1
