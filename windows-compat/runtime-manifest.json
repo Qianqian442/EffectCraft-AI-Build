@@ -94,7 +94,12 @@
     "test the same runtime plan on OPPO/Qualcomm and Huawei/Mali-class ARM64 devices",
     "evaluate Boxedwine only as a separate GPL-2.0 Android/SDL2 ARM64 port for legacy 32-bit plug-ins; keep it out of the production APK until Android build, 32-bit AEX render and GPL compliance tests pass",
     "verify the three November 12, 2026 WCP packages against pinned SHA-256 during an Android emulator install test and confirm profile.json maps Box64 to ${bindir}/box64, FEXCore to its two system32 DLLs and WOWBox64 to wowbox64.dll",
-    "run the same real AEX host + Noise sample render using FEXCore 2611 and WowBox64 0.4.5 on the ARM64EC Proton container, compare success/failure and output hashes"
+    "run the same real AEX host + Noise sample render using FEXCore 2611 and WowBox64 0.4.5 on the ARM64EC Proton container, compare success/failure and output hashes",
+    "reproduce the Termux Hangover 11.16 Bionic package set from pinned Wine/Hangover inputs and verify repository signatures, package hashes and full transitive SBOM",
+    "install hangover-wine plus libarm64ecfex, libwow64fex and wowbox64 into private app storage; validate clean prefix creation and DLL placement",
+    "test native Bionic Wine launch through /system/bin/linker64 on Android target SDK 35 without root",
+    "test x86_64 PE and x86 PE process execution on Android ARM64 before running the AEX host",
+    "compare current upstream FEX ARM64EC/WoW64 DLL build against Hangover 11.16 bundled FEX 2608 DLLs"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
@@ -419,50 +424,71 @@
     }
   },
   "current_runtime_wcp": {
-    "catalog_repository": "https://github.com/Xnick417x/winlator-nightly-wcp",
-    "verified_release_metadata_date": "2026-11-12",
+    "catalog_repository": "https://github.com/The412Banner/Nightlies",
+    "verified_release_metadata_date": "2026-11-14",
+    "mutable_alias": "nightly-latest (all package assets remain SHA-256 and size pinned)",
     "preferred": {
       "box64": {
-        "version": "0.4.5-4dbba1300",
-        "release_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/tag/box64-nightly-0.4.5-4dbba1300",
-        "asset_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/download/box64-nightly-0.4.5-4dbba1300/Box64-0.4.5-4dbba1300.wcp",
-        "size_bytes": 2901992,
-        "sha256": "9e8e6cda22cecf6c975ebc7d4521a2e08565f4287a479e9db53fcd2850883256",
-        "upstream_commit": "ptitSeb/box64@4dbba1300"
+        "version": "0.4.5-416051d58-Bionic",
+        "release_url": "https://github.com/The412Banner/Nightlies/releases/tag/nightly-latest",
+        "asset_url": "https://github.com/The412Banner/Nightlies/releases/download/nightly-latest/Box64-0.4.5-416051d58-Bionic.wcp",
+        "size_bytes": 2866256,
+        "sha256": "5c00577a649890d88f6d82b9503c9a019fc20699056352a9042981883f146a9f",
+        "build_label": "416051d58"
       },
-      "fexcore": {
-        "version": "2611-ab135df09",
-        "release_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/tag/fex-nightly-2611-ab135df09",
-        "asset_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/download/fex-nightly-2611-ab135df09/FEXCore-2611-ab135df09.wcp",
-        "size_bytes": 1104420,
-        "sha256": "6a8ad93996147fc23d9dd4c541b84b03c19f11911db431f6d155b5b15f9a9c86",
-        "upstream_commit": "FEX-Emu/FEX@ab135df09"
+      "box64ec": {
+        "version": "0.4.5-6441fcfae-experimental",
+        "release_url": "https://github.com/The412Banner/Nightlies/releases/tag/nightly-latest",
+        "asset_url": "https://github.com/The412Banner/Nightlies/releases/download/nightly-latest/Box64EC-0.4.5-6441fcfae-experimental.wcp",
+        "size_bytes": 1055784,
+        "sha256": "80bc7ac0345744e7d571f1f9d1cc243d5408f5464f9e97e9cea4ae40ca0be7ac",
+        "upstream_commit": "ptitSeb/box64@6441fcfae"
       },
       "wowbox64": {
-        "version": "0.4.5-4dbba1300",
-        "release_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/tag/wowbox64-nightly-0.4.5-4dbba1300",
-        "asset_url": "https://github.com/Xnick417x/winlator-nightly-wcp/releases/download/wowbox64-nightly-0.4.5-4dbba1300/WOWBox64-0.4.5-4dbba1300.wcp",
-        "size_bytes": 910648,
-        "sha256": "6037af9cc15bf036eb77077423806798e043cf81370dea40cc9ae17d60a09d39",
-        "upstream_commit": "ptitSeb/box64@4dbba1300 (WowBox64 package)"
+        "version": "0.4.5-416051d58",
+        "release_url": "https://github.com/The412Banner/Nightlies/releases/tag/nightly-latest",
+        "asset_url": "https://github.com/The412Banner/Nightlies/releases/download/nightly-latest/WOWBox64-0.4.5-416051d58.wcp",
+        "size_bytes": 910112,
+        "sha256": "421e0fa560351f1e0b92ccead78656f6125acf0ca1e78ac96872f6ed65ec460b",
+        "build_label": "416051d58"
+      },
+      "fexcore": {
+        "version": "2611.1",
+        "release_url": "https://github.com/The412Banner/Nightlies/releases/tag/FEXCore-2611.1",
+        "asset_url": "https://github.com/The412Banner/Nightlies/releases/download/FEXCore-2611.1/FEXCore-2611.1.wcp",
+        "size_bytes": 1288148,
+        "sha256": "60ef9fefd5a01e353d9266ddb2ad50317ff6f526bc0f42a96408651e373fa8b4",
+        "upstream_commit": "FEX-Emu/FEX@4f9c1f1e36443d22d7655477e34f51b95b685bf1"
       }
     },
-    "legacy_fallbacks": {
-      "box64": "0.3.7 WCP embedded in Winlator Bionic commit 95224ca7db27ae133dbb1578e004b94b86ef8894",
-      "fexcore": "2508 WCP embedded in Winlator Bionic commit 95224ca7db27ae133dbb1578e004b94b86ef8894",
-      "wowbox64": "0.3.7 WCP embedded in Winlator Bionic commit 95224ca7db27ae133dbb1578e004b94b86ef8894"
-    },
-    "install_policy": "Stream-download each WCP to private runtime storage, verify pinned SHA-256 and expected size, parse profile.json and allow only the pre-approved Box64/FEXCore/WOWBox64 destinations; keep legacy packages as rollback options."
+    "install_policy": "Download each WCP to private runtime storage, verify pinned SHA-256 and expected size, parse profile.json and allow only pre-approved destinations. The nightly-latest alias is mutable; reject any payload whose SHA-256 or size differs from this manifest."
   },
   "recent_validation_findings": [
+    "November 14, 2026: Termux hangover-wine 11.16 Bionic recipe audited; native Wine build enables i386/aarch64/arm64ec and packages FEX ARM64EC, FEX WoW64 and Box64 WoW64 PE DLLs. No EffectCraft Android device execution yet.",
+    "November 13, 2026: Box64 BOX32=ON Android NDK build completed and was packaged with SHA-256 0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5; 658-object link succeeded. 32-bit x86 ELF execution and Windows PE/AEX hosting remain unverified.",
+    "November 14, 2026: current WCP validation run initially failed because the pinned nightly-20261112-230654 release tag had been removed (HTTP 404); validation pins were refreshed to nightly-latest with exact package hashes/sizes and stable FEXCore 2611.1.",
+    "November 14, 2026: a separate CI build was updated to compile FEX ARM64EC and WoW64 PE DLLs from current FEX upstream commit ea43314f040633c76fb5891ff31d8a7c3dc533b8; build result pending.",
     "November 13, 2026: SHA-256 and archive/profile inspection passed for pinned Box64EC, Box64 Bionic, WowBox64, FEXCore 2611.1, GE-Proton 11.0-7.1 x86_64 and GE-Proton 11.0-7.1 ARM64EC WCP packages; this validates package integrity/metadata only, not runtime execution.",
     "November 12, 2026: Android NDK build produced a Bionic ARM64 Box64 artifact, FEXCore Arm64EC/WoW64 PE DLL artifacts, and a Windows x64 AEX host worker artifact.",
     "November 12, 2026: the x64 AEX worker built successfully on Windows, but the Linux ARM64 Box64 + Bionic Proton x86_64 smoke test failed with unresolved __libc_init and SIGSEGV; this Bionic Wine/Box64 combination is not supported by current evidence.",
-    "November 12, 2026: the Android NDK Box64 BOX32 build failed in libc_net32.c because Bionic exposes struct __res_state as incomplete; 32-bit Box32 support is not built yet.",
     "November 13, 2026: Android runtime launcher now wraps app-private Bionic host executables through /system/bin/linker64 and selects HODLL64 for x86_64 PE plus HODLL for 32-bit WoW64 PE; unit/instrumented validation is pending.",
     "No real Windows PE or AEX plug-in has yet been launched and rendered on an Android ARM64 device through this integration."
   ],
   "android_bionic_alternatives": [
+    {
+      "id": "termux-hangover-bionic-11.16",
+      "source_repository": "https://github.com/termux/termux-packages",
+      "source_revision": "e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9",
+      "package_version": "11.16",
+      "role": "Preferred Bionic-native Hangover/Wine ARM64 runtime candidate; native Wine with FEX ARM64EC and FEX/Box64 WoW64 PE DLLs",
+      "integration_status": "source-audited; package published in Termux x11-repo; not integrated into EffectCraft; not Android-device-tested",
+      "limitations": [
+        "Termux recipe disables OpenCL and ALSA; Vulkan/OpenGL/PulseAudio/X11 dependencies need Android-specific adaptation",
+        "Termux X11/PulseAudio desktop setup is not an EffectCraft Surface/headless render bridge",
+        "Package-level SBOM and source/notice obligations remain pending",
+        "Termux issue #27663 documents historical x86/x64 startup and prefix packaging issues; install all emulator subpackages and create a clean prefix"
+      ]
+    },
     {
       "id": "piperella-hangover-bionic-11.9",
       "source_repository": "https://github.com/Piperella/Piperella-Hangover-Bionic",
@@ -521,5 +547,100 @@
       "OPPO Android ARM64 device validation",
       "Huawei ARM64 device validation"
     ]
+  },
+  "preferred_bionic_pe_backend": {
+    "id": "termux-hangover-bionic-11.16",
+    "status": "source-audited-package-published-not-integrated-not-device-tested",
+    "repository": "https://github.com/termux/termux-packages",
+    "repository_revision": "e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9",
+    "package_path": "x11-packages/hangover-wine",
+    "package_version": "11.16",
+    "package_license": "LGPL-2.1 (Termux package metadata)",
+    "package_recipe_last_path_update": "2026-10-28",
+    "package_version_bump_commit": "f28d0cbacde34399f0c95ec085972be23da952b9",
+    "wine_source": {
+      "repository": "https://github.com/AndreRH/wine",
+      "tag": "hangover-11.16",
+      "revision": "628d1aeb09803d3fa9170023e7203060e955bfe8",
+      "source_archive_sha256": "21e4dd77a9d1d4897194d5751e03a5fc6cdec4390889ad6a652b87d05aa0bb4d"
+    },
+    "hangover_release": {
+      "repository": "https://github.com/AndreRH/hangover",
+      "tag": "hangover-11.16",
+      "revision": "56e385b7ff490edd281b288f420677093563560b",
+      "published_at": "2026-08-30",
+      "source_submodule_wine_revision": "3ea3a14941b6a122b892c84141ce9662c008081e",
+      "asset": "hangover_11.16_ubuntu2204_jammy_arm64.tar",
+      "size_bytes": 312883200,
+      "sha256": "ecde5846b2f1b23d394fede04a52cbf31853076b85e98d53a391d9e758345488"
+    },
+    "enabled_wine_architectures": [
+      "i386",
+      "aarch64",
+      "arm64ec"
+    ],
+    "build_options": [
+      "--enable-archs=i386,aarch64,arm64ec",
+      "--with-opengl",
+      "--with-vulkan",
+      "--with-pulse",
+      "--with-sdl",
+      "--without-opencl",
+      "--without-alsa",
+      "--without-dbus",
+      "ac_cv_header_linux_userfaultfd_h=no",
+      "LDFLAGS += -landroid-spawn -Wl,--rosegment"
+    ],
+    "emulator_dlls": {
+      "x86_64_pe": {
+        "file": "libarm64ecfex.dll",
+        "backend": "FEX ARM64EC",
+        "selection": "HODLL64=libarm64ecfex.dll"
+      },
+      "x86_pe": {
+        "file": "libwow64fex.dll",
+        "backend": "FEX WoW64",
+        "selection": "HODLL=libwow64fex.dll"
+      },
+      "x86_alternative": {
+        "file": "wowbox64.dll",
+        "backend": "Box64 PE WoW64 alternative"
+      }
+    },
+    "published_termux_packages": {
+      "wine_deb": "hangover-wine_11.16_aarch64.deb",
+      "wine_deb_approx_size_bytes": 262625316,
+      "fex_arm64ec_deb": "hangover-libarm64ecfex_11.16_aarch64.deb",
+      "fex_arm64ec_deb_size_bytes": 741184,
+      "fex_wow64_deb": "hangover-libwow64fex_11.16_aarch64.deb",
+      "fex_wow64_deb_size_bytes": 659456,
+      "box64_wow64_deb": "hangover-wowbox64_11.16_aarch64.deb",
+      "box64_wow64_deb_approx_size_bytes": 908732
+    },
+    "rationale": "Wine runs natively against Bionic on ARM64; FEX/Box64 PE DLLs translate only guest Windows code at the WoW64/ARM64EC boundary. Do not wrap the full Wine host in Linux Box64 for the primary PE route.",
+    "known_issue": "Termux issue #27663 recorded historical x86/x64 startup failures; closed as completed on 2026-03-21 after all Hangover packages were installed and a clean Wine prefix was generated.",
+    "source_mismatch": "Termux builds Wine from the hangover-11.16 tag commit 628d1aeb..., while the Hangover release submodule tree points to Wine commit 3ea3a149... (a page-size-warning change was reverted). Verify the resulting Wine/PE DLL ABI at runtime.",
+    "limitations": [
+      "Termux recipe disables OpenCL; CLVK bridge remains unverified and compiler-disabled build only supports precompiled SPIR-V/OpenCL IL paths",
+      "No CUDA implementation",
+      "X11/PulseAudio desktop path is not an Android Surface integration",
+      "Vulkan/DXVK requires device-specific extensions/features; some ARM64 GPUs may not meet Vulkan 1.3 requirements",
+      "No Android ARM64 device execution test has been completed"
+    ],
+    "license_gate": "Generate full package-level SBOM, preserve LGPL-2.1 Wine/Hangover sources and notices, FEX MIT notices, Box64 MIT notices and all transitive dependency licenses before APK redistribution.",
+    "next_steps": [
+      "Reproduce the Bionic package set from pinned Termux inputs and verify signed repository metadata and per-package SHA-256",
+      "Implement private-storage extraction, Termux-prefix relocation, library path and wineserver handling",
+      "Launch Bionic host executables through /system/bin/linker64",
+      "Install the complete emulator DLL set and create clean isolated Wine prefixes",
+      "Run minimal Win32, x86_64 PE and x86 PE tests on Android ARM64 before AEX tests"
+    ]
+  },
+  "recommended_next_backend": {
+    "id": "termux-hangover-bionic-11.16",
+    "priority": "preferred next integration target",
+    "status": "audited-not-integrated-not-device-tested",
+    "rationale": "Native Bionic Wine plus PE emulator DLLs avoids the failed full-Wine-under-Box64 route and avoids layering multiple CPU emulators around Wine.",
+    "keep_existing_backend_as": "Winlator/Proton fallback and comparison path"
   }
 }
