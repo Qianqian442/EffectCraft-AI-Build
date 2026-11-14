@@ -213,8 +213,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "event_sender: Option<mpsc::Sender<Result<Value, String>>>",
             "account_service_state",
             "service_disabled",
-            "service_enabled",
-            "app.account.poll_events(config)",
+            "请等待管理员重新开启服务器，再关闭并重新打开 Ae",
             "app.account.poll_events(config)",
         ),
     )
