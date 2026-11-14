@@ -99,8 +99,8 @@ class AuthError extends Error {}
 function publicUser(row) {
   return {
     id: row.id,
-    qq: row.qq,
-    wechat: row.wechat,
+    qq: row.qq || "",
+    wechat: row.wechat || "",
     name: row.name,
     avatar_url: row.avatar_url || "",
     created_at: row.created_at,
@@ -126,10 +126,14 @@ async function authResult(env, row, role, seconds) {
 }
 async function readJson(request) {
   const length = Number(request.headers.get("content-length") || "0");
-  if (length > 65536) throw new HttpError(413, "请求内容过大");
+  const maxBytes = 180 * 1024;
+  if (length > maxBytes) throw new HttpError(413, "请求内容过大");
   try {
-    return await request.json();
-  } catch (_) {
+    const raw = await request.text();
+    if (encoder.encode(raw).byteLength > maxBytes) throw new HttpError(413, "请求内容过大");
+    return JSON.parse(raw);
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
     throw new HttpError(400, "请求数据格式不正确");
   }
 }
@@ -140,18 +144,29 @@ class HttpError extends Error {
     this.extra = extra;
   }
 }
+function validAvatar(avatar) {
+  if (!avatar) return true;
+  if (/^https?:\/\/\S+$/i.test(avatar)) return true;
+  // The Android photo picker sends a 256px JPEG compressed to at most 96 KiB.
+  // Allow the resulting Base64 data URI while keeping database payloads bounded.
+  return avatar.length <= 135000 &&
+    /^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(avatar);
+}
 function validateRegistration(body) {
   const qq = String(body.qq || "").trim();
   const wechat = String(body.wechat || "").trim();
   const name = String(body.name || "").trim();
   const password = String(body.password || "");
   const avatar = String(body.avatar_url || "").trim();
-  if (!/^[1-9][0-9]{4,11}$/.test(qq)) throw new HttpError(422, "QQ号应填写5至12位数字");
-  if (!/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat)) throw new HttpError(422, "微信号格式不正确");
+  const validQQ = !qq || /^[1-9][0-9]{4,11}$/.test(qq);
+  const validWechat = !wechat || /^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat);
+  if ((!qq && !wechat) || !validQQ || !validWechat) {
+    throw new HttpError(422, "QQ号和微信号至少填写一项；填写的项目必须符合格式");
+  }
   if (!name || name.length > 40) throw new HttpError(422, "姓名不能为空且不能超过40字");
   if (password.length < 8 || password.length > 128) throw new HttpError(422, "密码至少8位");
-  if (avatar && !/^https?:\/\/\S+$/i.test(avatar)) throw new HttpError(422, "头像地址格式不正确");
-  return { qq, wechat, name, password, avatar };
+  if (!validAvatar(avatar)) throw new HttpError(422, "头像格式不正确或图片超过大小限制");
+  return { qq: qq || null, wechat: wechat || null, name, password, avatar };
 }
 async function register(request, env) {
   const body = validateRegistration(await readJson(request));
@@ -200,10 +215,12 @@ async function updateProfile(request, env) {
   const wechat = String(body.wechat || "").trim();
   const name = String(body.name || "").trim();
   const avatar = String(body.avatar_url || "").trim();
-  if (!/^[1-9][0-9]{4,11}$/.test(qq) || !/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat) || !name || name.length > 40) {
-    return fail(422, "QQ号、微信号或姓名格式不正确");
+  const validQQ = !qq || /^[1-9][0-9]{4,11}$/.test(qq);
+  const validWechat = !wechat || /^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat);
+  if ((!qq && !wechat) || !validQQ || !validWechat || !name || name.length > 40) {
+    return fail(422, "QQ号和微信号至少填写一项；填写的项目必须符合格式");
   }
-  if (avatar && !/^https?:\/\/\S+$/i.test(avatar)) return fail(422, "头像地址格式不正确");
+  if (!validAvatar(avatar)) return fail(422, "头像格式不正确或图片超过大小限制");
   let newHash = row.password_hash;
   const newPassword = String(body.new_password || "");
   if (newPassword) {
@@ -214,7 +231,7 @@ async function updateProfile(request, env) {
   try {
     await env.DB.prepare(
       "UPDATE accounts SET qq = ?, wechat = ?, name = ?, avatar_url = ?, password_hash = ? WHERE id = ?"
-    ).bind(qq, wechat, name, avatar, newHash, claims.sub).run();
+    ).bind(qq || null, wechat || null, name, avatar, newHash, claims.sub).run();
   } catch (_) {
     return fail(409, "QQ号或微信号已被其他账号使用");
   }
@@ -239,11 +256,11 @@ async function adminUsers(request, env, url) {
   if (query) {
     const like = "%" + query.replace(/[%_\\]/g, "\\$&") + "%";
     result = await env.DB.prepare(
-      "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE qq LIKE ? ESCAPE '\\' OR lower(wechat) LIKE ? ESCAPE '\\' OR lower(name) LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT 500"
+      "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE qq LIKE ? ESCAPE '\\' OR lower(wechat) LIKE ? ESCAPE '\\' OR lower(name) LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT 500"
     ).bind(like, like, like).all();
   } else {
     result = await env.DB.prepare(
-      "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts ORDER BY created_at DESC LIMIT 500"
+      "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts ORDER BY created_at DESC LIMIT 500"
     ).all();
   }
   return response({ users: result.results || [] });
@@ -251,7 +268,7 @@ async function adminUsers(request, env, url) {
 async function adminUser(request, env, id) {
   await readToken(env, request, "admin");
   const row = await env.DB.prepare(
-    "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE id = ?"
+    "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE id = ?"
   ).bind(id).first();
   if (!row) return fail(404, "账号不存在");
   return response({ user: row });
@@ -338,7 +355,7 @@ async function adminBan(request, env, id) {
     console.error("account-notification-error", error && error.message ? error.message : String(error));
   }
   const row = await env.DB.prepare(
-    "SELECT id, qq, wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE id = ?"
+    "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE id = ?"
   ).bind(id).first();
   return response({ user: row, notification_delivered: notified, revoked_node_sessions: revokedNodeSessions });
 }
