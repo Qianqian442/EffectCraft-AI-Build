@@ -215,7 +215,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "service_disabled",
             "service_enabled",
             "app.account.poll_events(config)",
-            "Drain already-open event channels locally",
+            "app.account.poll_events(config)",
         ),
     )
 ]
