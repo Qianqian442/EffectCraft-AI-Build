@@ -90,6 +90,9 @@ impl TaskVpnGuard {
         BufReader::new(stream).read_line(&mut response)
             .map_err(|error| format!("Cloudflare WARP 启动结果读取失败：{error}"))?;
         let response = response.trim();
+        if response.starts_with("ERROR:") {
+            return Err(response.trim_start_matches("ERROR:").to_string());
+        }
         if response == "VPN_PERMISSION_REQUIRED" {
             return Err("需要先同意 Android 系统的 VPN 连接授权".to_string());
         }
