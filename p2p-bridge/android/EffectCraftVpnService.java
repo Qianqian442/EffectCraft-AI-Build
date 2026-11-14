@@ -244,6 +244,34 @@ public final class EffectCraftVpnService extends VpnService {
         builder.addAddress(address, prefix);
     }
 
+    private static java.util.Set<String> endpointIpSet(String endpoints) throws Exception {
+        java.util.HashSet<String> values = new java.util.HashSet<>();
+        for (String raw : endpoints.split(";")) {
+            String item = raw.trim();
+            int scheme = item.indexOf("://");
+            if (scheme <= 0) throw new IllegalArgumentException("MASQUE endpoint scheme is missing");
+            String hostPort = item.substring(scheme + 3);
+            String host;
+            if (hostPort.startsWith("[")) {
+                int close = hostPort.indexOf(']');
+                if (close <= 1) throw new IllegalArgumentException("MASQUE IPv6 endpoint is invalid");
+                host = hostPort.substring(1, close);
+                if (close + 1 >= hostPort.length() || hostPort.charAt(close + 1) != ':') {
+                    throw new IllegalArgumentException("MASQUE endpoint port is missing");
+                }
+            } else {
+                int colon = hostPort.lastIndexOf(':');
+                if (colon <= 0) throw new IllegalArgumentException("MASQUE endpoint port is missing");
+                host = hostPort.substring(0, colon);
+            }
+            InetAddress address = InetAddress.getByName(host);
+            if (!isPublicAddress(address)) throw new IllegalArgumentException("MASQUE endpoint is not a public IP");
+            values.add(address.getHostAddress());
+        }
+        if (values.isEmpty()) throw new IllegalArgumentException("Cloudflare supplied no MASQUE endpoint IPs");
+        return values;
+    }
+
     private void startTunnel(String host, String bundle, String ipCsv) {
         ParcelFileDescriptor established = null;
         int detachedFd = -1;
@@ -258,6 +286,7 @@ public final class EffectCraftVpnService extends VpnService {
                 throw new IllegalArgumentException("Cloudflare MASQUE endpoint configuration is incomplete");
             }
 
+            java.util.Set<String> masqueEndpointIps = endpointIpSet(endpointList);
             Builder builder = new Builder()
                 .setSession("EffectCraft Cloudflare WARP account task")
                 .setMtu(1280)
@@ -273,6 +302,9 @@ public final class EffectCraftVpnService extends VpnService {
                 InetAddress ip = InetAddress.getByName(ipText);
                 if (!isPublicAddress(ip)) continue;
                 if (ip instanceof Inet6Address && ipv6.isEmpty()) continue;
+                if (masqueEndpointIps.contains(ip.getHostAddress())) {
+                    throw new IllegalStateException("Worker IP overlaps a MASQUE endpoint; refused to create a VPN route loop");
+                }
                 builder.addRoute(ip, ip instanceof Inet4Address ? 32 : 128);
                 routes++;
             }
