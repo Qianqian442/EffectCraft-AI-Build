@@ -41,10 +41,18 @@ Android Keystore. No Cloudflare token or private key is committed here.
 
 ## Status
 
-This is an **engine-build prototype**, not yet wired into either APK runtime.
-Its independent workflow builds an ARM64 Android AAR and checks native
-libraries and generated Java bindings. Runtime integration and real China
-network validation are subsequent steps.
+The Android bridge now exposes a device enrollment method that registers a
+WARP device, enrolls a MASQUE key, and returns the device-specific tunnel
+configuration. The Android services call the bridge with the matching method
+signatures. Both APK workflows build the AAR before packaging it.
+
+A successful APK build verifies compilation, native library inclusion,
+package integrity, and signing; it does **not** prove that the tunnel connects
+on a particular carrier or in Mainland China. The enrollment endpoint and
+MASQUE endpoint still require live network validation on the target network.
+For Mainland China Global Acceleration, use only endpoint details issued by
+the relevant Cloudflare One account/partner; do not guess endpoints or replace
+them with arbitrary public WARP addresses.
 
 This is an unofficial third-party WARP/MASQUE implementation; it is not the
 official Cloudflare One Agent and is not endorsed by Cloudflare.
