@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,12 +23,33 @@ const (
 	scannerMaxCandidates   = 32
 	scannerMaxWorkers      = 8
 	scannerMaxResults      = 4
-	scannerProbeTimeout    = 2200 * time.Millisecond
-	scannerMaxRTT          = 1800 * time.Millisecond
+	scannerProbeTimeout    = 3500 * time.Millisecond
+	scannerMaxRTT          = 3200 * time.Millisecond
 	scannerStableScore     = 3
 	scannerRecordLifetime  = 30 * 24 * time.Hour
 	scannerPenaltyPeriod   = 2 * time.Minute
 )
+
+// Cloudflare consumer WARP MASQUE accepts HTTP/2 over these TCP ports.
+// Trying only 443 silently leaves TCP-blocked networks with QUIC/UDP as
+// the only working path, which is frequently unavailable on restrictive mobile networks.
+var cloudflareH2Ports = []int{443, 500, 1701, 4500, 4443, 8443, 8095}
+
+func isCloudflareH2Endpoint(endpoint *net.TCPAddr) bool {
+	if endpoint == nil || endpoint.IP == nil || endpoint.IP.To4() == nil {
+		return false
+	}
+	ip := endpoint.IP.To4()
+	if ip[0] != 162 || ip[1] != 159 || ip[2] != 198 || ip[3] < 2 {
+		return false
+	}
+	for _, port := range cloudflareH2Ports {
+		if endpoint.Port == port {
+			return true
+		}
+	}
+	return false
+}
 
 type endpointScanRecord struct {
 	Score       int   `json:"score"`
@@ -130,8 +152,7 @@ func endpointRecordSnapshot() map[string]endpointScanRecord {
 
 func recordEndpointScanSuccess(endpoint net.Addr, rtt time.Duration) {
 	tcp, ok := endpoint.(*net.TCPAddr)
-	if !ok || tcp == nil || tcp.Port != 443 || tcp.IP.To4() == nil ||
-		tcp.IP.To4()[0] != 162 || tcp.IP.To4()[1] != 159 || tcp.IP.To4()[2] != 198 {
+	if !ok || !isCloudflareH2Endpoint(tcp) {
 		return
 	}
 	scannerMu.Lock()
@@ -162,8 +183,7 @@ func recordEndpointScanSuccess(endpoint net.Addr, rtt time.Duration) {
 
 func recordEndpointScanFailure(endpoint net.Addr) {
 	tcp, ok := endpoint.(*net.TCPAddr)
-	if !ok || tcp == nil || tcp.Port != 443 || tcp.IP.To4() == nil ||
-		tcp.IP.To4()[0] != 162 || tcp.IP.To4()[1] != 159 || tcp.IP.To4()[2] != 198 {
+	if !ok || !isCloudflareH2Endpoint(tcp) {
 		return
 	}
 	scannerMu.Lock()
@@ -288,40 +308,45 @@ func makeH2Candidates(defaultEndpoint *net.TCPAddr, snapshot map[string]endpoint
 	candidates := make([]*net.TCPAddr, 0, scannerMaxCandidates)
 
 	add := func(address *net.TCPAddr) {
-		if address == nil || address.IP == nil || address.Port != 443 {
+		if !isCloudflareH2Endpoint(address) {
 			return
 		}
-		ip := address.IP.To4()
-		if ip == nil || ip[0] != 162 || ip[1] != 159 || ip[2] != 198 || ip[3] < 2 {
-			return
-		}
-		key := (&net.TCPAddr{IP: ip, Port: 443}).String()
+		key := address.String()
 		if seen[key] || len(candidates) >= scannerMaxCandidates {
 			return
 		}
 		seen[key] = true
-		candidates = append(candidates, &net.TCPAddr{IP: append(net.IP(nil), ip...), Port: 443})
+		candidates = append(candidates, &net.TCPAddr{
+			IP: append(net.IP(nil), address.IP.To4()...),
+			Port: address.Port,
+		})
 	}
 
-	// Previously successful endpoints are tried before exploring new addresses.
+	// Previously successful endpoint IP:port pairs are tried first by score,
+	// followed by the configured Cloudflare default endpoint.
 	type cached struct {
 		endpoint *net.TCPAddr
-		record   endpointScanRecord
+		record endpointScanRecord
 	}
 	var known []cached
 	for raw, record := range snapshot {
 		host, portText, err := net.SplitHostPort(raw)
-		if err != nil || portText != "443" || record.Score <= 0 {
+		if err != nil || record.Score <= 0 {
+			continue
+		}
+		port, err := strconv.Atoi(portText)
+		if err != nil {
 			continue
 		}
 		ip := net.ParseIP(host)
 		if ip == nil || ip.To4() == nil {
 			continue
 		}
-		known = append(known, cached{
-			endpoint: &net.TCPAddr{IP: ip.To4(), Port: 443},
-			record: record,
-		})
+		endpoint := &net.TCPAddr{IP: ip.To4(), Port: port}
+		if !isCloudflareH2Endpoint(endpoint) {
+			continue
+		}
+		known = append(known, cached{endpoint: endpoint, record: record})
 	}
 	sort.Slice(known, func(i, j int) bool {
 		if known[i].record.Score != known[j].record.Score {
@@ -335,16 +360,34 @@ func makeH2Candidates(defaultEndpoint *net.TCPAddr, snapshot map[string]endpoint
 
 	add(defaultEndpoint)
 
-	addresses := make([]byte, 0, 253)
+	// Explicitly cover alternative Cloudflare TCP ports on common consumer
+	// endpoints before random scanning, so a filtered TCP/443 does not force
+	// the client to rely on UDP/QUIC alone.
+	for _, lastOctet := range []byte{2, 10} {
+		for _, port := range cloudflareH2Ports {
+			add(&net.TCPAddr{IP: net.IPv4(162, 159, 198, lastOctet), Port: port})
+		}
+	}
+
+	type target struct {
+		host byte
+		port int
+	}
+	targets := make([]target, 0, 253*len(cloudflareH2Ports))
 	for host := 2; host <= 254; host++ {
-		addresses = append(addresses, byte(host))
+		for _, port := range cloudflareH2Ports {
+			targets = append(targets, target{host: byte(host), port: port})
+		}
 	}
 	rng := rand.New(rand.NewSource(time.Now().UnixNano()))
-	rng.Shuffle(len(addresses), func(i, j int) {
-		addresses[i], addresses[j] = addresses[j], addresses[i]
+	rng.Shuffle(len(targets), func(i, j int) {
+		targets[i], targets[j] = targets[j], targets[i]
 	})
-	for _, host := range addresses {
-		add(&net.TCPAddr{IP: net.IPv4(162, 159, 198, host), Port: 443})
+	for _, item := range targets {
+		add(&net.TCPAddr{
+			IP: net.IPv4(162, 159, 198, item.host),
+			Port: item.port,
+		})
 		if len(candidates) >= scannerMaxCandidates {
 			break
 		}
