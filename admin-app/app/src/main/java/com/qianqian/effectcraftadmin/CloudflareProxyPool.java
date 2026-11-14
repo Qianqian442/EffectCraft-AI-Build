@@ -83,15 +83,30 @@ final class CloudflareProxyPool {
             throw new java.io.IOException("Android VPN 权限尚未就绪：" + permissionStatus);
         }
 
-        // Do not trust carrier-provided plaintext DNS for workers.dev. Resolve
-        // through Cloudflare's authenticated DoH endpoint before installing the
-        // split-tunnel route, then pin the HTTPS socket to those returned IPs.
-        java.util.List<java.net.InetAddress> workerAddresses =
-            CloudflareHttpsTransport.resolveWorkerAddresses(workerHost);
+        // Establish a first, app-scoped WARP tunnel to Cloudflare's numeric DNS
+        // endpoints. The DoH lookup then runs INSIDE that live tunnel, so the
+        // account flow cannot stall on carrier DNS before VPN activation.
+        String bootstrapStatus = AdminAccountVpnService.startForTask(
+            context, workerHost, CloudflareHttpsTransport.resolverAddressesForTunnel());
+        if (!"OK".equals(bootstrapStatus)) {
+            throw new java.io.IOException("Cloudflare DNS 引导隧道启动失败：" + bootstrapStatus);
+        }
 
+        java.util.List<java.net.InetAddress> workerAddresses;
+        try {
+            workerAddresses = CloudflareHttpsTransport.resolveWorkerAddresses(workerHost);
+        } finally {
+            String stopped = AdminAccountVpnService.stopForTask(context);
+            if (!"OK".equals(stopped)) {
+                android.util.Log.w("EffectCraftAdminWARP", "DNS bootstrap VPN stop confirmation: " + stopped);
+            }
+        }
+
+        // Rebuild the split route for the actual Worker IPs. The account request
+        // itself is sent only after this second tunnel reports connected.
         String vpnStatus = AdminAccountVpnService.startForTask(context, workerHost, workerAddresses);
         if (!"OK".equals(vpnStatus)) {
-            throw new java.io.IOException("管理版 Cloudflare WARP 启动失败：" + vpnStatus);
+            throw new java.io.IOException("管理版 Cloudflare WARP 账号隧道启动失败：" + vpnStatus);
         }
 
         try {
