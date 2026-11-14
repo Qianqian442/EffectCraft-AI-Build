@@ -231,6 +231,10 @@ jobs:
           grep -Fq 'AdminAccountVpnService' "$MANIFEST"
           grep -Fq 'CloudflareHttpsTransport.resolveWorkerAddresses' "$API"
           grep -Fq 'CloudflareHttpsTransport.execute' "$API"
+          grep -Fq 'AdminAccountVpnService.requestPermissionForTask(context)' "$API"
+          grep -Fq 'public static synchronized String requestPermissionForTask' "$VPN"
+          grep -Fq '正在检查 VPN 授权并解析 Cloudflare 账号服务器地址' admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java
+          grep -Fq 'openTlsSocket(host, Collections.singletonList(address), 5000, 5000)' "$TRANSPORT"
           grep -Fq 'cloudflare-dns.com' "$TRANSPORT"
           grep -Fq 'setEndpointIdentificationAlgorithm("HTTPS")' "$TRANSPORT"
           grep -Fq 'new SNIHostName(host)' "$TRANSPORT"
@@ -271,6 +275,16 @@ jobs:
           if method.index('callWarp("registerDevice"') > method.index("ensurePermission(context)"):
               raise SystemExit("Initial Cloudflare enrollment must happen before EffectCraft claims Android's single VPN slot.")
           print("Verified first-time enrollment precedes the built-in VPN handover.")
+          api = Path("admin-app/app/src/main/java/com/qianqian/effectcraftadmin/CloudflareProxyPool.java").read_text()
+          start = api.index("static ApiResponse request(")
+          end = api.index("\\n    }", start)
+          request = api[start:end]
+          if not (request.index("requestPermissionForTask(context)") < request.index("resolveWorkerAddresses(workerHost)") < request.index("startForTask(context")):
+              raise SystemExit("VPN permission must be checked before DoH bootstrap, and WARP must start before the account request.")
+          transport = Path("admin-app/app/src/main/java/com/qianqian/effectcraftadmin/CloudflareHttpsTransport.java").read_text()
+          if "if (type == 28 && !resolved.isEmpty()) break;" not in transport:
+              raise SystemExit("The DNS bootstrap must not wait for AAAA when usable A records already exist.")
+          print("Verified VPN consent precedes the bounded Cloudflare DoH bootstrap.")
           PY
           if grep -R -n -E 'TProxyService|hev[.]socks5|公开代理' admin-app/app/src/main/java; then
             echo "Legacy proxy-relay VPN code must not remain in the admin APK." >&2
