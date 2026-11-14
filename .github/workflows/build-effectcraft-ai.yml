@@ -240,6 +240,7 @@ jobs:
 
       - name: Integrate task-scoped Android VPN service
         env:
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
           HEV_AAR_PATH: ${{ runner.temp }}/hev-socks5-tunnel.aar
