@@ -14,6 +14,8 @@ git -C "$UPSTREAM" checkout --detach "$PINNED_USQUE_COMMIT"
 USQUE_SOURCE_DIR="$UPSTREAM" python3 "$ROOT/.github/scripts/patch_usque_for_android.py"
 mkdir -p "$(dirname "$OUTPUT")"
 cd "$WARP_DIR"
+# Go 1.26 gomobile checks that gobind is recorded as a tool in this module.
+go get -tool golang.org/x/mobile/cmd/gobind
 go mod download
 gomobile bind -target=android/arm64 -androidapi=26 -javapkg=com.effectcraft.warp -o "$OUTPUT" .
 test -s "$OUTPUT"
