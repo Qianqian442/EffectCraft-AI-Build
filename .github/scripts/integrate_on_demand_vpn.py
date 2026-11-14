@@ -96,6 +96,7 @@ def a(name):
 tree = ET.parse(manifest_path)
 root = tree.getroot()
 for permission in (
+    "android.permission.ACCESS_NETWORK_STATE",
     "android.permission.FOREGROUND_SERVICE",
     "android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED",
     "android.permission.POST_NOTIFICATIONS",
