@@ -1,0 +1,8 @@
+{
+  "name": "effectcraft-edgeone-relay",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  }
+}
