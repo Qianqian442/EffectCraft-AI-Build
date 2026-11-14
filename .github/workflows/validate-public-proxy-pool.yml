@@ -1,0 +1,41 @@
+name: Validate EffectCraft public proxy TLS pool
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/native/public_proxy_pool.rs'
+      - '.github/scripts/validate_public_proxy_pool.sh'
+      - '.github/workflows/validate-public-proxy-pool.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/native/public_proxy_pool.rs'
+      - '.github/scripts/validate_public_proxy_pool.sh'
+      - '.github/workflows/validate-public-proxy-pool.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-public-proxy-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    name: Compile TLS proxy pool and parser tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out proxy implementation
+        uses: actions/checkout@v4
+
+      - name: Set up stable Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Compile and run proxy pool unit tests
+        env:
+          BUILD_ASSETS_DIR: ${{ github.workspace }}
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: bash .github/scripts/validate_public_proxy_pool.sh
