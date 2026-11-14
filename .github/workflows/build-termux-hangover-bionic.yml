@@ -21,6 +21,9 @@ jobs:
     name: Reproduce Hangover 11.16 Wine and emulator packages for aarch64
     runs-on: ubuntu-24.04
     timeout-minutes: 240
+    env:
+      ANDROID_HOME: ${{ runner.temp }}/lib/android-sdk-9123335
+      NDK: ${{ runner.temp }}/lib/android-ndk-r30
     steps:
       - name: Check out EffectCraft audit and workflow
         uses: actions/checkout@v4
@@ -41,6 +44,22 @@ jobs:
           command -v docker
           docker --version
           docker info >/dev/null
+
+      - name: Set up Java 17 for the Termux SDK installer
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Install the pinned Termux Android SDK and NDK r30
+        working-directory: termux-packages
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/lib"
+          export TERMUX_JAVA_HOME="$JAVA_HOME"
+          ./scripts/setup-android-sdk.sh
+          test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang"
+          "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version
 
       - name: Make the upstream package recipe fail closed in CI
         working-directory: termux-packages
