@@ -42,10 +42,7 @@ def main() -> None:
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::time::Duration;\n",
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::time::Duration;\n"
-        "use tungstenite::client::IntoClientRequest;\n"
-        "use tungstenite::http::HeaderValue;\n"
-        "use tungstenite::Message;\n",
+        "use std::time::Duration;\n",
         "cloud client imports",
     )
     source = replace_once(
@@ -141,147 +138,13 @@ def main() -> None:
     )
 
     live_event_methods = r'''
-    fn start_events(&mut self) {
-        if self.event_started {
-            return;
-        }
-        let Some(token) = self.token.clone() else { return; };
-        let base = self.server_url.trim_end_matches('/')
-            .replacen("https://", "wss://", 1);
-        let ws_url = format!("{base}/v1/events");
-        let (tx, rx) = mpsc::channel();
-        self.events = Some(rx);
-        self.event_started = true;
-        std::thread::spawn(move || {
-            let mut reconnect_delay = 3u64;
-            loop {
-                let mut request = match ws_url.clone().into_client_request() {
-                    Ok(request) => request,
-                    Err(error) => {
-                        let _ = tx.send(Err(format!("实时通知地址无效：{error}")));
-                        std::thread::sleep(Duration::from_secs(reconnect_delay));
-                        reconnect_delay = (reconnect_delay * 2).min(600);
-                        continue;
-                    }
-                };
-                let authorization = match HeaderValue::from_str(&format!("Bearer {token}")) {
-                    Ok(value) => value,
-                    Err(_) => {
-                        let _ = tx.send(Err("账号登录凭据格式不正确".to_string()));
-                        return;
-                    }
-                };
-                request.headers_mut().insert("Authorization", authorization);
-                match tungstenite::connect(request) {
-                    Ok((mut socket, _)) => {
-                        reconnect_delay = 3;
-                        loop {
-                            match socket.read() {
-                                Ok(Message::Text(message)) => {
-                                    if let Ok(value) = serde_json::from_str::<Value>(message.as_str()) {
-                                        let _ = tx.send(Ok(value));
-                                    }
-                                }
-                                Ok(Message::Close(_)) => break,
-                                Ok(_) => {}
-                                Err(_) => break,
-                            }
-                        }
-                    }
-                    Err(error) => {
-                        let _ = tx.send(Err(format!("实时通知连接失败：{error}")));
-                    }
-                }
-                std::thread::sleep(Duration::from_secs(reconnect_delay));
-                reconnect_delay = (reconnect_delay * 2).min(600);
-            }
-        });
-    }
+    // No persistent WebSocket or timed polling. One-shot ban/unban push
+    // messages are handled by the native notification bridge.
+    fn start_events(&mut self) {}
 
-    fn start_node_events(&mut self) {
-        if self.node_event_started {
-            return;
-        }
-        let Some(token) = self.token.clone() else { return; };
-        let base = self.server_url.trim_end_matches('/')
-            .replacen("https://", "wss://", 1);
-        let ws_url = format!("{base}/v1/nodes/events");
-        self.node_event_started = true;
-        std::thread::spawn(move || {
-            let mut reconnect_delay = 3u64;
-            loop {
-                let mut request = match ws_url.clone().into_client_request() {
-                    Ok(request) => request,
-                    Err(_) => {
-                        std::thread::sleep(Duration::from_secs(reconnect_delay));
-                        reconnect_delay = (reconnect_delay * 2).min(600);
-                        continue;
-                    }
-                };
-                let authorization = match HeaderValue::from_str(&format!("Bearer {token}")) {
-                    Ok(value) => value,
-                    Err(_) => return,
-                };
-                request.headers_mut().insert("Authorization", authorization);
-                match tungstenite::connect(request) {
-                    Ok((mut socket, _)) => {
-                        reconnect_delay = 3;
-                        loop {
-                            // The hub treats this authenticated connection as this
-                            // account's online phone node. Ping/pong keeps presence
-                            // alive without forwarding arbitrary peer payloads.
-                            if socket.send(Message::Text("ping".into())).is_err() {
-                                break;
-                            }
-                            match socket.read() {
-                                Ok(Message::Close(_)) => break,
-                                Ok(Message::Text(_)) | Ok(Message::Pong(_)) => {
-                                    std::thread::sleep(Duration::from_secs(25));
-                                }
-                                Ok(_) => {
-                                    std::thread::sleep(Duration::from_secs(25));
-                                }
-                                Err(_) => break,
-                            }
-                        }
-                    }
-                    Err(_) => {}
-                }
-                std::thread::sleep(Duration::from_secs(reconnect_delay));
-                reconnect_delay = (reconnect_delay * 2).min(600);
-            }
-        });
-    }
+    fn start_node_events(&mut self) {}
 
-    fn poll_events(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
-        let received = match self.events.as_ref().map(|rx| rx.try_recv()) {
-            Some(Ok(result)) => Some(result),
-            Some(Err(TryRecvError::Disconnected)) => Some(Err("实时通知连接已结束".to_string())),
-            Some(Err(TryRecvError::Empty)) | None => None,
-        };
-        if let Some(Ok(event)) = received {
-            if event.get("type").and_then(Value::as_str) == Some("account_status_changed") {
-                let status = event.get("status").and_then(Value::as_str).unwrap_or("");
-                // The Durable Object replays the last status after each connection.
-                // Verify only when the local launch/previous state differs.
-                let already_matches = (status == "banned" && self.mode == Mode::Banned)
-                    || (status == "unbanned" && self.mode == Mode::Editor);
-                if !already_matches && (status == "banned" || status == "unbanned") {
-                    self.notification_pending = Some(status.to_string());
-                }
-            }
-        }
-        if self.pending.is_none() && self.token.is_some() {
-            if let Some(status) = self.notification_pending.take() {
-                let already_matches = (status == "banned" && self.mode == Mode::Banned)
-                    || (status == "unbanned" && self.mode == Mode::Editor);
-                if !already_matches {
-                    self.mode = Mode::Checking;
-                    self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
-                }
-            }
-        }
-    }
+    fn poll_events(&mut self, _config: Option<&dyn effectcraft_engine::config::ConfigStore>) {}
 '''
     source = replace_once(
         source,
