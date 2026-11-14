@@ -455,20 +455,20 @@ jobs:
           python3 build-assets/.github/scripts/add_account_avatar_picker.py
 
       - name: Convert account gate to cloud HTTPS and real-time ban notifications
-        if: ${{ vars.AE_ACCOUNT_API_URL != '' }}
+        if: ${{ vars.AE_ACCOUNT_API_URL != '' || 'https://ae-cloud-account-api.q1939023856.workers.dev' != '' }}
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL || 'https://ae-cloud-account-api.q1939023856.workers.dev' }}
         run: |
           python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
           python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
 
       - name: Integrate dynamic public proxy pool for Cloudflare account HTTPS and WSS
-        if: ${{ vars.AE_ACCOUNT_API_URL != '' }}
+        if: ${{ vars.AE_ACCOUNT_API_URL != '' || 'https://ae-cloud-account-api.q1939023856.workers.dev' != '' }}
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL || 'https://ae-cloud-account-api.q1939023856.workers.dev' }}
           PUBLIC_PROXY_BOOTSTRAP_FILE: ${{ runner.temp }}/effectcraft-public-proxy-bootstrap.txt
         run: |
           python3 -m py_compile build-assets/.github/scripts/fetch_public_proxy_bootstrap.py
