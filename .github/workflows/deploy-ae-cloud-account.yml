@@ -116,20 +116,10 @@ jobs:
           echo "Cloud Worker and D1 are responding successfully." >> "$GITHUB_STEP_SUMMARY"
           echo "API base URL: $WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Save API URL and start both APK builds
+      - name: Record successful Cloudflare deployment
         env:
-          GH_TOKEN: ${{ github.token }}
           WORKER_URL: ${{ steps.deploy_worker.outputs.worker_url }}
         run: |
           set -euo pipefail
-          VARIABLE_PATH="/repos/$GITHUB_REPOSITORY/actions/variables/AE_ACCOUNT_API_URL"
-          if gh api "$VARIABLE_PATH" >/dev/null 2>&1; then
-            gh api --method PATCH "$VARIABLE_PATH" -f value="$WORKER_URL" >/dev/null
-          else
-            gh api --method POST "/repos/$GITHUB_REPOSITORY/actions/variables" \
-              -f name="AE_ACCOUNT_API_URL" -f value="$WORKER_URL" >/dev/null
-          fi
-          echo "Saved AE_ACCOUNT_API_URL for the APK workflows." >> "$GITHUB_STEP_SUMMARY"
-          gh workflow run build-effectcraft-ai.yml --ref main
-          gh workflow run build-account-admin.yml --ref main
-          echo "Dispatched the main EffectCraft APK and account-admin APK builds." >> "$GITHUB_STEP_SUMMARY"
+          echo "Worker deployed and health-checked: $WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "APK workflows use this verified URL as their default when AE_ACCOUNT_API_URL repository variable is not set." >> "$GITHUB_STEP_SUMMARY"
