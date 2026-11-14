@@ -4,9 +4,9 @@ This branch is an isolated compatibility experiment and is not merged into `main
 
 ## What is being combined
 
-### Primary Android execution path
+### Current integration baseline: Winlator / Proton comparison path
 
-Use the Android execution architecture already demonstrated by Winlator:
+Keep the Android execution architecture already demonstrated by Winlator as a separate comparison and fallback path:
 
 1. Winlator Android app patterns for private rootfs installation, guest process lifecycle, environment variables, and ARM64 native launcher integration.
 2. Wine as the Windows API and PE/DLL compatibility layer.
@@ -23,17 +23,29 @@ Useful upstream sources:
 
 Winlator's source includes a rootfs installer, Box64 asset handling, a Wine environment, and a guest process launcher. It is a much more complete Android reference than embedding Box64 alone.
 
-### Alternative execution path
+### Preferred next execution path: official Termux Hangover 11.16 on Bionic
 
-Keep Hangover as an alternative backend to evaluate, not something to blindly link into the primary Wine/Box64 process:
+The preferred next integration target is now the official Termux `hangover-wine` 11.16 recipe, not a full Wine process wrapped in Box64:
+
+- Termux source: https://github.com/termux/termux-packages/tree/master/x11-packages/hangover-wine
+- Audited Termux revision: `e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9`
+- Hangover upstream: https://github.com/AndreRH/hangover
+- Wine source tag: `hangover-11.16`
+- Detailed audit: [Termux Hangover 11.16 / Bionic audit](research/termux-hangover-bionic-11.16-2026-11-14.md)
+
+This recipe builds Wine natively against Android Bionic and enables `i386,aarch64,arm64ec`. It uses `HODLL64=libarm64ecfex.dll` for x86_64 PE and `HODLL=libwow64fex.dll` for x86 PE, with `wowbox64.dll` as an alternative x86 WoW64 backend. This keeps the emulator at the Windows guest-code boundary and avoids putting the whole Wine host under Linux Box64.
+
+A reproducible Termux package build workflow has been added. Until its package outputs are inspected and the Bionic Wine/PE fixtures run under an EffectCraft Android app UID, this remains a preferred candidate—not a supported runtime claim. Termux's X11/PulseAudio path also does not yet provide EffectCraft's Android Surface/render integration.
+
+### Generic Hangover upstream architecture
 
 - https://github.com/AndreRH/hangover
 
-Hangover is designed to run x86/x86-64 Windows applications on AArch64 Wine using emulator DLLs such as FEX or Box64. It is an ARM64 Linux route and still needs Android-specific integration and testing.
+Current Hangover uses Wine WoW64, ARM64EC, FEX PE and Box64 PE emulator DLLs. Its upstream README explains that Unix-side work remains native and emulation is limited to guest Windows code. The current mainline is the source of truth; older forks are useful only as Android patch references.
 
-### Android-native Hangover Bionic candidate
+### Older standalone Bionic Hangover candidate
 
-A more directly Android-focused build has also been audited:
+A more directly Android-focused 11.9 fork has also been audited:
 - Source: https://github.com/Piperella/Piperella-Hangover-Bionic
 - Pinned source revision: cd0d2b48da092a6a662a10d0b0b1ce189bbd3981
 - Release: hangover-bionic-11.9-build19 (2026-07-14)
