@@ -52,3 +52,15 @@ Cloudflare's support lifecycle page says Android 9-12 are not officially support
 - Real mainland-China network tests.
 
 No credentials, registration tokens, organization identifiers, or private keys belong in this repository.
+
+
+## Global Acceleration device policy template
+
+The companion file `global-acceleration-policy.template.json` contains only the `global_acceleration` object to merge into the Cloudflare Zero Trust device settings policy. It is deliberately disabled and contains placeholders. Cloudflare's API expects IP:port values for the API and MASQUE or WireGuard endpoints. **Do not enable it or replace placeholders with guessed IPs.** Cloudflare's account representative must first enable Global Acceleration and provide the actual endpoint list. The policy API documents the `global_acceleration.enabled`, `api_endpoints`, `masque_endpoints` / `wireguard_endpoints`, `allow_manual_override`, and `autoswitch` fields.
+
+The Android Intune JSON template now uses Cloudflare's documented Android Enterprise `managedConfiguration` envelope, with a `tunneled_apps` list for the two EffectCraft package IDs. Per-app VPN requires Cloudflare One Agent Android version 2.3 or later. It does not expose a documented API to have EffectCraft task-start and task-stop the Agent; it is controlled by the OS/MDM profile. The current app-owned task VPN is separate and cannot be active at the same time as the Agent VPN.
+
+Official details:
+- https://developers.cloudflare.com/api/resources/zero_trust/subresources/devices/subresources/policies/
+- https://developers.cloudflare.com/cloudflare-one/team-and-resources/devices/cloudflare-one-client/deployment/mdm-deployment/partners/intune/
+- https://developers.cloudflare.com/cloudflare-one/team-and-resources/devices/cloudflare-one-client/deployment/mdm-deployment/parameters/

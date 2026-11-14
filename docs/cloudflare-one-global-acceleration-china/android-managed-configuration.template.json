@@ -1,24 +1,72 @@
 {
-  "managedConfiguration": {
-    "app_config_bundle_list": [
-      {
-        "organization": "REPLACE_WITH_CLOUDFLARE_ONE_TEAM_NAME",
-        "display_name": "EffectCraft",
-        "service_mode": "warp",
-        "switch_locked": false,
-        "auto_connect": 0,
-        "onboarding": true,
-        "tunneled_apps": [
-          {
-            "app_identifier": "com.artcraft.effectcraft",
-            "is_browser": false
-          },
-          {
-            "app_identifier": "com.qianqian.effectcraftadmin",
-            "is_browser": false
-          }
-        ]
-      }
-    ]
-  }
+  "kind": "androidenterprise#managedConfiguration",
+  "productId": "app:com.cloudflare.cloudflareoneagent",
+  "managedProperty": [
+    {
+      "key": "app_config_bundle_list",
+      "valueBundleArray": [
+        {
+          "managedProperty": [
+            {
+              "key": "organization",
+              "valueString": "REPLACE_WITH_CLOUDFLARE_ZERO_TRUST_TEAM_NAME"
+            },
+            {
+              "key": "display_name",
+              "valueString": "EffectCraft mainland access"
+            },
+            {
+              "key": "service_mode",
+              "valueString": "warp"
+            },
+            {
+              "key": "onboarding",
+              "valueBool": true
+            },
+            {
+              "key": "switch_locked",
+              "valueBool": false
+            },
+            {
+              "key": "auto_connect",
+              "valueInteger": 0
+            },
+            {
+              "key": "warp_tunnel_protocol",
+              "valueString": "MASQUE"
+            },
+            {
+              "key": "tunneled_apps",
+              "valueBundleArray": [
+                {
+                  "managedProperty": [
+                    {
+                      "key": "app_identifier",
+                      "valueString": "com.artcraft.effectcraft"
+                    },
+                    {
+                      "key": "is_browser",
+                      "valueBool": false
+                    }
+                  ]
+                },
+                {
+                  "managedProperty": [
+                    {
+                      "key": "app_identifier",
+                      "valueString": "com.qianqian.effectcraftadmin"
+                    },
+                    {
+                      "key": "is_browser",
+                      "valueBool": false
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

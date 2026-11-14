@@ -1,0 +1,13 @@
+{
+  "global_acceleration": {
+    "enabled": false,
+    "api_endpoints": [
+      "REPLACE_WITH_CLOUDFLARE_PROVIDED_API_IP:443"
+    ],
+    "masque_endpoints": [
+      "REPLACE_WITH_CLOUDFLARE_PROVIDED_MASQUE_IP:443"
+    ],
+    "allow_manual_override": true,
+    "autoswitch": false
+  }
+}
