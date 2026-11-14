@@ -85,6 +85,10 @@ def patch_file_import_auto_add(root: Path) -> None:
     });'''
         source = replace_once(source, old_rest, new_rest, "Exclude data footage from automatic composition layers")
 
+        old_params = '        let mut params = json!({"comp": cid.0, "item": item, "time": p.get("time"), "position": p.get("position")});'
+        new_params = '        let mut params = json!({"comp": cid.0, "item": item, "time": p.get("time"), "position": p.get("position"), "fitToComp": p.get("fitToComp").and_then(Value::as_bool).unwrap_or(false)});'
+        source = replace_once(source, old_params, new_params, "Pass fitToComp through to layer.addItem")
+
         source = source.replace(
             'addToComp?: bool (also add them to the active comp, at time?, index?, position? as in layer.addItem)',
             'addToComp?: bool (default true when a comp is active; also add them to the active comp), fitToComp?: bool (uniformly fit each new layer inside the comp frame)'
@@ -117,6 +121,15 @@ def patch_layer_add_item_fit(root: Path) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def patch_layer_add_item_fit_spec(root: Path) -> None:
+    path = root / "crates/engine/src/cmd/layer.rs"
+    source = path.read_text(encoding="utf-8")
+    old = "anchor? ([x, y] layer px; default the centre)}"
+    new = "anchor? ([x, y] layer px; default the centre), fitToComp?: bool (uniformly fit the complete media inside the composition frame)}"
+    source = replace_once(source, old, new, "Document layer.addItem fitToComp parameter")
+    path.write_text(source, encoding="utf-8")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -124,6 +137,7 @@ def main() -> None:
     patch_project_panel_import_button(root)
     patch_file_import_auto_add(root)
     patch_layer_add_item_fit(root)
+    patch_layer_add_item_fit_spec(root)
     print("Moved the media import shortcut into the Project panel footer to avoid Timeline overlap.")
     print("Regular imports now create a layer in the active composition and fit it to the comp frame.")
     print("Imported files remain in the Project panel and their layers appear in the Timeline.")
