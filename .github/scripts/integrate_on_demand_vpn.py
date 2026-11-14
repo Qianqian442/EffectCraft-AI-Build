@@ -150,8 +150,8 @@ if "EFFECTCRAFT_VPN_PERMISSION_RESULT_V1" not in activity:
     # The upstream launcher may already override onActivityResult for its
     # document picker. Reuse that override instead of declaring a duplicate.
     signature = re.compile(
-        r"protected\\s+void\\s+onActivityResult\\s*\\(\\s*int\\s+requestCode\\s*,\\s*"
-        r"int\\s+resultCode\\s*,\\s*(?:[\\w.]+\\.)?Intent\\s+data\\s*\\)\\s*\\{"
+        r"protected\s+void\s+onActivityResult\s*\(\s*int\s+requestCode\s*,\s*"
+        r"int\s+resultCode\s*,\s*(?:[\w.]+\.)?Intent\s+data\s*\)\s*\{"
     )
     match = signature.search(activity)
     if match:
