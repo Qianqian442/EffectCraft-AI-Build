@@ -759,7 +759,7 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
             request = request.header("Authorization", &format!("Bearer {token}"));
         }
         if body.is_null() {
-            request.call()
+            request.send_empty()
         } else {
             let bytes = serde_json::to_vec(&body).map_err(|error| error.to_string())?;
             request.header("Content-Type", "application/json").send(bytes.as_slice())
@@ -883,8 +883,8 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
 
     if "fn http_request_single" not in source or "API_SERVER_POOL" not in source or "切换服务器" not in source:
         raise SystemExit("Cloud endpoint failover or server-switch controls were not installed.")
-    if 'let mut response = if method == "GET" {' not in source:
-        raise SystemExit("Cloud HTTP method-specific request builders were not generated.")
+    if 'let mut response = if method == "GET" {' not in source or "request.send_empty()" not in source:
+        raise SystemExit("Cloud HTTP GET/POST method-specific request builders were not generated correctly.")
     print(f"Cloud HTTPS account gate installed with {len(api_urls)} configured endpoint(s), automatic failover, and live ban/unban notifications; no periodic polling.")
 
 
