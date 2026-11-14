@@ -524,6 +524,17 @@ where
     R: IntoClientRequest,
 {
     let request = request.into_client_request()?;
+    let host = request.uri().host().ok_or_else(|| {
+        WebSocketError::Io(io::Error::new(io::ErrorKind::InvalidInput, "WSS 主机名缺失"))
+    })?;
+    if !host.ends_with(".workers.dev") || request.uri().port_u16().is_some_and(|port| port != 443) {
+        return Err(WebSocketError::Io(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "公开代理隧道仅允许连接已配置的 Cloudflare workers.dev 账号主机",
+        )));
+    }
+    let port = request.uri().port_u16().unwrap_or(443);
+
     let direct_error = match tungstenite::connect(request.clone()) {
         Ok(connection) => return Ok(connection),
         Err(error) => {
@@ -535,17 +546,6 @@ where
             error
         }
     };
-
-    let host = request.uri().host().ok_or_else(|| {
-        WebSocketError::Io(io::Error::new(io::ErrorKind::InvalidInput, "WSS 主机名缺失"))
-    })?;
-    if !host.ends_with(".workers.dev") || request.uri().port_u16().is_some_and(|port| port != 443) {
-        return Err(WebSocketError::Io(io::Error::new(
-            io::ErrorKind::PermissionDenied,
-            "公开代理隧道仅允许连接已配置的 Cloudflare workers.dev 账号主机",
-        )));
-    }
-    let port = request.uri().port_u16().unwrap_or(443);
     let base_url = format!("https://{host}");
     let candidates = websocket_candidates(&base_url);
     let mut last_error = direct_error;
