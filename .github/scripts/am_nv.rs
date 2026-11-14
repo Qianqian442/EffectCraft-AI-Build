@@ -1115,17 +1115,30 @@ fn export_capcut(s: &Session, path: &str) -> Result<J> {
     Ok(json!({"path":path,"format":"capcut-draft-zip","exportedTracks":render_index,"warnings":warning,"sourceComp":comp_id.0}))
 }
 
+fn notify_exported_project(s: &mut Session, path: &str, format: &str) {
+    s.events.push(crate::Event::Frontend {
+        command: "effectcraft.projectExported".into(),
+        params: json!({"path": path, "format": format}),
+    });
+}
+
 fn export_alight_command(s: &mut Session, p: &J) -> Result<J> {
     let path=p.get("path").and_then(J::as_str).ok_or_else(||err("缺少导出路径"))?;
-    export_alight_xml(s,path)
+    let result = export_alight_xml(s,path)?;
+    notify_exported_project(s, path, "AM");
+    Ok(result)
 }
 fn export_nodevideo_command(s: &mut Session, p: &J) -> Result<J> {
     let path=p.get("path").and_then(J::as_str).ok_or_else(||err("缺少导出路径"))?;
-    export_nodevideo(s,path)
+    let result = export_nodevideo(s,path)?;
+    notify_exported_project(s, path, "NV");
+    Ok(result)
 }
 fn export_capcut_command(s: &mut Session, p: &J) -> Result<J> {
     let path=p.get("path").and_then(J::as_str).ok_or_else(||err("缺少导出路径"))?;
-    export_capcut(s,path)
+    let result = export_capcut(s,path)?;
+    notify_exported_project(s, path, "CapCut");
+    Ok(result)
 }
 
 pub fn specs() -> Vec<CommandSpec> {
