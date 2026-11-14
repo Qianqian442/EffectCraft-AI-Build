@@ -140,42 +140,52 @@ func RegisterDevice() (string, error) {
 	// The second H2 address is a same-service Cloudflare edge candidate; the
 	// server public-key pin is checked for every endpoint before use.
 	endpoints := make([]string, 0, 16)
-	h2Addresses := []string{config.DefaultEndpointH2V4, "162.159.198.10"}
-	seenH2 := make(map[string]bool)
-	for _, address := range h2Addresses {
-		address = strings.TrimSpace(address)
-		if address == "" || seenH2[address] {
+	// The TCP/443 endpoint is the upstream Cloudflare consumer MASQUE HTTP/2
+	// endpoint configured by the usque library, not an invented mirror.
+	h2Address := strings.TrimSpace(config.DefaultEndpointH2V4)
+	if net.ParseIP(h2Address) == nil {
+		return "", fmt.Errorf("invalid Cloudflare HTTP/2 MASQUE address %q", h2Address)
+	}
+	endpoints = append(endpoints, "tcp://"+net.JoinHostPort(h2Address, "443"))
+
+	// UDP endpoints and ports must come from Cloudflare's own registration
+	// response. Keep only peers that advertise the same pinned public key.
+	seenUDP := make(map[string]bool)
+	for _, cloudPeer := range enrolled.Config.Peers {
+		if cloudPeer.PublicKey != peer.PublicKey {
 			continue
 		}
-		if net.ParseIP(address) == nil {
-			return "", fmt.Errorf("invalid Cloudflare HTTP/2 MASQUE address %q", address)
-		}
-		seenH2[address] = true
-		endpoints = append(endpoints, "tcp://"+net.JoinHostPort(address, "443"))
-	}
-
-	// Cloudflare documents these MASQUE UDP ports as default/fallback options.
-	// Keep them after the TCP/443 candidates so networks that block QUIC do not
-	// stall the first connection attempt.
-	masqueUDPPorts := []int{443, 500, 1701, 4500, 4443, 8443, 8095}
-	udpAddressV4 := ipv4
-	if udpAddressV4 == "" {
-		udpAddressV4 = config.DefaultEndpointH2V4
-	}
-	if udpAddressV4 != "" {
-		for _, port := range masqueUDPPorts {
-			endpoints = append(endpoints, "quic://"+net.JoinHostPort(udpAddressV4, strconv.Itoa(port)))
-		}
-	}
-	if ipv6 != "" {
-		if ipv4 == "" {
-			for _, port := range masqueUDPPorts {
-				endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv6, strconv.Itoa(port)))
+		peerIPs := []string{}
+		for _, raw := range []string{cloudPeer.Endpoint.V4, cloudPeer.Endpoint.V6} {
+			if raw == "" {
+				continue
 			}
-		} else {
-			// Keep one IPv6 candidate in dual-stack mode without delaying the
-			// full IPv4 fallback list on networks where IPv6 is unavailable.
-			endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv6, "443"))
+			address, parseErr := endpointAddressIP(raw)
+			if parseErr != nil {
+				continue
+			}
+			peerIPs = append(peerIPs, address)
+		}
+		for _, address := range peerIPs {
+			for _, port := range cloudPeer.Endpoint.Ports {
+				if port < 1 || port > 65535 {
+					continue
+				}
+				candidate := "quic://" + net.JoinHostPort(address, strconv.Itoa(port))
+				if !seenUDP[candidate] {
+					seenUDP[candidate] = true
+					endpoints = append(endpoints, candidate)
+				}
+				if len(endpoints) >= 16 {
+					break
+				}
+			}
+			if len(endpoints) >= 16 {
+				break
+			}
+		}
+		if len(endpoints) >= 16 {
+			break
 		}
 	}
 
