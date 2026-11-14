@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "ae-account-api-gateway",
   "pages_build_output_dir": "./dist",
-  "compatibility_date": "2026-11-15",
+  "compatibility_date": "2026-11-14",
   "services": [
     {
       "binding": "ACCOUNT_API",
