@@ -238,20 +238,46 @@ func StartTunnel(bundleJSON string, tunFD int64) error {
 
 	go func() {
 		defer close(current.done)
+		var defaultH2 *net.TCPAddr
+		for _, candidate := range endpoints {
+			if candidate.UseHTTP2 {
+				if tcp, ok := candidate.Address.(*net.TCPAddr); ok {
+					defaultH2 = tcp
+					break
+				}
+			}
+		}
+		selectedH2 := scanCloudflareHTTP2(ctx, tlsConfig, defaultH2)
+		selected := make([]api.TunnelEndpoint, 0, 6)
+		for _, address := range selectedH2 {
+			selected = append(selected, api.TunnelEndpoint{Address: address, UseHTTP2: true})
+		}
+		for _, candidate := range endpoints {
+			if !candidate.UseHTTP2 && len(selected) < 6 {
+				selected = append(selected, candidate)
+			}
+		}
+		if len(selected) == 0 {
+			selected = endpoints
+		}
+		if len(selected) > 6 {
+			selected = selected[:6]
+		}
 		api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
 			TLSConfig:       tlsConfig,
 			KeepalivePeriod: 20 * time.Second,
-			Endpoint:        endpoints[0].Address,
-			Endpoints:       endpoints,
+			Endpoint:        selected[0].Address,
+			Endpoints:       selected,
 			Device:          device,
 			MTU:             1280,
 			ReconnectDelay:  2 * time.Second,
 			AlwaysReconnect: true,
-			UseHTTP2:        endpoints[0].UseHTTP2,
+			UseHTTP2:        selected[0].UseHTTP2,
 			OnConnected: func(endpoint net.Addr) {
 				mu.Lock()
 				if session == current && current.active {
 					state, lastError = "connected", ""
+					recordEndpointScanSuccess(endpoint, 0)
 				}
 				mu.Unlock()
 			},
@@ -259,6 +285,7 @@ func StartTunnel(bundleJSON string, tunFD int64) error {
 				mu.Lock()
 				if session == current && current.active {
 					state, lastError = "retrying", connectErr.Error()
+					recordEndpointScanFailure(endpoint)
 				}
 				mu.Unlock()
 			},
@@ -270,6 +297,7 @@ func StartTunnel(bundleJSON string, tunFD int64) error {
 				mu.Lock()
 				if session == current && current.active {
 					state, lastError = "retrying", detail
+					recordEndpointScanFailure(endpoint)
 				}
 				mu.Unlock()
 			},
