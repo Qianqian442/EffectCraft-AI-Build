@@ -79,7 +79,7 @@ impl Drop for TaskVpnGuard {
             return;
         }
         let result = (|| -> io::Result<()> {
-            let mut stream = TcpStream::connect_timeout(&VPN_COMMAND_BRIDGE, Duration::from_secs(2))?;
+            let mut stream = TcpStream::connect_timeout(&vpn_command_bridge(), Duration::from_secs(2))?;
             stream.set_read_timeout(Some(Duration::from_secs(8)))?;
             stream.set_write_timeout(Some(Duration::from_secs(2)))?;
             stream.write_all(b"STOP\n")?;
