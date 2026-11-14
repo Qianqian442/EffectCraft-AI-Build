@@ -25,7 +25,9 @@ const MAX_PER_FEED: usize = 80;
 const MAX_TEST_COUNT: usize = 18;
 const MAX_SCAN_TIME: Duration = Duration::from_secs(28);
 
-const VPN_COMMAND_BRIDGE: SocketAddr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 10809);
+fn vpn_command_bridge() -> SocketAddr {
+    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 10809)
+}
 
 /// Owns one VPN task lease. Dropping this guard asks the Android service to
 /// stop the TUN/tun2socks tunnel regardless of HTTP success, failure or panic.
@@ -47,7 +49,7 @@ impl TaskVpnGuard {
             return Err("账号 VPN 仅允许 Cloudflare workers.dev 账号服务".to_string());
         }
 
-        let mut stream = TcpStream::connect_timeout(&VPN_COMMAND_BRIDGE, Duration::from_secs(5))
+        let mut stream = TcpStream::connect_timeout(&vpn_command_bridge(), Duration::from_secs(5))
             .map_err(|error| format!("EffectCraft 内置 VPN 控制通道不可用：{error}"))?;
         stream.set_read_timeout(Some(Duration::from_secs(90)))
             .map_err(|error| error.to_string())?;
