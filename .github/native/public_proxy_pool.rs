@@ -47,13 +47,15 @@ impl TaskVpnGuard {
             return Err("账号 VPN 仅允许 Cloudflare workers.dev 账号服务".to_string());
         }
 
+        let token = crate::vpn_proxy::get_vpn_control_token()
+            .ok_or_else(|| "本地 VPN 控制密钥尚未初始化".to_string())?;
         let mut stream = TcpStream::connect_timeout(&VPN_COMMAND_BRIDGE, Duration::from_secs(5))
             .map_err(|error| format!("EffectCraft 内置 VPN 控制通道不可用：{error}"))?;
         stream.set_read_timeout(Some(Duration::from_secs(90)))
             .map_err(|error| error.to_string())?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|error| error.to_string())?;
-        writeln!(stream, "START {host}").map_err(|error| format!("VPN 启动命令发送失败：{error}"))?;
+        writeln!(stream, "START {token} {host}").map_err(|error| format!("VPN 启动命令发送失败：{error}"))?;
         stream.flush().map_err(|error| format!("VPN 启动命令刷新失败：{error}"))?;
 
         let mut response = String::new();
@@ -80,7 +82,9 @@ impl Drop for TaskVpnGuard {
             let mut stream = TcpStream::connect_timeout(&VPN_COMMAND_BRIDGE, Duration::from_secs(2))?;
             stream.set_read_timeout(Some(Duration::from_secs(8)))?;
             stream.set_write_timeout(Some(Duration::from_secs(2)))?;
-            stream.write_all(b"STOP\\n")?;
+            let token = crate::vpn_proxy::get_vpn_control_token()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::PermissionDenied, "VPN control token unavailable"))?;
+            stream.write_all(format!("STOP {token}\\n").as_bytes())?;
             stream.flush()?;
             let mut response = String::new();
             let _ = BufReader::new(stream).read_line(&mut response);
