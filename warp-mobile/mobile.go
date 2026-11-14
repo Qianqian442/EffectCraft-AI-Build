@@ -93,8 +93,16 @@ func RegisterDevice() (string, error) {
 		cfg.EndpointV6 = ip.String()
 	}
 
-	endpointSet := make([]string, 0, 16)
-	seen := make(map[string]bool)
+	// Prefer Cloudflare's TCP/443 HTTP/2 MASQUE endpoint first for
+	// networks where UDP/QUIC is filtered or rate-limited (including many
+	// mainland mobile networks). UDP endpoints remain automatic fallbacks.
+	h2IP := cfg.EndpointH2V4
+	if net.ParseIP(h2IP) == nil {
+		return "", errors.New("Cloudflare HTTP/2 fallback endpoint is invalid")
+	}
+	h2 := "tcp://" + net.JoinHostPort(h2IP, "443")
+	endpointSet := []string{h2}
+	seen := map[string]bool{h2: true}
 	for _, peer := range enrolled.Config.Peers {
 		// The TLS pin belongs to the selected MASQUE peer key. Never rotate to
 		// an endpoint advertising a different public key without its own pin.
@@ -126,20 +134,6 @@ func RegisterDevice() (string, error) {
 		if len(endpointSet) >= 14 {
 			break
 		}
-	}
-	if len(endpointSet) == 0 {
-		return "", errors.New("Cloudflare did not return any usable MASQUE UDP endpoint/port")
-	}
-
-	// Cloudflare's documented WARP HTTP/2 endpoint is a TCP fallback for networks
-	// where UDP/QUIC is blocked. It is not routed into the TUN interface.
-	h2IP := cfg.EndpointH2V4
-	if net.ParseIP(h2IP) == nil {
-		return "", errors.New("Cloudflare HTTP/2 fallback endpoint is invalid")
-	}
-	h2 := "tcp://" + net.JoinHostPort(h2IP, "443")
-	if !seen[h2] {
-		endpointSet = append(endpointSet, h2)
 	}
 
 	configBytes, err := json.Marshal(cfg)
