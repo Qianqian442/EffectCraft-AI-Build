@@ -88,6 +88,16 @@ def top_level_function_count(source: str, name: str) -> int:
                 else:
                     i += 1
             continue
+        # Skip short Rust character literals such as '{', '}', and '\\n',
+        # but do not mistake lifetimes like 'a or 'static for character literals.
+        if source[i] == "'":
+            end = source.find("'", i + 1, min(n, i + 18))
+            newline = source.find("\\n", i + 1, min(n, i + 18))
+            if end >= 0 and (newline < 0 or end < newline):
+                literal_body = source[i + 1:end]
+                if literal_body and not any(ch.isspace() for ch in literal_body):
+                    i = end + 1
+                    continue
         if depth == 0 and source.startswith(needle, i):
             count += 1
         if source[i] == "{":
@@ -139,6 +149,10 @@ def main() -> None:
     if not header.is_file():
         raise SystemExit(f"Generated EffectCraft header source is missing: {header}")
     ensure_dimensions_helper(header)
+    memory_helper_count = top_level_function_count(header.read_text(encoding="utf-8"), "effectcraft_export_memory_ok")
+    if memory_helper_count != 1:
+        raise SystemExit(f"Expected one module-level effectcraft_export_memory_ok helper; found {memory_helper_count}.")
+    print("Android export memory safety helper is present without imposing an application memory ceiling.")
     verify_chinese_default(root)
 
     parity = root / "docs/localization-parity.md"
