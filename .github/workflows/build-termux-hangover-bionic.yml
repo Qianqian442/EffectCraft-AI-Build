@@ -61,7 +61,7 @@ jobs:
           path = Path("scripts/setup-android-sdk.sh")
           source = path.read_text(encoding="utf-8")
           old = "yes | $SDK_MANAGER"
-          new = "set +o pipefail" + chr(10) + "yes | $SDK_MANAGER"
+          new = "set +o pipefail\\nyes | $SDK_MANAGER"
           if source.count(old) != 2:
               raise SystemExit("Pinned Termux SDK setup script changed; review its license-acceptance pipelines")
           path.write_text(source.replace(old, new), encoding="utf-8")
