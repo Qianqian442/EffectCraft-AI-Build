@@ -35,6 +35,7 @@ on:
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/integrate_public_proxy_pool.py'
+      - '.github/scripts/fetch_public_proxy_bootstrap.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
@@ -85,6 +86,7 @@ jobs:
             .github/scripts/integrate_deepseek_single_apk.py \
             .github/scripts/fix_viewer_drag_selection.py \
             .github/scripts/integrate_public_proxy_pool.py \
+            .github/scripts/fetch_public_proxy_bootstrap.py \
             .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
             .github/scripts/add_bottom_left_media_import.py \
@@ -466,13 +468,18 @@ jobs:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+          PUBLIC_PROXY_BOOTSTRAP_FILE: ${{ runner.temp }}/effectcraft-public-proxy-bootstrap.txt
         run: |
+          python3 -m py_compile build-assets/.github/scripts/fetch_public_proxy_bootstrap.py
+          python3 build-assets/.github/scripts/fetch_public_proxy_bootstrap.py --output "$PUBLIC_PROXY_BOOTSTRAP_FILE"
           python3 -m py_compile build-assets/.github/scripts/integrate_public_proxy_pool.py
           python3 build-assets/.github/scripts/integrate_public_proxy_pool.py
           grep -Fq "EFFECTCRAFT_PUBLIC_PROXY_POOL_V1" "$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
           grep -Fq "socks-proxy" "$EFFECTCRAFT_DIR/Cargo.toml"
           grep -Fq "rustls-tls-webpki-roots" "$EFFECTCRAFT_DIR/Cargo.toml"
           test -s "$EFFECTCRAFT_DIR/crates/ui-egui/src/public_proxy_pool.rs"
+          test -s "$EFFECTCRAFT_DIR/crates/ui-egui/src/public_proxy_bootstrap.txt"
+          echo "Proxy bootstrap candidate count: $(wc -l < "$EFFECTCRAFT_DIR/crates/ui-egui/src/public_proxy_bootstrap.txt")"
 
       - name: Add independent connected Puppet pin rigs
         env:
