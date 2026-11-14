@@ -208,13 +208,8 @@ public final class AdminAccountVpnService extends VpnService {
         if (!isAllowedHost(host)) return "ERROR:账号 VPN 只允许配置的 workers.dev 账号服务器";
         if (taskActive) return "OK";
 
-        String stage = "检查 Android VPN 授权";
+        String stage = "读取本机加密的 WARP 设备身份";
         try {
-            // Ask Android for VPN consent before registering a WARP device, so a
-            // user who declines does not leave an unused Cloudflare device identity.
-            if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
-            stage = "读取本机加密的 WARP 设备身份";
-
             String bundle = loadEncryptedBundle(context);
             if (bundle == null) {
                 stage = "等待 Cloudflare 服务条款确认";
@@ -229,6 +224,13 @@ public final class AdminAccountVpnService extends VpnService {
                 if (bundle.isEmpty()) return "ERROR:Cloudflare 没有返回 WARP 设备配置";
                 saveEncryptedBundle(context, bundle);
             }
+
+            // Android allows only one active VpnService per user/profile.
+            // Complete first-time Cloudflare registration over the phone's
+            // current network first; only then ask Android to hand the VPN slot
+            // from a third-party VPN to EffectCraft's embedded WARP service.
+            stage = "申请管理版内置 WARP VPN 权限（Android 可能会切换当前第三方 VPN）";
+            if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
 
             JSONObject json = new JSONObject(bundle);
             stage = "解析 Cloudflare Worker 账号服务域名";
