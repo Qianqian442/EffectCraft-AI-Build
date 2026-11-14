@@ -27,19 +27,18 @@ def patch_project_panel_import_button(root: Path) -> None:
     if PROJECT_MARKER not in source:
         anchor = "    let depth = app.session.project.settings.bit_depth.label();\n"
         button = r'''    // EFFECTCRAFT_ANDROID_PROJECT_FOOTER_IMPORT_V2
-    // Keep Import Media inside the Project panel: a floating screen-corner button
-    // overlapped the Timeline's Add Keyframe control on narrow Android layouts.
-    let import_rect = Rect::from_min_size(pos2(x + 2.0, foot.min.y + 3.0), vec2(24.0, 22.0));
+    // Import Media is a real Project-panel control, not a floating overlay on the Timeline.
+    let import_rect = Rect::from_min_size(pos2(x, foot.min.y + 3.0), vec2(22.0, 22.0));
     let import_response = ui
         .put(import_rect, egui::Button::new("＋"))
-        .on_hover_text(crate::i18n::tr("Import Media"));
-    app.auto.add_response("project.importMedia", &import_response, "导入素材");
+        .on_hover_text(crate::i18n::tr("Import pictures and videos"));
+    app.auto.add_response("project.importMedia", &import_response, "导入图片和视频");
     if import_response.clicked()
         && let Err(error) = crate::menus::invoke(app, &ctx, "file.import", json!({}))
     {
         app.ui.status = error;
     }
-    x += 28.0;
+    x += 26.0;
 '''
         source = replace_once(source, anchor, button + anchor, "Project panel media import button")
         if PROJECT_MARKER not in source:
@@ -135,6 +134,52 @@ def patch_layer_add_item_fit_spec(root: Path) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def patch_project_panel_footer_responsive(root: Path) -> None:
+    """Keep the import, bit-depth and delete controls inside non-overlapping footer hit boxes."""
+    path = root / "crates/ui-egui/src/panels/project.rs"
+    source = path.read_text(encoding="utf-8")
+    old = '''    let depth = app.session.project.settings.bit_depth.label();
+    let dr = Rect::from_min_size(pos2(x + 4.0, foot.min.y + 5.0), vec2(48.0, 18.0));
+    let dresp = ui.interact(dr, egui::Id::unique("bpc"), Sense::click());
+    p.text(dr.center(), Align2::CENTER_CENTER, depth, Tokens::ui(11.5), if dresp.hovered() { t.text } else { t.text_dim });
+    app.auto.add("project.bitDepth", dr, depth);
+    dresp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, crate::i18n::tr_args("Project color depth: {}", &[&depth])));
+    // Click cycles 8/16/32 bpc; Alt-click opens Project Settings (as in After Effects).
+    if dresp.clicked() {
+        if ui.input(|i| i.modifiers.alt) {
+            actions.push(("file.projectSettings".into(), json!({})));
+        } else {
+            actions.push(("file.cycleBitDepth".into(), json!({})));
+        }
+    }
+    dresp.on_hover_text(crate::i18n::tr("Project color depth: click to cycle 8/16/32 bpc, Alt-click for Project Settings"));
+    let tr = Rect::from_min_size(pos2(foot.max.x - 30.0, foot.min.y + 3.0), vec2(22.0, 22.0));'''
+    new = '''    let tr = Rect::from_min_size(pos2(foot.max.x - 30.0, foot.min.y + 3.0), vec2(22.0, 22.0));
+    let depth = app.session.project.settings.bit_depth.label();
+    let depth_min_x = x + 4.0;
+    let depth_width = (tr.min.x - depth_min_x).max(0.0).min(48.0);
+    // On narrow phones, shrink or hide the bit-depth label instead of letting it overlap
+    // the Delete button or the Import Media hitbox.
+    if depth_width >= 20.0 {
+        let dr = Rect::from_min_size(pos2(depth_min_x, foot.min.y + 5.0), vec2(depth_width, 18.0));
+        let dresp = ui.interact(dr, egui::Id::unique("bpc"), Sense::click());
+        p.text(dr.center(), Align2::CENTER_CENTER, depth, Tokens::ui(11.5), if dresp.hovered() { t.text } else { t.text_dim });
+        app.auto.add("project.bitDepth", dr, depth);
+        dresp.widget_info(|| egui::WidgetInfo::labeled(egui::Role::Button, true, crate::i18n::tr_args("Project color depth: {}", &[&depth])));
+        // Click cycles 8/16/32 bpc; Alt-click opens Project Settings (as in After Effects).
+        if dresp.clicked() {
+            if ui.input(|i| i.modifiers.alt) {
+                actions.push(("file.projectSettings".into(), json!({})));
+            } else {
+                actions.push(("file.cycleBitDepth".into(), json!({})));
+            }
+        }
+        dresp.on_hover_text(crate::i18n::tr("Project color depth: click to cycle 8/16/32 bpc, Alt-click for Project Settings"));
+    }'''
+    replace_once(source, old, new, "Project footer responsive control layout")
+    path.write_text(source, encoding="utf-8")
+
+
 def patch_picture_video_only_media_picker(root: Path) -> None:
     """Limit the normal Import Media command to still-image formats; video formats are appended upstream."""
     path = root / "crates/ui-egui/src/menus/frontend.rs"
@@ -200,6 +245,7 @@ def main() -> None:
     patch_picture_video_only_media_picker(root)
     patch_project_new_comp_from_selected_media(root)
     patch_new_comp_layer_fit(root)
+    patch_project_panel_footer_responsive(root)
     print("Moved the media import shortcut into the Project panel footer to avoid Timeline overlap.")
     print("Regular imports now create a layer in the active composition and fit it to the comp frame.")
     print("Imported files remain in the Project panel and their layers appear in the Timeline.")
