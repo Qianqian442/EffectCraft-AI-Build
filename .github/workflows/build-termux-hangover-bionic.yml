@@ -1,0 +1,154 @@
+name: Build Termux Hangover 11.16 for Android Bionic
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/windows-plugin-runtime
+    paths:
+      - '.github/workflows/build-termux-hangover-bionic.yml'
+      - 'windows-compat/research/termux-hangover-bionic-11.16-2026-11-14.md'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-termux-hangover-bionic
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Reproduce Hangover 11.16 Wine and emulator packages for aarch64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - name: Check out EffectCraft audit and workflow
+        uses: actions/checkout@v4
+
+      - name: Check out pinned official Termux package build system
+        uses: actions/checkout@v4
+        with:
+          repository: termux/termux-packages
+          ref: e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9
+          path: termux-packages
+          fetch-depth: 1
+
+      - name: Verify build host and install package inspection tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y docker.io jq python3 dpkg-dev file zstd
+          docker --version
+          docker info >/dev/null
+
+      - name: Make the upstream package recipe fail closed in CI
+        working-directory: termux-packages
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("x11-packages/hangover-wine/build.sh")
+          source = path.read_text(encoding="utf-8")
+          old = "make -j $TERMUX_PKG_MAKE_PROCESSES -k || bash"
+          new = 'make -j "$TERMUX_PKG_MAKE_PROCESSES" -k'
+          if source.count(old) != 1:
+              raise SystemExit("Pinned Termux Hangover recipe no longer matches the audited interactive make fallback")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          print("Disabled the interactive bash fallback so CI cannot mask a failed Wine build.")
+          PY
+          git diff -- x11-packages/hangover-wine/build.sh > ../termux-hangover-ci-recipe.patch
+          test -s ../termux-hangover-ci-recipe.patch
+
+      - name: Build the pinned Termux Hangover package set
+        working-directory: termux-packages
+        run: |
+          set -euo pipefail
+          ./build-package.sh -a aarch64 -i -j 2 hangover-wine
+
+      - name: Inspect package metadata, Bionic ELF and Hangover PE payloads
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/packages artifacts/unpacked
+          mapfile -t packages < <(find termux-packages/output -type f -name 'hangover*.deb' -print | sort)
+          if (( ${#packages[@]} < 4 )); then
+            printf 'Expected at least four Hangover .deb packages, found %s\n' "${#packages[@]}" >&2
+            find termux-packages/output -type f -name '*.deb' -print >&2
+            exit 1
+          fi
+          printf '%s\n' "${packages[@]}" > artifacts/PACKAGE-FILES.txt
+          for package in "${packages[@]}"; do
+            name="$(basename "$package")"
+            cp "$package" "artifacts/packages/$name"
+            echo "===== $name ====="
+            dpkg-deb --field "$package" Package Version Architecture
+            dpkg-deb --info "$package"
+            destination="artifacts/unpacked/${name%.deb}"
+            mkdir -p "$destination"
+            dpkg-deb -x "$package" "$destination"
+          done
+
+          find artifacts/unpacked -type f \( -name 'wine64' -o -name 'wineserver' -o -name 'wineboot' \) -print > artifacts/WINE-ELF-FILES.txt
+          if [[ ! -s artifacts/WINE-ELF-FILES.txt ]]; then
+            echo "No Wine executable payload found in the built packages." >&2
+            exit 1
+          fi
+          while IFS= read -r binary; do
+            echo "===== $binary ====="
+            file "$binary"
+            readelf -h "$binary" | grep -E 'Class:|Machine:'
+            readelf -l "$binary" | grep -F '/system/bin/linker64'
+          done < artifacts/WINE-ELF-FILES.txt
+
+          find artifacts/unpacked -type f \( -name 'libarm64ecfex.dll' -o -name 'libwow64fex.dll' -o -name 'wowbox64.dll' \) -print > artifacts/EMULATOR-PE-FILES.txt
+          for expected in libarm64ecfex.dll libwow64fex.dll wowbox64.dll; do
+            grep -Fq "$expected" artifacts/EMULATOR-PE-FILES.txt || {
+              echo "Missing Hangover emulator DLL: $expected" >&2
+              cat artifacts/EMULATOR-PE-FILES.txt >&2
+              exit 1
+            }
+          done
+
+          python3 -m pip install --disable-pip-version-check pefile
+          python3 - <<'PY'
+          import pefile
+          from pathlib import Path
+          files = {}
+          for path in Path("artifacts/unpacked").rglob("*.dll"):
+              if path.name in {"libarm64ecfex.dll", "libwow64fex.dll", "wowbox64.dll"}:
+                  files[path.name] = path
+          expected = {"libarm64ecfex.dll", "libwow64fex.dll", "wowbox64.dll"}
+          if set(files) != expected:
+              raise SystemExit(f"emulator DLL set mismatch: {sorted(files)}")
+          for name, path in sorted(files.items()):
+              pe = pefile.PE(str(path), fast_load=False)
+              print(f"{name}: PE machine=0x{pe.FILE_HEADER.Machine:04x}, size={path.stat().st_size}")
+              if name == "libarm64ecfex.dll" and pe.FILE_HEADER.Machine != 0x8664:
+                  raise SystemExit("libarm64ecfex.dll is not an x86-64 PE")
+              if name == "libwow64fex.dll" and pe.FILE_HEADER.Machine != 0xAA64:
+                  raise SystemExit("libwow64fex.dll is not an ARM64 WoW64 emulator PE")
+          PY
+
+      - name: Record pinned source, recipe patch and checksums
+        run: |
+          set -euo pipefail
+          cp termux-hangover-ci-recipe.patch artifacts/
+          cat > artifacts/BUILD-INFO.txt <<'EOF'
+          Termux Hangover 11.16 Bionic package reproduction
+          Termux package source: termux/termux-packages
+          Termux source revision: e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9
+          Package: x11-packages/hangover-wine
+          Wine source tag: AndreRH/wine hangover-11.16
+          Target architecture: aarch64 / Android Bionic
+          CI-only recipe change: replace interactive "make -k || bash" with fail-closed make -k
+          This is a cross-build/package inspection, not an Android device execution test.
+          EOF
+          (cd artifacts && find packages -type f -name '*.deb' -print0 | sort -z | xargs -0 sha256sum) > artifacts/PACKAGE-SHA256SUMS.txt
+          tar --zstd -cf artifacts/termux-hangover-11.16-aarch64-packages.tar.zst -C artifacts packages BUILD-INFO.txt PACKAGE-FILES.txt PACKAGE-SHA256SUMS.txt WINE-ELF-FILES.txt EMULATOR-PE-FILES.txt termux-hangover-ci-recipe.patch
+          sha256sum artifacts/termux-hangover-11.16-aarch64-packages.tar.zst > artifacts/termux-hangover-11.16-aarch64-packages.tar.zst.sha256
+
+      - name: Upload reproduced Bionic Hangover packages and audit
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Termux-Hangover-11.16-Bionic-ARM64
+          path: artifacts/*
+          retention-days: 30
