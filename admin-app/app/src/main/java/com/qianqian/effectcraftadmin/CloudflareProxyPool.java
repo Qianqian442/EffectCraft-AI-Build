@@ -156,6 +156,8 @@ final class CloudflareProxyPool {
             connection.setInstanceFollowRedirects(false);
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("Cache-Control", "no-store");
+            connection.setRequestProperty("Connection", "close");
+            connection.setUseCaches(false);
             if (token != null && !token.isEmpty()) {
                 connection.setRequestProperty("Authorization", "Bearer " + token);
             }
