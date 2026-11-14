@@ -44,14 +44,17 @@ Workers, D1 and Durable Objects have separate usage limits. SQLite-backed Durabl
 
 ## Deploy from GitHub Actions (phone-friendly)
 
-The repository contains `.github/workflows/deploy-ae-cloud-account.yml`. Before running it, add these four repository **Actions secrets** at GitHub → repository → Settings → Secrets and variables → Actions → New repository secret:
+The repository contains `.github/workflows/deploy-ae-cloud-account.yml`. The required repository **Actions secrets** are these three values:
 
-- `CLOUDFLARE_API_TOKEN`: with the existing least-privilege setup, use Account → Workers Scripts → **Edit** and Account → D1 → **Edit**. First create an empty Worker named `ae-cloud-account-api` manually in the Cloudflare dashboard (Workers & Pages → Create application → Create Worker → Deploy). The current token can then update and deploy that existing Worker and apply the D1 schema. If you instead want GitHub Actions to create the first Worker automatically, the token needs product-level Workers **Admin**, which is broader. Restrict the resource selector to your Cloudflare account. Never paste this token into chat.
-- `CLOUDFLARE_ACCOUNT_ID`: the account ID shown in the Cloudflare dashboard URL.
+- `CLOUDFLARE_API_TOKEN`: use the least-privilege Cloudflare permissions Account → Workers Scripts → **Edit** and Account → D1 → **Edit**. The token must belong to the same Cloudflare account whose Account ID is configured below. Restrict the resource selector to that account. Never paste this token into chat.
 - `JWT_SECRET`: a randomly generated secret of at least 32 characters.
 - `ADMIN_PASSWORD`: your private administrator password of at least 12 characters.
 
-The workflow applies `schema.sql`, deploys the Worker and Durable Object migration, then sets `JWT_SECRET` and `ADMIN_PASSWORD` as Worker secrets. GitHub Actions masks secret values in logs. Keep all four values private. The Account ID for the already-created Cloudflare account is `6ed9bd81b9aef69ba61060f33510f014`; the D1 Database ID is already in `wrangler.jsonc` and should not be edited.
+`CLOUDFLARE_ACCOUNT_ID` is **not required as a fourth secret**: the current deployment workflow has the already-configured account ID as a fallback (`6ed9bd81b9aef69ba61060f33510f014`). If you later add a `CLOUDFLARE_ACCOUNT_ID` repository secret, it overrides that fallback; do not add it merely to satisfy the old instructions.
+
+The Worker name is `ae-cloud-account-api`. If it already exists in Workers & Pages, keep using it; do not create a duplicate. If it does not exist, the current least-privilege deployment path requires creating that empty Worker once in Cloudflare (Workers & Pages → Create application → Create Worker → Deploy) before the GitHub deployment workflow can update it. The D1 Database ID is already in `wrangler.jsonc` and should not be edited.
+
+The workflow applies `schema.sql`, deploys the Worker and Durable Object migration, then sets `JWT_SECRET` and `ADMIN_PASSWORD` as Worker secrets. GitHub Actions masks secret values in logs. Keep all three secret values private.
 
 After the run succeeds, open the deployment log to find the Worker `workers.dev` URL. It will look like:
 
