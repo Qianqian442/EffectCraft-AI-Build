@@ -250,8 +250,17 @@ jobs:
           grep -Fq 'h2Address := strings.TrimSpace(config.DefaultEndpointH2V4)' "$MOBILE"
           grep -Fq 'for _, port := range cloudPeer.Endpoint.Ports' "$MOBILE"
           grep -Fq 'cloudPeer.PublicKey != peer.PublicKey' "$MOBILE"
-          grep -Fq 'Proxy: nil' "$MOBILE"
-          grep -Fq 'Timeout: 15 * time.Second' "$MOBILE"
+          grep -Fq 'Transport: newCloudflareAPIDirectTransport()' "$MOBILE"
+          grep -Fq 'Timeout:   50 * time.Second' "$MOBILE"
+          grep -Fq 'api.devices.cloudflare.com' warp-mobile/api_transport.go
+          grep -Fq '162.159.137.105' warp-mobile/api_transport.go
+          grep -Fq '162.159.138.105' warp-mobile/api_transport.go
+          grep -Fq 'api.cloudflareclient.com' warp-mobile/api_transport.go
+          grep -Fq 'ServerName: endpoint.Host' warp-mobile/api_transport.go
+          grep -Fq 'Proxy:                 nil' warp-mobile/api_transport.go
+          grep -Fq 'WroteRequest' warp-mobile/api_transport.go
+          grep -Fq 'not replayed to avoid duplicate registration' warp-mobile/api_transport.go
+          grep -Fq 'TestCloudflareAPIEndpointPoolStartsWithPublishedDirectEndpoints' warp-mobile/api_transport_test.go
           grep -Fq 'case *net.TCPAddr, *net.UDPAddr:' .github/scripts/patch_usque_for_android.py
           grep -Fq 'useHTTP2 = true' .github/scripts/patch_usque_for_android.py
           grep -Fq 'attemptTimer := time.AfterFunc(6*time.Second, attemptCancel)' .github/scripts/patch_usque_for_android.py
