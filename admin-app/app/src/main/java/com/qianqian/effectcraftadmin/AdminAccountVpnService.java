@@ -113,7 +113,7 @@ public final class AdminAccountVpnService extends VpnService {
                 TextView message = new TextView(activity);
                 message.setText(Html.fromHtml(
                     "首次启用 Cloudflare WARP 时，会向 Cloudflare 注册本设备的专用隧道身份，并保存加密后的设备密钥。<br><br>" +
-                    "继续前请阅读并同意 <a href=\\"https://www.cloudflare.com/application/terms/\\">Cloudflare 服务条款</a>。<br><br>" +
+                    "继续前请阅读并同意 <a href=\"https://www.cloudflare.com/application/terms/\">Cloudflare 服务条款</a>。<br><br>" +
                     "账号请求将通过管理版内置 VPN 直接连接 Cloudflare；不会接管手机其他应用的网络流量。",
                     Build.VERSION.SDK_INT >= 24 ? Html.FROM_HTML_MODE_LEGACY : 0));
                 message.setMovementMethod(LinkMovementMethod.getInstance());
