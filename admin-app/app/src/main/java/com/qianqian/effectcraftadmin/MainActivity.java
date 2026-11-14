@@ -62,6 +62,9 @@ public final class MainActivity extends Activity {
     private TextView p2pStatusView;
     private String serviceStartError = "";
     private boolean serverToggleChanging = false;
+    private boolean accountServiceToggleChanging = false;
+    private boolean accountServiceStateLoaded = false;
+    private boolean accountServiceEnabled = true;
     private final Handler p2pUiHandler = new Handler(Looper.getMainLooper());
     private final Runnable p2pStatusRefresh = new Runnable() {
         @Override public void run() {
@@ -171,6 +174,85 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void loadAccountServiceState(Switch control) {
+        if (accountServiceStateLoaded) {
+            accountServiceToggleChanging = true;
+            control.setChecked(accountServiceEnabled);
+            accountServiceToggleChanging = false;
+            control.setEnabled(true);
+            return;
+        }
+        control.setEnabled(false);
+        requestAsync("GET", "/v1/admin/account-service", null, true, result -> {
+            JSONObject state = result == null ? null : result.optJSONObject("account_service");
+            if (state == null) {
+                toast("读取云端账号服务器状态失败；开关保持不可用，请检查网络后刷新");
+                control.setEnabled(false);
+                return;
+            }
+            accountServiceEnabled = state.optBoolean("enabled", true);
+            accountServiceStateLoaded = true;
+            accountServiceToggleChanging = true;
+            control.setChecked(accountServiceEnabled);
+            accountServiceToggleChanging = false;
+            control.setEnabled(true);
+        });
+    }
+
+    private void setAccountServiceEnabled(boolean enabled, Switch control) {
+        if (accountServiceToggleChanging || !accountServiceStateLoaded) return;
+        boolean previous = accountServiceEnabled;
+        control.setEnabled(false);
+        JSONObject body = new JSONObject();
+        try {
+            body.put("enabled", enabled);
+        } catch (Exception error) {
+            control.setEnabled(true);
+            toast("无法生成服务器开关请求");
+            return;
+        }
+        requestAsync("POST", "/v1/admin/account-service", body, true, result -> {
+            JSONObject state = result == null ? null : result.optJSONObject("account_service");
+            if (state == null) {
+                accountServiceToggleChanging = true;
+                control.setChecked(previous);
+                accountServiceToggleChanging = false;
+                toast("云端服务器切换未确认，已恢复原开关状态");
+                control.setEnabled(true);
+                return;
+            }
+            accountServiceEnabled = state.optBoolean("enabled", previous);
+            accountServiceToggleChanging = true;
+            control.setChecked(accountServiceEnabled);
+            accountServiceToggleChanging = false;
+            toast(accountServiceEnabled
+                ? "Cloudflare 云端账号服务器已开启，所有用户可以继续注册、登录和验证"
+                : "Cloudflare 云端账号服务器已关闭，所有用户的注册、登录和账号验证均已暂停");
+            control.setEnabled(true);
+        });
+    }
+
+    private void addAccountServiceToggle(LinearLayout parent) {
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        TextView label = text("云端账号服务器开关（全体用户）", 14, true);
+        row.addView(label, new LinearLayout.LayoutParams(0, dp(48), 1));
+        Switch control = new Switch(this);
+        control.setTextOn("开启");
+        control.setTextOff("关闭");
+        control.setChecked(accountServiceEnabled);
+        control.setEnabled(false);
+        control.setOnCheckedChangeListener((button, enabled) -> setAccountServiceEnabled(enabled, control));
+        row.addView(control, new LinearLayout.LayoutParams(-2, dp(48)));
+        parent.addView(row);
+        parent.addView(text(
+            "开启：全体用户可使用账号服务。关闭：云端立即拒绝所有用户的注册、登录和账号验证；在线用户收到状态推送并锁定。管理员仍可登录本管理版并重新开启。不会删除账号或封禁记录。",
+            11, false
+        ));
+        loadAccountServiceState(control);
+    }
+
     private void addNodeServerToggle(LinearLayout parent) {
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
@@ -187,35 +269,45 @@ public final class MainActivity extends Activity {
         parent.addView(text("开启：本机 SQLite 账号库和加密 P2P 节点对外服务；关闭：停止节点与账号服务。", 11, false));
     }
 
-    /** The administrator phone is the account authority; P2P carries authenticated account RPC. */
+    /** Cloud mode controls the shared Worker/D1 account service; local mode keeps its phone-hosted node switch. */
     private void addGlobalNodePanel(LinearLayout page) {
         LinearLayout panel = new LinearLayout(this);
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(10));
         panel.setBackground(rounded(Color.WHITE));
-        panel.addView(text(isCloudflareMode() ? "P2P 节点网络（独立功能）" : "管理员手机账号节点", 16, true));
-        panel.addView(text(isCloudflareMode()
-            ? "账号注册、登录、查询、封禁和解禁由 Cloudflare Workers + D1 统一处理。本机节点开关只控制独立 P2P 节点，不替代云端账号服务。"
-            : "账号数据保存在本机 SQLite；用户注册、登录、资料修改和封禁状态均由本机校验。", 12, false));
-        addNodeServerToggle(panel);
-        p2pStatusView = text(readP2PStatus(), 11, false);
-        p2pStatusView.setTextColor(Color.rgb(75, 84, 98));
-        panel.addView(p2pStatusView);
-        Button copyPeer = button("复制管理员节点 ID");
-        copyPeer.setOnClickListener(v -> {
-            try {
-                JSONObject node = new JSONObject(NativeP2P.status());
-                String peerId = node.optString("peerId", "");
-                if (peerId.isEmpty()) { toast("管理员节点 ID 尚未生成，请稍后再试"); return; }
-                ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                clipboard.setPrimaryClip(ClipData.newPlainText("EffectCraft 管理员节点地址", "p2p://" + peerId));
-                toast("管理员节点连接地址已复制，可分享给用户首次配对");
-            } catch (Exception error) { toast("复制节点 ID 失败：" + error.getMessage()); }
-        });
-        panel.addView(copyPeer, new LinearLayout.LayoutParams(-1, dp(44)));
-        TextView note = text("同一 Wi-Fi 优先直连；跨网络尝试 NAT 打洞，失败后使用动态发现的可用公共 Relay。用户通过加密 P2P 请求访问本机账号库。首次配对时可分享本节点 ID。", 11, false);
-        note.setTextColor(Color.rgb(95, 103, 115));
-        panel.addView(note);
+        if (isCloudflareMode()) {
+            panel.addView(text("Cloudflare 云端账号服务器", 16, true));
+            panel.addView(text(
+                "此开关控制整个云端账号服务，不是手机本机 P2P 开关。关闭后，所有 EffectCraft 用户都不能注册、登录或验证；管理员仍可进入管理版重新开启。",
+                12, false
+            ));
+            addAccountServiceToggle(panel);
+        } else {
+            panel.addView(text("管理员手机账号节点", 16, true));
+            panel.addView(text(
+                "账号数据保存在本机 SQLite；用户注册、登录、资料修改和封禁状态均由本机校验。",
+                12, false
+            ));
+            addNodeServerToggle(panel);
+            p2pStatusView = text(readP2PStatus(), 11, false);
+            p2pStatusView.setTextColor(Color.rgb(75, 84, 98));
+            panel.addView(p2pStatusView);
+            Button copyPeer = button("复制管理员节点 ID");
+            copyPeer.setOnClickListener(v -> {
+                try {
+                    JSONObject node = new JSONObject(NativeP2P.status());
+                    String peerId = node.optString("peerId", "");
+                    if (peerId.isEmpty()) { toast("管理员节点 ID 尚未生成，请稍后再试"); return; }
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                    clipboard.setPrimaryClip(ClipData.newPlainText("EffectCraft 管理员节点地址", "p2p://" + peerId));
+                    toast("管理员节点连接地址已复制，可分享给用户首次配对");
+                } catch (Exception error) { toast("复制节点 ID 失败：" + error.getMessage()); }
+            });
+            panel.addView(copyPeer, new LinearLayout.LayoutParams(-1, dp(44)));
+            TextView note = text("同一 Wi-Fi 优先直连；跨网络尝试 NAT 打洞，失败后使用动态发现的可用公共 Relay。用户通过加密 P2P 请求访问本机账号库。首次配对时可分享本节点 ID。", 11, false);
+            note.setTextColor(Color.rgb(95, 103, 115));
+            panel.addView(note);
+        }
         LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
         params.bottomMargin = dp(10);
         page.addView(panel, params);
