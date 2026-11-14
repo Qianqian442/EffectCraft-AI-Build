@@ -105,7 +105,12 @@ def patch_layer_add_item_fit(root: Path) -> None:
     fit = r'''        // EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2
         // Preserve the source aspect ratio while enlarging small media or shrinking large
         // media so the complete image/video is visible inside the composition frame.
-        if b_p(p, "fitToComp").unwrap_or(false) {
+        let can_fit_to_comp = match &it.kind {
+            ItemKind::Footage(f) => f.has_video && f.width > 0 && f.height > 0,
+            ItemKind::Comp(_) | ItemKind::Solid(_) => size.0 > 0 && size.1 > 0,
+            ItemKind::Folder => false,
+        };
+        if b_p(p, "fitToComp").unwrap_or(false) && can_fit_to_comp {
             let fit_scale = (comp.width as f64 / size.0.max(1) as f64)
                 .min(comp.height as f64 / size.1.max(1) as f64);
             if let Some(scale) = l.props.prop_mut("transform/scale") {
