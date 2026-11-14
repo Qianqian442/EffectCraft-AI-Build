@@ -31,7 +31,7 @@ def normalize_package_manifest(path: Path) -> None:
     array_table_index = 0
 
     for line_number, line in enumerate(lines, 1):
-        header = re.match(r"^\\s*(\\[\\[.*?\\]\\]|\\[.*?\\])\\s*(?:#.*)?$", line)
+        header = re.match(r"^\s*(\\[\\[.*?\\]\\]|\\[.*?\\])\s*(?:#.*)?$", line)
         if header:
             token = header.group(1)
             if token.startswith("[["):
@@ -52,7 +52,7 @@ def normalize_package_manifest(path: Path) -> None:
             output.append(line)
             continue
 
-        key_match = re.match(r"^\\s*([A-Za-z0-9_-]+)\\s*=", line)
+        key_match = re.match(r"^\s*([A-Za-z0-9_-]+)\s*=", line)
         if key_match:
             key = key_match.group(1)
             keys = seen_keys.setdefault(table, set())
@@ -62,7 +62,7 @@ def normalize_package_manifest(path: Path) -> None:
             keys.add(key)
         output.append(line)
 
-    normalized = "\\n".join(output) + "\\n"
+    normalized = "\n".join(output) + "\n"
     try:
         tomllib.loads(normalized)
     except tomllib.TOMLDecodeError as error:
@@ -71,8 +71,8 @@ def normalize_package_manifest(path: Path) -> None:
         if line_no and 1 <= line_no <= len(output):
             left = max(1, line_no - 2)
             right = min(len(output), line_no + 2)
-            excerpt = "\\n".join(f"{i}: {output[i - 1]}" for i in range(left, right + 1))
-        raise SystemExit(f"Invalid Cargo manifest {path}: {error}\\n{excerpt}") from error
+            excerpt = "\n".join(f"{i}: {output[i - 1]}" for i in range(left, right + 1))
+        raise SystemExit(f"Invalid Cargo manifest {path}: {error}\n{excerpt}") from error
     path.write_text(normalized, encoding="utf-8")
     print(f"Validated Cargo manifest: {path}")
 
