@@ -41,7 +41,7 @@ def main() -> None:
         return
 
     http_pattern = re.compile(
-        r"fn http_request\\(url: &str, method: &str, path: &str, body: Value, token: Option<&str>\\) -> Result<HttpResult, String> \\{.*?\\n\\}\\n\\n(?=fn blocking_overlay)",
+        r"fn http_request\(url: &str, method: &str, path: &str, body: Value, token: Option<&str>\) -> Result<HttpResult, String> \{.*?\n\}\n\n(?=fn blocking_overlay)",
         re.S,
     )
     wrapper = """fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
@@ -65,12 +65,12 @@ def main() -> None:
     )
     account = account.replace(
         "//! EFFECTCRAFT_CLOUDFLARE_ACCOUNT_GATE_V1",
-        f"//! EFFECTCRAFT_CLOUDFLARE_ACCOUNT_GATE_V1\\n//! {MARKER}",
+        f"//! EFFECTCRAFT_CLOUDFLARE_ACCOUNT_GATE_V1\n//! {MARKER}",
         1,
     )
 
-    module_declaration = "mod account;\\n"
-    module_new = "mod account;\\nmod public_proxy_pool;\\n"
+    module_declaration = "mod account;\n"
+    module_new = "mod account;\nmod public_proxy_pool;\n"
     lib = replace_once(lib, module_declaration, module_new, "public proxy module declaration")
 
     destination = root / "crates/ui-egui/src/public_proxy_pool.rs"
