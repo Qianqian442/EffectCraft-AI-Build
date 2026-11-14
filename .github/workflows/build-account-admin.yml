@@ -133,6 +133,22 @@ jobs:
           test -s admin-app/app/src/main/assets/public-proxy-bootstrap.txt
           echo "Packed $(wc -l < admin-app/app/src/main/assets/public-proxy-bootstrap.txt) proxy candidates for the admin APK."
 
+      - name: Download and verify pinned Hev tun2socks Android AAR
+        shell: bash
+        run: |
+          set -euo pipefail
+          HEV_AAR="$RUNNER_TEMP/hev-socks5-tunnel.aar"
+          curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
+            "https://github.com/heiher/hev-socks5-tunnel/releases/download/2.20.0/hev-socks5-tunnel.aar" \
+            -o "$HEV_AAR"
+          echo "ae8a2e96b80b4eccccd037805a4bb4a278090c89dbcae8bc6fcb7634e9a255b9  $HEV_AAR" | sha256sum --check -
+          unzip -l "$HEV_AAR" | grep -Fq 'classes.jar'
+          unzip -l "$HEV_AAR" | grep -Fq 'jni/arm64-v8a/libhev-socks5-tunnel.so'
+          unzip -p "$HEV_AAR" classes.jar > "$RUNNER_TEMP/hev-admin-classes.jar"
+          unzip -l "$RUNNER_TEMP/hev-admin-classes.jar" | grep -Fq 'hev/htproxy/TProxyService.class'
+          mkdir -p admin-app/app/libs
+          cp "$HEV_AAR" admin-app/app/libs/hev-socks5-tunnel.aar
+
       - name: Build admin APK
         env:
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL || 'https://ae-cloud-account-api.q1939023856.workers.dev' }}
