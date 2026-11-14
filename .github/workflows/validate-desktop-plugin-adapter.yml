@@ -181,6 +181,7 @@ jobs:
           grep -F '工程素材收集不完整' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
           grep -F 'zipProjectDirectory(projectRoot, sharePayload)' artcraft/templates/android/SafActivity.java
           grep -F 'private static void addProjectFiles' artcraft/templates/android/SafActivity.java
+          grep -F 'import java.io.FileOutputStream;' artcraft/templates/android/SafActivity.java
 
       - name: Validate the single unified AM/NV/AE/CapCut project import control
         env:
@@ -191,6 +192,7 @@ jobs:
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F '导入am/NV/Ae/capcut工程' effectcraft/crates/engine/src/menus.rs
+          grep -F 'file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip"' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F 'matches!(ext(&actual).as_str(), "ecproj" | "ecprojx")' .github/scripts/am_nv.rs
           grep -F 'super::import_project::import_project' .github/scripts/am_nv.rs
           grep -F 'MAX_ZIP_TOTAL' .github/scripts/am_nv.rs
