@@ -213,22 +213,24 @@ def main() -> None:
             Some(Err(TryRecvError::Disconnected)) => Some(Err("实时通知连接已结束；下次打开软件时会重新同步".to_string())),
             Some(Err(TryRecvError::Empty)) | None => None,
         };
-        if let Some(Ok(event)) = received {
-            if event.get("type").and_then(Value::as_str) == Some("account_status_changed") {
-                let status = event.get("status").and_then(Value::as_str).unwrap_or("");
-                let banned_until = event.get("banned_until").and_then(Value::as_str).unwrap_or("");
-                let signature = format!("{status}:{banned_until}");
-                // A different expiry is a new ban event even if the account
-                // was already banned. Replayed copies of the same event are ignored.
-                if (status == "banned" || status == "unbanned")
-                    && self.last_event_signature.as_deref() != Some(signature.as_str())
-                {
-                    self.last_event_signature = Some(signature);
-                    self.notification_pending = Some(status.to_string());
+        match received {
+            Some(Ok(event)) => {
+                if event.get("type").and_then(Value::as_str) == Some("account_status_changed") {
+                    let status = event.get("status").and_then(Value::as_str).unwrap_or("");
+                    let banned_until = event.get("banned_until").and_then(Value::as_str).unwrap_or("");
+                    let signature = format!("{status}:{banned_until}");
+                    // A different expiry is a new ban event even if the account
+                    // was already banned. Replayed copies of the same event are ignored.
+                    if (status == "banned" || status == "unbanned")
+                        && self.last_event_signature.as_deref() != Some(signature.as_str())
+                    {
+                        self.last_event_signature = Some(signature);
+                        self.notification_pending = Some(status.to_string());
+                    }
                 }
             }
-        } else if let Some(Err(error)) = received {
-            self.status = error;
+            Some(Err(error)) => self.status = error,
+            None => {}
         }
         if self.pending.is_none() && self.token.is_some() {
             if let Some(_status) = self.notification_pending.take() {
