@@ -2,7 +2,7 @@ name: Build EffectCraft Cloudflare MASQUE Android core
 
 on:
   push:
-    branches: [feature/own-on-demand-vpn]
+    branches: [feature/own-on-demand-vpn, feature/main-cloudflare-warp-vpn]
     paths:
       - 'warp-mobile/**'
       - '.github/scripts/patch_usque_for_android.py'
