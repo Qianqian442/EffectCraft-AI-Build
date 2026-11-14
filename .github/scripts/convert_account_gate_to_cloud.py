@@ -332,20 +332,20 @@ def main() -> None:
         raise SystemExit(f"HTTPS transport replacement expected once, found {substitutions}")
 
     live_event_call = (
-        "    if matches!(app.account.mode, Mode::Editor | Mode::Banned) {\\n"
-        "        app.account.start_events();\\n"
-        "        if app.account.mode == Mode::Editor {\\n"
-        "            app.account.start_node_events();\\n"
-        "        }\\n"
-        "        app.account.poll_events(config);\\n"
+        "    if matches!(app.account.mode, Mode::Editor | Mode::Banned) {\n"
+        "        app.account.start_events();\n"
+        "        if app.account.mode == Mode::Editor {\n"
+        "            app.account.start_node_events();\n"
+        "        }\n"
+        "        app.account.poll_events(config);\n"
         "    }"
     )
     periodic_block = (
-        "    if app.account.mode == Mode::Editor\\n"
-        "        && app.account.pending.is_none()\\n"
-        "        && app.account.last_verified.map_or(true, |last| last.elapsed() > std::time::Duration::from_secs(10))\\n"
-        "    {\\n"
-        '        app.account.send(Action::Verify, "GET", "/v1/me", Value::Null, config);\\n'
+        "    if app.account.mode == Mode::Editor\n"
+        "        && app.account.pending.is_none()\n"
+        "        && app.account.last_verified.map_or(true, |last| last.elapsed() > std::time::Duration::from_secs(10))\n"
+        "    {\n"
+        '        app.account.send(Action::Verify, "GET", "/v1/me", Value::Null, config);\n'
         "    }"
     )
     if periodic_block in source:
@@ -354,7 +354,7 @@ def main() -> None:
         source = replace_once(
             source,
             "    app.account.poll(config);",
-            "    app.account.poll(config);\\n" + live_event_call,
+            "    app.account.poll(config);\n" + live_event_call,
             "start push events without periodic account polling",
         )
     source = source.replace(
