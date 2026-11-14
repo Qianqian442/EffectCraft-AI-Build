@@ -8,3 +8,8 @@ require (
 )
 
 replace github.com/Diniboy1123/usque => ./upstream-usque
+
+tool (
+	golang.org/x/mobile/cmd/gobind
+	golang.org/x/mobile/cmd/gomobile
+)
