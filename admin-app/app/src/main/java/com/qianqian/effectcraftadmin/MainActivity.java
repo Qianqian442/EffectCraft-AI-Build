@@ -53,7 +53,6 @@ public final class MainActivity extends Activity {
     private String adminToken = "";
     private LinearLayout root;
     private LinearLayout rows;
-    private EditText serverInput;
     private EditText usernameInput;
     private EditText passwordInput;
     private EditText searchInput;
@@ -374,7 +373,7 @@ public final class MainActivity extends Activity {
 
     private void showLogin() {
         LinearLayout page = column();
-        TextView title = text("EffectCraft 账号管理", 24, true);
+        TextView title = text("Ae账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
         page.addView(text(isCloudflareMode()
             ? "管理端连接统一 Cloudflare 账号服务；网络不通时自动检测可用的公开 HTTPS 隧道。"
@@ -383,11 +382,6 @@ public final class MainActivity extends Activity {
             ? "主 APK 和管理版 APK 共用同一 Cloudflare 账号数据库。"
             : "其他用户无需与管理员处于同一 Wi-Fi；主 APK 自动发现本机节点，并通过加密 P2P 通道注册、登录和核验封禁状态。", 13, false));
         if (!isCloudflareMode()) addNodeServerToggle(page);
-        page.addView(text("账号服务器地址", 13, true));
-        serverInput = field("服务器地址由管理版构建配置提供", false);
-        serverInput.setText(server);
-        serverInput.setEnabled(false);
-        page.addView(serverInput);
         page.addView(text("管理员账号", 13, true));
         usernameInput = field("admin", false);
         usernameInput.setText("admin");
@@ -423,7 +417,7 @@ public final class MainActivity extends Activity {
         String pass = passwordInput.getText().toString().trim();
         server = configuredAccountServer();
         if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) {
-            toast("请填写服务器地址、管理员账号和密码");
+            toast("请填写管理员账号和密码");
             return;
         }
         JSONObject body = new JSONObject();
