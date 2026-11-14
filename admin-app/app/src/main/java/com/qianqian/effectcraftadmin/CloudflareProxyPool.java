@@ -290,7 +290,7 @@ final class CloudflareProxyPool {
                         if (connection.getResponseCode() != 200) continue;
                         byte[] bytes = readBounded(connection.getInputStream(), 1024 * 1024);
                         String body = new String(bytes, StandardCharsets.UTF_8);
-                        for (String line : body.split("\\\\r?\\\\n")) {
+                        for (String line : body.split("\\r?\\n")) {
                             Candidate candidate = parseCandidate(line);
                             if (candidate == null) continue;
                             synchronized (LOCK) { addCandidateLocked(candidate); }
