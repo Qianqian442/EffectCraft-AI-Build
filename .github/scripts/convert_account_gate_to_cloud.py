@@ -40,7 +40,10 @@ def main() -> None:
         "use std::io::{Read, Write};\n"
         "use std::net::{TcpStream, ToSocketAddrs};\n"
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::time::Duration;\n",
+        "use std::time::Duration;\n"
+        "use tungstenite::client::IntoClientRequest;\n"
+        "use tungstenite::http::HeaderValue;\n"
+        "use tungstenite::Message;\n",
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::time::Duration;\n",
         "cloud client imports",
@@ -60,7 +63,8 @@ def main() -> None:
         "    events: Option<Receiver<Result<Value, String>>>,\n"
         "    event_started: bool,\n"
         "    node_event_started: bool,\n"
-        "    notification_pending: Option<String>,",
+        "    notification_pending: Option<String>,\n"
+        "    last_event_signature: Option<String>,",
         "account event state fields",
     )
     source = replace_once(
@@ -72,7 +76,8 @@ def main() -> None:
         "            events: None,\n"
         "            event_started: false,\n"
         "            node_event_started: false,\n"
-        "            notification_pending: None,",
+        "            notification_pending: None,\n"
+        "            last_event_signature: None,",
         "account event state initialization",
     )
     source = replace_once(
@@ -138,13 +143,102 @@ def main() -> None:
     )
 
     live_event_methods = r'''
-    // No persistent WebSocket or timed polling. One-shot ban/unban push
-    // messages are handled by the native notification bridge.
-    fn start_events(&mut self) {}
+    // One hibernating account-status WebSocket. It has no timed ping, no
+    // reconnect loop and no 10-second Worker polling. A connection is opened
+    // once per app session; the Durable Object replays the latest event on
+    // the next app launch if this process was stopped.
+    fn start_events(&mut self) {
+        if self.event_started {
+            return;
+        }
+        let Some(token) = self.token.clone() else { return; };
+        let base = self.server_url.trim_end_matches('/')
+            .replacen("https://", "wss://", 1);
+        let ws_url = format!("{base}/v1/events");
+        let (tx, rx) = mpsc::channel();
+        self.events = Some(rx);
+        self.event_started = true;
+        std::thread::spawn(move || {
+            let mut request = match ws_url.into_client_request() {
+                Ok(request) => request,
+                Err(error) => {
+                    let _ = tx.send(Err(format!("实时通知地址无效：{error}")));
+                    return;
+                }
+            };
+            let authorization = match HeaderValue::from_str(&format!("Bearer {token}")) {
+                Ok(value) => value,
+                Err(_) => {
+                    let _ = tx.send(Err("账号登录凭据格式不正确".to_string()));
+                    return;
+                }
+            };
+            request.headers_mut().insert("Authorization", authorization);
+            match tungstenite::connect(request) {
+                Ok((mut socket, _)) => {
+                    loop {
+                        match socket.read() {
+                            Ok(Message::Text(message)) => {
+                                if let Ok(value) = serde_json::from_str::<Value>(message.as_str()) {
+                                    let _ = tx.send(Ok(value));
+                                }
+                            }
+                            Ok(Message::Ping(payload)) => {
+                                if socket.send(Message::Pong(payload)).is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(Message::Close(_)) => break,
+                            Ok(_) => {}
+                            Err(error) => {
+                                let _ = tx.send(Err(format!("实时通知连接已断开：{error}")));
+                                break;
+                            }
+                        }
+                    }
+                }
+                Err(error) => {
+                    let _ = tx.send(Err(format!("实时通知连接失败：{error}")));
+                }
+            }
+        });
+    }
 
+    // Node-presence heartbeat is not used by account ban/unban notifications.
     fn start_node_events(&mut self) {}
 
-    fn poll_events(&mut self, _config: Option<&dyn effectcraft_engine::config::ConfigStore>) {}
+    fn poll_events(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
+        let received = match self.events.as_ref().map(|rx| rx.try_recv()) {
+            Some(Ok(result)) => Some(result),
+            Some(Err(TryRecvError::Disconnected)) => Some(Err("实时通知连接已结束；下次打开软件时会重新同步".to_string())),
+            Some(Err(TryRecvError::Empty)) | None => None,
+        };
+        if let Some(Ok(event)) = received {
+            if event.get("type").and_then(Value::as_str) == Some("account_status_changed") {
+                let status = event.get("status").and_then(Value::as_str).unwrap_or("");
+                let banned_until = event.get("banned_until").and_then(Value::as_str).unwrap_or("");
+                let signature = format!("{status}:{banned_until}");
+                // A different expiry is a new ban event even if the account
+                // was already banned. Replayed copies of the same event are ignored.
+                if (status == "banned" || status == "unbanned")
+                    && self.last_event_signature.as_deref() != Some(signature.as_str())
+                {
+                    self.last_event_signature = Some(signature);
+                    self.notification_pending = Some(status.to_string());
+                }
+            }
+        } else if let Some(Err(error)) = received {
+            self.status = error;
+        }
+        if self.pending.is_none() && self.token.is_some() {
+            if let Some(_status) = self.notification_pending.take() {
+                // The notification is only a wake-up signal. Query the canonical
+                // account state once over the short-lived task VPN, then stop it.
+                self.mode = Mode::Checking;
+                self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+            }
+        }
+    }
 '''
     source = replace_once(
         source,

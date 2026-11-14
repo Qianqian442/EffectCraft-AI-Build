@@ -59,8 +59,15 @@ def main() -> None:
     if replaced != 1:
         raise SystemExit(f"Cloudflare account HTTP request replacement expected once, found {replaced}")
 
-    if "tungstenite::connect(request)" in account or "connect_websocket(request)" in account:
-        raise SystemExit("Persistent WSS loops must remain disabled; only one-shot account tasks may start the VPN.")
+    websocket_calls = account.count("tungstenite::connect(request)")
+    if websocket_calls != 1:
+        raise SystemExit(f"Expected exactly one account-status WebSocket connection, found {websocket_calls}")
+    account = account.replace(
+        "tungstenite::connect(request)",
+        "crate::public_proxy_pool::connect_websocket(request)",
+    )
+    if "tungstenite::connect(request)" in account:
+        raise SystemExit("Account status notifications must use the quota-safe transport selector.")
     account = account.replace(
         "//! EFFECTCRAFT_CLOUDFLARE_ACCOUNT_GATE_V1",
         f"//! EFFECTCRAFT_CLOUDFLARE_ACCOUNT_GATE_V1\n//! {MARKER}",
