@@ -1,96 +1,136 @@
 #!/usr/bin/env python3
-"""Integrate the short-lived Android VpnService and Hev tun2socks AAR."""
+"""Schedule the VPN integration inside build-common after Android sources are generated."""
 from __future__ import annotations
 
 import os
 import shutil
-import xml.etree.ElementTree as ET
 from pathlib import Path
 
-ANDROID_NS = "http://schemas.android.com/apk/res/android"
-ET.register_namespace("android", ANDROID_NS)
+MARKER = "EFFECTCRAFT_ON_DEMAND_VPN_INTEGRATION_V1"
 
 
-def attr(name: str) -> str:
-    return f"{{{ANDROID_NS}}}{name}"
+def replace_once(text: str, old: str, new: str, label: str) -> str:
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{label}: expected one anchor, found {count}")
+    return text.replace(old, new, 1)
 
 
-def add_permission(root: ET.Element, name: str) -> None:
-    for node in root.findall("uses-permission"):
-        if node.get(attr("name")) == name:
-            return
-    ET.SubElement(root, "uses-permission", {attr("name"): name})
+def main() -> None:
+    artcraft = Path(os.environ["ARTCRAFT_DIR"]).resolve()
+    effectcraft = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
+    assets = Path(os.environ["BUILD_ASSETS_DIR"]).resolve()
+    aar_source = Path(os.environ["HEV_AAR_PATH"]).resolve()
+    target_crate = effectcraft / "p2p-bridge"
+    builder_script = artcraft / "lib/build-common.sh"
+    aar_target = target_crate / "android/hev-socks5-tunnel.aar"
 
+    if not (target_crate / "Cargo.toml").is_file():
+        raise SystemExit("P2P bridge must be integrated before the on-demand VPN patch")
+    if not (target_crate / "android/NativeP2P.java").is_file():
+        raise SystemExit("P2P NativeP2P.java is missing")
+    if not (target_crate / "android/EffectCraftVpnService.java").is_file():
+        raise SystemExit("EffectCraftVpnService.java is missing from the P2P integration bundle")
+    if not aar_source.is_file() or aar_source.stat().st_size != 617551:
+        raise SystemExit("Pinned Hev tun2socks AAR is missing or has an unexpected size")
+    if not builder_script.is_file():
+        raise SystemExit(f"Android builder script missing: {builder_script}")
 
-def integrate_manifest(path: Path) -> None:
-    tree = ET.parse(path)
-    root = tree.getroot()
-    for permission in (
-        "android.permission.INTERNET",
-        "android.permission.FOREGROUND_SERVICE",
-        "android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED",
-        "android.permission.POST_NOTIFICATIONS",
-    ):
-        add_permission(root, permission)
+    shutil.copy2(aar_source, aar_target)
 
-    app = root.find("application")
-    if app is None:
-        raise SystemExit("AndroidManifest.xml does not contain an application element")
+    source = builder_script.read_text(encoding="utf-8")
+    if MARKER not in source:
+        anchor = "# The shared update checker (templates/android/UpdateCheck.java) is installed next to every"
+        block = r'''# EFFECTCRAFT_ON_DEMAND_VPN_INTEGRATION_V1
+# This executes after android_project.py has generated AndroidManifest.xml,
+# Gradle build.gradle and the app NativeActivity, but before Gradle compiles Java.
+if [[ "$APP" == "effectcraft" ]]; then
+    P2P_CRATE="$ROOT/$SRC/p2p-bridge"
+    python3 - "$ANDROID_DIR" "$P2P_CRATE/android/EffectCraftVpnService.java" "$P2P_CRATE/android/hev-socks5-tunnel.aar" <<'PY'
+from pathlib import Path
+import shutil
+import sys
+import xml.etree.ElementTree as ET
 
-    existing = [
-        service for service in app.findall("service")
-        if service.get(attr("name")) in (
-            ".EffectCraftVpnService",
-            "com.artcraft.effectcraft.EffectCraftVpnService",
-        )
-    ]
-    service = existing[0] if existing else ET.SubElement(app, "service")
-    service.set(attr("name"), "com.artcraft.effectcraft.EffectCraftVpnService")
-    service.set(attr("permission"), "android.permission.BIND_VPN_SERVICE")
-    service.set(attr("exported"), "true")
-    service.set(attr("foregroundServiceType"), "systemExempted")
+android_dir = Path(sys.argv[1])
+service_source = Path(sys.argv[2])
+aar_source = Path(sys.argv[3])
+java_root = android_dir / "java"
+manifest_path = android_dir / "AndroidManifest.xml"
+gradle_path = android_dir / "android" / "build.gradle"
 
-    intent_filter = service.find("intent-filter")
-    if intent_filter is None:
-        intent_filter = ET.SubElement(service, "intent-filter")
-    if not any(a.get(attr("name")) == "android.net.VpnService" for a in intent_filter.findall("action")):
-        ET.SubElement(intent_filter, "action", {attr("name"): "android.net.VpnService"})
+for path in (java_root, manifest_path, gradle_path, service_source, aar_source):
+    if not path.exists():
+        raise SystemExit(f"On-demand VPN build input missing: {path}")
 
-    for prop in service.findall("property"):
-        if prop.get(attr("name")) == "android.net.VpnService.SUPPORTS_ALWAYS_ON":
-            service.remove(prop)
-    ET.SubElement(service, "meta-data", {
-        attr("name"): "android.net.VpnService.SUPPORTS_ALWAYS_ON",
-        attr("value"): "false",
-    })
+package_dir = java_root / "com" / "artcraft" / "effectcraft"
+package_dir.mkdir(parents=True, exist_ok=True)
+shutil.copy2(service_source, package_dir / "EffectCraftVpnService.java")
 
-    tree.write(path, encoding="utf-8", xml_declaration=True)
+aar_dir = android_dir / "android" / "libs"
+aar_dir.mkdir(parents=True, exist_ok=True)
+shutil.copy2(aar_source, aar_dir / "hev-socks5-tunnel.aar")
 
-
-def add_aap_dependency(gradle_path: Path) -> None:
-    text = gradle_path.read_text(encoding="utf-8")
-    dependency = "implementation files('libs/hev-socks5-tunnel.aar')"
-    if dependency in text:
-        return
+gradle = gradle_path.read_text(encoding="utf-8")
+dependency = "implementation files('libs/hev-socks5-tunnel.aar')"
+if dependency not in gradle:
     anchor = "dependencies {"
-    if text.count(anchor) != 1:
-        raise SystemExit("Could not find exactly one Gradle dependencies block")
-    text = text.replace(anchor, anchor + "\n    " + dependency, 1)
-    gradle_path.write_text(text, encoding="utf-8")
+    if gradle.count(anchor) != 1:
+        raise SystemExit("Could not locate the generated Gradle dependencies block")
+    gradle = gradle.replace(anchor, anchor + "\n    " + dependency, 1)
+    gradle_path.write_text(gradle, encoding="utf-8")
 
+android_ns = "http://schemas.android.com/apk/res/android"
+ET.register_namespace("android", android_ns)
+def a(name):
+    return "{" + android_ns + "}" + name
 
-def patch_activity(java_root: Path) -> Path:
-    candidates = []
-    for path in java_root.rglob("*Activity.java"):
-        text = path.read_text(encoding="utf-8")
-        if "extends NativeActivity" in text and "protected void onCreate(Bundle savedInstanceState)" in text:
-            candidates.append((path, text))
-    if len(candidates) != 1:
-        raise SystemExit(f"Expected one generated NativeActivity, found {len(candidates)}")
-    path, text = candidates[0]
-    marker = "EFFECTCRAFT_VPN_PERMISSION_RESULT_V1"
-    if marker not in text:
-        override = """
+tree = ET.parse(manifest_path)
+root = tree.getroot()
+for permission in (
+    "android.permission.FOREGROUND_SERVICE",
+    "android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED",
+    "android.permission.POST_NOTIFICATIONS",
+):
+    if not any(p.get(a("name")) == permission for p in root.findall("uses-permission")):
+        ET.SubElement(root, "uses-permission", {a("name"): permission})
+
+application = root.find("application")
+if application is None:
+    raise SystemExit("Generated Android manifest has no application element")
+services = [
+    item for item in application.findall("service")
+    if item.get(a("name")) in (".EffectCraftVpnService", "com.artcraft.effectcraft.EffectCraftVpnService")
+]
+service = services[0] if services else ET.SubElement(application, "service")
+service.set(a("name"), "com.artcraft.effectcraft.EffectCraftVpnService")
+service.set(a("permission"), "android.permission.BIND_VPN_SERVICE")
+service.set(a("exported"), "true")
+service.set(a("foregroundServiceType"), "systemExempted")
+intent_filter = service.find("intent-filter")
+if intent_filter is None:
+    intent_filter = ET.SubElement(service, "intent-filter")
+if not any(action.get(a("name")) == "android.net.VpnService" for action in intent_filter.findall("action")):
+    ET.SubElement(intent_filter, "action", {a("name"): "android.net.VpnService"})
+for meta in list(service.findall("meta-data")):
+    if meta.get(a("name")) == "android.net.VpnService.SUPPORTS_ALWAYS_ON":
+        service.remove(meta)
+ET.SubElement(service, "meta-data", {
+    a("name"): "android.net.VpnService.SUPPORTS_ALWAYS_ON",
+    a("value"): "false",
+})
+tree.write(manifest_path, encoding="utf-8", xml_declaration=True)
+
+activities = []
+for candidate in java_root.rglob("*Activity.java"):
+    java = candidate.read_text(encoding="utf-8")
+    if "extends NativeActivity" in java and "protected void onCreate(Bundle savedInstanceState)" in java:
+        activities.append((candidate, java))
+if len(activities) != 1:
+    raise SystemExit(f"Expected one generated NativeActivity, found {len(activities)}")
+activity_path, activity = activities[0]
+if "EFFECTCRAFT_VPN_PERMISSION_RESULT_V1" not in activity:
+    callback = """
     // EFFECTCRAFT_VPN_PERMISSION_RESULT_V1
     @Override
     protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
@@ -100,48 +140,22 @@ def patch_activity(java_root: Path) -> Path:
         }
     }
 """
-        index = text.rfind("}")
-        if index < 0:
-            raise SystemExit("Generated NativeActivity has no closing brace")
-        text = text[:index] + override + text[index:]
-        path.write_text(text, encoding="utf-8")
-    return path
+    end = activity.rfind("}")
+    if end < 0:
+        raise SystemExit("Generated NativeActivity has no closing brace")
+    activity = activity[:end] + callback + activity[end:]
+    activity_path.write_text(activity, encoding="utf-8")
 
+print("Registered the task-scoped VpnService, Hev tun2socks AAR and system permission callback.")
+PY
+fi
 
-def main() -> None:
-    root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
-    assets = Path(os.environ.get("BUILD_ASSETS_DIR", Path(__file__).resolve().parents[2])).resolve()
-    android_dir = root / "apps/effectcraft-android"
-    java_root = android_dir / "java"
-    gradle_path = android_dir / "android/build.gradle"
-    manifest_path = android_dir / "AndroidManifest.xml"
+'''
+        source = replace_once(source, anchor, block + anchor, "Android VPN injection point")
+        builder_script.write_text(source, encoding="utf-8")
 
-    source_service = assets / "p2p-bridge/android/EffectCraftVpnService.java"
-    aar_source = Path(os.environ.get("HEV_AAR_PATH", "")).resolve()
-    if not source_service.is_file():
-        raise SystemExit(f"VPN service source missing: {source_service}")
-    if not aar_source.is_file() or aar_source.stat().st_size < 100_000:
-        raise SystemExit("Pinned Hev tun2socks AAR is missing or unexpectedly small")
-    for path in (java_root, gradle_path, manifest_path):
-        if not path.exists():
-            raise SystemExit(f"Generated Android build output missing: {path}")
-
-    package_dir = java_root / "com/artcraft/effectcraft"
-    package_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_service, package_dir / "EffectCraftVpnService.java")
-
-    aar_dir = android_dir / "android/libs"
-    aar_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(aar_source, aar_dir / "hev-socks5-tunnel.aar")
-
-    add_aap_dependency(gradle_path)
-    integrate_manifest(manifest_path)
-    activity = patch_activity(java_root)
-
-    print(f"Installed EffectCraftVpnService: {package_dir / 'EffectCraftVpnService.java'}")
-    print(f"Bundled Hev tun2socks: {aar_dir / 'hev-socks5-tunnel.aar'}")
-    print(f"Registered Android VPN service and permission callback: {activity}")
-    print("Only the EffectCraft package and explicitly configured Worker IP routes enter this task VPN.")
+    print(f"Installed pinned tun2socks AAR at {aar_target}")
+    print(f"Patched Android build generator integration at {builder_script}")
 
 
 if __name__ == "__main__":
