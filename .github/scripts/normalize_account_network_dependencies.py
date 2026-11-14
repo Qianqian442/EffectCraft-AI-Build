@@ -31,7 +31,7 @@ def normalize_package_manifest(path: Path) -> None:
     array_table_index = 0
 
     for line_number, line in enumerate(lines, 1):
-        header = re.match(r"^\s*(\\[\\[.*?\\]\\]|\\[.*?\\])\s*(?:#.*)?$", line)
+        header = re.match(r"^\s*(\[\[.*?\]\]|\[.*?\])\s*(?:#.*)?$", line)
         if header:
             token = header.group(1)
             if token.startswith("[["):
