@@ -353,25 +353,32 @@ pub(crate) fn account_http_request(
 
     let (agent, route) = select_http_route(base_url)?;
     let endpoint = format!("{}{}", base_url.trim_end_matches('/'), path);
-    let mut request = if method == "GET" {
-        agent.get(&endpoint)
-    } else {
-        agent.post(&endpoint)
-    };
-    request = request.header("Accept", "application/json");
-    if let Some(token) = token {
-        request = request.header("Authorization", &format!("Bearer {token}"));
-    }
-
-    // Only one submission: an error may mean Cloudflare processed the POST
-    // but the response was lost, so automatically retrying could duplicate it.
-    let mut response = if body.is_null() {
+    let response_result = if method == "GET" {
+        let mut request = agent
+            .get(&endpoint)
+            .header("Accept", "application/json");
+        if let Some(token) = token {
+            request = request.header("Authorization", &format!("Bearer {token}"));
+        }
         request.call()
     } else {
-        let bytes = serde_json::to_vec(&body).map_err(|_| "账号请求数据编码失败".to_string())?;
-        request.header("Content-Type", "application/json").send(bytes.as_slice())
-    }
-    .map_err(|_| {
+        let bytes = if body.is_null() {
+            b"{}".to_vec()
+        } else {
+            serde_json::to_vec(&body).map_err(|_| "账号请求数据编码失败".to_string())?
+        };
+        let mut request = agent
+            .post(&endpoint)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json");
+        if let Some(token) = token {
+            request = request.header("Authorization", &format!("Bearer {token}"));
+        }
+        request.send(bytes.as_slice())
+    };
+    // Never replay a submitted POST: the upstream may have committed it before
+    // the transport error occurred.
+    let mut response = response_result.map_err(|_| {
         if route.is_some() {
             "已通过代理连接 Cloudflare，但账号操作的响应中断；本次不会重复提交。".to_string()
         } else {
