@@ -227,9 +227,15 @@ jobs:
           grep -Fq 'new Class<?>[]{String.class, long.class, String.class, String.class}' "$VPN"
           grep -Fq 'func RegisterDevice() (string, error)' "$MOBILE"
           grep -Fq 'func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string) error' "$MOBILE"
-          grep -Fq 'tcp://"+net.JoinHostPort(config.DefaultEndpointH2V4, "443")' "$MOBILE"
+          grep -Fq 'h2Addresses := []string{config.DefaultEndpointH2V4, "162.159.198.10"}' "$MOBILE"
+          grep -Fq 'masqueUDPPorts := []int{443, 500, 1701, 4500, 4443, 8443, 8095}' "$MOBILE"
+          grep -Fq 'Proxy: nil' "$MOBILE"
+          grep -Fq 'Timeout: 15 * time.Second' "$MOBILE"
           grep -Fq 'case *net.TCPAddr, *net.UDPAddr:' .github/scripts/patch_usque_for_android.py
           grep -Fq 'useHTTP2 = true' .github/scripts/patch_usque_for_android.py
+          grep -Fq 'attemptTimer := time.AfterFunc(4*time.Second, attemptCancel)' .github/scripts/patch_usque_for_android.py
+          grep -Fq 'var proxyURL *url.URL // Direct Cloudflare underlay only; no proxy or relay.' .github/scripts/patch_usque_for_android.py
+          grep -Fq 'Timeout: 5 * time.Second, KeepAlive: 15 * time.Second' .github/scripts/patch_usque_for_android.py
           python3 - <<'PY'
           from pathlib import Path
           source = Path("admin-app/app/src/main/java/com/qianqian/effectcraftadmin/AdminAccountVpnService.java").read_text()
