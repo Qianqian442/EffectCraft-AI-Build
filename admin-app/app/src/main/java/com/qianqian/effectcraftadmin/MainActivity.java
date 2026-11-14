@@ -57,7 +57,13 @@ public final class MainActivity extends Activity {
     private EditText passwordInput;
     private EditText searchInput;
     private Button loginButton;
+    private Button cancelLoginButton;
     private TextView loginStatus;
+    private static final long LOGIN_OPERATION_TIMEOUT_MS = 180_000L;
+    private final Handler loginUiHandler = new Handler(Looper.getMainLooper());
+    private volatile long loginOperationId = 0L;
+    private volatile Thread loginWorkerThread;
+    private final Runnable loginTimeout = () -> cancelLoginOperation(true);
     private TextView p2pStatusView;
     private String serviceStartError = "";
     private boolean serverToggleChanging = false;
@@ -391,6 +397,10 @@ public final class MainActivity extends Activity {
         page.addView(passwordInput);
         loginButton = button("登录管理后台");
         page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
+        cancelLoginButton = button("取消本次操作并返回");
+        cancelLoginButton.setVisibility(View.GONE);
+        page.addView(cancelLoginButton, new LinearLayout.LayoutParams(-1, dp(44)));
+        cancelLoginButton.setOnClickListener(v -> cancelLoginOperation(false));
         loginStatus = text("请输入管理员密码；本机注册人数为 0 时，首次登录会采用本次输入密码。", 12, false);
         loginStatus.setTextColor(Color.rgb(95, 103, 115));
         loginStatus.setGravity(Gravity.TOP);
@@ -458,14 +468,22 @@ public final class MainActivity extends Activity {
         }
         JSONObject body = new JSONObject();
         try { body.put("username", user); body.put("password", pass); } catch (Exception ignored) {}
+        final long operationId = ++loginOperationId;
         if (loginButton != null) {
             loginButton.setEnabled(false);
             loginButton.setText("正在验证…");
         }
+        if (cancelLoginButton != null) cancelLoginButton.setVisibility(View.VISIBLE);
         if (loginStatus != null) loginStatus.setText(isCloudflareMode()
-            ? "正在准备 Cloudflare WARP 设备与连接…"
+            ? "正在准备 Cloudflare WARP 设备与连接…\n遇到网络问题可取消并返回，不会一直停留在此页面。"
             : "正在等待本机 SQLite 服务就绪并校验管理员密码…");
+        loginUiHandler.removeCallbacks(loginTimeout);
+        loginUiHandler.postDelayed(loginTimeout, LOGIN_OPERATION_TIMEOUT_MS);
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
+            if (operationId != loginOperationId) return;
+            loginUiHandler.removeCallbacks(loginTimeout);
+            if (cancelLoginButton != null) cancelLoginButton.setVisibility(View.GONE);
+            loginWorkerThread = null;
             if (result == null) {
                 if (loginButton != null) {
                     loginButton.setEnabled(true);
@@ -489,6 +507,40 @@ public final class MainActivity extends Activity {
                 if (loginStatus != null) loginStatus.setText("登录返回内容异常，请重试。");
             }
         });
+    }
+
+    private void cancelLoginOperation(boolean timedOut) {
+        final long cancelledId = ++loginOperationId;
+        loginUiHandler.removeCallbacks(loginTimeout);
+        Thread worker = loginWorkerThread;
+        loginWorkerThread = null;
+        if (worker != null) worker.interrupt();
+
+        if (loginButton != null) {
+            loginButton.setEnabled(true);
+            loginButton.setText("登录管理后台");
+        }
+        if (cancelLoginButton != null) cancelLoginButton.setVisibility(View.GONE);
+        String message = timedOut
+            ? "本次登录等待超过 3 分钟，已结束等待。你可以检查网络后重新登录。"
+            : "本次登录已取消，已返回管理员登录页面。";
+        if (loginStatus != null) loginStatus.setText(message);
+
+        // Stop a partially established task-scoped tunnel even if cancellation
+        // happened during WARP bootstrap or the account API request.
+        new Thread(() -> {
+            try {
+                AdminAccountVpnService.stopForTask(getApplicationContext());
+            } catch (Throwable error) {
+                android.util.Log.w("EffectCraftAdmin", "VPN cleanup after login cancellation failed", error);
+            }
+        }, "EffectCraft-login-cancel-cleanup").start();
+
+        if (timedOut) {
+            showLoginErrorDetails("登录超时诊断：" + message);
+        } else {
+            toast(message);
+        }
     }
 
     private String trimServer(String value) {
@@ -556,7 +608,12 @@ public final class MainActivity extends Activity {
     }
 
     private void requestAsync(String method, String path, JSONObject body, boolean auth, JsonCallback callback) {
+        final long operationId = "/v1/admin/login".equals(path) ? loginOperationId : -1L;
         io.execute(() -> {
+            if (operationId >= 0L) {
+                loginWorkerThread = Thread.currentThread();
+                if (operationId != loginOperationId || Thread.currentThread().isInterrupted()) return;
+            }
             JSONObject result = null;
             String error = null;
             HttpURLConnection localConnection = null;
@@ -639,6 +696,7 @@ public final class MainActivity extends Activity {
             JSONObject finalResult = result;
             String finalError = error;
             runOnUiThread(() -> {
+                if (operationId >= 0L && operationId != loginOperationId) return;
                 boolean loginFailure = finalError != null && "/v1/admin/login".equals(path);
                 if (finalError != null && !loginFailure) toast(finalError);
                 if (auth && finalError != null && (finalError.contains("401")
@@ -920,6 +978,15 @@ public final class MainActivity extends Activity {
 
     @Override protected void onDestroy() {
         p2pUiHandler.removeCallbacks(p2pStatusRefresh);
+        loginUiHandler.removeCallbacks(loginTimeout);
+        ++loginOperationId;
+        Thread worker = loginWorkerThread;
+        loginWorkerThread = null;
+        if (worker != null) worker.interrupt();
+        new Thread(() -> {
+            try { AdminAccountVpnService.stopForTask(getApplicationContext()); }
+            catch (Throwable ignored) {}
+        }, "EffectCraft-activity-destroy-cleanup").start();
         super.onDestroy();
         io.shutdownNow();
     }
