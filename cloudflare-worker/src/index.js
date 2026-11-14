@@ -108,8 +108,8 @@ class AuthError extends Error {}
 function publicUser(row) {
   return {
     id: row.id,
-    qq: row.qq,
-    wechat: row.wechat,
+    qq: row.qq || "",
+    wechat: row.wechat || "",
     name: row.name,
     avatar_url: row.avatar_url || "",
     created_at: row.created_at,
@@ -141,10 +141,39 @@ async function authResult(env, row, role, seconds) {
   };
 }
 async function readJson(request) {
-  const length = Number(request.headers.get("content-length") || "0");
-  if (length > 65536) throw new HttpError(413, "请求内容过大");
+  // Photo-picked avatars are embedded as a compact JPEG data URI (up to 96 KiB).
+  // The JSON/base64 envelope needs more than the old 64 KiB limit.
+  const maxBytes = 192 * 1024;
+  const contentLength = Number(request.headers.get("content-length") || "0");
+  if (contentLength > maxBytes) throw new HttpError(413, "请求内容过大");
+
+  const reader = request.body && request.body.getReader ? request.body.getReader() : null;
+  if (!reader) throw new HttpError(400, "请求数据为空");
+  const chunks = [];
+  let total = 0;
   try {
-    return await request.json();
+    while (true) {
+      const part = await reader.read();
+      if (part.done) break;
+      total += part.value.byteLength;
+      if (total > maxBytes) {
+        try { await reader.cancel(); } catch (_) {}
+        throw new HttpError(413, "请求内容过大");
+      }
+      chunks.push(part.value);
+    }
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    throw new HttpError(400, "请求数据读取失败");
+  }
+  try {
+    const bytes = new Uint8Array(total);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch (_) {
     throw new HttpError(400, "请求数据格式不正确");
   }
@@ -156,18 +185,46 @@ class HttpError extends Error {
     this.extra = extra;
   }
 }
+function validateAvatar(value) {
+  const avatar = String(value || "").trim();
+  if (!avatar) return "";
+  if (/^https?:\/\/\S+$/i.test(avatar)) {
+    if (avatar.length > 8192) throw new HttpError(422, "头像图片地址过长");
+    return avatar;
+  }
+  const prefix = "data:image/jpeg;base64,";
+  if (!avatar.startsWith(prefix)) throw new HttpError(422, "头像只支持 JPG 相册图片或 HTTP(S) 图片地址");
+  const encoded = avatar.slice(prefix.length);
+  if (!encoded || encoded.length > 131072 || encoded.length % 4 !== 0
+      || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(encoded)) {
+    throw new HttpError(422, "相册头像数据格式不正确或超过96KB");
+  }
+  let bytes;
+  try {
+    const binary = atob(encoded);
+    bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+  } catch (_) {
+    throw new HttpError(422, "相册头像 Base64 数据无效");
+  }
+  if (bytes.length < 3 || bytes.length > 96 * 1024
+      || bytes[0] !== 0xff || bytes[1] !== 0xd8 || bytes[2] !== 0xff) {
+    throw new HttpError(422, "头像必须是有效的 JPEG 图片且不超过96KB");
+  }
+  return avatar;
+}
+
 function validateRegistration(body) {
-  const qq = String(body.qq || "").trim();
-  const wechat = String(body.wechat || "").trim();
+  const rawQQ = String(body.qq || "").trim();
+  const rawWechat = String(body.wechat || "").trim();
   const name = String(body.name || "").trim();
   const password = String(body.password || "");
-  const avatar = String(body.avatar_url || "").trim();
-  if (!/^[1-9][0-9]{4,11}$/.test(qq)) throw new HttpError(422, "QQ号应填写5至12位数字");
-  if (!/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat)) throw new HttpError(422, "微信号格式不正确");
+  const avatar = validateAvatar(body.avatar_url);
+  if (!rawQQ && !rawWechat) throw new HttpError(422, "QQ号和微信号至少填写一项");
+  if (rawQQ && !/^[1-9][0-9]{4,11}$/.test(rawQQ)) throw new HttpError(422, "QQ号应填写5至12位数字");
+  if (rawWechat && !/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(rawWechat)) throw new HttpError(422, "微信号格式不正确");
   if (!name || name.length > 40) throw new HttpError(422, "姓名不能为空且不能超过40字");
   if (password.length < 8 || password.length > 128) throw new HttpError(422, "密码至少8位");
-  if (avatar && !/^https?:\/\/\S+$/i.test(avatar)) throw new HttpError(422, "头像地址格式不正确");
-  return { qq, wechat, name, password, avatar };
+  return { qq: rawQQ || null, wechat: rawWechat || null, name, password, avatar };
 }
 async function register(request, env) {
   await requireAccountServiceEnabled(env);
@@ -216,14 +273,20 @@ async function updateProfile(request, env) {
   if (!row) return fail(401, "账号不存在");
   const banned = await ensureNotBanned(env.DB, row);
   if (banned) return fail(423, "账号已被封禁", banned);
-  const qq = String(body.qq || "").trim();
-  const wechat = String(body.wechat || "").trim();
+  const rawQQ = String(body.qq || "").trim();
+  const rawWechat = String(body.wechat || "").trim();
+  const qq = rawQQ || null;
+  const wechat = rawWechat || null;
   const name = String(body.name || "").trim();
-  const avatar = String(body.avatar_url || "").trim();
-  if (!/^[1-9][0-9]{4,11}$/.test(qq) || !/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat) || !name || name.length > 40) {
-    return fail(422, "QQ号、微信号或姓名格式不正确");
+  let avatar;
+  try { avatar = validateAvatar(body.avatar_url); }
+  catch (error) { return fail(error.status || 422, error.message || "头像格式不正确"); }
+  if ((!rawQQ && !rawWechat)
+      || (rawQQ && !/^[1-9][0-9]{4,11}$/.test(rawQQ))
+      || (rawWechat && !/^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(rawWechat))
+      || !name || name.length > 40) {
+    return fail(422, "QQ号和微信号至少填写一项，且已填写的账号格式必须正确");
   }
-  if (avatar && !/^https?:\/\/\S+$/i.test(avatar)) return fail(422, "头像地址格式不正确");
   let newHash = row.password_hash;
   const newPassword = String(body.new_password || "");
   if (newPassword) {
