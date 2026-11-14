@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Fetch a small build-time snapshot of public proxy candidates for first boot.
 
-The APK revalidates every candidate against the exact Cloudflare Worker /health
-endpoint before using it. This file is only a bootstrap list, never a trust list.
+The APK probes each candidate's TCP/proxy tunnel to the Cloudflare HTTPS host before
+using it. No Worker /health request is sent for each candidate, so route discovery
+does not consume the account API's daily invocation quota. This is only a bootstrap
+list, never a trust list.
 """
 from __future__ import annotations
 
