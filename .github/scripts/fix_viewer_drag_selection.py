@@ -39,13 +39,13 @@ def main() -> None:
             )
         source = source.replace(click_old, click_new, 1)
 
-    helper_marker = "fn edge_pan(app: &mut EffectCraftApp"
+    helper_marker = "fn edge_pan(app: &mut EffectcraftApp"
     helper = '''/// Select the actual topmost visible layer under a viewer click/drag.
 /// Unlike the general picker, this does not prefer a lower already-selected layer
 /// when it overlaps the visible layer directly under the pointer. Existing multi-selection
 /// is preserved when the grabbed layer is already part of it.
 fn pick_drag_target(
-    app: &mut EffectCraftApp,
+    app: &mut EffectcraftApp,
     ectx: &EvalCtx,
     cpt: [f64; 2],
     toggle: bool,
