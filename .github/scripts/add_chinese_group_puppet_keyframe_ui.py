@@ -523,6 +523,12 @@ def patch_timeline_keyframe_button(root: Path) -> None:
         'let tgl_x = keyframe_rect.max.x + 8.0;\n    let tgl_width = (graph_x0 - 6.0 - tgl_x).max(0.0).min(140.0);\n    let tgl = Rect::from_min_size(pos2(tgl_x, footer.min.y + 3.0), vec2(tgl_width, 18.0));',
         "Timeline footer spacing",
     )
+    source = replace_once(
+        source,
+        '        crate::i18n::tr("Toggle Switches / Modes"),',
+        '        if tgl.width() < 100.0 { crate::i18n::tr("模式") } else { crate::i18n::tr("Toggle Switches / Modes") },',
+        "Responsive Timeline mode label",
+    )
     path.write_text(source, encoding="utf-8")
 
 
