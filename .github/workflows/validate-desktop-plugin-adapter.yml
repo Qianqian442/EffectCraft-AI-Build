@@ -156,7 +156,7 @@ jobs:
           fi
           python3 .github/scripts/patch_export_dialog.py
 
-      - name: Configure four project export buttons with post-export QQ sharing
+      - name: Configure five project export buttons with complete mobile media collection
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 .github/scripts/configure_four_project_export_buttons.py
@@ -174,6 +174,13 @@ jobs:
           grep -F 'qqSend.setPackage("com.tencent.mobileqq")' artcraft/templates/android/SafActivity.java
           grep -F '分享到QQ或其他应用' artcraft/templates/android/SafActivity.java
           grep -F 'share_exported_project' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
+          grep -F 'Ae 手机版完整工程导出（含素材）' artcraft/source/effectcraft/crates/ui-egui/src/header.rs
+          grep -F 'let mut errors: Vec<String> = Vec::new();' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F 'pairs.push((src.clone(), dst, relative));' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F 'new_paths.push(relative.clone());' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F '工程素材收集不完整' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
+          grep -F 'zipProjectDirectory(projectRoot, sharePayload)' artcraft/templates/android/SafActivity.java
+          grep -F 'private static void addProjectFiles' artcraft/templates/android/SafActivity.java
 
       - name: Validate the single unified AM/NV/AE/CapCut project import control
         env:
@@ -184,6 +191,10 @@ jobs:
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F '导入am/NV/Ae/capcut工程' effectcraft/crates/engine/src/menus.rs
+          grep -F 'lower.ends_with(".ecproj") || lower.ends_with(".ecprojx")' .github/scripts/am_nv.rs
+          grep -F 'super::import_project::import_project' .github/scripts/am_nv.rs
+          grep -F 'MAX_ZIP_TOTAL' .github/scripts/am_nv.rs
+          grep -F 'MAX_ZIP_ENTRIES' .github/scripts/am_nv.rs
 
       - name: Backport native Ae project export for Rust/UI compile validation
         env:
@@ -212,8 +223,23 @@ jobs:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: python3 .github/scripts/add_chroma_key_effect.py
 
+      - name: Apply the same Simplified Chinese Android defaults and UI controls as the APK
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: |
+          python3 -m py_compile .github/scripts/add_chinese_group_puppet_keyframe_ui.py
+          python3 .github/scripts/add_chinese_group_puppet_keyframe_ui.py
+          grep -F 'language: String = "zh-hans".into(),' effectcraft/crates/engine/src/settings/prefs/sections.rs
+          grep -F 'Ae' effectcraft/crates/ui-egui/src/i18n.rs >/dev/null
+
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
         env:
           CARGO_BUILD_JOBS: '2'
         run: cargo check -p effectcraft-engine -p effectcraft-ui-egui
+
+      - name: Audit Simplified Chinese menu, panel, dialog and setting translations
+        working-directory: effectcraft
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo test -p effectcraft-ui-egui --lib missing_translations_report -- --nocapture
