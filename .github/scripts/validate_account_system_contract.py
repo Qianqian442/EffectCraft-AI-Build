@@ -37,7 +37,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
-        "Ban state is checked at login, profile update, and periodic /me verification",
+        "Ban state is checked at login, profile update, and explicit session validation",
         "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/LanAccountServer.java",
         (
             'if (isBanned(user)) return error(423',
@@ -83,11 +83,12 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
-        "Main APK revalidates user ban state every ten seconds while editing",
+        "Main APK verifies a saved session at startup and on explicit retry",
         ".github/scripts/add_home_lan_account_gate.py",
         (
-            'Duration::from_secs(10)',
-            '"/v1/me"',
+            "if self.token.is_some()",
+            'self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);',
+            "fn retry(",
         ),
     ),
     (
@@ -158,7 +159,6 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "Mode::Unavailable => centered_window",
             "Mode::Banned => centered_window",
             "为防止离线绕过封禁，软件暂时保持锁定",
-            'Duration::from_secs(10)',
         ),
     ),
     (
@@ -183,4 +183,8 @@ for label, relative, needles in checks:
         raise SystemExit(f"FAIL: {label}\n  file: {relative}\n  missing: {missing}")
     print(f"PASS: {label}")
 
+gate_source = read(".github/scripts/add_home_lan_account_gate.py")
+if "Duration::from_secs(10)" in gate_source or "last_verified" in gate_source:
+    raise SystemExit("FAIL: timed ten-second account verification must not be present")
+print("PASS: no fixed ten-second account verification polling")
 print(f"PASS: all {len(checks)} account-system contracts are present")
