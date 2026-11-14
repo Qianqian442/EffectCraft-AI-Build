@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Schedule the VPN integration inside build-common after Android sources are generated."""
+"""Install the Cloudflare MASQUE Android engine into the generated main APK."""
 from __future__ import annotations
 
 import os
 import shutil
 from pathlib import Path
 
-MARKER = "EFFECTCRAFT_ON_DEMAND_VPN_INTEGRATION_V1"
+MARKER = "EFFECTCRAFT_CLOUDFLARE_MASQUE_VPN_INTEGRATION_V1"
 
 
 def replace_once(text: str, old: str, new: str, label: str) -> str:
@@ -19,34 +19,40 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
 def main() -> None:
     artcraft = Path(os.environ["ARTCRAFT_DIR"]).resolve()
     effectcraft = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
-    assets = Path(os.environ["BUILD_ASSETS_DIR"]).resolve()
-    aar_source = Path(os.environ["HEV_AAR_PATH"]).resolve()
+    aar_source = Path(os.environ["WARP_AAR_PATH"]).resolve()
     target_crate = effectcraft / "p2p-bridge"
     builder_script = artcraft / "lib/build-common.sh"
-    aar_target = target_crate / "android/hev-socks5-tunnel.aar"
+    aar_target = target_crate / "android/effectcraft-warp-masque.aar"
 
     if not (target_crate / "Cargo.toml").is_file():
-        raise SystemExit("P2P bridge must be integrated before the on-demand VPN patch")
+        raise SystemExit("P2P JNI/command bridge must be integrated before the task-scoped VPN patch")
     if not (target_crate / "android/NativeP2P.java").is_file():
-        raise SystemExit("P2P NativeP2P.java is missing")
+        raise SystemExit("Main APK NativeP2P.java is missing")
     if not (target_crate / "android/EffectCraftVpnService.java").is_file():
-        raise SystemExit("EffectCraftVpnService.java is missing from the P2P integration bundle")
-    if not aar_source.is_file() or aar_source.stat().st_size != 617551:
-        raise SystemExit("Pinned Hev tun2socks AAR is missing or has an unexpected size")
+        raise SystemExit("Cloudflare MASQUE EffectCraftVpnService.java is missing")
+    if not aar_source.is_file() or aar_source.stat().st_size < 100_000:
+        raise SystemExit("Cloudflare MASQUE Android AAR is missing or unexpectedly small")
     if not builder_script.is_file():
         raise SystemExit(f"Android builder script missing: {builder_script}")
 
+    import zipfile
+    with zipfile.ZipFile(aar_source) as archive:
+        names = set(archive.namelist())
+        if "classes.jar" not in names:
+            raise SystemExit("Cloudflare MASQUE AAR has no classes.jar")
+        if not any(name.startswith("jni/arm64-v8a/") and name.endswith(".so") for name in names):
+            raise SystemExit("Cloudflare MASQUE AAR has no ARM64 native library")
     shutil.copy2(aar_source, aar_target)
 
     source = builder_script.read_text(encoding="utf-8")
     if MARKER not in source:
         anchor = "# The shared update checker (templates/android/UpdateCheck.java) is installed next to every"
-        block = r'''# EFFECTCRAFT_ON_DEMAND_VPN_INTEGRATION_V1
-# This executes after android_project.py has generated AndroidManifest.xml,
-# Gradle build.gradle and the app NativeActivity, but before Gradle compiles Java.
+        block = r'''# EFFECTCRAFT_CLOUDFLARE_MASQUE_VPN_INTEGRATION_V1
+# Inject the native Cloudflare MASQUE bridge after the Android project has been
+# generated, but before the launcher is compiled and packaged.
 if [[ "$APP" == "effectcraft" ]]; then
     P2P_CRATE="$ROOT/$SRC/p2p-bridge"
-    python3 - "$ANDROID_DIR" "$P2P_CRATE/android/EffectCraftVpnService.java" "$P2P_CRATE/android/hev-socks5-tunnel.aar" <<'PY'
+    python3 - "$ANDROID_DIR" "$P2P_CRATE/android/EffectCraftVpnService.java" "$P2P_CRATE/android/effectcraft-warp-masque.aar" <<'PY'
 from pathlib import Path
 import shutil
 import sys
@@ -60,8 +66,8 @@ manifest_path = android_dir / "AndroidManifest.xml"
 gradle_path = android_dir / "android" / "build.gradle"
 
 for path in (java_root, manifest_path, gradle_path, service_source, aar_source):
-    if not path.exists():
-        raise SystemExit(f"On-demand VPN build input missing: {path}")
+    if not path.is_file():
+        raise SystemExit(f"Cloudflare MASQUE Android build input missing: {path}")
 
 package_dir = java_root / "com" / "artcraft" / "effectcraft"
 package_dir.mkdir(parents=True, exist_ok=True)
@@ -69,10 +75,10 @@ shutil.copy2(service_source, package_dir / "EffectCraftVpnService.java")
 
 aar_dir = android_dir / "android" / "libs"
 aar_dir.mkdir(parents=True, exist_ok=True)
-shutil.copy2(aar_source, aar_dir / "hev-socks5-tunnel.aar")
+shutil.copy2(aar_source, aar_dir / "effectcraft-warp-masque.aar")
 
 gradle = gradle_path.read_text(encoding="utf-8")
-dependency = "implementation files('libs/hev-socks5-tunnel.aar')"
+dependency = "implementation files('libs/effectcraft-warp-masque.aar')"
 if dependency not in gradle:
     anchor = "dependencies {"
     if gradle.count(anchor) != 1:
@@ -146,16 +152,16 @@ if "EFFECTCRAFT_VPN_PERMISSION_RESULT_V1" not in activity:
     activity = activity[:end] + callback + activity[end:]
     activity_path.write_text(activity, encoding="utf-8")
 
-print("Registered the task-scoped VpnService, Hev tun2socks AAR and system permission callback.")
+print("Registered main-APK Cloudflare MASQUE VpnService, ARM64 engine AAR and Android permission callback.")
 PY
 fi
 
 '''
-        source = replace_once(source, anchor, block + anchor, "Android VPN injection point")
+        source = replace_once(source, anchor, block + anchor, "Android Cloudflare MASQUE injection point")
         builder_script.write_text(source, encoding="utf-8")
 
-    print(f"Installed pinned tun2socks AAR at {aar_target}")
-    print(f"Patched Android build generator integration at {builder_script}")
+    print(f"Installed Cloudflare MASQUE AAR at {aar_target}")
+    print(f"Patched Android build integration in {builder_script}")
 
 
 if __name__ == "__main__":
