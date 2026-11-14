@@ -61,6 +61,7 @@ def main() -> None:
         "    pending: Option<Receiver<Result<HttpResult, String>>>,\n"
         "    pending_action: Option<Action>,\n"
         "    events: Option<Receiver<Result<Value, String>>>,\n"
+        "    event_sender: Option<mpsc::Sender<Result<Value, String>>>,\n"
         "    event_started: bool,\n"
         "    node_event_started: bool,\n"
         "    notification_pending: Option<String>,",
@@ -73,6 +74,7 @@ def main() -> None:
         "            pending: None,\n"
         "            pending_action: None,\n"
         "            events: None,\n"
+            "            event_sender: None,\n"
         "            event_started: false,\n"
         "            node_event_started: false,\n"
         "            notification_pending: None,",
@@ -151,6 +153,7 @@ def main() -> None:
         let ws_url = format!("{base}/v1/events");
         let (tx, rx) = mpsc::channel();
         self.events = Some(rx);
+        self.event_sender = Some(tx.clone());
         self.event_started = true;
         std::thread::spawn(move || {
             let mut reconnect_delay = 3u64;
@@ -207,6 +210,7 @@ def main() -> None:
             .replacen("https://", "wss://", 1);
         let ws_url = format!("{base}/v1/nodes/events");
         self.node_event_started = true;
+        let event_tx = self.event_sender.clone();
         std::thread::spawn(move || {
             let mut reconnect_delay = 3u64;
             loop {
@@ -235,10 +239,17 @@ def main() -> None:
                             }
                             match socket.read() {
                                 Ok(Message::Close(_)) => break,
-                                Ok(Message::Text(_)) | Ok(Message::Pong(_)) => {
+                                Ok(Message::Text(message)) => {
+                                    if let Ok(value) = serde_json::from_str::<Value>(message.as_str()) {
+                                        if value.get("type").and_then(Value::as_str) == Some("account_service_state") {
+                                            if let Some(tx) = event_tx.as_ref() {
+                                                let _ = tx.send(Ok(value));
+                                            }
+                                        }
+                                    }
                                     std::thread::sleep(Duration::from_secs(25));
                                 }
-                                Ok(_) => {
+                                Ok(Message::Pong(_)) | Ok(_) => {
                                     std::thread::sleep(Duration::from_secs(25));
                                 }
                                 Err(_) => break,
@@ -260,24 +271,41 @@ def main() -> None:
             Some(Err(TryRecvError::Empty)) | None => None,
         };
         if let Some(Ok(event)) = received {
-            if event.get("type").and_then(Value::as_str) == Some("account_status_changed") {
-                let status = event.get("status").and_then(Value::as_str).unwrap_or("");
-                // The Durable Object replays the last status after each connection.
-                // Verify only when the local launch/previous state differs.
-                let already_matches = (status == "banned" && self.mode == Mode::Banned)
-                    || (status == "unbanned" && self.mode == Mode::Editor);
-                if !already_matches && (status == "banned" || status == "unbanned") {
-                    self.notification_pending = Some(status.to_string());
+            match event.get("type").and_then(Value::as_str) {
+                Some("account_status_changed") => {
+                    let status = event.get("status").and_then(Value::as_str).unwrap_or("");
+                    let already_matches = (status == "banned" && self.mode == Mode::Banned)
+                        || (status == "unbanned" && self.mode == Mode::Editor);
+                    if !already_matches && (status == "banned" || status == "unbanned") {
+                        self.notification_pending = Some(status.to_string());
+                    }
                 }
+                Some("account_service_state") => {
+                    let enabled = event.get("enabled").and_then(Value::as_bool).unwrap_or(true);
+                    if !enabled && self.mode != Mode::Unavailable {
+                        self.notification_pending = Some("service_disabled".to_string());
+                    } else if enabled && self.mode == Mode::Unavailable && self.token.is_some() {
+                        self.notification_pending = Some("service_enabled".to_string());
+                    }
+                }
+                _ => {}
             }
         }
         if self.pending.is_none() && self.token.is_some() {
             if let Some(status) = self.notification_pending.take() {
-                let already_matches = (status == "banned" && self.mode == Mode::Banned)
-                    || (status == "unbanned" && self.mode == Mode::Editor);
-                if !already_matches {
+                if status == "service_disabled" {
+                    self.mode = Mode::Unavailable;
+                    self.status = "云端账号服务器已由管理员关闭，当前无法使用。服务器重新开启后会自动重新验证。".to_string();
+                } else if status == "service_enabled" {
                     self.mode = Mode::Checking;
                     self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+                } else {
+                    let already_matches = (status == "banned" && self.mode == Mode::Banned)
+                        || (status == "unbanned" && self.mode == Mode::Editor);
+                    if !already_matches {
+                        self.mode = Mode::Checking;
+                        self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+                    }
                 }
             }
         }
@@ -337,8 +365,8 @@ def main() -> None:
         "        if app.account.mode == Mode::Editor {\n"
         "            app.account.start_node_events();\n"
         "        }\n"
-        "        app.account.poll_events(config);\n"
-        "    }"
+        "    }\n"
+        "    app.account.poll_events(config);"
     )
     periodic_block = (
         "    if app.account.mode == Mode::Editor\n"
