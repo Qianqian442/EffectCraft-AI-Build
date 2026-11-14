@@ -115,25 +115,43 @@ jobs:
           ../../third_party/FEX/Data/nix/cmake_configure_woa32.sh ../../third_party/FEX -G Ninja -DTUNE_CPU=none
           ninja
 
-      - name: Validate FEX PE machine types and Wine CPU exports
+      - name: Validate FEX PE machine types, CHPE metadata and Wine CPU exports
         working-directory: third_party/FEX
         run: |
           python3 -m venv "$RUNNER_TEMP/pefile-venv"
           source "$RUNNER_TEMP/pefile-venv/bin/activate"
           python -m pip install --disable-pip-version-check pefile
           python - <<'PY'
+          import struct
           import pefile
           from pathlib import Path
 
+          def chpe_version(pe):
+              directory = pe.OPTIONAL_HEADER.DATA_DIRECTORY[10]
+              if not directory.VirtualAddress:
+                  return None
+              load_config_offset = pe.get_offset_from_rva(directory.VirtualAddress)
+              load_config_size = struct.unpack_from("<I", pe.__data__, load_config_offset)[0]
+              # IMAGE_LOAD_CONFIG_DIRECTORY64.CHPEMetadataPointer is at +0xC8.
+              if load_config_size < 0xD0:
+                  return None
+              chpe_va = struct.unpack_from("<Q", pe.__data__, load_config_offset + 0xC8)[0]
+              if not chpe_va:
+                  return None
+              chpe_rva = chpe_va - pe.OPTIONAL_HEADER.ImageBase
+              chpe_offset = pe.get_offset_from_rva(chpe_rva)
+              return struct.unpack_from("<I", pe.__data__, chpe_offset)[0]
+
           checks = [
-              (Path("../../build-fex/arm64ec/Bin/libarm64ecfex.dll"), 0xA641,
-               {"BTCpu64FlushInstructionCache", "ProcessInit", "ThreadInit"}),
-              (Path("../../build-fex/wow64/Bin/libwow64fex.dll"), 0xAA64,
-               {"BTCpuProcessInit", "BTCpuThreadInit", "BTCpuSimulate"}),
+              (Path("../../build-fex/arm64ec/Bin/libarm64ecfex.dll"), 0x8664, 1,
+               {"BTCpu64FlushInstructionCache", "BTCpu64IsProcessorFeaturePresent", "ProcessInit", "ThreadInit"}),
+              (Path("../../build-fex/wow64/Bin/libwow64fex.dll"), 0xAA64, None,
+               {"BTCpuProcessInit", "BTCpuThreadInit", "BTCpuSimulate", "__wine_get_unix_opcode"}),
           ]
-          for path, expected_machine, required in checks:
+          for path, expected_machine, expected_chpe, required in checks:
               pe = pefile.PE(str(path), fast_load=False)
               machine = pe.FILE_HEADER.Machine
+              chpe = chpe_version(pe)
               exports = {
                   item.name.decode("ascii", "replace")
                   for item in pe.DIRECTORY_ENTRY_EXPORT.symbols
@@ -142,9 +160,11 @@ jobs:
               missing = sorted(required - exports)
               if machine != expected_machine:
                   raise SystemExit(f"{path}: machine 0x{machine:04x}, expected 0x{expected_machine:04x}")
+              if chpe != expected_chpe:
+                  raise SystemExit(f"{path}: CHPE metadata version {chpe}, expected {expected_chpe}")
               if missing:
                   raise SystemExit(f"{path}: missing expected Wine CPU exports: {missing}")
-              print(f"{path}: PE machine=0x{machine:04x}; required exports present")
+              print(f"{path}: machine=0x{machine:04x}; CHPE version={chpe}; required exports present")
           PY
 
       - name: Package FEXCore runtime components
