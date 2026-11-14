@@ -402,7 +402,9 @@ public final class AdminAccountVpnService extends VpnService {
             detachedFd = established.detachFd();
             tunInterface = null;
 
-            callWarp("startTunnel", new Class<?>[]{String.class, long.class}, bundle, (long) detachedFd);
+            callWarp("startTunnel",
+                new Class<?>[]{String.class, long.class, String.class, String.class},
+                cfg.toString(), (long) detachedFd, endpointList, root.getString("sni"));
             detachedFd = -1; // Go owns and closes the detached descriptor.
 
             long deadline = System.currentTimeMillis() + 45000L;
