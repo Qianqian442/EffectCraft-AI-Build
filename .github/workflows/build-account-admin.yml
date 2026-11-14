@@ -260,6 +260,11 @@ jobs:
           grep -Fq 'func SetScannerStorage(path string, networkIdentity string)' "$SCANNER"
           grep -Fq 'func scanCloudflareHTTP2(' "$SCANNER"
           grep -Fq 'scannerMaxCandidates   = 32' "$SCANNER"
+          grep -Fq 'var cloudflareH2Ports = []int{443, 500, 1701, 4500, 4443, 8443, 8095}' "$SCANNER"
+          grep -Fq 'scannerProbeTimeout    = 3500 * time.Millisecond' "$SCANNER"
+          grep -Fq 'isCloudflareH2Endpoint' "$SCANNER"
+          grep -Fq 'TestMakeH2CandidatesIncludesAlternativeTCPPorts' warp-mobile/endpoint_scanner_test.go
+          grep -Fq 'HTTP/3 QUIC (UDP)' "$MOBILE"
           grep -Fq 'callWarp("setScannerStorage"' "$VPN"
           grep -Fq 'private static String scannerNetworkIdentity(Context context)' "$VPN"
           grep -Fq 'scanCloudflareHTTP2(ctx, tlsConfig, defaultH2)' "$MOBILE"
