@@ -471,6 +471,15 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
           python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
+          ACCOUNT_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          grep -Fq 'pending_started: Option<std::time::Instant>' "$ACCOUNT_RS"
+          grep -Fq 'fn cancel_pending_and_return(&mut self)' "$ACCOUNT_RS"
+          grep -Fq '取消并返回登录' "$ACCOUNT_RS"
+          grep -Fq 'Duration::from_secs(20)' "$ACCOUNT_RS"
+          if grep -Fq 'ui.label(&app.account.server_url)' "$ACCOUNT_RS"; then
+            echo "Account verification UI must not expose the configured server address." >&2
+            exit 1
+          fi
 
       - name: Integrate dynamic public proxy pool for Cloudflare account HTTPS and WSS
         if: ${{ vars.AE_ACCOUNT_API_URL != '' || 'https://ae-cloud-account-api.q1939023856.workers.dev' != '' }}
