@@ -43,7 +43,7 @@ def main() -> None:
     menu_source = replace_exact(
         menu_source,
         "    EffectCraft Project... | file.importProject\n",
-        "    导入 AM / NV / AE / CapCut 工程... | file.importProject\n",
+        "    导入am/NV/Ae/capcut工程 | file.importProject\n",
         "unified project import menu item",
     )
     menu_source = remove_exact(
