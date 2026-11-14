@@ -269,9 +269,13 @@ func StartTunnel(bundleJSON string, tunFD int64) error {
 				mu.Unlock()
 			},
 			OnDisconnected: func(endpoint net.Addr, disconnectErr error) {
+				detail := "MASQUE stream closed"
+				if disconnectErr != nil {
+					detail = disconnectErr.Error()
+				}
 				mu.Lock()
 				if session == current && current.active {
-					state, lastError = "retrying", disconnectErr.Error()
+					state, lastError = "retrying", detail
 				}
 				mu.Unlock()
 			},
