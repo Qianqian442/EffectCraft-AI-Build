@@ -214,6 +214,8 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "account_service_state",
             "service_disabled",
             "请等待管理员重新开启服务器，再关闭并重新打开 Ae",
+            'if app.account.status.contains("云端账号服务器已由管理员关闭")',
+            'ctx.send_viewport_cmd(egui::ViewportCommand::Close)',
             "app.account.poll_events(config)",
         ),
     )
