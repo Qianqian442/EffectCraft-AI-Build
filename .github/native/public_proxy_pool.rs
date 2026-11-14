@@ -513,7 +513,6 @@ where
             error
         }
     };
-    let base_url = format!("https://{host}");
     let candidates = websocket_candidates();
     let mut last_error = direct_error;
 
