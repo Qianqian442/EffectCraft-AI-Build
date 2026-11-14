@@ -280,6 +280,25 @@ func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string
 		if len(selected) > 6 {
 			selected = selected[:6]
 		}
+
+		var diagnosticsMu sync.Mutex
+		var recentFailures []string
+		appendEndpointFailure := func(endpoint net.Addr, cause error) string {
+			protocol := "HTTP/3 QUIC (UDP)"
+			if _, ok := endpoint.(*net.TCPAddr); ok {
+				protocol = "HTTP/2 (TCP)"
+			}
+			message := fmt.Sprintf("%s endpoint %s: %v", protocol, endpoint.String(), cause)
+			diagnosticsMu.Lock()
+			recentFailures = append(recentFailures, message)
+			if len(recentFailures) > 4 {
+				recentFailures = append([]string(nil), recentFailures[len(recentFailures)-4:]...)
+			}
+			combined := strings.Join(recentFailures, " | ")
+			diagnosticsMu.Unlock()
+			return combined
+		}
+
 		api.MaintainTunnel(ctx, api.MaintainTunnelConfig{
 			TLSConfig: tlsConfig,
 			KeepalivePeriod: 30 * time.Second,
@@ -291,20 +310,25 @@ func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string
 			AlwaysReconnect: true,
 			UseHTTP2: func() bool { _, ok := selected[0].(*net.TCPAddr); return ok }(),
 			OnConnected: func(endpoint net.Addr) {
+				diagnosticsMu.Lock()
+				recentFailures = nil
+				diagnosticsMu.Unlock()
 				mu.Lock()
 				if session == current && current.active { state, lastError = "connected", "" }
 				recordEndpointScanSuccess(endpoint, 0)
 				mu.Unlock()
 			},
 			OnConnectError: func(endpoint net.Addr, connectErr error) {
+				detail := appendEndpointFailure(endpoint, connectErr)
 				mu.Lock()
-				if session == current && current.active { state, lastError = "retrying", connectErr.Error() }
+				if session == current && current.active { state, lastError = "retrying", detail }
 				recordEndpointScanFailure(endpoint)
 				mu.Unlock()
 			},
 			OnDisconnected: func(endpoint net.Addr, disconnectErr error) {
+				detail := appendEndpointFailure(endpoint, disconnectErr)
 				mu.Lock()
-				if session == current && current.active { state, lastError = "retrying", disconnectErr.Error() }
+				if session == current && current.active { state, lastError = "retrying", detail }
 				recordEndpointScanFailure(endpoint)
 				mu.Unlock()
 			},
