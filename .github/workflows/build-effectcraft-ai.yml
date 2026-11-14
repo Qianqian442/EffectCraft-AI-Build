@@ -50,6 +50,8 @@ on:
       - '.github/scripts/build_rsmb_compat.py'
       - '.github/scripts/looks_compat_pack.rs'
       - '.github/scripts/build_looks_compat_pack.py'
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
