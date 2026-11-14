@@ -4,6 +4,8 @@ import android.graphics.Bitmap;
 import org.json.JSONObject;
 import android.content.Context;
 import android.util.Log;
+import android.os.Build;
+import android.os.Process;
 
 import com.effectcraft.windowscompat.RuntimeAssetInstaller;
 import com.effectcraft.windowscompat.WinlatorBionicRuntimeManager;
@@ -15,6 +17,7 @@ import java.io.RandomAccessFile;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
+import java.util.Arrays;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -56,15 +59,46 @@ public final class WindowsCompatAndroidBridge {
 
     private static volatile Context applicationContext;
     private static volatile WinlatorBionicRuntimeManager runtimeManager;
+    private static volatile com.effectcraft.windowscompat.AndroidArm64Capabilities arm64Capabilities;
     private static volatile WinlatorBionicRuntimeManager.Container arm64EcContainer;
 
     private WindowsCompatAndroidBridge() {}
+
+    private static native long[] nativeProbeArm64();
+
+    /** Returns the hardware and page-size facts needed to select ARM64EC/FEX. */
+    public static com.effectcraft.windowscompat.AndroidArm64Capabilities getArm64Capabilities() {
+        com.effectcraft.windowscompat.AndroidArm64Capabilities cached = arm64Capabilities;
+        if (cached != null) return cached;
+        synchronized (WindowsCompatAndroidBridge.class) {
+            cached = arm64Capabilities;
+            if (cached != null) return cached;
+            if (!Process.is64Bit() || !Arrays.asList(Build.SUPPORTED_ABIS).contains("arm64-v8a")) {
+                cached = com.effectcraft.windowscompat.AndroidArm64Capabilities.unavailable(
+                        "current process is not arm64-v8a");
+            } else {
+                try {
+                    System.loadLibrary("effectcraft-exec");
+                    cached = com.effectcraft.windowscompat.AndroidArm64Capabilities
+                            .fromNativeProbe(nativeProbeArm64());
+                } catch (UnsatisfiedLinkError | SecurityException error) {
+                    cached = com.effectcraft.windowscompat.AndroidArm64Capabilities.unavailable(
+                            "libeffectcraft-exec.so is not packaged or could not be loaded: "
+                                    + error.getMessage());
+                }
+            }
+            arm64Capabilities = cached;
+            return cached;
+        }
+    }
 
     public static synchronized void initialize(Context context) {
         if (context == null) return;
         Context app = context.getApplicationContext();
         if (applicationContext == app && runtimeManager != null) return;
         applicationContext = app;
+        com.effectcraft.windowscompat.AndroidArm64Capabilities capabilities = getArm64Capabilities();
+        Log.i(TAG, capabilities.describe());
         try {
             Path root = app.getFilesDir().toPath().resolve("windows-compat");
             Path execBridge = Paths.get(app.getApplicationInfo().nativeLibraryDir)
