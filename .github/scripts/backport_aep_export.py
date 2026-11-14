@@ -91,7 +91,7 @@ def patch_engine(root, upstream):
     export_fn = once(
         export_fn,
         write_anchor,
-        write_anchor + '\\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": path, "format": "Ae"}) });',
+        write_anchor + '\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": path, "format": "Ae"}) });',
         "emit the AE export-complete event only after the .aep file is written",
     )
     export_fn = export_fn.replace(
