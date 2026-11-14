@@ -60,9 +60,8 @@ def patch_file_import_auto_add(root: Path) -> None:
         new_comp(s, r)
     } else {
         let mut params = p.clone();
-        if params.get("addToComp").is_none() {
-            params["addToComp"] = json!(true);
-        }
+        // The user-facing Import Media action always inserts the selected image/video.
+        params["addToComp"] = json!(true);
         if params.get("addToComp").and_then(Value::as_bool) == Some(true)
             && params.get("fitToComp").is_none()
         {
