@@ -50,22 +50,23 @@ impl TaskVpnGuard {
         }
 
         let mut stream = TcpStream::connect_timeout(&vpn_command_bridge(), Duration::from_secs(5))
-            .map_err(|error| format!("EffectCraft 内置 VPN 控制通道不可用：{error}"))?;
+            .map_err(|error| format!("EffectCraft 内置 Cloudflare WARP 控制通道不可用：{error}"))?;
         stream.set_read_timeout(Some(Duration::from_secs(90)))
             .map_err(|error| error.to_string())?;
         stream.set_write_timeout(Some(Duration::from_secs(5)))
             .map_err(|error| error.to_string())?;
-        writeln!(stream, "START {host}").map_err(|error| format!("VPN 启动命令发送失败：{error}"))?;
+        writeln!(stream, "START {host}").map_err(|error| format!("Cloudflare WARP 启动命令发送失败：{error}"))?;
         stream.flush().map_err(|error| format!("VPN 启动命令刷新失败：{error}"))?;
 
         let mut response = String::new();
         BufReader::new(stream).read_line(&mut response)
-            .map_err(|error| format!("VPN 启动结果读取失败：{error}"))?;
+            .map_err(|error| format!("Cloudflare WARP 启动结果读取失败：{error}"))?;
         let response = response.trim();
         if response != "OK" {
             return Err(match response {
                 "VPN_PERMISSION_REQUIRED" => "需要先同意 Android 系统的 VPN 连接授权".to_string(),
-                "" => "VPN 服务没有返回启动结果".to_string(),
+                "CLOUDFLARE_TERMS_REQUIRED" => "首次启用需要先阅读并同意 Cloudflare 服务条款".to_string(),
+                "" => "Cloudflare WARP 服务没有返回启动结果".to_string(),
                 value => format!("内置 VPN 启动失败：{value}"),
             });
         }
@@ -416,11 +417,10 @@ pub(crate) fn account_http_request(
         return Err("账号 API 请求方法不受支持".to_string());
     }
 
-    // The app must be inside its task-scoped private VPN before opening the
-    // account HTTPS connection. Do not silently fall back to public proxies.
+    // The app must have a live task-scoped Cloudflare MASQUE VPN before opening
+    // the account HTTPS connection. There is no public-proxy or admin-phone fallback.
     let _vpn_task = TaskVpnGuard::start(base_url)?;
     let agent = make_agent(None, Duration::from_secs(15))?;
-    let route: Option<Candidate> = None;
     let endpoint = format!("{}{}", base_url.trim_end_matches('/'), path);
     let response_result = if method == "GET" {
         let mut request = agent
@@ -448,11 +448,7 @@ pub(crate) fn account_http_request(
     // Never replay a submitted POST: the upstream may have committed it before
     // the transport error occurred.
     let mut response = response_result.map_err(|_| {
-        if route.is_some() {
-            "已通过代理连接 Cloudflare，但账号操作的响应中断；本次不会重复提交。".to_string()
-        } else {
-            "Cloudflare 直连操作的响应中断；本次不会重复提交。".to_string()
-        }
+        "Cloudflare WARP 隧道中的账号请求响应中断；本次不会重复提交。".to_string()
     })?;
 
     let status = response.status().as_u16();
@@ -558,6 +554,10 @@ fn websocket_candidates() -> Vec<Candidate> {
 
 /// Direct WSS first; then retry multiple verified HTTP CONNECT / SOCKS5 tunnels.
 /// The TLS hostname and certificate checks remain enabled for every attempt.
+/// The one-shot account-event channel remains a direct Cloudflare WSS connection.
+/// Mutating account requests and canonical status checks use TaskVpnGuard above, so
+/// their HTTPS traffic is sent through the task-scoped MASQUE tunnel. Keeping this
+/// listener direct avoids leaving the device VPN running indefinitely while idle.
 pub(crate) fn connect_websocket<R>(
     request: R,
 ) -> Result<(WebSocket<MaybeTlsStream<TcpStream>>, Response), WebSocketError>
@@ -571,77 +571,10 @@ where
     if !host.ends_with(".workers.dev") || request.uri().port_u16().is_some_and(|port| port != 443) {
         return Err(WebSocketError::Io(io::Error::new(
             io::ErrorKind::PermissionDenied,
-            "公开代理隧道仅允许连接已配置的 Cloudflare workers.dev 账号主机",
+            "WSS 仅允许连接 Cloudflare workers.dev 账号通知地址",
         )));
     }
-    let port = request.uri().port_u16().unwrap_or(443);
-
-    let direct_error = match tungstenite::connect(request.clone()) {
-        Ok(connection) => return Ok(connection),
-        Err(error) => {
-            // Any HTTP response means the request reached Cloudflare. Retrying
-            // another route would waste another Worker invocation and cannot fix an
-            // application-level response, so stop here.
-            if matches!(&error, WebSocketError::Http(_)) {
-                return Err(error);
-            }
-            error
-        }
-    };
-    let candidates = websocket_candidates();
-    let mut last_error = direct_error;
-
-    for candidate in candidates {
-        let stream = match open_tunnel(&candidate, host, port) {
-            Ok(stream) => stream,
-            Err(_) => {
-                mark_bad(&candidate);
-                continue;
-            }
-        };
-        if stream.set_read_timeout(Some(Duration::from_secs(12))).is_err()
-            || stream.set_write_timeout(Some(Duration::from_secs(12))).is_err()
-        {
-            mark_bad(&candidate);
-            continue;
-        }
-
-        match tungstenite::client_tls_with_config(request.clone(), stream, None, None) {
-            Ok((mut websocket, response)) => {
-                // The 12-second socket timeout is for the TLS/WebSocket handshake
-                // only. A long-lived WSS listener must not be killed while idle.
-                match websocket.get_mut() {
-                    MaybeTlsStream::Rustls(tls) => {
-                        let _ = tls.sock.set_read_timeout(None);
-                        let _ = tls.sock.set_write_timeout(Some(Duration::from_secs(30)));
-                    }
-                    MaybeTlsStream::Plain(socket) => {
-                        let _ = socket.set_read_timeout(None);
-                        let _ = socket.set_write_timeout(Some(Duration::from_secs(30)));
-                    }
-                    _ => {}
-                }
-                mark_good(&candidate);
-                return Ok((websocket, response));
-            }
-            Err(tungstenite::HandshakeError::Failure(error)) => {
-                if matches!(&error, WebSocketError::Http(_)) {
-                    return Err(error);
-                }
-                last_error = error;
-                mark_bad(&candidate);
-            }
-            Err(tungstenite::HandshakeError::Interrupted(_)) => {
-                last_error = WebSocketError::Io(io::Error::new(
-                    io::ErrorKind::Other,
-                    "WSS 代理握手未完成",
-                ));
-                mark_bad(&candidate);
-            }
-        }
-    }
-
-    Err(last_error)
+    tungstenite::connect(request)
 }
 
 #[cfg(test)]
