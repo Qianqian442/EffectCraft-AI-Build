@@ -419,7 +419,7 @@ def patch_builder(builder: Path) -> None:
         bridge_source = replace_once(bridge_source, request_anchor, request_media + request_anchor,
                                      "Android visual-media SAF JNI request")
 
-    pick_anchor = "        /// Blocking folder picker: a real directory path"
+    pick_anchor = "        /// Blocking folder picker:"
     pick_media = """        /// Blocking image/video picker used by EffectCraft's dedicated visual-media import.
         pub fn pick_open_media_blocking(&self, id: u64, multiple: bool, timeout: Duration) -> Result<PickAnswer, String> {
             let _nonblocking = NonblockingCallbacks::enable();
