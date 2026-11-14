@@ -12,3 +12,13 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 CREATE INDEX IF NOT EXISTS idx_accounts_created_at ON accounts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_accounts_name ON accounts(name COLLATE NOCASE);
+
+
+CREATE TABLE IF NOT EXISTS account_service_settings (
+  setting_key TEXT PRIMARY KEY,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+  changed_at TEXT,
+  changed_by TEXT NOT NULL DEFAULT 'bootstrap'
+);
+INSERT OR IGNORE INTO account_service_settings (setting_key, enabled, changed_by)
+VALUES ('global', 1, 'bootstrap');
