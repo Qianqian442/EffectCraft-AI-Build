@@ -28,8 +28,8 @@ func TestMakeH2CandidatesPrioritizesKnownFastEndpoints(t *testing.T) {
 		"162.159.198.7:443": {Score: 1, RTTMillis: 250},
 	}
 	got := makeH2Candidates(defaultEndpoint, snapshot)
-	if len(got) < 3 {
-		t.Fatalf("expected cached endpoints plus default, got %d", len(got))
+	if len(got) < 4 {
+		t.Fatalf("expected three cached endpoints plus default, got %d", len(got))
 	}
 	if got[0].IP.String() != "162.159.198.9" {
 		t.Fatalf("first endpoint = %s, want highest-scored endpoint 162.159.198.9", got[0])
@@ -37,8 +37,11 @@ func TestMakeH2CandidatesPrioritizesKnownFastEndpoints(t *testing.T) {
 	if got[1].IP.String() != "162.159.198.8" {
 		t.Fatalf("second endpoint = %s, want 162.159.198.8", got[1])
 	}
-	if got[2].IP.String() != "162.159.198.2" {
-		t.Fatalf("third endpoint = %s, want configured default 162.159.198.2", got[2])
+	if got[2].IP.String() != "162.159.198.7" {
+		t.Fatalf("third endpoint = %s, want third cached endpoint 162.159.198.7", got[2])
+	}
+	if got[3].IP.String() != "162.159.198.2" {
+		t.Fatalf("fourth endpoint = %s, want configured default 162.159.198.2", got[3])
 	}
 }
 
