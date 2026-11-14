@@ -19,7 +19,7 @@ def main() -> None:
     // enlarge it until the viewer is filled; overflow is clipped to the existing viewer.
     // Dock geometry, panel boundaries, toolbars, buttons and their hit targets remain unchanged.
     #[cfg(target_os = "android")]
-    let fit_padding = 6.0;
+    let fit_padding = 12.0;
     #[cfg(not(target_os = "android"))]
     let fit_padding = 40.0;
     #[cfg(target_os = "android")]
@@ -43,7 +43,7 @@ def main() -> None:
     check = path.read_text(encoding="utf-8")
     required = (
         "EFFECTCRAFT_ANDROID_LARGER_COMPOSITION_NO_CONTROL_SHIFT_V1",
-        "let fit_padding = 6.0;",
+        "let fit_padding = 12.0;",
         "let fit_padding = 40.0;",
         "Dock geometry, panel boundaries, toolbars, buttons and their hit targets remain unchanged.",
         "let fit = ((area.width() - fit_padding) / cw)",
