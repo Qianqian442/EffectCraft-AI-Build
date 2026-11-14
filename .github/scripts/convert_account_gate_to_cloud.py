@@ -56,6 +56,7 @@ def main() -> None:
         "    pending_action: Option<Action>,",
         "    pending: Option<Receiver<Result<HttpResult, String>>>,\n"
         "    pending_action: Option<Action>,\n"
+        "    pending_started: Option<std::time::Instant>,\n"
         "    events: Option<Receiver<Result<Value, String>>>,\n"
         "    event_started: bool,\n"
         "    node_event_started: bool,\n"
@@ -70,6 +71,7 @@ def main() -> None:
         "            pending_action: None,",
         "            pending: None,\n"
         "            pending_action: None,\n"
+        "            pending_started: None,\n"
         "            events: None,\n"
         "            event_started: false,\n"
         "            node_event_started: false,\n"
@@ -360,6 +362,7 @@ def main() -> None:
         "    fn retry(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n"
         "        self.status.clear();",
         "    fn retry(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\n"
+        "        self.pending_started = None;\n"
         "        self.event_started = false;\n"
         "        self.events = None;\n"
         "        self.status.clear();",
@@ -387,6 +390,142 @@ def main() -> None:
         'ui.label("请确认手机和服务器电脑连接同一个家庭 Wi-Fi，且服务器电脑保持开机。");',
         'ui.label("请检查网络连接后重试。账号验证成功后即可进入软件。");',
     )
+
+    # Keep every account operation bounded and allow the user to leave any
+    # verification screen. The worker thread is detached; dropping its receiver
+    # prevents a late response from changing the UI, while ureq enforces a
+    # separate 15-second network timeout.
+    send_anchor = (
+        "        self.pending = Some(rx);\\n"
+        "        self.pending_action = Some(action);\\n"
+        "        self.status = \\"正在连接管理员账号节点…\\".to_string();"
+    )
+    send_replacement = (
+        "        self.pending = Some(rx);\\n"
+        "        self.pending_action = Some(action);\\n"
+        "        self.pending_started = Some(std::time::Instant::now());\\n"
+        "        self.status = \\"正在连接云端账号服务器…\\".to_string();"
+    )
+    if source.count(send_anchor) != 1:
+        raise SystemExit("Could not locate account request start for timeout tracking")
+    source = source.replace(send_anchor, send_replacement, 1)
+
+    poll_anchor = (
+        "    fn poll(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\\n"
+        "        let received = match self.pending.as_ref().map(|rx| rx.try_recv()) {"
+    )
+    poll_replacement = (
+        "    fn poll(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {\\n"
+        "        if self.pending_started.map_or(false, |started| started.elapsed() >= std::time::Duration::from_secs(20)) {\\n"
+        "            self.pending = None;\\n"
+        "            self.pending_started = None;\\n"
+        "            let expired_action = self.pending_action.take().unwrap_or(Action::Verify);\\n"
+        "            match expired_action {\\n"
+        "                Action::Verify => self.mode = Mode::Unavailable,\\n"
+        "                Action::Login | Action::Register => self.mode = Mode::Auth,\\n"
+        "                _ => {},\\n"
+        "            }\\n"
+        "            self.status = \\"请求超时，已结束本次等待。请检查网络后重试。\\".to_string();\\n"
+        "            return;\\n"
+        "        }\\n"
+        "        let received = match self.pending.as_ref().map(|rx| rx.try_recv()) {"
+    )
+    if source.count(poll_anchor) != 1:
+        raise SystemExit("Could not locate account result polling for bounded timeout")
+    source = source.replace(poll_anchor, poll_replacement, 1)
+
+    pending_clear_anchor = (
+        "        self.pending = None;\\n"
+        "        let action = self.pending_action.take().unwrap_or(Action::Verify);"
+    )
+    pending_clear_replacement = (
+        "        self.pending = None;\\n"
+        "        self.pending_started = None;\\n"
+        "        let action = self.pending_action.take().unwrap_or(Action::Verify);"
+    )
+    if source.count(pending_clear_anchor) != 1:
+        raise SystemExit("Could not locate account pending cleanup after response")
+    source = source.replace(pending_clear_anchor, pending_clear_replacement, 1)
+
+    cancel_method = r\'''    fn cancel_pending_and_return(&mut self) {
+        self.pending = None;
+        self.pending_action = None;
+        self.pending_started = None;
+        self.mode = Mode::Auth;
+        self.status = "本次操作已取消，已返回登录页面。可以检查网络后重新尝试。".to_string();
+    }
+
+\'''
+    method_anchor = "    fn retry(&mut self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {"
+    if source.count(method_anchor) != 1:
+        raise SystemExit("Could not locate account retry method for cancel action")
+    source = source.replace(method_anchor, cancel_method + method_anchor, 1)
+
+    auth_busy_anchor = (
+        "            if ui.add_enabled(!busy, egui::Button::new(label).min_size(vec2(ui.available_width(), 42.0))).clicked() {\\n"
+        "                if app.account.login_mode_register {\\n"
+        "                    app.account.submit_register(config);\\n"
+        "                } else {\\n"
+        "                    app.account.submit_login(config);\\n"
+        "                }\\n"
+        "            }"
+    )
+    auth_busy_replacement = auth_busy_anchor + (
+        "\\n            if busy && ui.button(\\"取消并返回登录\\").clicked() {\\n"
+        "                app.account.cancel_pending_and_return();\\n"
+        "            }"
+    )
+    if source.count(auth_busy_anchor) != 1:
+        raise SystemExit("Could not add cancel button to login/register screen")
+    source = source.replace(auth_busy_anchor, auth_busy_replacement, 1)
+
+    checking_anchor = (
+        "        Mode::Checking => centered_window(ctx, \\"账号验证中\\", vec2(360.0, 230.0), |ui| {\\n"
+        "            ui.vertical_centered(|ui| {\\n"
+        "                ui.heading(\\"正在连接云端账号服务器\\");\\n"
+        "                ui.label(\\"验证通过后才能进入 EffectCraft\\");\\n"
+        "                ui.spinner();\\n"
+        "                ui.label(&app.account.server_url);\\n"
+        "            });\\n"
+        "        }),"
+    )
+    checking_replacement = (
+        "        Mode::Checking => centered_window(ctx, \\"账号验证中\\", vec2(360.0, 250.0), |ui| {\\n"
+        "            ui.vertical_centered(|ui| {\\n"
+        "                ui.heading(\\"正在验证账号…\\");\\n"
+        "                ui.label(\\"验证通过后才能进入 EffectCraft\\");\\n"
+        "                ui.spinner();\\n"
+        "                ui.label(\\"网络无响应时可取消返回；本次等待最长 20 秒。\\");\\n"
+        "                if ui.button(\\"取消并返回登录\\").clicked() {\\n"
+        "                    app.account.cancel_pending_and_return();\\n"
+        "                }\\n"
+        "            });\\n"
+        "        }),"
+    )
+    if source.count(checking_anchor) != 1:
+        raise SystemExit("Could not replace checking screen with cancellable version")
+    source = source.replace(checking_anchor, checking_replacement, 1)
+
+    unavailable_anchor = (
+        "            if !app.account.status.is_empty() {\\n"
+        "                ui.label(&app.account.status);\\n"
+        "            }\\n"
+        "        }),\\n"
+        "        Mode::Success"
+    )
+    unavailable_replacement = (
+        "            if ui.button(\\"返回登录页面\\").clicked() {\\n"
+        "                app.account.cancel_pending_and_return();\\n"
+        "            }\\n"
+        "            if !app.account.status.is_empty() {\\n"
+        "                ui.label(&app.account.status);\\n"
+        "            }\\n"
+        "        }),\\n"
+        "        Mode::Success"
+    )
+    if source.count(unavailable_anchor) != 1:
+        raise SystemExit("Could not add a return action to the unavailable page")
+    source = source.replace(unavailable_anchor, unavailable_replacement, 1)
     if "last_verified" in source or "TcpStream" in source or "192.168.1.100" in source:
         raise SystemExit("LAN/10-second account code remains after cloud conversion.")
     account_path.write_text(source, encoding="utf-8")
