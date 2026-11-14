@@ -13,7 +13,7 @@ android {
         targetSdk 35
         versionCode 5
         versionName "1.4"
-        buildConfigField "String", "ACCOUNT_API_URL", "\"${System.getenv('AE_ACCOUNT_API_URL') ?: ''}\""
+        buildConfigField "String", "ACCOUNT_API_URL", "\"${System.getenv('AE_ACCOUNT_API_URL') ?: 'https://ae-account-api-gateway.pages.dev'}\""
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
