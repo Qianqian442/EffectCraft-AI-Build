@@ -14,6 +14,17 @@ This service provides the cloud account features used by the two Ae APKs: regist
 - `GET /v1/admin/users/{id}`
 - `POST /v1/admin/users/{id}/ban`
 
+## Public-proxy account transport
+
+The Android clients may reach this Worker directly over HTTPS or use a public HTTP CONNECT / SOCKS5 proxy only as a byte tunnel when direct access fails. The destination remains this Worker and D1 remains the authoritative account store.
+
+- The clients validate the Worker's HTTPS/WSS certificate and hostname end-to-end. They do not trust proxy-provided CA certificates and never downgrade account requests to plaintext HTTP.
+- Public proxy feeds are untrusted discovery data. A candidate is used only after a real `GET /health` check succeeds through that tunnel.
+- A proxy operator can still observe the Worker hostname, connection time and traffic volume. It must not receive decrypted passwords, JWTs or account request bodies.
+- The clients do not automatically replay a registration, profile update, ban or unban POST if the connection fails after submission, because the Worker may already have applied it.
+- Public proxy availability and mainland carrier reachability are not guaranteed. Test with the target mobile carriers before wide distribution.
+- This is client-side transport selection only. The Worker does not act as an open proxy and does not accept a client-supplied upstream URL.
+
 ## Ban/unban behavior
 
 1. The administrator request immediately updates the authoritative account row in D1.
