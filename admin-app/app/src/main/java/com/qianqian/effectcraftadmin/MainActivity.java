@@ -72,8 +72,9 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        firstAdminPassword = LanAccountServer.ensureAdminPassword(this);
-        if (isNodeServerEnabled()) {
+        boolean cloudMode = CloudflareProxyPool.isCloudflareUrl(BuildConfig.ACCOUNT_API_URL);
+        firstAdminPassword = cloudMode ? null : LanAccountServer.ensureAdminPassword(this);
+        if (!cloudMode && isNodeServerEnabled()) {
             try { startNodeServerService(); }
             catch (RuntimeException ignored) { /* The login screen will keep the server error visible. */ }
         }
@@ -81,14 +82,28 @@ public final class MainActivity extends Activity {
         getWindow().setStatusBarColor(Color.rgb(245, 247, 250));
         getWindow().setNavigationBarColor(Color.rgb(245, 247, 250));
         getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
-        server = trimServer(DEFAULT_SERVER);
-        adminToken = getPreferences(MODE_PRIVATE).getString("admin_token", "");
+        server = trimServer(cloudMode ? BuildConfig.ACCOUNT_API_URL : DEFAULT_SERVER);
+        String savedServer = getPreferences(MODE_PRIVATE).getString("server", "");
+        adminToken = savedServer.equals(server)
+            ? getPreferences(MODE_PRIVATE).getString("admin_token", "") : "";
+        if (!savedServer.isEmpty() && !savedServer.equals(server)) {
+            getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
+        }
         if (!adminToken.isEmpty()) {
             showConnecting("正在验证本机管理员账号…");
             loadUsers("");
         } else {
             showLogin();
         }
+    }
+
+    private boolean isCloudflareMode() {
+        return CloudflareProxyPool.isCloudflareUrl(server);
+    }
+
+    private String configuredAccountServer() {
+        String configured = BuildConfig.ACCOUNT_API_URL == null ? "" : BuildConfig.ACCOUNT_API_URL.trim();
+        return CloudflareProxyPool.isCloudflareUrl(configured) ? trimServer(configured) : DEFAULT_SERVER;
     }
 
     private String readP2PStatus() {
@@ -178,8 +193,10 @@ public final class MainActivity extends Activity {
         panel.setOrientation(LinearLayout.VERTICAL);
         panel.setPadding(dp(12), dp(10), dp(12), dp(10));
         panel.setBackground(rounded(Color.WHITE));
-        panel.addView(text("管理员手机账号节点", 16, true));
-        panel.addView(text("账号数据保存在本机 SQLite；用户注册、登录、资料修改和封禁状态均由本机校验。", 12, false));
+        panel.addView(text(isCloudflareMode() ? "P2P 节点网络（独立功能）" : "管理员手机账号节点", 16, true));
+        panel.addView(text(isCloudflareMode()
+            ? "账号注册、登录、查询、封禁和解禁由 Cloudflare Workers + D1 统一处理。本机节点开关只控制独立 P2P 节点，不替代云端账号服务。"
+            : "账号数据保存在本机 SQLite；用户注册、登录、资料修改和封禁状态均由本机校验。", 12, false));
         addNodeServerToggle(panel);
         p2pStatusView = text(readP2PStatus(), 11, false);
         p2pStatusView.setTextColor(Color.rgb(75, 84, 98));
@@ -264,7 +281,9 @@ public final class MainActivity extends Activity {
         page.addView(text("Ae账号管理", 24, true), new LinearLayout.LayoutParams(-1, dp(56)));
         TextView status = text(message, 15, false);
         page.addView(status, new LinearLayout.LayoutParams(-1, dp(64)));
-        page.addView(text("正在连接本机账号数据库，并通过 P2P 为其他手机提供加密账号服务。", 12, false));
+        page.addView(text(isCloudflareMode()
+            ? "正在连接 Cloudflare 云端账号服务；若直连不通，将检测公开代理的 TLS 隧道。"
+            : "正在连接本机账号数据库，并通过 P2P 为其他手机提供加密账号服务。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
             showConnecting("正在重新连接本机账号服务…");
@@ -285,11 +304,15 @@ public final class MainActivity extends Activity {
         LinearLayout page = column();
         TextView title = text("EffectCraft 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
-        page.addView(text("本机账号管理：账号数据库保存在这部管理员手机上。", 14, false));
-        page.addView(text("其他用户无需与管理员处于同一 Wi-Fi；主 APK 自动发现本机节点，并通过加密 P2P 通道注册、登录和核验封禁状态。", 13, false));
-        addNodeServerToggle(page);
-        page.addView(text("服务器地址", 13, true));
-        serverInput = field("服务器地址由管理版自动配置", false);
+        page.addView(text(isCloudflareMode()
+            ? "管理端连接统一 Cloudflare 账号服务；网络不通时自动检测可用的公开 HTTPS 隧道。"
+            : "本机账号管理：账号数据库保存在这部管理员手机上。", 14, false));
+        page.addView(text(isCloudflareMode()
+            ? "主 APK 和管理版 APK 共用同一 Cloudflare 账号数据库。"
+            : "其他用户无需与管理员处于同一 Wi-Fi；主 APK 自动发现本机节点，并通过加密 P2P 通道注册、登录和核验封禁状态。", 13, false));
+        if (!isCloudflareMode()) addNodeServerToggle(page);
+        page.addView(text("账号服务器地址", 13, true));
+        serverInput = field("服务器地址由管理版构建配置提供", false);
         serverInput.setText(server);
         serverInput.setEnabled(false);
         page.addView(serverInput);
@@ -326,6 +349,7 @@ public final class MainActivity extends Activity {
         // The generated admin password contains no spaces. Ignore accidental
         // leading/trailing whitespace added by mobile clipboard or IME input.
         String pass = passwordInput.getText().toString().trim();
+        server = configuredAccountServer();
         if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) {
             toast("请填写服务器地址、管理员账号和密码");
             return;
@@ -336,7 +360,9 @@ public final class MainActivity extends Activity {
             loginButton.setEnabled(false);
             loginButton.setText("正在验证…");
         }
-        if (loginStatus != null) loginStatus.setText("正在等待本机 SQLite 服务就绪并校验管理员密码…");
+        if (loginStatus != null) loginStatus.setText(isCloudflareMode()
+            ? "正在通过 HTTPS / 公开代理隧道验证 Cloudflare 管理员账号…"
+            : "正在等待本机 SQLite 服务就绪并校验管理员密码…");
         requestAsync("POST", "/v1/admin/login", body, false, result -> {
             if (result == null) {
                 if (loginButton != null) {
@@ -431,53 +457,66 @@ public final class MainActivity extends Activity {
         io.execute(() -> {
             JSONObject result = null;
             String error = null;
-            HttpURLConnection c = null;
+            HttpURLConnection localConnection = null;
             try {
-                if (path.startsWith("/v1/admin/")) {
-                    awaitLocalAccountService();
-                    if ("/v1/admin/login".equals(path)) {
-                        String candidate = body == null ? "" : body.optString("password", "");
-                        if (!LanAccountServer.verifyAdminPasswordOnDevice(getApplicationContext(), candidate)) {
-                            // Allow the owner to adopt the password entered here
-                            // only when this phone's SQLite account DB is empty.
-                            // Existing users always keep the current admin credential.
-                            if (!LanAccountServer.adoptAdminPasswordIfNoRegisteredUsers(
-                                getApplicationContext(), candidate)) {
-                                throw new AdminCredentialMismatchException(
-                                    "管理员密码校验失败。只有本机账号库确认为 0 个注册账号时，才允许首次设置/更改管理员密码；当前未修改密码。");
+                int code;
+                JSONObject parsed;
+                if (isCloudflareMode()) {
+                    CloudflareProxyPool.ApiResponse response = CloudflareProxyPool.request(
+                        getApplicationContext(), server, method, path, body, auth ? adminToken : ""
+                    );
+                    code = response.status;
+                    parsed = response.body;
+                } else {
+                    if (path.startsWith("/v1/admin/")) {
+                        awaitLocalAccountService();
+                        if ("/v1/admin/login".equals(path)) {
+                            String candidate = body == null ? "" : body.optString("password", "");
+                            if (!LanAccountServer.verifyAdminPasswordOnDevice(getApplicationContext(), candidate)) {
+                                if (!LanAccountServer.adoptAdminPasswordIfNoRegisteredUsers(
+                                    getApplicationContext(), candidate)) {
+                                    throw new AdminCredentialMismatchException(
+                                        "管理员密码校验失败。只有本机账号库确认为 0 个注册账号时，才允许首次设置/更改管理员密码；当前未修改密码。");
+                                }
                             }
                         }
                     }
-                }
-                URL url = new URL(server + path);
-                if (!"http".equalsIgnoreCase(url.getProtocol()) || !"127.0.0.1".equals(url.getHost()) || url.getPort() != 8787) {
-                    throw new java.io.IOException("账号管理界面只允许访问本机管理员账号服务");
-                }
-                c = (HttpURLConnection) url.openConnection();
-                c.setRequestMethod(method);
-                c.setConnectTimeout(8000);
-                c.setReadTimeout(10000);
-                c.setRequestProperty("Accept", "application/json");
-                if (auth && !adminToken.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + adminToken);
-                if (body != null) {
-                    c.setDoOutput(true);
-                    c.setRequestProperty("Content-Type", "application/json; charset=utf-8");
-                    byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
-                    try (OutputStream out = c.getOutputStream()) { out.write(bytes); }
-                }
-                int code = c.getResponseCode();
-                InputStream in = code >= 200 && code < 300 ? c.getInputStream() : c.getErrorStream();
-                ByteArrayOutputStream data = new ByteArrayOutputStream();
-                if (in != null) {
-                    try (InputStream stream = in) {
-                        byte[] buffer = new byte[4096];
-                        int n;
-                        while ((n = stream.read(buffer)) > 0) data.write(buffer, 0, n);
+                    URL url = new URL(server + path);
+                    if (!"http".equalsIgnoreCase(url.getProtocol())
+                        || !"127.0.0.1".equals(url.getHost()) || url.getPort() != 8787) {
+                        throw new java.io.IOException("账号管理界面只允许访问本机管理员账号服务");
                     }
+                    localConnection = (HttpURLConnection) url.openConnection();
+                    localConnection.setRequestMethod(method);
+                    localConnection.setConnectTimeout(8000);
+                    localConnection.setReadTimeout(10000);
+                    localConnection.setRequestProperty("Accept", "application/json");
+                    if (auth && !adminToken.isEmpty()) {
+                        localConnection.setRequestProperty("Authorization", "Bearer " + adminToken);
+                    }
+                    if (body != null) {
+                        localConnection.setDoOutput(true);
+                        localConnection.setRequestProperty("Content-Type", "application/json; charset=utf-8");
+                        byte[] bytes = body.toString().getBytes(StandardCharsets.UTF_8);
+                        try (OutputStream out = localConnection.getOutputStream()) { out.write(bytes); }
+                    }
+                    code = localConnection.getResponseCode();
+                    InputStream input = code >= 200 && code < 400
+                        ? localConnection.getInputStream() : localConnection.getErrorStream();
+                    ByteArrayOutputStream data = new ByteArrayOutputStream();
+                    if (input != null) {
+                        try (InputStream stream = input) {
+                            byte[] buffer = new byte[4096];
+                            int n;
+                            while ((n = stream.read(buffer)) > 0) data.write(buffer, 0, n);
+                        }
+                    }
+                    parsed = new JSONObject(new String(data.toByteArray(), StandardCharsets.UTF_8));
                 }
-                JSONObject parsed = new JSONObject(new String(data.toByteArray(), StandardCharsets.UTF_8));
-                if (code >= 200 && code < 300) result = parsed;
-                else {
+
+                if (code >= 200 && code < 300) {
+                    result = parsed;
+                } else {
                     Object detail = parsed.opt("detail");
                     if (detail instanceof JSONObject) error = ((JSONObject) detail).optString("message", detail.toString());
                     else error = detail == null ? ("HTTP " + code) : detail.toString();
@@ -490,16 +529,18 @@ public final class MainActivity extends Activity {
             } catch (AdminCredentialMismatchException e) {
                 error = e.getMessage();
             } catch (Exception e) {
-                error = "无法连接本机账号服务：" + e.getMessage();
+                error = (isCloudflareMode() ? "无法连接 Cloudflare 云端账号服务：" : "无法连接本机账号服务：")
+                    + (e.getMessage() == null ? e.getClass().getSimpleName() : e.getMessage());
             } finally {
-                if (c != null) c.disconnect();
+                if (localConnection != null) localConnection.disconnect();
             }
             JSONObject finalResult = result;
             String finalError = error;
             runOnUiThread(() -> {
                 if (finalError != null) {
                     toast(finalError);
-                    if (auth && (finalError.contains("401") || finalError.contains("登录已失效") || finalError.contains("账号权限不足"))) showLogin();
+                    if (auth && (finalError.contains("401") || finalError.contains("登录已失效")
+                        || finalError.contains("账号权限不足"))) showLogin();
                 }
                 if (callback != null) callback.done(finalResult);
                 if (finalError != null && "/v1/admin/login".equals(path) && loginStatus != null) {
