@@ -88,11 +88,29 @@ jobs:
 
   build-admin:
     name: Build standalone account manager APK
+    needs: build-masque-aar
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+
+      - name: Download Cloudflare MASQUE Android engine
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-Cloudflare-MASQUE-ARM64-AAR
+          path: admin-app/app/libs
+
+      - name: Verify Cloudflare MASQUE Android engine
+        shell: bash
+        run: |
+          set -euo pipefail
+          AAR="admin-app/app/libs/effectcraft-warp-masque.aar"
+          test -s "$AAR"
+          unzip -tq "$AAR"
+          unzip -p "$AAR" classes.jar > "$RUNNER_TEMP/warp-admin-classes.jar"
+          jar tf "$RUNNER_TEMP/warp-admin-classes.jar" | grep -E 'com/effectcraft/warp/.*\.class'
+          unzip -l "$AAR" | grep -E 'jni/arm64-v8a/.*\.so'
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -184,34 +202,6 @@ jobs:
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
           echo "Persistent admin APK signing key is ready."
 
-      - name: Add public proxy bootstrap snapshot for Cloudflare admin mode
-        if: ${{ vars.AE_ACCOUNT_API_URL != '' || 'https://ae-cloud-account-api.q1939023856.workers.dev' != '' }}
-        env:
-          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL || 'https://ae-cloud-account-api.q1939023856.workers.dev' }}
-        run: |
-          set -euo pipefail
-          python3 -m py_compile .github/scripts/fetch_public_proxy_bootstrap.py
-          mkdir -p admin-app/app/src/main/assets
-          python3 .github/scripts/fetch_public_proxy_bootstrap.py --output admin-app/app/src/main/assets/public-proxy-bootstrap.txt
-          test -s admin-app/app/src/main/assets/public-proxy-bootstrap.txt
-          echo "Packed $(wc -l < admin-app/app/src/main/assets/public-proxy-bootstrap.txt) proxy candidates for the admin APK."
-
-      - name: Download and verify pinned Hev tun2socks Android AAR
-        shell: bash
-        run: |
-          set -euo pipefail
-          HEV_AAR="$RUNNER_TEMP/hev-socks5-tunnel.aar"
-          curl -fL --retry 5 --retry-all-errors --retry-delay 3 \
-            "https://github.com/heiher/hev-socks5-tunnel/releases/download/2.20.0/hev-socks5-tunnel.aar" \
-            -o "$HEV_AAR"
-          echo "ae8a2e96b80b4eccccd037805a4bb4a278090c89dbcae8bc6fcb7634e9a255b9  $HEV_AAR" | sha256sum --check -
-          unzip -l "$HEV_AAR" | grep -Fq 'classes.jar'
-          unzip -l "$HEV_AAR" | grep -Fq 'jni/arm64-v8a/libhev-socks5-tunnel.so'
-          unzip -p "$HEV_AAR" classes.jar > "$RUNNER_TEMP/hev-admin-classes.jar"
-          unzip -l "$RUNNER_TEMP/hev-admin-classes.jar" | grep -Fq 'hev/htproxy/TProxyService.class'
-          mkdir -p admin-app/app/libs
-          cp "$HEV_AAR" admin-app/app/libs/hev-socks5-tunnel.aar
-
       - name: Verify Ae branding and task-scoped admin VPN source
         shell: bash
         run: |
@@ -230,7 +220,7 @@ jobs:
           grep -Fq 'AdminAccountVpnService.startForTask' "$API"
           grep -Fq 'AdminAccountVpnService.stopForTask' "$API"
           grep -Fq 'AdminAccountVpnService' "$MANIFEST"
-          echo "Verified exact Ae账号管理 branding and on-demand admin VpnService wiring."
+          echo "Verified exact Ae账号管理 branding, direct Cloudflare WARP service and packaged MASQUE ABI."
 
       - name: Build admin APK
         env:
@@ -240,7 +230,62 @@ jobs:
           gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
           test -s app/build/outputs/apk/debug/app-debug.apk
           unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libeffectcraft_p2p.so'
-          unzip -l app/build/outputs/apk/debug/app-debug.apk | grep -F 'lib/arm64-v8a/libhev-socks5-tunnel.so'
+          unzip -Z1 app/build/outputs/apk/debug/app-debug.apk | grep '^lib/arm64-v8a/.*\.so
+          cp app/build/outputs/apk/debug/app-debug.apk ../EffectCraft-Account-Admin.apk
+
+      - name: Verify APK package integrity
+        run: |
+          unzip -t EffectCraft-Account-Admin.apk
+          file EffectCraft-Account-Admin.apk
+          ls -lh EffectCraft-Account-Admin.apk
+
+      - name: Verify APK signer matches persistent admin key
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="EffectCraft-Account-Admin.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" > "$RUNNER_TEMP/admin-apk-signature.txt"
+          keytool -list -v -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey > "$RUNNER_TEMP/admin-key-certificate.txt"
+          EXPECTED="$(awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-key-certificate.txt")"
+          ACTUAL="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-apk-signature.txt")"
+          echo "Persistent key certificate SHA-256: $EXPECTED"
+          echo "APK signer certificate SHA-256:    $ACTUAL"
+          test -n "$EXPECTED" && test -n "$ACTUAL"
+          test "$EXPECTED" = "$ACTUAL" || {
+            echo "APK is not signed with the persistent account-manager key." >&2
+            exit 1
+          }
+
+      # Explicitly save the debug signing identity after the first successful
+      # build so future admin APK updates use the same certificate.
+      - name: Save persistent Android debug signing key
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: effectcraft-admin-debug-signing-v1-${{ github.repository_id }}
+
+      - name: Publish downloadable APK release asset
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: account-admin-${{ github.run_number }}
+          name: EffectCraft Account Admin APK ${{ github.run_number }}
+          draft: false
+          prerelease: true
+          files: EffectCraft-Account-Admin.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload backup build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Account-Admin-APK
+          path: EffectCraft-Account-Admin.apk
+          if-no-files-found: error
+          retention-days: 30
+ | grep -vF 'lib/arm64-v8a/libeffectcraft_p2p.so' | grep -q .
           cp app/build/outputs/apk/debug/app-debug.apk ../EffectCraft-Account-Admin.apk
 
       - name: Verify APK package integrity
