@@ -202,6 +202,15 @@ jobs:
           AEP_EXPORT_SOURCE_DIR: ${{ github.workspace }}/upstream-aep-export
         run: python3 .github/scripts/backport_aep_export.py
 
+      - name: Apply the same Simplified Chinese Android defaults and UI controls as the APK
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: |
+          python3 -m py_compile .github/scripts/add_chinese_group_puppet_keyframe_ui.py
+          python3 .github/scripts/add_chinese_group_puppet_keyframe_ui.py
+          grep -F 'language: String = "zh-hans".into(),' effectcraft/crates/engine/src/settings/prefs/sections.rs
+          grep -F '"zh-hans"' effectcraft/crates/ui-egui/src/i18n.rs
+
       - name: Apply standalone DeepSeek AI plugin bridge
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
@@ -222,15 +231,6 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: python3 .github/scripts/add_chroma_key_effect.py
-
-      - name: Apply the same Simplified Chinese Android defaults and UI controls as the APK
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
-        run: |
-          python3 -m py_compile .github/scripts/add_chinese_group_puppet_keyframe_ui.py
-          python3 .github/scripts/add_chinese_group_puppet_keyframe_ui.py
-          grep -F 'language: String = "zh-hans".into(),' effectcraft/crates/engine/src/settings/prefs/sections.rs
-          grep -F '"zh-hans"' effectcraft/crates/ui-egui/src/i18n.rs
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
