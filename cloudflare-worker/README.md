@@ -10,6 +10,8 @@ This service provides the cloud account features used by the two Ae APKs: regist
 - `POST /v1/profile`
 - `GET /v1/events` (authenticated WebSocket)
 - `POST /v1/admin/login`
+- `GET /v1/admin/account-service` (read global account service switch)
+- `POST /v1/admin/account-service` (admin-only global account service on/off)
 - `GET /v1/admin/users?q=`
 - `GET /v1/admin/users/{id}`
 - `POST /v1/admin/users/{id}/ban`
@@ -35,6 +37,10 @@ The Android clients may reach this Worker directly over HTTPS or use a public HT
 6. A device that is offline, has lost network access, or whose Android process/socket has been suspended cannot receive a live push immediately. It verifies when it reconnects or next opens Ae.
 
 There is no 10-second or 5-minute account polling. A launch performs one verification. Normal editing and local AI/export do not make account API calls.
+
+The administrator's Cloudflare-mode switch is global and stored in the D1 `account_service_settings` singleton row. It defaults to enabled. Turning it off blocks every non-admin `/v1/*` account endpoint, including registration, login, profile changes, session verification and new user event connections. Admin login and admin APIs remain available so the administrator can turn the service back on. Existing online editor sessions receive one push over the already-open global node WebSocket and lock immediately; re-enabling sends one push that causes one normal `GET /v1/me` verification. Offline devices are blocked the next time they open or request account verification, and can retry after the service is enabled.
+
+The gate does not add a timer or extra client polling. Each existing user API request performs one lightweight D1 read of the single global setting row before handling the request; the switch itself writes one row and sends one best-effort push to the existing online WebSocket hub. There is no additional per-user HTTP fan-out.
 
 PBKDF2-SHA256 password hashing (210,000 iterations) runs inside a Durable Object rather than the Workers Free 10 ms CPU budget. The original password is never stored; only a salted hash is stored in D1. Registration, login and password changes therefore also use a small number of Durable Object requests.
 
