@@ -172,7 +172,7 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             '"preferred_peer_id": preferred_peer_id',
             '127.0.0.1:8789',
         ),
-    ),,
+    ),
     (
         "Cloudflare account service is controlled by an admin-only D1-backed global switch",
         "cloudflare-worker/src/index.js",
