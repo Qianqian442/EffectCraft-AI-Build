@@ -15,6 +15,7 @@ on:
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/configure_four_project_export_buttons.py'
       - '.github/scripts/add_project_import_formats.py'
+      - '.github/scripts/backport_aep_export.py'
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_qq_project_share.py'
@@ -30,6 +31,7 @@ on:
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/configure_four_project_export_buttons.py'
       - '.github/scripts/add_project_import_formats.py'
+      - '.github/scripts/backport_aep_export.py'
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/patch_export_dialog.py'
@@ -67,6 +69,17 @@ jobs:
           ref: v0.21.1
           path: effectcraft
 
+      - name: Check out upstream native After Effects exporter source
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/effectcraft
+          ref: ce9eaec65015a5508c72af0e2351cd02612c9450
+          path: upstream-aep-export
+          sparse-checkout: |
+            crates/aep/src/export.rs
+            crates/aep/src/export
+            crates/engine/src/cmd/aep.rs
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -87,6 +100,7 @@ jobs:
             .github/scripts/add_startup_attribution_notice.py \
             .github/scripts/patch_export_dialog.py \
             .github/scripts/configure_four_project_export_buttons.py \
+            .github/scripts/backport_aep_export.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_am_nv_project_import.py \
             .github/scripts/add_chroma_key_effect.py
@@ -170,6 +184,12 @@ jobs:
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F '导入am/NV/Ae/capcut工程' effectcraft/crates/engine/src/menus.rs
+
+      - name: Backport native Ae project export for Rust/UI compile validation
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          AEP_EXPORT_SOURCE_DIR: ${{ github.workspace }}/upstream-aep-export
+        run: python3 .github/scripts/backport_aep_export.py
 
       - name: Apply standalone DeepSeek AI plugin bridge
         env:
