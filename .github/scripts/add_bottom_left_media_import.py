@@ -34,7 +34,7 @@ def patch_project_panel_import_button(root: Path) -> None:
         .on_hover_text(crate::i18n::tr("Import pictures and videos"));
     app.auto.add_response("project.importMedia", &import_response, "导入图片和视频");
     if import_response.clicked()
-        && let Err(error) = crate::menus::invoke(app, &ctx, "file.import", json!({}))
+        && let Err(error) = crate::menus::invoke(app, &ctx, "file.importMultiple", json!({}))
     {
         app.ui.status = error;
     }
