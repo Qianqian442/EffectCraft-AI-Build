@@ -704,7 +704,11 @@ fn next_api_server(current: &str) -> Option<&'static str> {
         raise SystemExit(f"cloud WebSocket event implementation expected one replacement, found {n}")
 
     source = apply_local_ban_cache(source)
-
+    if "start_account_event_listener()" in source:
+        raise SystemExit("Legacy local TCP account event listener startup remains after cloud conversion.")
+    if "Some(Ok(_)) => {}" not in source:
+        raise SystemExit("Cloud account event handler is missing its ignored-message match arm.")
+    
     http_replacement = r'''fn http_request(url: &str, method: &str, path: &str, body: Value, token: Option<&str>) -> Result<HttpResult, String> {
     let mut candidates = Vec::<&str>::new();
     if url.starts_with("https://") {
@@ -879,6 +883,8 @@ fn http_request_single(url: &str, method: &str, path: &str, body: Value, token: 
 
     if "fn http_request_single" not in source or "API_SERVER_POOL" not in source or "切换服务器" not in source:
         raise SystemExit("Cloud endpoint failover or server-switch controls were not installed.")
+    if 'let mut response = if method == "GET" {' not in source:
+        raise SystemExit("Cloud HTTP method-specific request builders were not generated.")
     print(f"Cloud HTTPS account gate installed with {len(api_urls)} configured endpoint(s), automatic failover, and live ban/unban notifications; no periodic polling.")
 
 
