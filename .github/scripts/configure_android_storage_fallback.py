@@ -469,7 +469,7 @@ fn is_visual_media_extensions(exts: &[String]) -> bool {
             | "exr" | "dpx" | "cin" | "svg" | "eps" | "tga" | "hdr"
             | "mp4" | "m4v" | "mov" | "mkv" | "webm" | "avi" | "3gp" | "3g2"
             | "mpg" | "mpeg" | "m2v" | "mts" | "m2ts" | "ts" | "wmv" | "flv"
-            | "ogv" | "vob" | "hevc" | "h264"
+            | "ogv" | "vob" | "mxf" | "hevc" | "h264"
         )
     })
 }
