@@ -91,11 +91,11 @@ jobs:
           from pathlib import Path
           data = Path("work/proton-9.0-x86_64.txz").read_bytes()
           sidecar = Path("work/proton-9.0-x86_64.txz.sha256sum").read_text()
-          match = re.search(r"(?i)\\b([0-9a-f]{64})\\b", sidecar)
+          match = re.search(r"(?i)\b([0-9a-f]{64})\b", sidecar)
           assert match, "Proton SHA-256 sidecar is invalid"
           actual = hashlib.sha256(data).hexdigest()
           assert actual.lower() == match.group(1).lower(), f"Proton SHA-256 mismatch: {actual}"
-          Path("audit/PROTON-SHA256.txt").write_text(actual + "  proton-9.0-x86_64.txz\\n")
+          Path("audit/PROTON-SHA256.txt").write_text(actual + "  proton-9.0-x86_64.txz\n")
           print(f"Verified Bionic Proton archive: {len(data)} bytes, SHA-256 {actual}")
           PY
           tar -xJf work/proton-9.0-x86_64.txz -C imagefs/opt/proton-9.0-x86_64
@@ -109,7 +109,7 @@ jobs:
           readelf -l "$wine" | tee audit/WINE-PROGRAM-HEADERS.txt
           grep -Fq '/system/bin/linker64' audit/WINE-PROGRAM-HEADERS.txt
           echo "Confirmed: this Wine launcher is an Android Bionic ELF. It must be launched by Android /system/bin/linker64 from an app process; do not wrap it in a glibc-built Box64 host."
-          printf '%s\\n' "This is a host-ABI audit only. It does not execute Wine or a Windows PE." > audit/RESULT.txt
+          printf '%s\n' "This is a host-ABI audit only. It does not execute Wine or a Windows PE." > audit/RESULT.txt
           cp windows-compat/aexlo-host/Cargo.toml audit/AEX-HOST-MANIFEST.txt
 
       - name: Upload Bionic Wine host audit
