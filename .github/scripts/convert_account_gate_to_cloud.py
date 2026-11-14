@@ -284,9 +284,11 @@ def main() -> None:
                     let enabled = event.get("enabled").and_then(Value::as_bool).unwrap_or(true);
                     if !enabled && self.mode != Mode::Unavailable {
                         self.notification_pending = Some("service_disabled".to_string());
-                    } else if enabled && self.mode == Mode::Unavailable && self.token.is_some() {
-                        self.notification_pending = Some("service_enabled".to_string());
                     }
+                    // Re-enabling the global service does not unlock an already
+                    // suspended app session. The user must close and reopen Ae;
+                    // startup then performs the normal single /v1/me verification.
+                    // This avoids background verification traffic.
                 }
                 _ => {}
             }
@@ -295,10 +297,7 @@ def main() -> None:
             if let Some(status) = self.notification_pending.take() {
                 if status == "service_disabled" {
                     self.mode = Mode::Unavailable;
-                    self.status = "云端账号服务器已由管理员关闭，当前无法使用。服务器重新开启后会自动重新验证。".to_string();
-                } else if status == "service_enabled" {
-                    self.mode = Mode::Checking;
-                    self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+                    self.status = "云端账号服务器已由管理员关闭，Ae 当前不可使用。请等待管理员重新开启服务器，再关闭并重新打开 Ae；系统会按原规则自动验证账号。".to_string();
                 } else {
                     let already_matches = (status == "banned" && self.mode == Mode::Banned)
                         || (status == "unbanned" && self.mode == Mode::Editor);
