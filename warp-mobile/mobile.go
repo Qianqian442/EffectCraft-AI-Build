@@ -63,15 +63,13 @@ var (
 // through ordinary direct HTTPS. It deliberately disables HTTP proxies and
 // bounds DNS, TCP, TLS, response-header and total request time.
 func configureDirectRegistrationClient() {
-	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 15 * time.Second}
-	transport := &http.Transport{
-		Proxy: nil,
-		DialContext: dialer.DialContext,
-		TLSHandshakeTimeout: 5 * time.Second,
-		ResponseHeaderTimeout: 8 * time.Second,
-		ForceAttemptHTTP2: true,
+	// Cloudflare's registration/control-plane API must be reached before a WARP
+	// tunnel exists. Use Cloudflare's published API IPs and hostname fallback
+	// directly, with matching TLS SNI/Host and normal certificate verification.
+	http.DefaultClient = &http.Client{
+		Transport: newCloudflareAPIDirectTransport(),
+		Timeout:   50 * time.Second,
 	}
-	http.DefaultClient = &http.Client{Transport: transport, Timeout: 15 * time.Second}
 }
 
 
