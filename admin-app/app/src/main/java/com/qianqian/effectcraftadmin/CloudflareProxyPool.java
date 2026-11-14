@@ -130,29 +130,21 @@ final class CloudflareProxyPool {
             throw new IllegalArgumentException("账号 API 方法不受支持");
         }
 
-        Route route = chooseRoute(context, baseUrl);
         URL endpoint = new URL(baseUrl.replaceAll("/+$", "") + path);
         String workerHost = endpoint.getHost();
-        List<String> workerIps = resolveWorkerIpv4(workerHost);
-        if (workerIps.isEmpty()) throw new java.io.IOException("Cloudflare Worker 没有可用的公网 IPv4 地址");
-
-        String routeType = route.candidate == null ? "direct" : route.candidate.protocol;
-        String routeHost = route.candidate == null ? "" : route.candidate.ip;
-        int routePort = route.candidate == null ? 0 : route.candidate.port;
-        String vpnStatus = AdminAccountVpnService.startForTask(
-            context, workerHost, join(workerIps), routeType, routeHost, routePort);
+        String vpnStatus = AdminAccountVpnService.startForTask(context, workerHost);
         if (!"OK".equals(vpnStatus)) {
-            throw new java.io.IOException("管理版内置 VPN 启动失败：" + vpnStatus);
+            throw new java.io.IOException("管理版 Cloudflare WARP 启动失败：" + vpnStatus);
         }
 
         HttpsURLConnection connection = null;
         try {
-            // The admin app's Worker IPs now route through its own short-lived TUN.
-            // Its local SOCKS bridge uses a protected upstream socket to avoid a TUN loop.
+            // No proxy or administrator-phone relay is used for account traffic.
+            // The Worker IP routes are carried directly by this APK's MASQUE TUN.
             connection = openHttps(endpoint, Proxy.NO_PROXY);
             connection.setRequestMethod(method);
-            connection.setConnectTimeout(CONNECT_TIMEOUT_MS + 3000);
-            connection.setReadTimeout(10000);
+            connection.setConnectTimeout(CONNECT_TIMEOUT_MS + 5000);
+            connection.setReadTimeout(12000);
             connection.setInstanceFollowRedirects(false);
             connection.setRequestProperty("Accept", "application/json");
             connection.setRequestProperty("Cache-Control", "no-store");
@@ -175,29 +167,25 @@ final class CloudflareProxyPool {
             InputStream input = status >= 200 && status < 400
                 ? connection.getInputStream() : connection.getErrorStream();
             byte[] bytes = readBounded(input, 256 * 1024);
-            JSONObject parsed = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
-            if (route.candidate != null) markGood(route.candidate);
-            return new ApiResponse(status, parsed, "内置 VPN · " + route.label());
-        } catch (Exception error) {
-            if (route.candidate != null) {
-                markBad(route.candidate);
-            } else {
-                synchronized (LOCK) {
-                    directHealthy = false;
-                    directCheckedAt = 0;
-                }
+            JSONObject parsed;
+            try {
+                parsed = new JSONObject(new String(bytes, StandardCharsets.UTF_8));
+            } catch (org.json.JSONException invalidJson) {
+                throw new java.io.IOException("Cloudflare 账号服务返回了无法识别的数据", invalidJson);
             }
-            // Never retry a submitted POST: a read timeout may happen after the
-            // Worker has already processed a ban/unban operation.
+            return new ApiResponse(status, parsed, "Cloudflare WARP 直连");
+        } catch (Exception error) {
+            // Never retry a submitted POST: the Worker may already have applied
+            // a ban/unban action before the response was interrupted.
             throw new java.io.IOException(
-                "Cloudflare 请求中断；为防止重复提交，本次不会自动重放。连接路径：" + route.label(),
+                "Cloudflare WARP 请求中断；为防止重复提交，本次不会自动重放。",
                 error
             );
         } finally {
             if (connection != null) connection.disconnect();
             String stopped = AdminAccountVpnService.stopForTask(context);
             if (!"OK".equals(stopped)) {
-                android.util.Log.w("EffectCraftAdminVPN", "VPN stop confirmation: " + stopped);
+                android.util.Log.w("EffectCraftAdminWARP", "VPN stop confirmation: " + stopped);
             }
         }
     }
