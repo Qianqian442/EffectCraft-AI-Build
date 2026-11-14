@@ -49,10 +49,11 @@ The `Deploy Ae Cloud Account API` workflow applies the D1 schema, deploys the Wo
 
 Required GitHub Actions repository secrets (never put their values in source code or chat):
 
-- `CLOUDFLARE_API_TOKEN`
-- `CLOUDFLARE_ACCOUNT_ID`
+- `CLOUDFLARE_API_TOKEN` (Cloudflare Workers Scripts Edit + D1 Edit for the selected account)
 - `JWT_SECRET` (at least 32 characters)
 - `ADMIN_PASSWORD` (at least 12 characters)
+
+`CLOUDFLARE_ACCOUNT_ID` is not required as a fourth secret: the deployment workflow has the configured account ID as a fallback. A repository secret with that name may override the fallback, but do not add one just to satisfy older instructions.
 
 Cloudflare Workers, D1, and Durable Objects have free-plan limits. This avoids VPS rental, but it is not a promise of unlimited or permanently free usage. Test the deployed endpoint on the intended networks before distributing the APKs.
 
