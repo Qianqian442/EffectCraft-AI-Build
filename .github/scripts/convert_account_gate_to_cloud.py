@@ -91,6 +91,21 @@ def validate_workspace_manifest(root: Path, source: str) -> str:
 
 def apply_local_ban_cache(source: str) -> str:
     """Persist ban decisions locally and expire temporary bans without startup polling."""
+    # The offline-registration and avatar-picker patches both extend AccountState.
+    # Remove the orphaned partial send-method prefix left at the join point before
+    # the avatar picker methods; the complete send() definition follows those methods.
+    source, orphan_count = re.subn(
+        r"(?m)^    fn send\\(&mut self,\\s*(?=^    fn start_avatar_picker\\()",
+        "",
+        source,
+        count=1,
+    )
+    if orphan_count != 1:
+        raise SystemExit(
+            f"account method join repair: expected one orphan send prefix, found {orphan_count}"
+        )
+    if source.count("    fn send(&mut self, action: Action") != 1:
+        raise SystemExit("account method join repair: complete send method is missing or duplicated")
     saved_old = (
         "struct SavedAccount {\n"
         "    server_url: String,\n"
