@@ -716,8 +716,17 @@ jobs:
           grep -Fq 'private static String scannerNetworkIdentity(Context context)' build-assets/p2p-bridge/android/EffectCraftVpnService.java
           grep -Fq 'android.permission.ACCESS_NETWORK_STATE' build-assets/.github/scripts/integrate_on_demand_vpn.py
           grep -Fq 'func configureDirectRegistrationClient()' build-assets/warp-mobile/mobile.go
-          grep -Fq 'Proxy:                 nil' build-assets/warp-mobile/mobile.go
-          grep -Fq 'Timeout: 15 * time.Second' build-assets/warp-mobile/mobile.go
+          grep -Fq 'Transport: newCloudflareAPIDirectTransport()' build-assets/warp-mobile/mobile.go
+          grep -Fq 'Timeout:   50 * time.Second' build-assets/warp-mobile/mobile.go
+          grep -Fq 'api.devices.cloudflare.com' build-assets/warp-mobile/api_transport.go
+          grep -Fq '162.159.137.105' build-assets/warp-mobile/api_transport.go
+          grep -Fq '162.159.138.105' build-assets/warp-mobile/api_transport.go
+          grep -Fq 'api.cloudflareclient.com' build-assets/warp-mobile/api_transport.go
+          grep -Fq 'ServerName: endpoint.Host' build-assets/warp-mobile/api_transport.go
+          grep -Fq 'Proxy:                 nil' build-assets/warp-mobile/api_transport.go
+          grep -Fq 'WroteRequest' build-assets/warp-mobile/api_transport.go
+          grep -Fq 'not replayed to avoid duplicate registration' build-assets/warp-mobile/api_transport.go
+          grep -Fq 'TestCloudflareAPIEndpointPoolStartsWithPublishedDirectEndpoints' build-assets/warp-mobile/api_transport_test.go
           grep -Fq 'registrationMu.Lock()' build-assets/warp-mobile/mobile.go
           grep -Fq 'attemptTimer := time.AfterFunc(6*time.Second, attemptCancel)' build-assets/.github/scripts/patch_usque_for_android.py
           grep -Fq 'var proxyURL *url.URL // Direct Cloudflare underlay only; no proxy or relay.' build-assets/.github/scripts/patch_usque_for_android.py
