@@ -78,9 +78,11 @@ def main() -> None:
     )
     source = replace_once(
         source,
-        '                    if saved.server_url.starts_with("p2p://") {\n'
-        "                        self.server_url = saved.server_url;\n"
-        "                    }\n"
+        '                    self.server_url = if saved.server_url.starts_with("p2p://") {\n'
+        "                        saved.server_url\n"
+        "                    } else {\n"
+        "                        DEFAULT_SERVER.to_string()\n"
+        "                    };\n"
         "                    if !saved.token.is_empty() {\n"
         "                        self.token = Some(saved.token);\n"
         "                    }",
