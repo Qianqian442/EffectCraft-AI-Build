@@ -21,6 +21,62 @@ ANCHORS = {
 }
 
 
+def normalize_package_manifest(path: Path) -> None:
+    """Merge repeated TOML tables and remove duplicate keys in Cargo package manifests."""
+    lines = path.read_text(encoding="utf-8").splitlines()
+    output: list[str] = []
+    table = ""
+    seen_tables: set[str] = set()
+    seen_keys: dict[str, set[str]] = {}
+    array_table_index = 0
+
+    for line_number, line in enumerate(lines, 1):
+        header = re.match(r"^\\s*(\\[\\[.*?\\]\\]|\\[.*?\\])\\s*(?:#.*)?$", line)
+        if header:
+            token = header.group(1)
+            if token.startswith("[["):
+                array_table_index += 1
+                table = f"{token}#{array_table_index}"
+                output.append(line)
+                seen_keys.setdefault(table, set())
+                continue
+            table_name = token[1:-1].strip()
+            if table_name in seen_tables:
+                # TOML does not allow a normal table to be declared twice.
+                # Merge repeated declarations produced by overlapping patches.
+                table = table_name
+                continue
+            seen_tables.add(table_name)
+            table = table_name
+            seen_keys.setdefault(table, set())
+            output.append(line)
+            continue
+
+        key_match = re.match(r"^\\s*([A-Za-z0-9_-]+)\\s*=", line)
+        if key_match:
+            key = key_match.group(1)
+            keys = seen_keys.setdefault(table, set())
+            if key in keys:
+                print(f"Removed duplicate Cargo key: {path}:{line_number} [{table}] {key}")
+                continue
+            keys.add(key)
+        output.append(line)
+
+    normalized = "\\n".join(output) + "\\n"
+    try:
+        tomllib.loads(normalized)
+    except tomllib.TOMLDecodeError as error:
+        line_no = getattr(error, "lineno", None)
+        excerpt = ""
+        if line_no and 1 <= line_no <= len(output):
+            left = max(1, line_no - 2)
+            right = min(len(output), line_no + 2)
+            excerpt = "\\n".join(f"{i}: {output[i - 1]}" for i in range(left, right + 1))
+        raise SystemExit(f"Invalid Cargo manifest {path}: {error}\\n{excerpt}") from error
+    path.write_text(normalized, encoding="utf-8")
+    print(f"Validated Cargo manifest: {path}")
+
+
 def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     manifest = root / "Cargo.toml"
@@ -66,6 +122,11 @@ def main() -> None:
     manifest.write_text(normalized, encoding="utf-8")
     print("Workspace Cargo.toml normalized and parsed successfully.")
     print("Exactly one account/network entry each: ureq, tungstenite, roxmltree, zip.")
+
+    # The Android builder parses these manifests before creating the launcher.
+    # Validate them here, with file/line diagnostics instead of a late build failure.
+    normalize_package_manifest(root / "crates/engine/Cargo.toml")
+    normalize_package_manifest(root / "crates/ui-egui/Cargo.toml")
 
 
 if __name__ == "__main__":
