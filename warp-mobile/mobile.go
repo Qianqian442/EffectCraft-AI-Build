@@ -50,6 +50,10 @@ func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string
 	if cfg.PrivateKey == "" || cfg.EndpointPubKey == "" || cfg.IPv4 == "" {
 		return errors.New("WARP config missing private key, pinned endpoint key or assigned IPv4")
 	}
+	// Upstream usque's key parsing helpers read config.AppConfig internally.
+	// Set the parsed per-device config before invoking those helpers.
+	config.AppConfig = cfg
+	config.ConfigLoaded = true
 	endpoints, err := parseEndpoints(endpointList)
 	if err != nil { return err }
 
@@ -68,8 +72,6 @@ func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string
 	ctx, cancel := context.WithCancel(context.Background())
 	current := &tunnelSession{cancel: cancel, device: device, done: make(chan struct{}), active: true}
 	session = current
-	config.AppConfig = cfg
-	config.ConfigLoaded = true
 	state, lastError = "connecting", ""
 
 	go func() {
