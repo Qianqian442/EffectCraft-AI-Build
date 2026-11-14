@@ -520,7 +520,7 @@ def patch_timeline_keyframe_button(root: Path) -> None:
     source = replace_once(
         source,
         'let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));',
-        'let tgl_x = keyframe_rect.max.x + 8.0;\\n    let tgl_width = (graph_x0 - 6.0 - tgl_x).max(0.0).min(140.0);\\n    let tgl = Rect::from_min_size(pos2(tgl_x, footer.min.y + 3.0), vec2(tgl_width, 18.0));',
+        'let tgl_x = keyframe_rect.max.x + 8.0;\n    let tgl_width = (graph_x0 - 6.0 - tgl_x).max(0.0).min(140.0);\n    let tgl = Rect::from_min_size(pos2(tgl_x, footer.min.y + 3.0), vec2(tgl_width, 18.0));',
         "Timeline footer spacing",
     )
     path.write_text(source, encoding="utf-8")
