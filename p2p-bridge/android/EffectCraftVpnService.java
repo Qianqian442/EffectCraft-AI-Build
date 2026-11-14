@@ -3,41 +3,59 @@ package com.artcraft.effectcraft;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
 import android.net.VpnService;
 import android.os.Build;
 import android.os.IBinder;
 import android.os.ParcelFileDescriptor;
+import android.security.keystore.KeyGenParameterSpec;
+import android.security.keystore.KeyProperties;
+import android.util.Base64;
 import android.util.Log;
 
-import java.io.File;
-import java.io.FileOutputStream;
+import org.json.JSONObject;
+
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.net.Inet4Address;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.security.SecureRandom;
+import java.nio.ByteBuffer;
+import java.nio.charset.StandardCharsets;
+import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
-import hev.htproxy.TProxyService;
+import javax.crypto.Cipher;
+import javax.crypto.KeyGenerator;
+import javax.crypto.SecretKey;
+import javax.crypto.spec.GCMParameterSpec;
 
 /**
- * Task-scoped Android VPN. It routes only EffectCraft's Cloudflare Worker
- * connections through the administrator phone's authenticated P2P egress.
+ * Main-APK task-scoped Cloudflare WARP / MASQUE VPN.
+ *
+ * Only this app is allowed into the VPN and only the current Worker IPs are
+ * routed into TUN. The MASQUE endpoint addresses are intentionally not added
+ * to the TUN routes, preventing tunnel recursion. No admin-phone/P2P egress is
+ * used for the Cloudflare account API path.
  */
 public final class EffectCraftVpnService extends VpnService {
-    private static final String TAG = "EffectCraftVPN";
+    private static final String TAG = "EffectCraftWARP";
     private static final String ACTION_START = "com.artcraft.effectcraft.vpn.START";
     private static final String ACTION_STOP = "com.artcraft.effectcraft.vpn.STOP";
-    private static final String CHANNEL_ID = "effectcraft_account_vpn";
+    private static final String CHANNEL_ID = "effectcraft_cloudflare_warp";
     private static final int NOTIFICATION_ID = 8401;
+    private static final String APP_ID = "com.artcraft.effectcraft";
+    private static final String BRIDGE_CLASS = "com.effectcraft.warp.Warpandroid";
+    private static final String PREFS = "effectcraft_warp";
+    private static final String BUNDLE_KEY = "encrypted_device_bundle";
+    private static final String KEY_ALIAS = "effectcraft.cloudflare.warp.device.v1";
     static final int PERMISSION_REQUEST_CODE = 8402;
-    private static final Object PERMISSION_LOCK = new Object();
 
     private static volatile CountDownLatch permissionLatch;
     private static volatile boolean permissionGranted;
@@ -45,126 +63,134 @@ public final class EffectCraftVpnService extends VpnService {
     private static volatile String lastError = "";
 
     private ParcelFileDescriptor tunInterface;
-    private File configFile;
-    private String taskSecret;
     private Thread startThread;
+    private volatile boolean stopping;
 
-    public static void onPermissionResult(boolean granted) {
+    private static Object callWarp(String methodName, Class<?>[] parameterTypes, Object... args) throws Exception {
+        try {
+            Class<?> bridge = Class.forName(BRIDGE_CLASS);
+            Method method = bridge.getMethod(methodName, parameterTypes);
+            return method.invoke(null, args);
+        } catch (InvocationTargetException error) {
+            Throwable cause = error.getCause();
+            if (cause instanceof Exception) throw (Exception) cause;
+            throw new Exception(cause == null ? error.getMessage() : cause.getMessage(), cause);
+        }
+    }
+
+    private static String bridgeString(String method) throws Exception {
+        Object value = callWarp(method, new Class<?>[0]);
+        return value == null ? "" : value.toString();
+    }
+
+    private static void bridgeStop() {
+        try {
+            callWarp("stopTunnel", new Class<?>[0]);
+        } catch (Throwable error) {
+            Log.w(TAG, "MASQUE stop reported an error", error);
+        }
+    }
+
+    private static boolean ensurePermission(Context context) {
+        Intent prepare = VpnService.prepare(context);
+        if (prepare == null) return true;
+
+        CountDownLatch latch = new CountDownLatch(1);
+        permissionGranted = false;
+        permissionLatch = latch;
+        NativeP2P.launchVpnPermission(prepare, PERMISSION_REQUEST_CODE);
+        try {
+            return latch.await(75, TimeUnit.SECONDS)
+                && permissionGranted
+                && VpnService.prepare(context) == null;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return false;
+        } finally {
+            if (permissionLatch == latch) permissionLatch = null;
+        }
+    }
+
+    static void onPermissionResult(boolean granted) {
         permissionGranted = granted;
         CountDownLatch latch = permissionLatch;
         if (latch != null) latch.countDown();
     }
 
-    private static boolean ensurePermission(Context context) {
-        Intent permission = VpnService.prepare(context);
-        if (permission == null) return true;
-
-        CountDownLatch latch = new CountDownLatch(1);
-        synchronized (PERMISSION_LOCK) {
-            permissionGranted = false;
-            permissionLatch = latch;
-        }
-        NativeP2P.launchVpnPermission(permission, PERMISSION_REQUEST_CODE);
-        try {
-            boolean completed = latch.await(75, TimeUnit.SECONDS);
-            return completed && permissionGranted && VpnService.prepare(context) == null;
-        } catch (InterruptedException interrupted) {
-            Thread.currentThread().interrupt();
-            return false;
-        } finally {
-            synchronized (PERMISSION_LOCK) {
-                if (permissionLatch == latch) permissionLatch = null;
-            }
-        }
-    }
-
-    /** Called by the localhost command bridge immediately before one account API operation. */
+    /** Called immediately before one Cloudflare account API operation. */
     public static String startForTask(Context context, String host) {
-        if (!isAllowedHost(host)) return "ERROR:账号 VPN 只接受配置的 workers.dev 主机";
+        if (!isAllowedHost(host)) return "ERROR:账号 VPN 只允许配置的 workers.dev 账号服务器";
         if (taskActive) return "OK";
 
-        if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
-
         try {
-            List<InetAddress> addresses = new ArrayList<>();
-            for (InetAddress address : InetAddress.getAllByName(host)) {
-                if (isPublicAddress(address) && !addresses.contains(address)) addresses.add(address);
-            }
-            if (addresses.isEmpty() || addresses.size() > 32) {
-                return "ERROR:Worker DNS 没有返回可用公网地址";
+            String bundle = loadEncryptedBundle(context);
+            if (bundle == null) {
+                if (!NativeP2P.requestCloudflareTermsConsent()) {
+                    return "CLOUDFLARE_TERMS_REQUIRED";
+                }
+                // First-time registration is a direct Cloudflare enrollment call.
+                // It creates a per-device MASQUE key; the private key is persisted encrypted.
+                Object registered = callWarp("registerDevice", new Class<?>[0]);
+                bundle = registered == null ? "" : registered.toString();
+                if (bundle.isEmpty()) return "ERROR:Cloudflare 没有返回 WARP 设备配置";
+                saveEncryptedBundle(context, bundle);
             }
 
-            StringBuilder csv = new StringBuilder();
-            for (InetAddress address : addresses) {
-                if (csv.length() > 0) csv.append(',');
-                csv.append(address.getHostAddress());
-            }
+            if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
 
-            byte[] secretBytes = new byte[32];
-            new SecureRandom().nextBytes(secretBytes);
-            StringBuilder secret = new StringBuilder();
-            for (byte value : secretBytes) secret.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
-            String config = NativeP2P.configureVpnProxy(host, csv.toString(), secret.toString());
-            if (config == null || !config.equals("OK")) return "ERROR:" + config;
+            JSONObject json = new JSONObject(bundle);
+            JSONObject deviceConfig = new JSONObject(json.getString("config_json"));
+            List<InetAddress> workers = resolveWorkerAddresses(host);
+            if (workers.isEmpty()) return "ERROR:Worker DNS 没有返回可用的公网地址";
 
-            lastError = "";
-            Intent intent = new Intent(context, EffectCraftVpnService.class)
+            Intent intent = new Intent(context.getApplicationContext(), EffectCraftVpnService.class)
                 .setAction(ACTION_START)
                 .putExtra("worker_host", host)
-                .putExtra("socks_secret", secret.toString())
-                .putExtra("worker_ips", csv.toString());
-            if (Build.VERSION.SDK_INT >= 26) context.startForegroundService(intent);
-            else context.startService(intent);
+                .putExtra("bundle_json", bundle)
+                .putExtra("worker_ips", toCsv(workers));
+            lastError = "";
+            stopping = false;
+            Context app = context.getApplicationContext();
+            if (Build.VERSION.SDK_INT >= 26) app.startForegroundService(intent);
+            else app.startService(intent);
 
-            long deadline = System.currentTimeMillis() + 15000L;
+            long deadline = System.currentTimeMillis() + 50000L;
             while (System.currentTimeMillis() < deadline) {
                 if (taskActive) return "OK";
                 if (!lastError.isEmpty()) return "ERROR:" + lastError;
-                Thread.sleep(100L);
+                Thread.sleep(150L);
             }
-            return "ERROR:VPN 隧道启动超时";
+            return "ERROR:Cloudflare WARP 在 50 秒内未能建立 MASQUE 隧道";
         } catch (SecurityException denied) {
             return "VPN_PERMISSION_REQUIRED";
         } catch (Throwable error) {
-            Log.e(TAG, "Could not start account VPN task", error);
-            return "ERROR:" + error.getClass().getSimpleName();
+            Log.e(TAG, "Could not start Cloudflare WARP task", error);
+            return "ERROR:" + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage());
         }
     }
 
     /** Stop immediately after the account API request completes or fails. */
     public static String stopForTask(Context context) {
         try {
-            Intent intent = new Intent(context, EffectCraftVpnService.class).setAction(ACTION_STOP);
-            context.startService(intent);
-            long deadline = System.currentTimeMillis() + 8000L;
+            Intent stop = new Intent(context.getApplicationContext(), EffectCraftVpnService.class)
+                .setAction(ACTION_STOP);
+            context.getApplicationContext().startService(stop);
+            long deadline = System.currentTimeMillis() + 9000L;
             while (System.currentTimeMillis() < deadline) {
-                if (!taskActive) {
-                    NativeP2P.clearVpnProxyConfig();
-                    return "OK";
-                }
+                if (!taskActive) return "OK";
                 Thread.sleep(80L);
             }
-            NativeP2P.clearVpnProxyConfig();
-            return "ERROR:VPN 关闭确认超时";
+            return "ERROR:Cloudflare WARP 关闭确认超时";
         } catch (Throwable error) {
-            NativeP2P.clearVpnProxyConfig();
             return "ERROR:" + error.getClass().getSimpleName();
         }
     }
 
-    public static boolean isTaskActive() {
-        return taskActive;
-    }
-
     private static boolean isAllowedHost(String host) {
-        return host != null
-            && host.length() > 12
-            && host.length() <= 253
+        return host != null && host.length() > 12 && host.length() <= 253
             && host.toLowerCase(java.util.Locale.ROOT).endsWith(".workers.dev")
             && host.matches("[A-Za-z0-9.-]+")
-            && !host.contains("..")
-            && !host.startsWith(".")
-            && !host.endsWith(".");
+            && !host.startsWith(".") && !host.endsWith(".") && !host.contains("..");
     }
 
     private static boolean isPublicAddress(InetAddress address) {
@@ -173,17 +199,179 @@ public final class EffectCraftVpnService extends VpnService {
             || address.isMulticastAddress()) return false;
         if (address instanceof Inet4Address) {
             byte[] b = address.getAddress();
-            int first = b[0] & 0xff;
-            return first != 0 && first != 10 && first != 127
-                && !(first == 169 && (b[1] & 0xff) == 254)
-                && !(first == 172 && (b[1] & 0xff) >= 16 && (b[1] & 0xff) <= 31)
-                && !(first == 192 && (b[1] & 0xff) == 168);
+            int a = b[0] & 255, second = b[1] & 255;
+            return a != 0 && a != 10 && a != 127 && a < 224
+                && !(a == 100 && second >= 64 && second <= 127)
+                && !(a == 169 && second == 254)
+                && !(a == 172 && second >= 16 && second <= 31)
+                && !(a == 192 && second == 168)
+                && !(a == 192 && second == 0)
+                && !(a == 198 && (second == 18 || second == 19));
         }
         if (address instanceof Inet6Address) {
             byte[] b = address.getAddress();
             return (b[0] & 0xfe) != 0xfc;
         }
         return false;
+    }
+
+    private static List<InetAddress> resolveWorkerAddresses(String host) throws Exception {
+        List<InetAddress> addresses = new ArrayList<>();
+        for (InetAddress address : InetAddress.getAllByName(host)) {
+            if (isPublicAddress(address) && !addresses.contains(address)) addresses.add(address);
+            if (addresses.size() >= 16) break;
+        }
+        return addresses;
+    }
+
+    private static String toCsv(List<InetAddress> addresses) {
+        StringBuilder result = new StringBuilder();
+        for (InetAddress address : addresses) {
+            if (result.length() > 0) result.append(',');
+            result.append(address.getHostAddress());
+        }
+        return result.toString();
+    }
+
+    private static void addCidrAddress(Builder builder, String cidr) throws Exception {
+        String[] parts = cidr.split("/", 2);
+        InetAddress address = InetAddress.getByName(parts[0]);
+        int defaultPrefix = address instanceof Inet4Address ? 32 : 128;
+        int prefix = parts.length == 2 ? Integer.parseInt(parts[1]) : defaultPrefix;
+        if (prefix < 1 || prefix > defaultPrefix) throw new IllegalArgumentException("WARP tunnel address prefix is invalid");
+        builder.addAddress(address, prefix);
+    }
+
+    private void startTunnel(String host, String bundle, String ipCsv) {
+        ParcelFileDescriptor established = null;
+        int detachedFd = -1;
+        try {
+            if (!isAllowedHost(host) || bundle == null || bundle.isEmpty()) {
+                throw new IllegalArgumentException("VPN task configuration is invalid");
+            }
+            JSONObject root = new JSONObject(bundle);
+            JSONObject cfg = new JSONObject(root.getString("config_json"));
+            String endpointList = root.getString("endpoints");
+            if (endpointList.isEmpty() || root.getString("sni").isEmpty()) {
+                throw new IllegalArgumentException("Cloudflare MASQUE endpoint configuration is incomplete");
+            }
+
+            Builder builder = new Builder()
+                .setSession("EffectCraft Cloudflare WARP account task")
+                .setMtu(1280)
+                .addAllowedApplication(APP_ID);
+            addCidrAddress(builder, cfg.getString("ipv4"));
+            String ipv6 = cfg.optString("ipv6", "");
+            if (!ipv6.isEmpty()) addCidrAddress(builder, ipv6);
+
+            int routes = 0;
+            for (String value : (ipCsv == null ? "" : ipCsv).split(",")) {
+                String ipText = value.trim();
+                if (ipText.isEmpty()) continue;
+                InetAddress ip = InetAddress.getByName(ipText);
+                if (!isPublicAddress(ip)) continue;
+                builder.addRoute(ip, ip instanceof Inet4Address ? 32 : 128);
+                routes++;
+            }
+            if (routes == 0) throw new IllegalStateException("No public Worker routes could be installed");
+
+            established = builder.establish();
+            if (established == null) throw new IllegalStateException("Android did not create the VPN TUN interface");
+            tunInterface = established;
+            detachedFd = established.detachFd();
+            tunInterface = null;
+
+            callWarp("startTunnel", new Class<?>[]{String.class, long.class}, bundle, (long) detachedFd);
+            detachedFd = -1; // Go owns and closes the detached descriptor.
+
+            long deadline = System.currentTimeMillis() + 45000L;
+            String tunnelState = "connecting";
+            while (System.currentTimeMillis() < deadline && !stopping) {
+                tunnelState = bridgeString("state");
+                if ("connected".equals(tunnelState)) {
+                    taskActive = true;
+                    Log.i(TAG, "Cloudflare MASQUE tunnel connected; account API task may proceed");
+                    return;
+                }
+                Thread.sleep(200L);
+            }
+            String detail = bridgeString("lastError");
+            throw new IllegalStateException("Cloudflare MASQUE did not connect (state=" + tunnelState + ")"
+                + (detail.isEmpty() ? "" : ": " + detail));
+        } catch (Throwable error) {
+            lastError = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+            Log.e(TAG, "Cloudflare MASQUE startup failed", error);
+            bridgeStop();
+            if (detachedFd >= 0) {
+                try { ParcelFileDescriptor.adoptFd(detachedFd).close(); } catch (Exception ignored) {}
+            }
+            if (established != null) {
+                try { established.close(); } catch (Exception ignored) {}
+            }
+            if (tunInterface != null) {
+                try { tunInterface.close(); } catch (Exception ignored) {}
+                tunInterface = null;
+            }
+            taskActive = false;
+            stopForeground(true);
+            stopSelf();
+        }
+    }
+
+    private static SecretKey getOrCreateEncryptionKey() throws Exception {
+        KeyStore keyStore = KeyStore.getInstance("AndroidKeyStore");
+        keyStore.load(null);
+        if (keyStore.containsAlias(KEY_ALIAS)) {
+            return ((java.security.KeyStore.SecretKeyEntry) keyStore.getEntry(KEY_ALIAS, null)).getSecretKey();
+        }
+        KeyGenerator generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore");
+        generator.init(new KeyGenParameterSpec.Builder(
+            KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT | KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setRandomizedEncryptionRequired(true)
+            .setKeySize(256)
+            .build());
+        return generator.generateKey();
+    }
+
+    private static String loadEncryptedBundle(Context context) {
+        try {
+            SharedPreferences prefs = context.getApplicationContext().getSharedPreferences(PREFS, MODE_PRIVATE);
+            String encoded = prefs.getString(BUNDLE_KEY, null);
+            if (encoded == null || encoded.isEmpty()) return null;
+            byte[] payload = Base64.decode(encoded, Base64.NO_WRAP);
+            ByteBuffer buffer = ByteBuffer.wrap(payload);
+            int ivLength = buffer.getInt();
+            if (ivLength < 12 || ivLength > 16 || ivLength > buffer.remaining()) throw new IllegalStateException("Encrypted WARP data is malformed");
+            byte[] iv = new byte[ivLength];
+            buffer.get(iv);
+            byte[] ciphertext = new byte[buffer.remaining()];
+            buffer.get(ciphertext);
+            Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+            cipher.init(Cipher.DECRYPT_MODE, getOrCreateEncryptionKey(), new GCMParameterSpec(128, iv));
+            return new String(cipher.doFinal(ciphertext), StandardCharsets.UTF_8);
+        } catch (Throwable error) {
+            Log.w(TAG, "Stored WARP identity could not be decrypted; a new device registration will be created", error);
+            context.getApplicationContext().getSharedPreferences(PREFS, MODE_PRIVATE).edit().remove(BUNDLE_KEY).apply();
+            return null;
+        }
+    }
+
+    private static void saveEncryptedBundle(Context context, String bundle) throws Exception {
+        Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
+        cipher.init(Cipher.ENCRYPT_MODE, getOrCreateEncryptionKey());
+        byte[] iv = cipher.getIV();
+        byte[] encrypted = cipher.doFinal(bundle.getBytes(StandardCharsets.UTF_8));
+        ByteBuffer payload = ByteBuffer.allocate(4 + iv.length + encrypted.length);
+        payload.putInt(iv.length);
+        payload.put(iv);
+        payload.put(encrypted);
+        String encoded = Base64.encodeToString(payload.array(), Base64.NO_WRAP);
+        SharedPreferences prefs = context.getApplicationContext().getSharedPreferences(PREFS, MODE_PRIVATE);
+        if (!prefs.edit().putString(BUNDLE_KEY, encoded).commit()) {
+            throw new IllegalStateException("Encrypted WARP device identity could not be saved");
+        }
     }
 
     @Override public void onCreate() {
@@ -199,127 +387,39 @@ public final class EffectCraftVpnService extends VpnService {
             stopSelf(startId);
             return START_NOT_STICKY;
         }
-
         if (ACTION_START.equals(action)) {
-            lastError = "";
             try {
                 if (Build.VERSION.SDK_INT >= 34) {
-                    startForeground(
-                        NOTIFICATION_ID,
-                        buildNotification(),
+                    startForeground(NOTIFICATION_ID, buildNotification(),
                         ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED);
                 } else {
                     startForeground(NOTIFICATION_ID, buildNotification());
                 }
-            } catch (RuntimeException foregroundError) {
-                lastError = "Android 拒绝启动 VPN 前台服务：" + foregroundError.getClass().getSimpleName();
-                Log.e(TAG, lastError, foregroundError);
+            } catch (Throwable error) {
+                lastError = "Android 拒绝启动 WARP VPN 前台服务：" + error.getClass().getSimpleName();
+                Log.e(TAG, lastError, error);
                 stopSelf(startId);
                 return START_NOT_STICKY;
             }
             String host = intent.getStringExtra("worker_host");
-            String secret = intent.getStringExtra("socks_secret");
+            String bundle = intent.getStringExtra("bundle_json");
+            String ips = intent.getStringExtra("worker_ips");
             if (startThread == null || !startThread.isAlive()) {
-                startThread = new Thread(() -> startTunnel(host, secret, intent.getStringExtra("worker_ips")), "EffectCraft-VPN-start");
+                startThread = new Thread(() -> startTunnel(host, bundle, ips), "EffectCraft-Cloudflare-WARP");
                 startThread.start();
             }
         }
         return START_NOT_STICKY;
     }
 
-    private void startTunnel(String host, String secret, String ipCsv) {
-        try {
-            if (!isAllowedHost(host) || secret == null || secret.length() != 64) {
-                throw new IllegalArgumentException("VPN task configuration is invalid");
-            }
-
-            String[] addresses = ipCsv == null ? new String[0] : ipCsv.split(",");
-            Builder builder = new Builder()
-                .setSession("EffectCraft account task")
-                .setMtu(1400)
-                .addAddress("198.18.0.1", 15)
-                .addAddress("fd00:ec:1::1", 64)
-                .addAllowedApplication("com.artcraft.effectcraft");
-
-            boolean hasV4 = false;
-            boolean hasV6 = false;
-            for (String value : addresses) {
-                InetAddress address = InetAddress.getByName(value);
-                if (address instanceof Inet4Address) {
-                    builder.addRoute(value, 32);
-                    hasV4 = true;
-                } else if (address instanceof Inet6Address) {
-                    builder.addRoute(value, 128);
-                    hasV6 = true;
-                }
-            }
-            if (!hasV4 && !hasV6) throw new IllegalStateException("No Worker route could be installed");
-
-            ParcelFileDescriptor established = builder.establish();
-            if (established == null) throw new IllegalStateException("Android did not create the VPN interface");
-            tunInterface = established;
-
-            taskSecret = secret;
-            configFile = new File(getFilesDir(), "effectcraft-account-vpn.yml");
-            String yaml =
-                "tunnel:\n" +
-                "  name: tun0\n" +
-                "  mtu: 1400\n" +
-                "  ipv4: 198.18.0.1\n" +
-                "  ipv6: 'fd00:ec:1::1'\n" +
-                "  icmp: 'off'\n" +
-                "socks5:\n" +
-                "  address: 127.0.0.1\n" +
-                "  port: 10808\n" +
-                "  udp: 'tcp'\n" +
-                "  username: effectcraft\n" +
-                "  password: '" + secret + "'\n" +
-                "misc:\n" +
-                "  log-level: error\n" +
-                "  connect-timeout: 8000\n" +
-                "  tcp-read-write-timeout: 30000\n";
-            try (FileOutputStream output = new FileOutputStream(configFile, false)) {
-                output.write(yaml.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                output.getFD().sync();
-            }
-
-            if (!TProxyService.TProxyStartService(configFile.getAbsolutePath(), tunInterface.getFd())) {
-                throw new IllegalStateException("Hev tun2socks engine failed to start");
-            }
-            taskActive = true;
-            Log.i(TAG, "Task-scoped Worker-only VPN is active");
-        } catch (Throwable error) {
-            lastError = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
-            Log.e(TAG, "Account VPN startup failed", error);
-            stopTunnel();
-            stopForeground(true);
-            stopSelf();
-        }
-    }
-
     private void stopTunnel() {
+        stopping = true;
+        bridgeStop();
         taskActive = false;
-        try {
-            if (TProxyService.TProxyIsRunning()) TProxyService.TProxyStopService();
-        } catch (Throwable error) {
-            Log.w(TAG, "Hev tunnel stop reported an error", error);
+        if (tunInterface != null) {
+            try { tunInterface.close(); } catch (Exception ignored) {}
+            tunInterface = null;
         }
-        try {
-            if (tunInterface != null) tunInterface.close();
-        } catch (Exception ignored) {
-        }
-        tunInterface = null;
-        taskSecret = null;
-        if (configFile != null && configFile.exists()) {
-            // Best-effort overwrite before deletion; the secret is task-scoped.
-            try (FileOutputStream output = new FileOutputStream(configFile, false)) {
-                output.write(new byte[128]);
-            } catch (Exception ignored) {
-            }
-            //noinspection ResultOfMethodCallIgnored
-            configFile.delete();
-        }
-        configFile = null;
     }
 
     @Override public void onRevoke() {
@@ -340,8 +440,8 @@ public final class EffectCraftVpnService extends VpnService {
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, "EffectCraft account network", NotificationManager.IMPORTANCE_LOW);
-            channel.setDescription("Short-lived account connection while registering, signing in, or synchronizing account status");
+                CHANNEL_ID, "EffectCraft Cloudflare WARP", NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription("短时连接 Cloudflare WARP，仅在账号请求期间启用");
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
         }
@@ -353,8 +453,8 @@ public final class EffectCraftVpnService extends VpnService {
             : new Notification.Builder(this);
         return builder
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("EffectCraft 账号网络")
-            .setContentText("正在完成一次账号网络任务")
+            .setContentTitle("EffectCraft Cloudflare WARP")
+            .setContentText("正在建立账号专用加密隧道")
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .build();
