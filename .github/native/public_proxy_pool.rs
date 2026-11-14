@@ -15,6 +15,9 @@ use tungstenite::handshake::client::Response;
 use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Error as WebSocketError, WebSocket};
 use ureq::{Agent, Proxy};
+use ureq::config::Config;
+use ureq::unversioned::resolver::{DefaultResolver, ResolvedSocketAddrs, Resolver};
+use ureq::unversioned::transport::{DefaultConnector, NextTimeout};
 
 const FEED_REFRESH: Duration = Duration::from_secs(30 * 60);
 const BAD_COOLDOWN: Duration = Duration::from_secs(15 * 60);
@@ -33,6 +36,31 @@ fn vpn_command_bridge() -> SocketAddr {
 /// stop the TUN/tun2socks tunnel regardless of HTTP success, failure or panic.
 struct TaskVpnGuard {
     active: bool,
+    worker_host: String,
+    worker_addresses: Vec<SocketAddr>,
+}
+
+fn parse_worker_route_reply(response: &str) -> Result<Vec<SocketAddr>, String> {
+    let Some((status, csv)) = response.trim().split_once('|') else {
+        return Err("Cloudflare VPN 未返回经过加密 DNS 验证的账号服务器地址".to_string());
+    };
+    if status != "OK" {
+        return Err(format!("Cloudflare WARP 启动失败：{response}"));
+    }
+    let mut addresses = Vec::new();
+    for raw in csv.split(',') {
+        let value = raw.trim();
+        if value.is_empty() { continue; }
+        let ip: IpAddr = value.parse()
+            .map_err(|_| "Cloudflare DoH 返回的账号服务器 IP 格式无效".to_string())?;
+        let address = SocketAddr::new(ip, 443);
+        if !addresses.contains(&address) { addresses.push(address); }
+        if addresses.len() >= 16 { break; }
+    }
+    if addresses.is_empty() {
+        return Err("Cloudflare DoH 没有返回可用的账号服务器地址".to_string());
+    }
+    Ok(addresses)
 }
 
 impl TaskVpnGuard {
@@ -62,15 +90,17 @@ impl TaskVpnGuard {
         BufReader::new(stream).read_line(&mut response)
             .map_err(|error| format!("Cloudflare WARP 启动结果读取失败：{error}"))?;
         let response = response.trim();
-        if response != "OK" {
-            return Err(match response {
-                "VPN_PERMISSION_REQUIRED" => "需要先同意 Android 系统的 VPN 连接授权".to_string(),
-                "CLOUDFLARE_TERMS_REQUIRED" => "首次启用需要先阅读并同意 Cloudflare 服务条款".to_string(),
-                "" => "Cloudflare WARP 服务没有返回启动结果".to_string(),
-                value => format!("内置 VPN 启动失败：{value}"),
-            });
+        if response == "VPN_PERMISSION_REQUIRED" {
+            return Err("需要先同意 Android 系统的 VPN 连接授权".to_string());
         }
-        Ok(Self { active: true })
+        if response == "CLOUDFLARE_TERMS_REQUIRED" {
+            return Err("首次启用需要先阅读并同意 Cloudflare 服务条款".to_string());
+        }
+        if response.is_empty() {
+            return Err("Cloudflare WARP 服务没有返回启动结果".to_string());
+        }
+        let worker_addresses = parse_worker_route_reply(response)?;
+        Ok(Self { active: true, worker_host: host.to_string(), worker_addresses })
     }
 }
 
@@ -96,6 +126,67 @@ impl Drop for TaskVpnGuard {
     }
 }
 
+
+/// Uses the exact DNS-over-HTTPS answers returned by the Android WARP bootstrap.
+/// The request URL remains the Worker hostname, so ureq still sends that hostname
+/// as TLS SNI and validates it against the certificate.
+#[derive(Debug)]
+struct WorkerDnsResolver {
+    host: String,
+    addresses: Vec<SocketAddr>,
+    fallback: DefaultResolver,
+}
+
+impl WorkerDnsResolver {
+    fn new(host: &str, addresses: &[SocketAddr]) -> Self {
+        Self {
+            host: host.to_ascii_lowercase(),
+            addresses: addresses.to_vec(),
+            fallback: DefaultResolver::default(),
+        }
+    }
+}
+
+impl Resolver for WorkerDnsResolver {
+    fn resolve(
+        &self,
+        uri: &ureq::http::Uri,
+        config: &Config,
+        timeout: NextTimeout,
+    ) -> Result<ResolvedSocketAddrs, ureq::Error> {
+        if uri.host().is_some_and(|host| host.eq_ignore_ascii_case(&self.host)) {
+            let port = uri.port_u16().unwrap_or(443);
+            let mut result = self.empty();
+            for address in &self.addresses {
+                result.push(SocketAddr::new(address.ip(), port));
+            }
+            if result.is_empty() {
+                Err(ureq::Error::HostNotFound)
+            } else {
+                Ok(result)
+            }
+        } else {
+            self.fallback.resolve(uri, config, timeout)
+        }
+    }
+}
+
+fn make_warp_agent(
+    worker_host: &str,
+    worker_addresses: &[SocketAddr],
+    timeout: Duration,
+) -> Result<Agent, String> {
+    if worker_addresses.is_empty() {
+        return Err("账号服务器路由地址为空，拒绝使用系统 DNS 回退".to_string());
+    }
+    let config = Agent::config_builder()
+        .http_status_as_error(false)
+        .timeout_global(Some(timeout))
+        .proxy(None)
+        .build();
+    let resolver = WorkerDnsResolver::new(worker_host, worker_addresses);
+    Ok(Agent::with_parts(config, DefaultConnector::new(), resolver))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Protocol {
@@ -418,9 +509,33 @@ pub(crate) fn account_http_request(
     }
 
     // The app must have a live task-scoped Cloudflare MASQUE VPN before opening
-    // the account HTTPS connection. There is no public-proxy or admin-phone fallback.
-    let _vpn_task = TaskVpnGuard::start(base_url)?;
-    let agent = make_agent(None, Duration::from_secs(15))?;
+    // the account HTTPS connection. The Android service returns only Worker IPs
+    // authenticated by Cloudflare DoH while the bootstrap tunnel was active.
+    let vpn_task = TaskVpnGuard::start(base_url)?;
+    if vpn_task.worker_host != worker_host {
+        return Err("Cloudflare VPN 返回的账号服务器主机与当前请求不一致".to_string());
+    }
+    let agent = make_warp_agent(&worker_host, &vpn_task.worker_addresses, Duration::from_secs(20))?;
+
+    // Probe the exact Worker route over the same VPN and pinned DoH IPs before
+    // sending credentials or any state-changing account request.
+    let health_url = format!("{}/health", base_url.trim_end_matches('/'));
+    let mut health_response = agent.get(&health_url)
+        .header("Accept", "application/json")
+        .call()
+        .map_err(|error| format!("Cloudflare VPN 已连接，但账号服务器健康检查失败：{error}"))?;
+    let health_status = health_response.status().as_u16();
+    let health_body = health_response.body_mut().read_to_string()
+        .map_err(|error| format!("账号服务器已响应，但健康检查数据读取失败：{error}"))?;
+    let health_value = serde_json::from_str::<Value>(&health_body)
+        .map_err(|_| "账号服务器已响应，但健康检查数据格式无效".to_string())?;
+    if health_status != 200 || health_value.get("ok").and_then(Value::as_bool) != Some(true) {
+        if health_status == 503 || health_value.get("database").and_then(Value::as_bool) == Some(false) {
+            return Err(format!("Cloudflare 账号服务器可访问，但云端数据库尚未就绪（HTTP {health_status}）"));
+        }
+        return Err(format!("Cloudflare 账号服务器健康检查未通过（HTTP {health_status}）"));
+    }
+
     let endpoint = format!("{}{}", base_url.trim_end_matches('/'), path);
     let response_result = if method == "GET" {
         let mut request = agent
@@ -447,8 +562,8 @@ pub(crate) fn account_http_request(
     };
     // Never replay a submitted POST: the upstream may have committed it before
     // the transport error occurred.
-    let mut response = response_result.map_err(|_| {
-        "Cloudflare WARP 隧道中的账号请求响应中断；本次不会重复提交。".to_string()
+    let mut response = response_result.map_err(|error| {
+        format!("Cloudflare VPN 已连接且账号服务器健康检查通过，但账号请求响应中断；本次不会重复提交。原因：{error}")
     })?;
 
     let status = response.status().as_u16();
@@ -580,6 +695,24 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parses_only_worker_ips_returned_by_the_vpn_bootstrap() {
+        let parsed = parse_worker_route_reply("OK|104.16.1.2,104.16.2.3").unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0], "104.16.1.2:443".parse().unwrap());
+        assert!(parse_worker_route_reply("OK").is_err());
+        assert!(parse_worker_route_reply("OK|not-an-ip").is_err());
+    }
+
+    #[test]
+    fn worker_resolver_pins_the_configured_workers_host() {
+        let pinned: Vec<SocketAddr> = vec!["104.16.1.2:443".parse().unwrap()];
+        let resolver = WorkerDnsResolver::new("ae-cloud-account-api.example.workers.dev", &pinned);
+        let uri: ureq::http::Uri = "https://ae-cloud-account-api.example.workers.dev/v1/login".parse().unwrap();
+        let resolved = resolver.resolve(&uri, &Config::default(), NextTimeout::default()).unwrap();
+        assert_eq!(resolved.as_slice(), &[pinned[0]]);
+    }
 
     #[test]
     fn accepts_only_public_ip_and_supported_tunnels() {
