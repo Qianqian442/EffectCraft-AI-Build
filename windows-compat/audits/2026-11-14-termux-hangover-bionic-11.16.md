@@ -106,3 +106,21 @@ Termux issue #27663 (https://github.com/termux/termux-packages/issues/27663) rec
 | M3 graphics/audio/input/device matrix | Not yet demonstrated |
 | M4 EffectCraft APK integration/install | Not yet demonstrated |
 | M5 real third-party/AE AEX load, parameters, render, stability | Not yet demonstrated |
+
+
+## Critical app-private execution and relocation gap
+
+The Termux package recipe links libandroid-spawn, but the audited source shows that this library implements posix_spawn/posix_spawnp by fork/vfork followed by execve/execvpe. It does not itself bypass Android's app-data executable restriction.
+
+Termux's app separately injects a linker-aware LD_PRELOAD library from https://github.com/termux-play-store/termux-exec. Its linker preload intercepts execve, execv, execvp, execvpe, execl, execlp, execle and fexecve; for native ELF files under the Termux app-data root it rewrites the process launch to /system/bin/linker64 while preserving argv[0]. The current termux-exec package source declares Apache-2.0 for code and MIT for site documentation. The libandroid-spawn package has its own BSD-2-Clause license metadata.
+
+EffectCraft cannot assume the Termux app's LD_PRELOAD or environment exists. A first EffectCraft-owned prototype has been added under windows-compat/android-runtime/exec-bridge:
+
+- libeffectcraft-exec.so intercepts the exec family used by common Wine helpers and posix_spawn implementations.
+- It only routes a native-architecture ELF under EFFECTCRAFT_RUNTIME_ROOT through /system/bin/linker64.
+- It checks the ELF machine and PT_INTERP before wrapping, and preserves the caller's argv[0].
+- A host-side linker-shim test checks argument preservation; a separate NDK job compiles the arm64-v8a shared library and fixtures.
+
+This is only a prototype. It does not yet prove Android execution, does not intercept raw syscall(SYS_execve) call sites, and its fexecve/execveat path needs further audit. Wine/Hangover child-spawn paths must be checked for direct syscalls and all subprocesses must be observed on Android.
+
+A second critical issue is relocation: the Termux build recipe configures Wine with --prefix=$TERMUX_PREFIX/opt/hangover-wine and its wrapper scripts refer to the Termux prefix under /data/data/com.termux/files/usr. EffectCraft cannot access another package's private directory. The package must be rebuilt with relocatable paths or Wine's WINELOADER, WINESERVER, WINEDLLPATH, data paths and helper paths must be proven to work from EffectCraft's own private files directory. Do not copy the Termux .deb files unchanged and claim they are app-ready.
