@@ -688,7 +688,11 @@ jobs:
           test -s "$RUNNER_TEMP/effectcraft-warp-masque.aar"
           unzip -tq "$RUNNER_TEMP/effectcraft-warp-masque.aar"
           unzip -p "$RUNNER_TEMP/effectcraft-warp-masque.aar" classes.jar > "$RUNNER_TEMP/warp-classes.jar"
-          jar tf "$RUNNER_TEMP/warp-classes.jar" | grep -E 'com/effectcraft/warp/.*\.class'
+          jar tf "$RUNNER_TEMP/warp-classes.jar" | grep -F 'com/effectcraft/warp/warpandroid/Warpandroid.class'
+          javap -classpath "$RUNNER_TEMP/warp-classes.jar" com.effectcraft.warp.warpandroid.Warpandroid > "$RUNNER_TEMP/warp-bridge-api.txt"
+          grep -Fq 'registerDevice()' "$RUNNER_TEMP/warp-bridge-api.txt"
+          grep -Fq 'startTunnel(java.lang.String, long, java.lang.String, java.lang.String)' "$RUNNER_TEMP/warp-bridge-api.txt"
+          grep -Fq 'stopTunnel()' "$RUNNER_TEMP/warp-bridge-api.txt"
           unzip -l "$RUNNER_TEMP/effectcraft-warp-masque.aar" | grep -E 'jni/arm64-v8a/.*\.so'
 
       - name: Integrate direct Cloudflare MASQUE VPN into the main APK
