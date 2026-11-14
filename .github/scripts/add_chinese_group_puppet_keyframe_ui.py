@@ -376,6 +376,65 @@ fn project_row_long_press_id() -> egui::Id {
     path.write_text(source, encoding="utf-8")
 
 
+def patch_project_file_selection_for_timeline(root: Path) -> None:
+    """A Project-panel file click selects its matching layer and Position curve."""
+    path = root / "crates/ui-egui/src/panels/project.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_PROJECT_FILE_SELECTION_CURVE_V2"
+    if marker in source:
+        return
+
+    old = '''    } else {
+        app.session.state.project_selection = vec![id];
+        ctx.data_mut(|d| d.insert_temp(anchor_key, id));
+    }
+}'''
+    new = r'''    } else {
+        app.session.state.project_selection = vec![id];
+        ctx.data_mut(|d| d.insert_temp(anchor_key, id));
+    }
+    sync_project_file_to_timeline(app);
+}
+
+/// EFFECTCRAFT_ANDROID_PROJECT_FILE_SELECTION_CURVE_V2
+/// Keep the Project panel file, Timeline layer and Position curve selection in sync.
+/// A single file chooses its first matching layer; multi-file selection chooses every match.
+fn sync_project_file_to_timeline(app: &mut EffectcraftApp) {
+    let items = app.session.state.project_selection.clone();
+    let selected_layers: Vec<effectcraft_engine::project::LayerId> =
+        if let Some(comp) = app.session.active_comp() {
+            if let [item] = items.as_slice() {
+                comp.layers.iter()
+                    .find(|layer| layer.source.item() == Some(*item))
+                    .map(|layer| vec![layer.id])
+                    .unwrap_or_default()
+            } else {
+                comp.layers.iter()
+                    .filter(|layer| layer.source.item().is_some_and(|item| items.contains(&item)))
+                    .map(|layer| layer.id)
+                    .collect()
+            }
+        } else {
+            Vec::new()
+        };
+    let selected_props: Vec<(effectcraft_engine::project::LayerId, u64)> =
+        if let Some(comp) = app.session.active_comp() {
+            selected_layers.iter().filter_map(|layer_id| {
+                comp.layer(*layer_id)
+                    .and_then(|layer| layer.props.group("transform"))
+                    .and_then(|transform| transform.get("position"))
+                    .map(|position| (*layer_id, position.uid))
+            }).collect()
+        } else {
+            Vec::new()
+        };
+    app.session.state.selected_layers = selected_layers;
+    app.session.state.selected_props = selected_props;
+}'''
+    source = replace_once(source, old, new, "Project file click to timeline and curve selection")
+    path.write_text(source, encoding="utf-8")
+
+
 def patch_timeline_keyframe_button(root: Path) -> None:
     path = root / "crates/ui-egui/src/panels/timeline.rs"
     source = path.read_text(encoding="utf-8")
@@ -581,6 +640,7 @@ def main() -> None:
     patch_project_commands(root)
     patch_puppet_quick_button(root)
     patch_project_panel(root)
+    patch_project_file_selection_for_timeline(root)
     patch_timeline_keyframe_button(root)
     patch_layer_keyframe_markers(root)
     patch_native_keyframe_color(root)
