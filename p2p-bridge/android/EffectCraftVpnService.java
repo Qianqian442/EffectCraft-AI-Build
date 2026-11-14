@@ -338,7 +338,7 @@ public final class EffectCraftVpnService extends VpnService {
 
             java.util.Set<String> masqueEndpointIps = endpointIpSet(endpointList);
             Builder builder = new Builder()
-                .setSession("EffectCraft Cloudflare WARP account task")
+                .setSession("Cloudflare服务器")
                 .setMtu(1280)
                 .addAllowedApplication(APP_ID);
             addCidrAddress(builder, cfg.getString("ipv4"));
@@ -527,7 +527,7 @@ public final class EffectCraftVpnService extends VpnService {
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= 26) {
             NotificationChannel channel = new NotificationChannel(
-                CHANNEL_ID, "EffectCraft Cloudflare WARP", NotificationManager.IMPORTANCE_LOW);
+                CHANNEL_ID, "Cloudflare服务器", NotificationManager.IMPORTANCE_LOW);
             channel.setDescription("短时连接 Cloudflare WARP，仅在账号请求期间启用");
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) manager.createNotificationChannel(channel);
@@ -540,7 +540,7 @@ public final class EffectCraftVpnService extends VpnService {
             : new Notification.Builder(this);
         return builder
             .setSmallIcon(android.R.drawable.stat_sys_download_done)
-            .setContentTitle("EffectCraft Cloudflare WARP")
+            .setContentTitle("Cloudflare服务器")
             .setContentText(contentText)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
