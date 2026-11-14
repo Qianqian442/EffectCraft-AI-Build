@@ -1,4 +1,4 @@
-module github.com/qianqian/effectcraft/warp-mobile
+module github.com/Diniboy1123/usque/mobileandroid
 
 go 1.26.3
 
