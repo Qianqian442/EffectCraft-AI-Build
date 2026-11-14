@@ -168,8 +168,14 @@ func RegisterDevice() (string, error) {
 		}
 	}
 	if ipv6 != "" {
-		for _, port := range masqueUDPPorts {
-			endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv6, strconv.Itoa(port)))
+		if ipv4 == "" {
+			for _, port := range masqueUDPPorts {
+				endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv6, strconv.Itoa(port)))
+			}
+		} else {
+			// Keep one IPv6 candidate in dual-stack mode without delaying the
+			// full IPv4 fallback list on networks where IPv6 is unavailable.
+			endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv6, "443"))
 		}
 	}
 
@@ -250,7 +256,7 @@ func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string
 			Endpoints: endpoints,
 			Device: device,
 			MTU: 1280,
-			ReconnectDelay: 3 * time.Second,
+			ReconnectDelay: 250 * time.Millisecond,
 			AlwaysReconnect: true,
 			UseHTTP2: false,
 			OnConnected: func(endpoint net.Addr) {
