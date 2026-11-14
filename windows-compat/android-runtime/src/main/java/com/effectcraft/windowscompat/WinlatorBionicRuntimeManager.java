@@ -158,10 +158,18 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
     private final Path privateRoot;
     private final Path imageFsRoot;
     private final Path containersRoot;
+    private final Path execBridgeLibrary;
     private volatile boolean closed;
 
     public WinlatorBionicRuntimeManager(Path privateRoot, RuntimeAssetInstaller.AssetFetcher fetcher)
             throws IOException {
+        this(privateRoot, fetcher, null);
+    }
+
+    public WinlatorBionicRuntimeManager(
+            Path privateRoot,
+            RuntimeAssetInstaller.AssetFetcher fetcher,
+            Path execBridgeLibrary) throws IOException {
         this.privateRoot = Objects.requireNonNull(privateRoot, "private root").toAbsolutePath().normalize();
         Files.createDirectories(this.privateRoot);
         if (Files.isSymbolicLink(this.privateRoot)) {
@@ -169,6 +177,8 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         }
         this.imageFsRoot = this.privateRoot.resolve("imagefs");
         this.containersRoot = this.privateRoot.resolve("containers");
+        this.execBridgeLibrary = execBridgeLibrary == null
+                ? null : execBridgeLibrary.toAbsolutePath().normalize();
         this.assets = new RuntimeAssetInstaller(this.privateRoot, fetcher);
         this.extractor = new SafeRuntimeArchiveExtractor();
         this.contentPackages = new WinlatorContentPackageInstaller(assets, extractor);
@@ -505,33 +515,67 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         return new GuestProcess(process, logCallback, exitCallback);
     }
 
-    private Map<String, String> baseWineEnvironment(Container container) {
-        Map<String, String> env = new HashMap<>();
+    private Map<String, String> baseWineEnvironment(Container container) throws IOException {
+        return buildNativeEnvironment(
+                privateRoot, imageFsRoot, container.wineRoot, container.architecture, execBridgeLibrary,
+                container.winePrefix);
+    }
+
+    /**
+     * Builds the environment for an Android/Bionic host process. Guest glibc
+     * libraries must never appear in the host LD_LIBRARY_PATH: Box64 receives
+     * those separately through BOX64_LD_LIBRARY_PATH. The exec bridge is
+     * mandatory because Android 10+ may reject direct execution of app-private
+     * ELF files by Wine/wineserver child processes.
+     */
+    static Map<String, String> buildNativeEnvironment(
+            Path privateRoot,
+            Path imageFsRoot,
+            Path wineRoot,
+            Architecture architecture,
+            Path execBridgeLibrary,
+            Path winePrefix) throws IOException {
+        Path runtimeRoot = privateRoot.toRealPath();
+        if (execBridgeLibrary == null
+                || Files.isSymbolicLink(execBridgeLibrary)
+                || !Files.isRegularFile(execBridgeLibrary, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Bionic exec bridge libeffectcraft-exec.so is not packaged in the APK nativeLibraryDir");
+        }
+        Path bridge = execBridgeLibrary.toRealPath();
         String root = imageFsRoot.toString();
-        String winePath = container.wineRoot.resolve("bin").toString();
+        String winePath = wineRoot.resolve("bin").toString();
+
+        Map<String, String> env = new HashMap<>();
+        env.put("EFFECTCRAFT_RUNTIME_ROOT", runtimeRoot.toString());
+        env.put("LD_PRELOAD", bridge.toString());
         env.put("HOME", root + "/home/xuser");
         env.put("USER", "xuser");
         env.put("TMPDIR", root + "/usr/tmp");
         env.put("XDG_DATA_DIRS", root + "/usr/share");
         env.put("XDG_CONFIG_DIRS", root + "/usr/etc/xdg");
-        String nativeLibraryPath = root + "/usr/lib:/system/lib64";
-        if (container.architecture == Architecture.ARM64EC) {
-            // ARM64EC Wine is a native Bionic runtime; its own native libraries
-            // must precede the system paths. Never put x86_64 guest libraries
-            // on the Bionic host loader path.
-            nativeLibraryPath = container.wineRoot.resolve("lib") + ":" + nativeLibraryPath;
+
+        // Only Bionic host libraries belong here. The x86_64 glibc rootfs is
+        // supplied to Box64 through BOX64_LD_LIBRARY_PATH, never to linker64.
+        String nativeLibraryPath = "/system/lib64";
+        if (architecture == Architecture.ARM64EC) {
+            nativeLibraryPath = wineRoot.resolve("lib") + ":" + nativeLibraryPath;
         }
         env.put("LD_LIBRARY_PATH", nativeLibraryPath);
-        env.put("PATH", winePath + ":" + root + "/usr/bin");
+
+        String path = winePath;
+        if (architecture == Architecture.X86_64) {
+            path += ":" + root + "/usr/bin";
+            env.put("GST_PLUGIN_PATH", root + "/usr/lib/gstreamer-1.0");
+        }
+        env.put("PATH", path);
         env.put("PREFIX", root + "/usr");
-        env.put("WINEPREFIX", container.winePrefix.toString());
+        env.put("WINEPREFIX", winePrefix.toString());
         env.put("WINE_NO_DUPLICATE_EXPLORER", "1");
         env.put("WINEDEBUG", "-all");
         env.put("DISPLAY", ":0");
         env.put("FONTCONFIG_PATH", root + "/usr/etc/fonts");
         env.put("SSL_CERT_FILE", root + "/usr/etc/tls/cert.pem");
         env.put("SSL_CERT_DIR", root + "/usr/etc/tls/certs");
-        env.put("GST_PLUGIN_PATH", root + "/usr/lib/gstreamer-1.0");
         return env;
     }
 
