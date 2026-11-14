@@ -376,6 +376,11 @@ jobs:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: python3 build-assets/.github/scripts/add_android_gallery_export.py
 
+      - name: Configure four project export buttons and the generic share action
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: python3 build-assets/.github/scripts/configure_four_project_export_buttons.py
+
       - name: Add complete project ZIP sharing to Android Sharesheet
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
@@ -383,11 +388,6 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_qq_project_share.py
           python3 build-assets/.github/scripts/add_qq_project_share.py
-
-      - name: Configure four project export buttons and the generic share action
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-        run: python3 build-assets/.github/scripts/configure_four_project_export_buttons.py
 
       - name: Integrate RIFE and Real-ESRGAN into actual export frames
         env:
