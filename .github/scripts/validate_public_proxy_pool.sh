@@ -25,4 +25,4 @@ tungstenite = { version = "0.30", default-features = false, features = ["handsha
 EOF
 
 export CARGO_TARGET_DIR="${RUNNER_TEMP:-$TMP_DIR}/effectcraft-public-proxy-validation-target"
-cargo test --manifest-path "$TMP_DIR/Cargo.toml" --locked=false
+cargo test --manifest-path "$TMP_DIR/Cargo.toml"
