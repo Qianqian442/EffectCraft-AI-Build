@@ -105,12 +105,25 @@ def patch_activity(builder: Path) -> None:
                 send.putExtra(Intent.EXTRA_STREAM, uri);
                 send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 send.setClipData(ClipData.newUri(activity.getContentResolver(), archive.getName(), uri));
-                Intent chooser = Intent.createChooser(send, "分享工程 ZIP");
+                // Prefer opening Tencent QQ directly. If QQ is not installed or does not
+                // advertise a compatible ZIP share activity, fall back to Android Sharesheet.
+                Intent qqSend = new Intent(send);
+                qqSend.setPackage("com.tencent.mobileqq");
+                Intent chooser = Intent.createChooser(send, "分享到QQ或其他应用");
                 activity.runOnUiThread(() -> {
                     try {
-                        activity.startActivity(chooser);
-                    } catch (Exception error) {
-                        Log.e(TAG, "Could not open the Android project share sheet.", error);
+                        if (qqSend.resolveActivity(activity.getPackageManager()) != null) {
+                            activity.startActivity(qqSend);
+                        } else {
+                            activity.startActivity(chooser);
+                        }
+                    } catch (Exception qqError) {
+                        Log.w(TAG, "QQ could not accept the project ZIP; opening Android Sharesheet.", qqError);
+                        try {
+                            activity.startActivity(chooser);
+                        } catch (Exception shareError) {
+                            Log.e(TAG, "Could not open the Android project share sheet.", shareError);
+                        }
                     }
                 });
             } catch (Exception error) {
@@ -211,7 +224,7 @@ def main() -> None:
     if "EFFECTCRAFT_ANDROID_PROJECT_SHARE_SHEET_V1" not in activity:
         raise SystemExit("The Android project share-sheet implementation is missing.")
     print("Added complete project ZIP packaging through Android's system Sharesheet.")
-    print("Installed apps are offered as share targets; no QQ-only button or label is added.")
+    print("The app first targets QQ directly; Android Sharesheet is the fallback when QQ is unavailable.")
 
 
 if __name__ == "__main__":
