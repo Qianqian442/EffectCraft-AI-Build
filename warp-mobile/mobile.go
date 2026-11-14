@@ -115,7 +115,13 @@ func RegisterDevice() (string, error) {
 		return "", errors.New("Cloudflare MASQUE enrollment returned no usable endpoint IP")
 	}
 
-	endpoints := make([]string, 0, 2)
+	// Mainland-friendly first attempt: MASQUE over HTTP/2 on TCP/443.
+	// QUIC/HTTP3 is retained as a fallback only; endpoint certificates remain
+	// pinned to the public key returned by Cloudflare's MASQUE enrollment.
+	endpoints := make([]string, 0, 3)
+	if config.DefaultEndpointH2V4 != "" {
+		endpoints = append(endpoints, "tcp://"+net.JoinHostPort(config.DefaultEndpointH2V4, "443"))
+	}
 	if ipv4 != "" {
 		endpoints = append(endpoints, "quic://"+net.JoinHostPort(ipv4, "443"))
 	}
@@ -152,7 +158,8 @@ func RegisterDevice() (string, error) {
 }
 
 // StartTunnel takes ownership of the detached Android VpnService TUN fd.
-// endpointList must contain Cloudflare-provided MASQUE IP:UDP-port values separated by ';'.
+// endpointList contains protocol-qualified MASQUE endpoints separated by ';':
+// tcp://IP:443 for HTTP/2 first, followed by quic://IP:port fallback endpoints.
 func StartTunnel(configJSON string, tunFD int64, endpointList string, sni string) error {
 	mu.Lock()
 	defer mu.Unlock()
@@ -232,18 +239,30 @@ func parseEndpoints(value string) ([]net.Addr, error) {
 	for _, part := range parts {
 		part = strings.TrimSpace(part)
 		if part == "" { continue }
-		part = strings.TrimPrefix(part, "quic://")
-		part = strings.TrimPrefix(part, "udp://")
+		network := "udp"
+		switch {
+		case strings.HasPrefix(part, "tcp://"):
+			network = "tcp"
+			part = strings.TrimPrefix(part, "tcp://")
+		case strings.HasPrefix(part, "quic://"):
+			part = strings.TrimPrefix(part, "quic://")
+		case strings.HasPrefix(part, "udp://"):
+			part = strings.TrimPrefix(part, "udp://")
+		}
 		host, portText, err := net.SplitHostPort(part)
 		if err != nil { return nil, fmt.Errorf("invalid MASQUE endpoint %q: %w", part, err) }
 		ip := net.ParseIP(host)
 		if ip == nil { return nil, fmt.Errorf("MASQUE endpoint must be a supplied numeric IP: %q", host) }
 		port, err := strconv.Atoi(portText)
 		if err != nil || port < 1 || port > 65535 { return nil, fmt.Errorf("invalid MASQUE endpoint port: %q", portText) }
-		key := net.JoinHostPort(ip.String(), strconv.Itoa(port))
+		key := network + "|" + net.JoinHostPort(ip.String(), strconv.Itoa(port))
 		if seen[key] { continue }
 		seen[key] = true
-		endpoints = append(endpoints, &net.UDPAddr{IP: ip, Port: port})
+		if network == "tcp" {
+			endpoints = append(endpoints, &net.TCPAddr{IP: ip, Port: port})
+		} else {
+			endpoints = append(endpoints, &net.UDPAddr{IP: ip, Port: port})
+		}
 	}
 	if len(endpoints) == 0 { return nil, errors.New("Cloudflare supplied no MASQUE endpoints") }
 	if len(endpoints) > 16 { endpoints = endpoints[:16] }
