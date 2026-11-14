@@ -36,6 +36,7 @@ final class CloudflareProxyPool {
     private static final long GOOD_TTL_MS = 2L * 60L * 1000L;
     private static final long DIRECT_TTL_MS = 60L * 1000L;
     private static final int MAX_CANDIDATES = 600;
+    private static final int MAX_PER_FEED = 80;
     private static final int MAX_TRIES = 8;
     private static final int CONNECT_TIMEOUT_MS = 2200;
     private static final int READ_TIMEOUT_MS = 3500;
@@ -310,10 +311,13 @@ final class CloudflareProxyPool {
                         if (connection.getResponseCode() != 200) continue;
                         byte[] bytes = readBounded(connection.getInputStream(), 1024 * 1024);
                         String body = new String(bytes, StandardCharsets.UTF_8);
+                        int feedAdded = 0;
                         for (String line : body.split("\\r?\\n")) {
+                            if (feedAdded >= MAX_PER_FEED) break;
                             Candidate candidate = parseCandidate(line, feed.defaultProtocol);
                             if (candidate == null) continue;
                             synchronized (LOCK) { addCandidateLocked(candidate); }
+                            feedAdded++;
                         }
                     } catch (Exception ignored) {
                         // Keep last-known and build-time bootstrap entries on feed outages.
