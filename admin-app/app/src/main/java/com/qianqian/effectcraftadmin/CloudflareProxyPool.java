@@ -121,8 +121,11 @@ final class CloudflareProxyPool {
         } catch (Exception error) {
             // Never retry a POST: the Worker may have applied a ban/unban before
             // a response interruption. Do not risk submitting the same action twice.
+            String cause = error.getMessage() == null
+                ? error.getClass().getSimpleName()
+                : error.getMessage();
             throw new java.io.IOException(
-                "Cloudflare WARP 请求中断；为防止重复提交，本次不会自动重放。",
+                "Cloudflare WARP 请求中断；为防止重复提交，本次不会自动重放。原因：" + cause,
                 error
             );
         } finally {
