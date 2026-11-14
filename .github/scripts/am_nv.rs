@@ -121,7 +121,7 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
             project_file = Some(destination);
         }
     }
-    let file = project_file.ok_or_else(|| err("This ZIP does not contain a NodeVideo .nv project or an Alight Motion XML project"))?;
+    let file = project_file.ok_or_else(|| err("此 ZIP 不包含 EffectCraft 手机版工程（.ecproj/.ecprojx）、NodeVideo .nv、Alight Motion XML 或 CapCut 工程文件"))?;
     let file_ext = ext(&file.to_string_lossy());
     Ok((file.to_string_lossy().to_string(), root.to_string_lossy().to_string()))
 }
