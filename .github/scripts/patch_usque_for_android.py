@@ -137,8 +137,8 @@ new_connect = '''\t\tattemptCtx, attemptCancel := context.WithCancel(ctx)
 \t\t\tendpoint,
 \t\t\tuseHTTP2,
 \t\t)
-\t\tattemptExpired := attemptCtx.Err() != nil
 \t\tattemptTimer.Stop()
+\t\tattemptExpired := attemptCtx.Err() != nil
 \t\tif attemptExpired && err == nil {
 \t\t\terr = errors.New("MASQUE endpoint handshake exceeded the 4-second attempt limit")
 \t\t}
