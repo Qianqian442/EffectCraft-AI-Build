@@ -64,106 +64,79 @@ def patch_activity(builder: Path) -> None:
     if "import androidx.core.content.FileProvider;" not in source:
         source = once(source, anchor, anchor + "\n".join(imports) + "\n", "FileProvider and ZIP imports")
 
-    marker = "EFFECTCRAFT_ANDROID_PROJECT_SHARE_SHEET_V1"
+    marker = "EFFECTCRAFT_ANDROID_EXPORT_FILE_QQ_SHARE_V2"
     if marker not in source:
         anchor = '''    public static String pollGalleryPublish(String requestId) {
         return requestId == null ? null : galleryPublishResults.remove(requestId);
     }
 '''
         bridge = r'''
-    // EFFECTCRAFT_ANDROID_PROJECT_SHARE_SHEET_V1
+    // EFFECTCRAFT_ANDROID_EXPORT_FILE_QQ_SHARE_V2
     /**
-     * ZIP the folder created by File > Dependencies > Collect Files. The ZIP contains the
-     * .ecproj file and its (Footage) directory, then Android grants the chosen target read access.
+     * Share the exact project file the user most recently exported. Copy it into the
+     * app-private FileProvider directory so QQ receives a stable content:// URI.
      */
-    public static void shareProjectPackage(String projectPath) {
+    public static void shareExportedProject(String exportPath) {
         __CLASS__ activity = galleryActivity;
-        if (activity == null || projectPath == null || projectPath.trim().isEmpty()) return;
+        if (activity == null || exportPath == null || exportPath.trim().isEmpty()) return;
         activity.io.execute(() -> {
             try {
-                File projectFile = new File(projectPath).getCanonicalFile();
-                if (!projectFile.isFile() || !projectFile.getName().toLowerCase(java.util.Locale.ROOT).endsWith(".ecproj")) {
-                    throw new IOException("没有找到完整导出的 .ecproj 工程文件。");
+                File source = new File(exportPath).getCanonicalFile();
+                if (!source.isFile() || !source.canRead()) {
+                    throw new IOException("找不到刚刚导出的工程文件：" + exportPath);
                 }
-                File root = projectFile.getParentFile();
-                if (root == null || !root.isDirectory()) throw new IOException("工程素材文件夹不存在。");
-
                 File storage = activity.getExternalFilesDir(null);
                 if (storage == null) storage = activity.getFilesDir();
                 File shareDirectory = new File(storage, "EffectCraftShare");
                 if (!shareDirectory.isDirectory() && !shareDirectory.mkdirs()) {
-                    throw new IOException("无法创建工程分享暂存目录。");
+                    throw new IOException("无法创建 QQ 分享暂存目录。");
                 }
-                File archive = new File(shareDirectory,
-                    root.getName().replaceAll("[^A-Za-z0-9_-]", "_") + "-" + System.currentTimeMillis() + ".zip");
-                zipProjectDirectory(root, archive);
+                String safeName = source.getName().replaceAll("[^A-Za-z0-9._-]", "_");
+                File sharedCopy = new File(shareDirectory,
+                    System.currentTimeMillis() + "-" + safeName);
+                try (java.io.BufferedInputStream input =
+                         new java.io.BufferedInputStream(new java.io.FileInputStream(source));
+                     java.io.BufferedOutputStream output =
+                         new java.io.BufferedOutputStream(new java.io.FileOutputStream(sharedCopy))) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                }
 
+                String lower = source.getName().toLowerCase(java.util.Locale.ROOT);
+                String mime = lower.endsWith(".zip") ? "application/zip"
+                    : lower.endsWith(".xml") ? "application/xml"
+                    : "application/octet-stream";
                 Uri uri = FileProvider.getUriForFile(
-                    activity, activity.getPackageName() + ".effectcraft.files", archive);
+                    activity, activity.getPackageName() + ".effectcraft.files", sharedCopy);
                 Intent send = new Intent(Intent.ACTION_SEND);
-                send.setType("application/zip");
+                send.setType(mime);
                 send.putExtra(Intent.EXTRA_STREAM, uri);
+                send.putExtra(Intent.EXTRA_SUBJECT, source.getName());
                 send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                send.setClipData(ClipData.newUri(activity.getContentResolver(), archive.getName(), uri));
-                // Prefer opening Tencent QQ directly. If QQ is not installed or does not
-                // advertise a compatible ZIP share activity, fall back to Android Sharesheet.
+                send.setClipData(ClipData.newUri(activity.getContentResolver(), source.getName(), uri));
+
+                // Try QQ first. If it is absent or refuses the particular project format,
+                // gracefully show Android's Sharesheet as a fallback.
                 Intent qqSend = new Intent(send);
                 qqSend.setPackage("com.tencent.mobileqq");
                 Intent chooser = Intent.createChooser(send, "分享到QQ或其他应用");
                 activity.runOnUiThread(() -> {
                     try {
-                        if (qqSend.resolveActivity(activity.getPackageManager()) != null) {
-                            activity.startActivity(qqSend);
-                        } else {
-                            activity.startActivity(chooser);
-                        }
+                        activity.startActivity(qqSend);
                     } catch (Exception qqError) {
-                        Log.w(TAG, "QQ could not accept the project ZIP; opening Android Sharesheet.", qqError);
+                        Log.w(TAG, "QQ is unavailable for this exported project; opening Android Sharesheet.", qqError);
                         try {
                             activity.startActivity(chooser);
                         } catch (Exception shareError) {
-                            Log.e(TAG, "Could not open the Android project share sheet.", shareError);
+                            Log.e(TAG, "Could not open the exported-project share sheet.", shareError);
                         }
                     }
                 });
             } catch (Exception error) {
-                Log.e(TAG, "Could not package the EffectCraft project for sharing.", error);
+                Log.e(TAG, "Could not share the exported EffectCraft project.", error);
             }
         });
-    }
-
-    private static void zipProjectDirectory(File root, File archive) throws IOException {
-        String rootPath = root.getCanonicalPath();
-        try (ZipOutputStream output = new ZipOutputStream(
-                new BufferedOutputStream(new FileOutputStream(archive)))) {
-            addProjectFiles(rootPath, root, output);
-        } catch (IOException error) {
-            try { archive.delete(); } catch (Exception ignored) {}
-            throw error;
-        }
-    }
-
-    private static void addProjectFiles(String rootPath, File directory, ZipOutputStream output) throws IOException {
-        File[] children = directory.listFiles();
-        if (children == null) throw new IOException("无法读取工程素材目录：" + directory.getName());
-        for (File child : children) {
-            String canonical = child.getCanonicalPath();
-            if (!canonical.equals(rootPath) && !canonical.startsWith(rootPath + File.separator)) continue;
-            if (child.isDirectory()) {
-                addProjectFiles(rootPath, child, output);
-            } else if (child.isFile()) {
-                String relative = canonical.substring(rootPath.length()).replace(File.separatorChar, '/');
-                while (relative.startsWith("/")) relative = relative.substring(1);
-                if (relative.isEmpty()) continue;
-                output.putNextEntry(new ZipEntry(relative));
-                try (InputStream input = new BufferedInputStream(new FileInputStream(child))) {
-                    byte[] buffer = new byte[64 * 1024];
-                    int count;
-                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
-                }
-                output.closeEntry();
-            }
-        }
     }
 '''
         source = once(source, anchor, anchor + bridge, "Android project share-sheet implementation")
@@ -173,7 +146,7 @@ def patch_activity(builder: Path) -> None:
 def patch_rust_bridge(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/android_gallery.rs"
     source = path.read_text(encoding="utf-8")
-    marker = "pub(crate) fn share_project_package"
+    marker = "pub(crate) fn share_exported_project"
     if marker in source:
         return
     anchor = '''#[cfg(not(target_os = "android"))]
@@ -189,7 +162,7 @@ pub(crate) fn share_project_package(project_path: &str) -> Result<(), String> {
             let path = jni::objects::JObject::from(env.new_string(project_path)?);
             env.call_static_method(
                 jni::jni_str!("com/artcraft/effectcraft/EffectCraftActivity"),
-                jni::jni_str!("shareProjectPackage"),
+                jni::jni_str!("shareExportedProject"),
                 jni::jni_sig!("(Ljava/lang/String;)V"),
                 &[jni::objects::JValue::Object(&path)],
             )?;
@@ -203,7 +176,7 @@ pub(crate) fn share_project_package(_project_path: &str) -> Result<(), String> {
     Err("工程分享到手机系统分享面板需要 Android 版 EffectCraft。".into())
 }
 '''
-    path.write_text(once(source, anchor, anchor + addition, "Rust JNI Android project share bridge"), encoding="utf-8")
+    path.write_text(once(source, anchor, anchor + addition, "Rust JNI Android exported-project QQ share bridge"), encoding="utf-8")
 
 
 def main() -> None:
@@ -217,14 +190,14 @@ def main() -> None:
 
     header = effectcraft / "crates/ui-egui/src/header.rs"
     source = header.read_text(encoding="utf-8")
-    if 'ui.button("打包并分享工程")' not in source or "share_project_package(project_path)" not in source:
+    if 'ui.button("分享到QQ")' not in source or "share_exported_project(export_path)" not in source:
         raise SystemExit("The generic project share action must be installed before the Android share bridge.")
     path = builder / "templates/android/SafActivity.java"
     activity = path.read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_PROJECT_SHARE_SHEET_V1" not in activity:
         raise SystemExit("The Android project share-sheet implementation is missing.")
-    print("Added complete project ZIP packaging through Android's system Sharesheet.")
-    print("The app first targets QQ directly; Android Sharesheet is the fallback when QQ is unavailable.")
+    print("Added direct sharing of the last exported project file through QQ.")
+    print("The share bridge sends the selected AEP, XML or ZIP file; it prefers QQ and falls back to Android Sharesheet.")
 
 
 if __name__ == "__main__":
