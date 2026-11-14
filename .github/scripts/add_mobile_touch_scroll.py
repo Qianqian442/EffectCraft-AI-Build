@@ -175,6 +175,94 @@ fn android_timeline_touch_scroll(app: &mut EffectcraftApp, ui: &egui::Ui, g: &Rw
     path.write_text(source, encoding="utf-8")
 
 
+def patch_timeline_android_drag_handles(root: Path) -> None:
+    """Give Android users a wide current-time handle and finger-sized layer trim edges."""
+    path = root / "crates/ui-egui/src/panels/timeline.rs"
+    source = path.read_text(encoding="utf-8")
+
+    old_trim = """const TRIM_OUTSIDE: f32 = 4.0;
+const TRIM_INSIDE: f32 = 5.0;"""
+    new_trim = """#[cfg(target_os = "android")]
+const TRIM_OUTSIDE: f32 = 14.0;
+#[cfg(target_os = "android")]
+const TRIM_INSIDE: f32 = 16.0;
+#[cfg(not(target_os = "android"))]
+const TRIM_OUTSIDE: f32 = 4.0;
+#[cfg(not(target_os = "android"))]
+const TRIM_INSIDE: f32 = 5.0;"""
+    source = replace_once(source, old_trim, new_trim, "Android layer-edge touch targets")
+
+    source = replace_once(
+        source,
+        "    current_time_indicator(app, g);",
+        "    current_time_indicator(app, ui, g);",
+        "Current-time indicator UI response",
+    )
+    source = replace_once(
+        source,
+        "fn current_time_indicator(app: &mut EffectcraftApp, g: &Rw) {",
+        "fn current_time_indicator(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Rw) {",
+        "Current-time indicator touch-drag signature",
+    )
+
+    old_cti = """    let cx = tm.x(time.seconds());
+    if cx >= graph_x0 && cx <= rect.max.x {
+        p.line_segment([pos2(cx, ruler.min.y + 12.0), pos2(cx, rows_rect.max.y)], Stroke::new(1.0, t.cti));"""
+    new_cti = """    let cx = tm.x(time.seconds());
+    if cx >= graph_x0 && cx <= rect.max.x {
+        // The visible playhead head is also a direct drag handle. The original ruler scrub
+        // remains available everywhere along the ruler; this wider target makes the handle
+        // itself practical to grab on a phone.
+        let ctx = g.tl.ctx.clone();
+        let comp = g.tl.comp.clone();
+        let graph_x1 = g.tl.graph_x1;
+        let hit_half_width = if cfg!(target_os = "android") { 18.0 } else { 7.0 };
+        let hit = Rect::from_min_max(
+            pos2(cx - hit_half_width, ruler.min.y + 3.0),
+            pos2(cx + hit_half_width, ruler.max.y),
+        );
+        let drag = ui.interact(
+            hit,
+            egui::Id::new("effectcraft-current-time-drag-handle"),
+            Sense::click_and_drag(),
+        );
+        app.auto.add_response("timeline.ctiDragHandle", &drag, "拖动播放指针");
+        if drag.dragged()
+            && let Some(pointer) = ctx.input(|i| i.pointer.latest_pos())
+        {
+            let mut map = tm;
+            if app.ui.timeline.pps.is_some() {
+                let speed = edge_scroll_speed_x(tm.x0, graph_x1, pointer.x);
+                if speed != 0.0 {
+                    let dt = f64::from(ctx.input(|i| i.stable_dt).clamp(0.0, 0.1));
+                    let span = f64::from(graph_x1 - tm.x0) / tm.pps.max(1e-6);
+                    let last = (comp.duration.seconds() - span).max(0.0);
+                    app.ui.timeline.start = (app.ui.timeline.start + f64::from(speed) * dt / tm.pps.max(1e-6)).clamp(0.0, last);
+                    map.start = app.ui.timeline.start;
+                    ctx.request_repaint();
+                }
+            }
+            let x = pointer.x.clamp(map.x0, graph_x1);
+            let seconds = map.t(x).clamp(0.0, comp.duration.seconds());
+            app.session.set_time(Tick::from_seconds_f64(seconds));
+            app.stop();
+        }
+        p.line_segment([pos2(cx, ruler.min.y + 12.0), pos2(cx, rows_rect.max.y)], Stroke::new(1.0, t.cti));"""
+    source = replace_once(source, old_cti, new_cti, "Direct draggable current-time indicator handle")
+
+    # A pointer that leaves the ruler while still held must remain available for edge paging.
+    old_scrub = """    if ((rresp.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down())) || rresp.clicked())
+        && let Some(pt) = rresp.interact_pointer_pos()
+    {"""
+    new_scrub = """    if ((rresp.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down())) || rresp.clicked())
+        && let Some(pt) = rresp.interact_pointer_pos().or_else(|| ui.input(|i| i.pointer.latest_pos()))
+    {"""
+    source = replace_once(source, old_scrub, new_scrub, "Continue ruler scrub when pointer leaves the narrow ruler area")
+
+    path.write_text(source, encoding="utf-8")
+    print("Android timeline: enlarged In/Out trim hit zones, added a direct draggable playhead handle, and preserved scrub edge-scrolling.")
+
+
 def patch_preview_clock(root: Path) -> None:
     path = root / "crates/ui-egui/src/app/frame.rs"
     source = path.read_text(encoding="utf-8")
@@ -202,6 +290,7 @@ def main() -> None:
     patch_shared_panel_scroll(root)
     patch_project_panel(root)
     patch_timeline(root)
+    patch_timeline_android_drag_handles(root)
     patch_preview_clock(root)
 
 
