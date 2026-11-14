@@ -6,12 +6,10 @@ import android.app.NotificationManager;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import android.net.VpnService;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
 import android.os.ParcelFileDescriptor;
 import android.util.Log;
 
@@ -46,7 +44,6 @@ public final class EffectCraftVpnService extends VpnService {
     private static volatile boolean taskActive;
     private static volatile String lastError = "";
 
-    private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private ParcelFileDescriptor tunInterface;
     private File configFile;
     private String taskSecret;
@@ -204,7 +201,21 @@ public final class EffectCraftVpnService extends VpnService {
 
         if (ACTION_START.equals(action)) {
             lastError = "";
-            startForeground(NOTIFICATION_ID, buildNotification());
+            try {
+                if (Build.VERSION.SDK_INT >= 34) {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        buildNotification(),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_SYSTEM_EXEMPTED);
+                } else {
+                    startForeground(NOTIFICATION_ID, buildNotification());
+                }
+            } catch (RuntimeException foregroundError) {
+                lastError = "Android 拒绝启动 VPN 前台服务：" + foregroundError.getClass().getSimpleName();
+                Log.e(TAG, lastError, foregroundError);
+                stopSelf(startId);
+                return START_NOT_STICKY;
+            }
             String host = intent.getStringExtra("worker_host");
             String secret = intent.getStringExtra("socks_secret");
             if (startThread == null || !startThread.isAlive()) {
