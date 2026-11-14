@@ -467,6 +467,11 @@
     "install_policy": "Download each WCP to private runtime storage, verify pinned SHA-256 and expected size, parse profile.json and allow only pre-approved destinations. The nightly-latest alias is mutable; reject any payload whose SHA-256 or size differs from this manifest."
   },
   "recent_validation_findings": [
+    "November 14, 2026: Box64 BOX32=ON Android NDK build completed in run 43548031456 (artifact 14095430775, 5,807,088 bytes); 658-object ARM64 PIE linked with /system/bin/linker64. This is build/package success, not x86 Linux ELF execution.",
+    "November 14, 2026: current upstream FEX ARM64EC/WoW64 PE DLLs, Android Box64 and Windows x64 AEX host worker all built successfully in run 43548223291 (artifacts 14095630953, 14094903025 and 14095545959); no Android PE/AEX runtime test.",
+    "November 14, 2026: EffectCraft Bionic exec bridge host linker-shim tests and Android NDK ARM64 shared-library/fixture build passed in run 43548375417 (artifact 14095630837, 19,638 bytes); no Android app UID/device execution.",
+    "November 14, 2026: main APK run 43548422037 failed at Rust compilation because open_ai_plugin_import_from_toolbar was unresolved; no APK artifact was published. This is an app integration blocker, not proof of a Windows runtime failure.",
+    "November 14, 2026: official Termux Hangover 11.16 package reproduction workflow added; first build run pending.",
     "November 14, 2026: added an EffectCraft-owned Bionic exec preload prototype that wraps native app-private ELF children through /system/bin/linker64 and preserves argv[0]. Host linker-shim and Android NDK build workflows are pending; no Android device test.",
     "November 14, 2026: Termux libandroid-spawn source was confirmed to implement posix_spawn through fork/vfork plus execve/execvpe; Termux's separate termux-exec LD_PRELOAD is required for app-private linker64 execution. Termux-prefix hard-coded paths are a separate relocation blocker.",
     "November 14, 2026: Termux hangover-wine 11.16 Bionic recipe audited; native Wine build enables i386/aarch64/arm64ec and packages FEX ARM64EC, FEX WoW64 and Box64 WoW64 PE DLLs. No EffectCraft Android device execution yet.",
@@ -555,7 +560,7 @@
   },
   "preferred_bionic_pe_backend": {
     "id": "termux-hangover-bionic-11.16",
-    "status": "source-audited-package-published-not-integrated-not-device-tested",
+    "status": "source-audited-package-published-reproduction-workflow-added-not-yet-run-not-integrated-not-device-tested",
     "repository": "https://github.com/termux/termux-packages",
     "repository_revision": "e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9",
     "package_path": "x11-packages/hangover-wine",
@@ -634,6 +639,7 @@
     ],
     "license_gate": "Generate full package-level SBOM, preserve LGPL-2.1 Wine/Hangover sources and notices, FEX MIT notices, Box64 MIT notices and all transitive dependency licenses before APK redistribution.",
     "next_steps": [
+      "Run .github/workflows/build-termux-hangover-bionic.yml against the pinned Termux revision and inspect all generated .deb packages, Bionic ELF interpreters, PE machine types and checksums",
       "Reproduce the Bionic package set from pinned Termux inputs and verify signed repository metadata and per-package SHA-256",
       "Implement private-storage extraction, Termux-prefix relocation, library path and wineserver handling",
       "Launch Bionic host executables through /system/bin/linker64",
@@ -644,7 +650,10 @@
       "Termux libandroid-spawn implements posix_spawn via fork/vfork and execve/execvpe; it is not the linker64 execution shim",
       "EffectCraft must set its own LD_PRELOAD exec bridge for child Bionic ELF launches or patch all direct exec syscall paths",
       "Termux package embeds /data/data/com.termux/files/usr paths; rebuild with relocatable paths or prove Wine loader/server/DLL/data paths can be overridden",
-      "All Wine/wineserver/helper processes must be validated under the EffectCraft app UID and target SDK, not just the initial process"
+      "All Wine/wineserver/helper processes must be validated under the EffectCraft app UID and target SDK, not just the initial process",
+      "Current EffectCraft runtime manager does not yet set LD_PRELOAD to the built exec bridge for every Bionic Wine/wineserver/helper process",
+      "Current Winlator manager native LD_LIBRARY_PATH includes ImageFS /usr/lib; keep glibc guest libraries exclusively in BOX64_LD_LIBRARY_PATH and never expose them to the Bionic host linker",
+      "Current exec bridge does not yet match Termux-exec shebang/PATH rewriting and /proc/self/exe compatibility hooks; execveat and raw syscall(SYS_execve) paths remain unaudited"
     ],
     "additional_license_inputs": [
       {
@@ -669,7 +678,7 @@
   "android_bionic_exec_bridge": {
     "id": "effectcraft-exec-bridge-prototype",
     "source_path": "windows-compat/android-runtime/exec-bridge",
-    "status": "source-added-host-and-ndk-ci-pending",
+    "status": "host-and-android-ndk-build-passed-not-device-tested-not-packaged-in-apk",
     "native_library": "libeffectcraft-exec.so",
     "environment": {
       "EFFECTCRAFT_RUNTIME_ROOT": "Absolute canonical app-private runtime root; only native ELF files under this path are considered for linker64 wrapping",
@@ -683,14 +692,17 @@
       "Preserves caller argv[0] and passes the original executable path as linker argument"
     ],
     "tests": {
-      "host_linker_shim": "Added; checks app-private ELF routing and argv preservation",
-      "android_arm64_ndk_build": "Workflow build-effectcraft-exec-bridge.yml added; artifact/run pending",
-      "android_device_execution": "Not yet tested"
+      "host_linker_shim": "passed in run 43548375417",
+      "android_arm64_ndk_build": "passed in run 43548375417; artifact 14095630837; Android API 31 arm64-v8a shared library and linker64 ELF fixtures",
+      "android_device_execution": "not tested"
     },
     "known_gaps": [
       "Does not intercept raw syscall(SYS_execve) call sites",
-      "fexecve/execveat behavior requires additional audit",
-      "PATH empty-component and shebang handling are not yet equivalent to termux-exec",
+      "execveat behavior requires audit and implementation",
+      "PATH search and shebang handling do not yet match termux-exec",
+      "Does not preserve logical /proc/self/exe via readlink/realpath hooks",
+      "LD_PRELOAD and EFFECTCRAFT_RUNTIME_ROOT are not yet wired into every Wine/wineserver/helper process in the runtime manager",
+      "Native Bionic host LD_LIBRARY_PATH must not include glibc ImageFS /usr/lib; guest libraries belong only in BOX64_LD_LIBRARY_PATH",
       "Does not solve Termux hard-coded prefix relocation",
       "Does not prove Wine/wineserver child process compatibility on Android"
     ],
@@ -699,5 +711,17 @@
       "termux_exec_license": "Apache-2.0 code; MIT site documentation",
       "libandroid_spawn_license": "BSD-2-Clause; posix_spawn wrapper calls execve/execvpe and does not replace linker64 preload"
     }
+  },
+  "termux_hangover_bionic_build": {
+    "workflow": ".github/workflows/build-termux-hangover-bionic.yml",
+    "status": "added-awaiting-first-run",
+    "termux_repository": "https://github.com/termux/termux-packages",
+    "termux_revision": "e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9",
+    "package": "x11-packages/hangover-wine",
+    "version": "11.16",
+    "target": "aarch64 Android Bionic",
+    "ci_recipe_change": "Replace upstream interactive `make -k || bash` fallback with fail-closed `make -k` in the CI checkout only",
+    "validation": "Inspect Wine ELF PT_INTERP=/system/bin/linker64, verify libarm64ecfex.dll/libwow64fex.dll/wowbox64.dll PE machine types, archive .deb packages and SHA-256",
+    "non_claim": "Cross-build/package inspection only; no Android app UID or device execution"
   }
 }
