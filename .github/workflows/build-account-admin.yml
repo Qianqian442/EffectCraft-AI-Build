@@ -238,7 +238,9 @@ jobs:
           grep -Fq 'Timeout: 15 * time.Second' "$MOBILE"
           grep -Fq 'case *net.TCPAddr, *net.UDPAddr:' .github/scripts/patch_usque_for_android.py
           grep -Fq 'useHTTP2 = true' .github/scripts/patch_usque_for_android.py
-          grep -Fq 'attemptTimer := time.AfterFunc(4*time.Second, attemptCancel)' .github/scripts/patch_usque_for_android.py
+          grep -Fq 'attemptTimer := time.AfterFunc(6*time.Second, attemptCancel)' .github/scripts/patch_usque_for_android.py
+          grep -Fq 'if len(endpoints) >= 6 {' "$MOBILE"
+          grep -Fq 'if len(endpoints) > 6 {' "$MOBILE"
           grep -Fq 'var proxyURL *url.URL // Direct Cloudflare underlay only; no proxy or relay.' .github/scripts/patch_usque_for_android.py
           grep -Fq 'Timeout: 5 * time.Second, KeepAlive: 15 * time.Second' .github/scripts/patch_usque_for_android.py
           python3 - <<'PY'
