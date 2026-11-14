@@ -191,7 +191,7 @@ jobs:
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F '导入am/NV/Ae/capcut工程' effectcraft/crates/engine/src/menus.rs
-          grep -F 'lower.ends_with(".ecproj") || lower.ends_with(".ecprojx")' .github/scripts/am_nv.rs
+          grep -F 'matches!(ext(&actual).as_str(), "ecproj" | "ecprojx")' .github/scripts/am_nv.rs
           grep -F 'super::import_project::import_project' .github/scripts/am_nv.rs
           grep -F 'MAX_ZIP_TOTAL' .github/scripts/am_nv.rs
           grep -F 'MAX_ZIP_ENTRIES' .github/scripts/am_nv.rs
@@ -230,7 +230,7 @@ jobs:
           python3 -m py_compile .github/scripts/add_chinese_group_puppet_keyframe_ui.py
           python3 .github/scripts/add_chinese_group_puppet_keyframe_ui.py
           grep -F 'language: String = "zh-hans".into(),' effectcraft/crates/engine/src/settings/prefs/sections.rs
-          grep -F 'Ae' effectcraft/crates/ui-egui/src/i18n.rs >/dev/null
+          grep -F '"zh-hans"' effectcraft/crates/ui-egui/src/i18n.rs
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
