@@ -33,7 +33,7 @@ if source.count(old) != 1:
 source = source.replace(old, new, 1)
 
 old = '''func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
-	if useHTTP2 {
+	if cfg.UseHTTP2 {
 		if _, ok := cfg.Endpoint.(*net.TCPAddr); !ok {
 			log.Fatalf("MaintainTunnel: HTTP/2 mode requires a *net.TCPAddr endpoint, got %T", cfg.Endpoint)
 		}
@@ -80,7 +80,7 @@ source = source.replace(old, new, 1)
 source = source.replace('log.Printf("Establishing MASQUE connection to %s", cfg.Endpoint)', 'log.Printf("Establishing MASQUE connection to %s", endpoint)')
 if source.count('\t\t\tcfg.Endpoint,\n\t\t\tcfg.UseHTTP2,\n') != 1:
     raise SystemExit("ConnectTunnel endpoint argument anchor mismatch")
-source = source.replace('\t\t\tcfg.Endpoint,\n\t\t\tcfg.UseHTTP2,\n', '\t\t\tendpoint,\n\t\t\tcfg.UseHTTP2,\n', 1)
+source = source.replace('\t\t\tcfg.Endpoint,\n\t\t\tcfg.UseHTTP2,\n', '\t\t\tendpoint,\n\t\t\tuseHTTP2,\n', 1)
 source = source.replace('''			log.Printf("Failed to connect tunnel: %v", err)
 			if ipConn != nil {''','''			log.Printf("Failed to connect tunnel via %s: %v", endpoint, err)
 			if cfg.OnConnectError != nil { cfg.OnConnectError(endpoint, err) }
@@ -99,6 +99,9 @@ source = source.replace('''		log.Println("Connected to MASQUE server")
 
 		if cfg.OnConnect != "" {''',1)
 source = source.replace('env["USQUE_ENDPOINT"] = cfg.Endpoint.String()', 'env["USQUE_ENDPOINT"] = endpoint.String()')
+if source.count('\t\t\t\t\tif cfg.UseHTTP2 {') != 1:
+    raise SystemExit("HTTP/2 packet-read branch anchor mismatch")
+source = source.replace('\t\t\t\t\tif cfg.UseHTTP2 {', '\t\t\t\t\tif useHTTP2 {', 1)
 source = source.replace('''		err = <-errChan
 		log.Printf("Tunnel connection lost: %v. Reconnecting...", err)
 ''','''		err = <-errChan
