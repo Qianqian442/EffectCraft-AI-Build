@@ -144,6 +144,34 @@ def patch_activity(builder: Path) -> None:
     source = replace_once(source, old_open_method, new_open_method,
                           "permission-first shared plug-in and project file picker")
 
+
+    // EFFECTCRAFT_ANDROID_VISUAL_MEDIA_SAF_V1
+    // Dedicated system picker for visual assets; never opens the generic "All files" view.
+    public void safRequestOpenMedia(long id, boolean multiple) {
+        requestAllFilesAccessThen(() -> launchSafOpenMediaPicker(id, multiple));
+    }
+
+    private void launchSafOpenMediaPicker(long id, boolean multiple) {
+        try {
+            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "image/*", "video/*" });
+            intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                DocumentsContract.buildDocumentUri(
+                    "com.android.externalstorage.documents", "primary:Download"));
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION
+                | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+            requestIds.put(REQ_OPEN, id);
+            startActivityForResult(intent, REQ_OPEN);
+        } catch (Exception error) {
+            enqueueError(id, "open", error.toString());
+        }
+    }
+
+
     resume_old = '''    protected void onResume() {
         super.onResume();
         suppressSelectionHandles();
