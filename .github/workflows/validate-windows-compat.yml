@@ -61,6 +61,10 @@ jobs:
           python3 -m py_compile windows-compat/tools/patch_box64_obstack_compat.py
           python3 -m py_compile windows-compat/tools/patch_box64_signal32_bionic.py
           python3 -m py_compile windows-compat/tools/patch_box64_threads32_bionic.py
+          python3 -m py_compile windows-compat/tools/patch_box64_resolver_bionic.py
+          python3 -m py_compile windows-compat/tools/patch_box64_netdb_r_bionic.py
+          python3 -m py_compile windows-compat/tools/patch_box64_posix_spawn_bionic.py
+          python3 -m py_compile windows-compat/tools/patch_box64_box32_alloc_bionic.py
 
       - name: Install actionlint
         uses: actions/setup-go@v5
@@ -140,10 +144,12 @@ jobs:
             fi
             echo
           }
-          base="https://github.com/The412Banner/Nightlies/releases/download/nightly-20261112-230654"
-          inspect_wcp "box64-bionic" "$base/Box64-0.4.5-78ffc6f64-Bionic.wcp" "77b0ef38b458c442dca8fc2ce9a4a14406a3ccc7781a701ef6ab199bb1abba98" "2834452"
-          inspect_wcp "box64ec-experimental" "$base/Box64EC-0.4.5-52db1d07a-experimental.wcp" "5edfbf9f3fe6ab386fd351a359c0053e09653682125f91b7840a75f08a64a138" "1056532"
-          inspect_wcp "wowbox64" "$base/WOWBox64-0.4.5-62de9d50b.wcp" "2d77fb8ea9fc00b8ae4a195b56d569cd8f43530f3a5b27fb55b5b616abe0c0db" "910864"
+          # nightly-latest is a moving alias; fixed SHA-256 and size pins below
+          # make this validation deterministic for the exact package payloads.
+          base="https://github.com/The412Banner/Nightlies/releases/download/nightly-latest"
+          inspect_wcp "box64-bionic" "$base/Box64-0.4.5-416051d58-Bionic.wcp" "5c00577a649890d88f6d82b9503c9a019fc20699056352a9042981883f146a9f" "2866256"
+          inspect_wcp "box64ec-experimental" "$base/Box64EC-0.4.5-6441fcfae-experimental.wcp" "80bc7ac0345744e7d571f1f9d1cc243d5408f5464f9e97e9cea4ae40ca0be7ac" "1055784"
+          inspect_wcp "wowbox64" "$base/WOWBox64-0.4.5-416051d58.wcp" "421e0fa560351f1e0b92ccead78656f6125acf0ca1e78ac96872f6ed65ec460b" "910112"
           stable="https://github.com/The412Banner/Nightlies/releases/download/FEXCore-2611.1/FEXCore-2611.1.wcp"
           inspect_wcp "fexcore-2611.1" "$stable" "60ef9fefd5a01e353d9266ddb2ad50317ff6f526bc0f42a96408651e373fa8b4" "1288148"
 
