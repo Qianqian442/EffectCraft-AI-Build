@@ -21,9 +21,9 @@ def main() -> None:
         raise SystemExit("Run add_home_lan_account_gate.py before this account patch.")
     source = account_path.read_text(encoding="utf-8")
     api_url = os.environ.get("AE_ACCOUNT_API_URL", "").strip().rstrip("/")
-    if not api_url.startswith("https://") or not api_url.endswith(".workers.dev"):
+    if not api_url.startswith("https://") or not (api_url.endswith(".workers.dev") or api_url.endswith(".pages.dev")):
         raise SystemExit(
-            "Set repository variable AE_ACCOUNT_API_URL to the deployed HTTPS workers.dev URL before building."
+            "AE_ACCOUNT_API_URL must be a verified HTTPS Cloudflare workers.dev or pages.dev URL."
         )
 
     source = replace_once(
@@ -364,7 +364,7 @@ def main() -> None:
     source = source.replace('ui.label("家庭服务器地址");', 'ui.label("云端 HTTPS 服务器地址");')
     source = source.replace(
         'ui.small("把示例地址替换为家中电脑的局域网 IPv4 地址，例如 http://192.168.1.23:8787");',
-        'ui.small("请使用 Ae 管理员提供的 Cloudflare workers.dev HTTPS 地址");',
+        'ui.small("账号服务器地址由 APK 构建配置设置，请勿手动更改。");',
     )
     source = source.replace(
         'ui.heading("正在连接家庭账号服务器");',
