@@ -14,10 +14,9 @@ import java.net.Proxy;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
+import javax.net.ssl.HttpsURLConnection;
 import java.util.Map;
 
 /**
