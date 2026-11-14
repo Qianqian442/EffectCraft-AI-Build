@@ -34,6 +34,7 @@ on:
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
+      - '.github/scripts/integrate_public_proxy_pool.py'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
@@ -83,6 +84,8 @@ jobs:
             .github/scripts/patch_gradle_maven_mirrors.py \
             .github/scripts/integrate_deepseek_single_apk.py \
             .github/scripts/fix_viewer_drag_selection.py \
+            .github/scripts/integrate_public_proxy_pool.py \
+            .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
             .github/scripts/add_bottom_left_media_import.py \
             .github/scripts/configure_android_storage_fallback.py \
@@ -90,7 +93,7 @@ jobs:
 
   build:
     needs: validate-patches
-    # Build the main APK even without a cloud URL; keep LAN account mode in that case.
+    # Build the main APK even before Cloudflare is configured; retain the current admin-phone account mode until a real Worker URL is supplied.
     name: Build EffectCraft 0.21.1 with AI helper
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -456,6 +459,20 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
           python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
+
+      - name: Integrate dynamic public proxy pool for Cloudflare account HTTPS and WSS
+        if: ${{ vars.AE_ACCOUNT_API_URL != '' }}
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
+          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/integrate_public_proxy_pool.py
+          python3 build-assets/.github/scripts/integrate_public_proxy_pool.py
+          grep -Fq "EFFECTCRAFT_PUBLIC_PROXY_POOL_V1" "$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          grep -Fq "socks-proxy" "$EFFECTCRAFT_DIR/Cargo.toml"
+          grep -Fq "rustls-tls-webpki-roots" "$EFFECTCRAFT_DIR/Cargo.toml"
+          test -s "$EFFECTCRAFT_DIR/crates/ui-egui/src/public_proxy_pool.rs"
 
       - name: Add independent connected Puppet pin rigs
         env:
