@@ -65,7 +65,9 @@ java_root = android_dir / "java"
 manifest_path = android_dir / "AndroidManifest.xml"
 gradle_path = android_dir / "android" / "build.gradle"
 
-for path in (java_root, manifest_path, gradle_path, service_source, aar_source):
+if not java_root.is_dir():
+    raise SystemExit(f"Cloudflare MASQUE Android Java directory missing: {java_root}")
+for path in (manifest_path, gradle_path, service_source, aar_source):
     if not path.is_file():
         raise SystemExit(f"Cloudflare MASQUE Android build input missing: {path}")
 
