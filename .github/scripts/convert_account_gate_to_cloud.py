@@ -40,15 +40,19 @@ def main() -> None:
         "use std::io::{Read, Write};\n"
         "use std::net::{TcpStream, ToSocketAddrs};\n"
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::time::Duration;\n\n"
-        'const DEFAULT_SERVER: &str = "p2p://auto";',
+        "use std::time::Duration;\n",
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
         "use std::time::Duration;\n"
         "use tungstenite::client::IntoClientRequest;\n"
         "use tungstenite::http::HeaderValue;\n"
-        "use tungstenite::Message;\n\n"
+        "use tungstenite::Message;\n",
+        "cloud client imports",
+    )
+    source = replace_once(
+        source,
+        'const DEFAULT_SERVER: &str = "p2p://auto";',
         f'const DEFAULT_SERVER: &str = "{api_url}";',
-        "cloud client imports and API URL",
+        "Cloudflare account API URL",
     )
     source = replace_once(
         source,
