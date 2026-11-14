@@ -17,8 +17,6 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.SecureRandom;
 
 /** Starts the same encrypted libp2p node used by the administrator app. */
 final class NativeP2P {
@@ -28,7 +26,6 @@ final class NativeP2P {
     private static volatile Context applicationContext;
     private static boolean watchdogScheduled;
     private static boolean vpnCommandServerStarted;
-    private static volatile String vpnControlToken = "";
     private static volatile WeakReference<Activity> launcherActivity = new WeakReference<>(null);
 
     private static final Runnable nodeWatchdog = new Runnable() {
@@ -45,15 +42,7 @@ final class NativeP2P {
                         || snapshot.contains("\"status\":\"rpc_proxy_error\"")
                         || snapshot.contains("\"status\":\"command_channel_closed\"");
                     if (stopped) {
-                        if (vpnControlToken.isEmpty()) {
-                byte[] bytes = new byte[32];
-                new SecureRandom().nextBytes(bytes);
-                StringBuilder token = new StringBuilder(64);
-                for (byte value : bytes) token.append(String.format(java.util.Locale.ROOT, "%02x", value & 0xff));
-                vpnControlToken = token.toString();
-                nativeSetVpnControlToken(vpnControlToken);
-            }
-            String result = nativeStartClient(context.getFilesDir().getAbsolutePath());
+                        String result = nativeStartClient(context.getFilesDir().getAbsolutePath());
                         Log.w(TAG, "P2P automatic recovery: " + result + " · previous status: " + snapshot);
                     }
                 } catch (Throwable error) {
@@ -74,7 +63,6 @@ final class NativeP2P {
     private static native String nativeStatus();
     private static native String nativeConfigureVpnProxy(String workerHost, String workerIpsCsv, String secret);
     private static native void nativeClearVpnProxyConfig();
-    private static native void nativeSetVpnControlToken(String token);
 
     static synchronized void start(Context context) {
         applicationContext = context.getApplicationContext();
@@ -157,13 +145,6 @@ final class NativeP2P {
         }
     }
 
-    private static boolean constantTimeTokenMatch(String candidate) {
-        if (candidate == null || vpnControlToken.isEmpty()) return false;
-        return MessageDigest.isEqual(
-            vpnControlToken.getBytes(StandardCharsets.US_ASCII),
-            candidate.getBytes(StandardCharsets.US_ASCII));
-    }
-
     private static synchronized void startVpnCommandServer(Context context) {
         if (vpnCommandServerStarted) return;
         vpnCommandServerStarted = true;
@@ -181,18 +162,9 @@ final class NativeP2P {
                             String command = reader.readLine();
                             String response;
                             if (command != null && command.startsWith("START ")) {
-                                String[] parts = command.substring(6).trim().split(" ", 2);
-                                if (parts.length == 2 && constantTimeTokenMatch(parts[0])) {
-                                    response = EffectCraftVpnService.startForTask(context, parts[1].trim());
-                                } else {
-                                    response = "ERROR:VPN 控制通道认证失败";
-                                }
-                            } else if (command != null && command.startsWith("STOP ")) {
-                                if (constantTimeTokenMatch(command.substring(5).trim())) {
-                                    response = EffectCraftVpnService.stopForTask(context);
-                                } else {
-                                    response = "ERROR:VPN 控制通道认证失败";
-                                }
+                                response = EffectCraftVpnService.startForTask(context, command.substring(6).trim());
+                            } else if ("STOP".equals(command)) {
+                                response = EffectCraftVpnService.stopForTask(context);
                             } else {
                                 response = "ERROR:未知的 VPN 任务命令";
                             }
