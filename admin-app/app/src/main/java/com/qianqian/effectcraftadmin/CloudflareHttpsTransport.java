@@ -60,6 +60,11 @@ final class CloudflareHttpsTransport {
         }
     }
 
+    /** Numeric Cloudflare DNS addresses that can be routed through a bootstrap WARP task. */
+    static List<InetAddress> resolverAddressesForTunnel() {
+        return new ArrayList<>(CLOUDFLARE_DOH_IPS);
+    }
+
     static List<InetAddress> resolveWorkerAddresses(String host) throws Exception {
         if (!isValidHost(host)) {
             throw new IllegalArgumentException("账号服务器域名无效");
