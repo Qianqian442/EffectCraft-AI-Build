@@ -259,6 +259,8 @@ jobs:
               path.write_text(source, encoding="utf-8")
           PY
           cargo test -p effectcraft-ui-egui --lib missing_translations_report -- --nocapture 2>&1 | tee zh-hans-localization-audit.log
+          cargo test -p effectcraft-ui-egui --lib catalog_row_counts_report -- --nocapture 2>&1 | tee -a zh-hans-localization-audit.log
+          cargo test -p effectcraft-ui-egui --lib menu_catalogs_have_no_stale_or_duplicate_rows -- --nocapture 2>&1 | tee -a zh-hans-localization-audit.log
 
       - name: Upload Simplified Chinese localization audit report
         if: always()
