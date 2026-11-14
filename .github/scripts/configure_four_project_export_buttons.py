@@ -206,7 +206,7 @@ def main() -> None:
     engine_source = replace_once(
         engine_source,
         "    let mut plan: Vec<(ItemId, Vec<(String, String)>)> = vec![];",
-        "    let mut errors: Vec<String> = Vec::new();\\n    let mut plan: Vec<(ItemId, Vec<(String, String, String)>)> = vec![];",
+        "    let mut errors: Vec<String> = Vec::new();\n    let mut plan: Vec<(ItemId, Vec<(String, String, String)>)> = vec![];",
         "complete mobile project collection plan",
     )
     engine_source = replace_once(
@@ -223,7 +223,7 @@ def main() -> None:
     engine_source = replace_once(
         engine_source,
         '            let dst = format!("{folder}/(Footage)/{name}");',
-        '            let relative = format!("(Footage)/{name}");\\n            let dst = format!("{folder}/{relative}");',
+        '            let relative = format!("(Footage)/{name}");\n            let dst = format!("{folder}/{relative}");',
         "relative media paths for portable mobile project packages",
     )
     engine_source = replace_once(
@@ -246,8 +246,8 @@ def main() -> None:
     )
     engine_source = replace_once(
         engine_source,
-        "    let mut copied = 0;\\n    let mut errors = vec![];\\n    for (id, pairs) in plan {",
-        "    let mut copied = 0;\\n    for (id, pairs) in plan {",
+        "    let mut copied = 0;\n    let mut errors = vec![];\n    for (id, pairs) in plan {",
+        "    let mut copied = 0;\n    for (id, pairs) in plan {",
         "reuse the preflight error accumulator",
     )
     engine_source = replace_once(
