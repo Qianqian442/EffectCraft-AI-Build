@@ -125,6 +125,11 @@ public final class AdminAccountVpnService extends VpnService {
         String routeHost,
         int routePort
     ) {
+        // The pinned Hev Android wrapper declares API 29 as its minimum.
+        // Keep the app installable on API 26+, but only start this VPN on API 29+.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            return "ERROR:此 VPN 组件需要 Android 10 或更高版本";
+        }
         if (!isAllowedHost(host)) return "ERROR:账号 VPN 只接受配置的 workers.dev 主机";
         if (taskActive) return "OK";
         if (!ensurePermission(context)) return "VPN_PERMISSION_REQUIRED";
