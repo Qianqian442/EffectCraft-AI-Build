@@ -75,6 +75,14 @@ final class CloudflareProxyPool {
         URL endpoint = new URL(baseUrl.replaceAll("/+$", "") + path);
         String workerHost = endpoint.getHost();
 
+        // Ask Android for VPN consent first. If the user has already approved
+        // this app, Android returns immediately without showing another prompt.
+        // This also prevents a slow DNS bootstrap from appearing to skip VPN setup.
+        String permissionStatus = AdminAccountVpnService.requestPermissionForTask(context);
+        if (!"OK".equals(permissionStatus)) {
+            throw new java.io.IOException("Android VPN 权限尚未就绪：" + permissionStatus);
+        }
+
         // Do not trust carrier-provided plaintext DNS for workers.dev. Resolve
         // through Cloudflare's authenticated DoH endpoint before installing the
         // split-tunnel route, then pin the HTTPS socket to those returned IPs.
