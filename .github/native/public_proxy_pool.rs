@@ -6,7 +6,7 @@
 
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
-use std::io::{self, Read, Write};
+use std::io::{self, BufRead, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
@@ -24,6 +24,75 @@ const MAX_POOL_SIZE: usize = 600;
 const MAX_PER_FEED: usize = 80;
 const MAX_TEST_COUNT: usize = 18;
 const MAX_SCAN_TIME: Duration = Duration::from_secs(28);
+
+const VPN_COMMAND_BRIDGE: SocketAddr = SocketAddr::new(Ipv4Addr::LOCALHOST.into(), 10809);
+
+/// Owns one VPN task lease. Dropping this guard asks the Android service to
+/// stop the TUN/tun2socks tunnel regardless of HTTP success, failure or panic.
+struct TaskVpnGuard {
+    active: bool,
+}
+
+impl TaskVpnGuard {
+    fn start(base_url: &str) -> Result<Self, String> {
+        let host = base_url
+            .strip_prefix("https://")
+            .ok_or_else(|| "账号服务必须使用 HTTPS".to_string())?;
+        if !host.ends_with(".workers.dev")
+            || host.is_empty()
+            || host.contains(['/', ':', '@', '?', '#'])
+            || host.starts_with('.')
+            || host.contains("..")
+        {
+            return Err("账号 VPN 仅允许 Cloudflare workers.dev 账号服务".to_string());
+        }
+
+        let mut stream = TcpStream::connect_timeout(&VPN_COMMAND_BRIDGE, Duration::from_secs(5))
+            .map_err(|error| format!("EffectCraft 内置 VPN 控制通道不可用：{error}"))?;
+        stream.set_read_timeout(Some(Duration::from_secs(90)))
+            .map_err(|error| error.to_string())?;
+        stream.set_write_timeout(Some(Duration::from_secs(5)))
+            .map_err(|error| error.to_string())?;
+        writeln!(stream, "START {host}").map_err(|error| format!("VPN 启动命令发送失败：{error}"))?;
+        stream.flush().map_err(|error| format!("VPN 启动命令刷新失败：{error}"))?;
+
+        let mut response = String::new();
+        BufReader::new(stream).read_line(&mut response)
+            .map_err(|error| format!("VPN 启动结果读取失败：{error}"))?;
+        let response = response.trim();
+        if response != "OK" {
+            return Err(match response {
+                "VPN_PERMISSION_REQUIRED" => "需要先同意 Android 系统的 VPN 连接授权".to_string(),
+                "" => "VPN 服务没有返回启动结果".to_string(),
+                value => format!("内置 VPN 启动失败：{value}"),
+            });
+        }
+        Ok(Self { active: true })
+    }
+}
+
+impl Drop for TaskVpnGuard {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        let result = (|| -> io::Result<()> {
+            let mut stream = TcpStream::connect_timeout(&VPN_COMMAND_BRIDGE, Duration::from_secs(2))?;
+            stream.set_read_timeout(Some(Duration::from_secs(8)))?;
+            stream.set_write_timeout(Some(Duration::from_secs(2)))?;
+            stream.write_all(b"STOP\\n")?;
+            stream.flush()?;
+            let mut response = String::new();
+            let _ = BufReader::new(stream).read_line(&mut response);
+            Ok(())
+        })();
+        if let Err(error) = result {
+            eprintln!("EffectCraft VPN stop request failed: {error}");
+        }
+        self.active = false;
+    }
+}
+
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Protocol {
@@ -345,7 +414,11 @@ pub(crate) fn account_http_request(
         return Err("账号 API 请求方法不受支持".to_string());
     }
 
-    let (agent, route) = select_http_route(base_url)?;
+    // The app must be inside its task-scoped private VPN before opening the
+    // account HTTPS connection. Do not silently fall back to public proxies.
+    let _vpn_task = TaskVpnGuard::start(base_url)?;
+    let agent = make_agent(None, Duration::from_secs(15))?;
+    let route: Option<Candidate> = None;
     let endpoint = format!("{}{}", base_url.trim_end_matches('/'), path);
     let response_result = if method == "GET" {
         let mut request = agent
