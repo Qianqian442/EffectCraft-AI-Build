@@ -156,7 +156,7 @@ pub(crate) fn poll_publish(_request_id: &str) -> Result<Option<String>, String> 
 '''
     addition = r'''
 #[cfg(target_os = "android")]
-pub(crate) fn share_project_package(project_path: &str) -> Result<(), String> {
+pub(crate) fn share_exported_project(project_path: &str) -> Result<(), String> {
     with_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<()> {
             let path = jni::objects::JObject::from(env.new_string(project_path)?);
@@ -172,7 +172,7 @@ pub(crate) fn share_project_package(project_path: &str) -> Result<(), String> {
 }
 
 #[cfg(not(target_os = "android"))]
-pub(crate) fn share_project_package(_project_path: &str) -> Result<(), String> {
+pub(crate) fn share_exported_project(_project_path: &str) -> Result<(), String> {
     Err("工程分享到手机系统分享面板需要 Android 版 EffectCraft。".into())
 }
 '''
@@ -194,7 +194,7 @@ def main() -> None:
         raise SystemExit("The generic project share action must be installed before the Android share bridge.")
     path = builder / "templates/android/SafActivity.java"
     activity = path.read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_PROJECT_SHARE_SHEET_V1" not in activity:
+    if "EFFECTCRAFT_ANDROID_EXPORT_FILE_QQ_SHARE_V2" not in activity:
         raise SystemExit("The Android project share-sheet implementation is missing.")
     print("Added direct sharing of the last exported project file through QQ.")
     print("The share bridge sends the selected AEP, XML or ZIP file; it prefers QQ and falls back to Android Sharesheet.")
