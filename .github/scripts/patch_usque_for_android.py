@@ -33,7 +33,7 @@ if source.count(old) != 1:
 source = source.replace(old, new, 1)
 
 old = '''func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
-	if cfg.UseHTTP2 {
+	if useHTTP2 {
 		if _, ok := cfg.Endpoint.(*net.TCPAddr); !ok {
 			log.Fatalf("MaintainTunnel: HTTP/2 mode requires a *net.TCPAddr endpoint, got %T", cfg.Endpoint)
 		}
@@ -54,22 +54,22 @@ new = '''func MaintainTunnel(ctx context.Context, cfg MaintainTunnelConfig) {
 		log.Println("MaintainTunnel: no MASQUE endpoints configured")
 		return
 	}
-	for _, endpoint := range endpoints {
-		if cfg.UseHTTP2 {
-			if _, ok := endpoint.(*net.TCPAddr); !ok {
-				log.Printf("MaintainTunnel: HTTP/2 endpoint must be *net.TCPAddr, got %T", endpoint)
-				return
-			}
-		} else if _, ok := endpoint.(*net.UDPAddr); !ok {
-			log.Printf("MaintainTunnel: HTTP/3 endpoint must be *net.UDPAddr, got %T", endpoint)
+	for _, candidate := range endpoints {
+		switch candidate.(type) {
+		case *net.TCPAddr, *net.UDPAddr:
+		default:
+			log.Printf("MaintainTunnel: unsupported MASQUE endpoint type %T", candidate)
 			return
 		}
 	}
 	endpointIndex := 0
 	endpoint := endpoints[endpointIndex]
+	useHTTP2 := false
+	if _, ok := endpoint.(*net.TCPAddr); ok { useHTTP2 = true }
 	advanceEndpoint := func() {
 		endpointIndex = (endpointIndex + 1) % len(endpoints)
 		endpoint = endpoints[endpointIndex]
+		_, useHTTP2 = endpoint.(*net.TCPAddr)
 	}
 
 	packetBufferPool := NewNetBuffer(cfg.MTU + datagramContextIDHeadroom)
