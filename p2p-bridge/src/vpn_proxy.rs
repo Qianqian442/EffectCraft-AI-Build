@@ -71,6 +71,12 @@ pub fn configure_worker(host: &str, ip_csv: &str, secret: &str) -> Result<(), St
     Ok(())
 }
 
+pub fn clear_worker_config() {
+    if let Ok(mut slot) = worker_config().lock() {
+        *slot = None;
+    }
+}
+
 pub fn set_admin_peer(peer: PeerId) {
     if let Ok(mut slot) = admin_peer_slot().lock() {
         *slot = Some(peer);
