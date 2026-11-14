@@ -142,12 +142,12 @@ jobs:
           fi
           python3 .github/scripts/patch_export_dialog.py
 
-      - name: Configure the same four project export buttons used by the APK build
+      - name: Configure the same four project export buttons and QQ share action used by the APK build
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 .github/scripts/configure_four_project_export_buttons.py
 
-      - name: Validate Android generic project share bridge
+      - name: Validate direct QQ project share with system fallback
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
@@ -157,6 +157,8 @@ jobs:
           python3 .github/scripts/add_qq_project_share.py
           grep -F 'EFFECTCRAFT_SHARE_FILEPROVIDER_V1' artcraft/lib/android_project.py
           grep -F 'shareProjectPackage' artcraft/templates/android/SafActivity.java
+          grep -F 'qqSend.setPackage("com.tencent.mobileqq")' artcraft/templates/android/SafActivity.java
+          grep -F '分享到QQ或其他应用' artcraft/templates/android/SafActivity.java
           grep -F 'share_project_package' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
 
       - name: Validate the single unified AM/NV/AE/CapCut project import control
@@ -167,6 +169,7 @@ jobs:
           python3 .github/scripts/add_am_nv_project_import.py
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
+          grep -F '导入am/NV/Ae/capcut工程' effectcraft/crates/engine/src/menus.rs
 
       - name: Apply standalone DeepSeek AI plugin bridge
         env:
