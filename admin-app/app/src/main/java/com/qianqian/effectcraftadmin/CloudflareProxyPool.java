@@ -54,6 +54,12 @@ final class CloudflareProxyPool {
         }
     }
 
+    private static void ensureNotCancelled() throws InterruptedException {
+        if (Thread.currentThread().isInterrupted()) {
+            throw new InterruptedException("本次账号操作已取消");
+        }
+    }
+
     static ApiResponse request(
         Context context,
         String baseUrl,
@@ -74,42 +80,50 @@ final class CloudflareProxyPool {
 
         URL endpoint = new URL(baseUrl.replaceAll("/+$", "") + path);
         String workerHost = endpoint.getHost();
+        boolean vpnMayBeActive = false;
 
-        // Ask Android for VPN consent first. If the user has already approved
-        // this app, Android returns immediately without showing another prompt.
-        // This also prevents a slow DNS bootstrap from appearing to skip VPN setup.
-        String permissionStatus = AdminAccountVpnService.requestPermissionForTask(context);
-        if (!"OK".equals(permissionStatus)) {
-            throw new java.io.IOException("Android VPN 权限尚未就绪：" + permissionStatus);
-        }
-
-        // Establish a first, app-scoped WARP tunnel to Cloudflare's numeric DNS
-        // endpoints. The DoH lookup then runs INSIDE that live tunnel, so the
-        // account flow cannot stall on carrier DNS before VPN activation.
-        String bootstrapStatus = AdminAccountVpnService.startForTask(
-            context, workerHost, CloudflareHttpsTransport.resolverAddressesForTunnel());
-        if (!"OK".equals(bootstrapStatus)) {
-            throw new java.io.IOException("Cloudflare DNS 引导隧道启动失败：" + bootstrapStatus);
-        }
-
-        java.util.List<java.net.InetAddress> workerAddresses;
         try {
-            workerAddresses = CloudflareHttpsTransport.resolveWorkerAddresses(workerHost);
-        } finally {
-            String stopped = AdminAccountVpnService.stopForTask(context);
-            if (!"OK".equals(stopped)) {
-                android.util.Log.w("EffectCraftAdminWARP", "DNS bootstrap VPN stop confirmation: " + stopped);
+            ensureNotCancelled();
+            String permissionStatus = AdminAccountVpnService.requestPermissionForTask(context);
+            if (!"OK".equals(permissionStatus)) {
+                throw new java.io.IOException("Android VPN 权限尚未就绪：" + permissionStatus);
             }
-        }
+            ensureNotCancelled();
 
-        // Rebuild the split route for the actual Worker IPs. The account request
-        // itself is sent only after this second tunnel reports connected.
-        String vpnStatus = AdminAccountVpnService.startForTask(context, workerHost, workerAddresses);
-        if (!"OK".equals(vpnStatus)) {
-            throw new java.io.IOException("管理版 Cloudflare WARP 账号隧道启动失败：" + vpnStatus);
-        }
+            // Establish a first, app-scoped WARP tunnel to Cloudflare's numeric DNS
+            // endpoints. Set the cleanup guard before startup so partial starts are
+            // stopped even when the service times out or the caller cancels.
+            vpnMayBeActive = true;
+            String bootstrapStatus = AdminAccountVpnService.startForTask(
+                context, workerHost, CloudflareHttpsTransport.resolverAddressesForTunnel());
+            if (!"OK".equals(bootstrapStatus)) {
+                throw new java.io.IOException("Cloudflare DNS 引导隧道启动失败：" + bootstrapStatus);
+            }
+            ensureNotCancelled();
 
-        try {
+            java.util.List<java.net.InetAddress> workerAddresses =
+                CloudflareHttpsTransport.resolveWorkerAddresses(workerHost);
+            ensureNotCancelled();
+            if (workerAddresses == null || workerAddresses.isEmpty()) {
+                throw new java.io.IOException("Cloudflare DoH 没有返回可用的 Worker 公网地址");
+            }
+
+            String stoppedBootstrap = AdminAccountVpnService.stopForTask(context);
+            vpnMayBeActive = false;
+            if (!"OK".equals(stoppedBootstrap)) {
+                throw new java.io.IOException("Cloudflare DNS 引导隧道未能确认关闭：" + stoppedBootstrap);
+            }
+            ensureNotCancelled();
+
+            // Rebuild the split route for the actual Worker IPs. The account request
+            // itself is sent only after this second tunnel reports connected.
+            vpnMayBeActive = true;
+            String vpnStatus = AdminAccountVpnService.startForTask(context, workerHost, workerAddresses);
+            if (!"OK".equals(vpnStatus)) {
+                throw new java.io.IOException("管理版 Cloudflare WARP 账号隧道启动失败：" + vpnStatus);
+            }
+            ensureNotCancelled();
+
             CloudflareHttpsTransport.Response response = CloudflareHttpsTransport.execute(
                 workerHost,
                 endpoint.getFile(),
@@ -118,6 +132,7 @@ final class CloudflareProxyPool {
                 token,
                 workerAddresses
             );
+            ensureNotCancelled();
             JSONObject parsed;
             try {
                 parsed = response.body.length == 0
@@ -127,20 +142,23 @@ final class CloudflareProxyPool {
                 throw new java.io.IOException("Cloudflare 账号服务返回了无法识别的数据", invalidJson);
             }
             return new ApiResponse(response.status, parsed, "Cloudflare WARP 直连（Cloudflare DoH）");
+        } catch (InterruptedException cancelled) {
+            Thread.currentThread().interrupt();
+            throw new java.io.IOException("本次账号操作已取消，正在关闭 Cloudflare VPN", cancelled);
         } catch (Exception error) {
-            // Never retry a POST after HTTP bytes have been sent: the Worker may
-            // already have applied a ban/unban before a response interruption.
             String cause = error.getMessage() == null
                 ? error.getClass().getSimpleName()
                 : error.getMessage();
             throw new java.io.IOException(
-                "Cloudflare WARP 请求中断；为防止重复提交，本次不会自动重放。原因：" + cause,
+                "Cloudflare 账号请求未完成；如涉及 POST，系统不会自动重复提交。原因：" + cause,
                 error
             );
         } finally {
-            String stopped = AdminAccountVpnService.stopForTask(context);
-            if (!"OK".equals(stopped)) {
-                android.util.Log.w("EffectCraftAdminWARP", "VPN stop confirmation: " + stopped);
+            if (vpnMayBeActive) {
+                String stopped = AdminAccountVpnService.stopForTask(context);
+                if (!"OK".equals(stopped)) {
+                    android.util.Log.w("EffectCraftAdminWARP", "VPN cleanup confirmation: " + stopped);
+                }
             }
         }
     }
