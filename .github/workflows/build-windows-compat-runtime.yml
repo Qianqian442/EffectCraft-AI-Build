@@ -79,7 +79,7 @@ jobs:
           retention-days: 30
 
   fexcore-arm64ec:
-    name: Build FEXCore Arm64EC and WoW64 backends
+    name: Build current upstream FEX ARM64EC and WoW64 PE backends
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 120
     steps:
@@ -90,7 +90,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: FEX-Emu/FEX
-          ref: ab135df091d005cc98dfddc56c3dc9c9e4bd501d
+          ref: ea43314f040633c76fb5891ff31d8a7c3dc533b8
           path: third_party/FEX
           submodules: recursive
 
@@ -115,6 +115,38 @@ jobs:
           ../../third_party/FEX/Data/nix/cmake_configure_woa32.sh ../../third_party/FEX -G Ninja -DTUNE_CPU=none
           ninja
 
+      - name: Validate FEX PE machine types and Wine CPU exports
+        working-directory: third_party/FEX
+        run: |
+          python3 -m venv "$RUNNER_TEMP/pefile-venv"
+          source "$RUNNER_TEMP/pefile-venv/bin/activate"
+          python -m pip install --disable-pip-version-check pefile
+          python - <<'PY'
+          import pefile
+          from pathlib import Path
+
+          checks = [
+              (Path("../../build-fex/arm64ec/Bin/libarm64ecfex.dll"), 0xA641,
+               {"BTCpu64FlushInstructionCache", "ProcessInit", "ThreadInit"}),
+              (Path("../../build-fex/wow64/Bin/libwow64fex.dll"), 0xAA64,
+               {"BTCpuProcessInit", "BTCpuThreadInit", "BTCpuSimulate"}),
+          ]
+          for path, expected_machine, required in checks:
+              pe = pefile.PE(str(path), fast_load=False)
+              machine = pe.FILE_HEADER.Machine
+              exports = {
+                  item.name.decode("ascii", "replace")
+                  for item in pe.DIRECTORY_ENTRY_EXPORT.symbols
+                  if item.name
+              }
+              missing = sorted(required - exports)
+              if machine != expected_machine:
+                  raise SystemExit(f"{path}: machine 0x{machine:04x}, expected 0x{expected_machine:04x}")
+              if missing:
+                  raise SystemExit(f"{path}: missing expected Wine CPU exports: {missing}")
+              print(f"{path}: PE machine=0x{machine:04x}; required exports present")
+          PY
+
       - name: Package FEXCore runtime components
         run: |
           set -euo pipefail
@@ -124,13 +156,15 @@ jobs:
           install -m 0644 build-fex/arm64ec/Bin/libarm64ecfex.dll artifacts/fexcore/system32/
           install -m 0644 build-fex/wow64/Bin/libwow64fex.dll artifacts/fexcore/system32/
           cp third_party/FEX/LICENSE artifacts/fexcore/FEX-LICENSE
+          printf '%s\\n' 'FEX-Emu/FEX' 'ea43314f040633c76fb5891ff31d8a7c3dc533b8' > artifacts/fexcore/FEX-SOURCE.txt
+          sha256sum artifacts/fexcore/system32/*.dll > artifacts/fexcore/DLL-SHA256SUMS.txt
           tar --zstd -cf artifacts/fexcore-arm64ec.tar.zst -C artifacts/fexcore .
           sha256sum artifacts/fexcore-arm64ec.tar.zst > artifacts/fexcore-arm64ec.tar.zst.sha256
 
       - name: Upload FEXCore components
         uses: actions/upload-artifact@v4
         with:
-          name: EffectCraft-FEXCore-Arm64EC-WoW64
+          name: EffectCraft-FEXCore-Arm64EC-WoW64-CurrentMain
           path: artifacts/fexcore-arm64ec.tar.zst*
           retention-days: 30
 
