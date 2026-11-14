@@ -91,6 +91,19 @@ jobs:
           test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
           "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version
 
+      - name: Build pinned Termux package-builder overlay with autopoint
+        working-directory: termux-packages
+        run: |
+          set -euo pipefail
+          docker pull ghcr.io/termux/package-builder:latest
+          base_image="$(docker image inspect ghcr.io/termux/package-builder:latest --format '{{index .RepoDigests 0}}')"
+          test -n "$base_image"
+          echo "Pinned Termux builder base image: $base_image"
+          cp ../windows-compat/termux/Dockerfile ./Dockerfile.effectcraft
+          docker build -f Dockerfile.effectcraft --build-arg "TERMUX_BASE_IMAGE=$base_image" -t effectcraft/termux-package-builder:autopoint .
+          echo "TERMUX_BUILDER_IMAGE_NAME=effectcraft/termux-package-builder:autopoint" >> "$GITHUB_ENV"
+          echo "TERMUX_BUILDER_BASE_IMAGE=$base_image" >> "$GITHUB_ENV"
+
       - name: Repoint Termux build paths to the EffectCraft private runtime prefix
         working-directory: termux-packages
         run: |
@@ -135,8 +148,9 @@ jobs:
         working-directory: termux-packages
         run: |
           set -euo pipefail
-          sudo install -d -o "$USER" -g "$USER" /data
-          printf 'aarch64\n' > /data/TERMUX_ARCH
+          mkdir -p "$RUNNER_TEMP/termux-data"
+          printf 'aarch64\n' > "$RUNNER_TEMP/termux-data/TERMUX_ARCH"
+          export TERMUX_DOCKER_RUN_EXTRA_ARGS="--volume $RUNNER_TEMP/termux-data:/data"
           ./build-package.sh -a aarch64 -i -j 2 hangover-wine
           ./build-package.sh -a aarch64 -i -j 2 termux-exec
 
