@@ -73,8 +73,10 @@ final class CloudflareProxyPool {
         if (value == null) return false;
         try {
             URL url = new URL(value.trim());
+            String host = url.getHost().toLowerCase(java.util.Locale.ROOT);
+            boolean cloudflareHost = host.endsWith(".workers.dev") || host.endsWith(".pages.dev");
             return "https".equalsIgnoreCase(url.getProtocol())
-                && url.getHost().toLowerCase(java.util.Locale.ROOT).endsWith(".workers.dev")
+                && cloudflareHost
                 && url.getUserInfo() == null
                 && (url.getPort() == -1 || url.getPort() == 443)
                 && (url.getPath().isEmpty() || "/".equals(url.getPath()))
@@ -119,7 +121,7 @@ final class CloudflareProxyPool {
         JSONObject body,
         String token
     ) throws Exception {
-        if (!isCloudflareUrl(baseUrl)) throw new IllegalArgumentException("Cloudflare 账号地址必须是 HTTPS workers.dev 地址");
+        if (!isCloudflareUrl(baseUrl)) throw new IllegalArgumentException("Cloudflare 账号地址必须是 HTTPS workers.dev 或 pages.dev 地址");
         if (path == null || !path.startsWith("/v1/") || path.contains("..") || path.contains("#")) {
             throw new IllegalArgumentException("账号 API 路径无效");
         }
