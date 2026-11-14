@@ -113,7 +113,7 @@ def patch_layer_add_item_fit(root: Path) -> None:
             }
         }
 '''
-    source = replace_once(source, anchor, fit + anchor, "Fit imported media to composition frame")
+    source = replace_once(source, anchor, anchor + fit, "Fit imported media to composition frame")
     path.write_text(source, encoding="utf-8")
 
 
