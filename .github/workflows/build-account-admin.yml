@@ -77,7 +77,11 @@ jobs:
         run: |
           unzip -l warp-mobile/build/effectcraft-warp-masque.aar
           unzip -p warp-mobile/build/effectcraft-warp-masque.aar classes.jar > "$RUNNER_TEMP/warp-classes.jar"
-          jar tf "$RUNNER_TEMP/warp-classes.jar" | grep -E 'com/effectcraft/warp|warpandroid'
+          jar tf "$RUNNER_TEMP/warp-classes.jar" | grep -F 'com/effectcraft/warp/warpandroid/Warpandroid.class'
+          javap -classpath "$RUNNER_TEMP/warp-classes.jar" com.effectcraft.warp.warpandroid.Warpandroid > "$RUNNER_TEMP/warp-bridge-api.txt"
+          grep -Fq 'registerDevice()' "$RUNNER_TEMP/warp-bridge-api.txt"
+          grep -Fq 'startTunnel(java.lang.String, long, java.lang.String, java.lang.String)' "$RUNNER_TEMP/warp-bridge-api.txt"
+          grep -Fq 'stopTunnel()' "$RUNNER_TEMP/warp-bridge-api.txt"
       - name: Upload MASQUE engine build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -222,7 +226,7 @@ jobs:
           grep -Fq 'AdminAccountVpnService.stopForTask' "$API"
           grep -Fq 'AdminAccountVpnService' "$MANIFEST"
           grep -Fq 'Proxy.NO_PROXY' "$API"
-          grep -Fq 'com.effectcraft.warp.Warpandroid' "$VPN"
+          grep -Fq 'com.effectcraft.warp.warpandroid.Warpandroid' "$VPN"
           grep -Fq 'callWarp("registerDevice", new Class<?>[0])' "$VPN"
           grep -Fq 'new Class<?>[]{String.class, long.class, String.class, String.class}' "$VPN"
           grep -Fq 'func RegisterDevice() (string, error)' "$MOBILE"
