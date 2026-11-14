@@ -145,7 +145,7 @@ def patch_activity(builder: Path) -> None:
                           "permission-first shared plug-in and project file picker")
 
 
-    // EFFECTCRAFT_ANDROID_VISUAL_MEDIA_SAF_V1
+    java_media_methods = r"""    // EFFECTCRAFT_ANDROID_VISUAL_MEDIA_SAF_V1
     // Dedicated system picker for visual assets; never opens the generic "All files" view.
     public void safRequestOpenMedia(long id, boolean multiple) {
         requestAllFilesAccessThen(() -> launchSafOpenMediaPicker(id, multiple));
@@ -169,8 +169,12 @@ def patch_activity(builder: Path) -> None:
         } catch (Exception error) {
             enqueueError(id, "open", error.toString());
         }
-    }
+    }"""
 
+    if "EFFECTCRAFT_ANDROID_VISUAL_MEDIA_SAF_V1" not in source:
+        resume_anchor = "    protected void onResume() {"
+        source = replace_once(source, resume_anchor, java_media_methods + "\n\n" + resume_anchor,
+                              "image/video-only Android SAF picker")
 
     resume_old = '''    protected void onResume() {
         super.onResume();
