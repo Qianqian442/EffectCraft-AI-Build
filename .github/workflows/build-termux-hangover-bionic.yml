@@ -152,8 +152,8 @@ jobs:
           mkdir -p "$RUNNER_TEMP/termux-data"
           printf 'aarch64\n' > "$RUNNER_TEMP/termux-data/TERMUX_ARCH"
           export TERMUX_DOCKER_RUN_EXTRA_ARGS="--volume $RUNNER_TEMP/termux-data:/data"
-          ./build-package.sh -a aarch64 -i -j 2 hangover-wine
-          ./build-package.sh -a aarch64 -i -j 2 termux-exec
+          ./scripts/run-docker.sh ./build-package.sh -a aarch64 -i -j 2 hangover-wine
+          ./scripts/run-docker.sh ./build-package.sh -a aarch64 -i -j 2 termux-exec
 
       - name: Inspect package metadata, Bionic ELF and Hangover PE payloads
         run: |
