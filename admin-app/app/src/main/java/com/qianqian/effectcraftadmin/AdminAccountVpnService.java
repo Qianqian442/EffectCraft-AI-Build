@@ -150,7 +150,7 @@ public final class AdminAccountVpnService extends VpnService {
 
     private ParcelFileDescriptor tunInterface;
     private Thread startThread;
-    private volatile boolean stopping;
+    private static volatile boolean stopping;
 
     private static Object callWarp(String methodName, Class<?>[] parameterTypes, Object... args) throws Exception {
         try {
@@ -230,7 +230,7 @@ public final class AdminAccountVpnService extends VpnService {
             List<InetAddress> workers = resolveWorkerAddresses(host);
             if (workers.isEmpty()) return "ERROR:Worker DNS 没有返回可用的公网地址";
 
-            Intent intent = new Intent(context.getApplicationContext(), EffectCraftVpnService.class)
+            Intent intent = new Intent(context.getApplicationContext(), AdminAccountVpnService.class)
                 .setAction(ACTION_START)
                 .putExtra("worker_host", host)
                 .putExtra("bundle_json", bundle)
@@ -259,7 +259,7 @@ public final class AdminAccountVpnService extends VpnService {
     /** Stop immediately after the account API request completes or fails. */
     public static synchronized String stopForTask(Context context) {
         try {
-            Intent stop = new Intent(context.getApplicationContext(), EffectCraftVpnService.class)
+            Intent stop = new Intent(context.getApplicationContext(), AdminAccountVpnService.class)
                 .setAction(ACTION_STOP);
             context.getApplicationContext().startService(stop);
             long deadline = System.currentTimeMillis() + 9000L;
