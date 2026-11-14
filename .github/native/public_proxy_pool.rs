@@ -66,25 +66,29 @@ struct Feed {
 }
 
 const FEEDS: &[Feed] = &[
-    // Mainland, nearby Asian regions first. Country files use type://ip:port.
+    // Mainland and nearby regions first. This source prefixes each entry with its protocol.
     Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/cn.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    Feed { url: "https://proxy-scraper.de/country/cn/proxies.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/countries/cn.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
     Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/hk.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    Feed { url: "https://proxy-scraper.de/country/hk/proxies.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/countries/hk.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
     Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/jp.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    Feed { url: "https://proxy-scraper.de/country/jp/proxies.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
     Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/sg.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    Feed { url: "https://proxy-scraper.de/country/sg/proxies.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    // Lists whose HTTPS TLS was checked by the feed maintainer.
     Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/https.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    Feed { url: "https://proxy-scraper.de/https.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/https.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
     Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
-    Feed { url: "https://proxy-scraper.de/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
-    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
-    Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/stable.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    // Independent second source. These files contain bare IP:port entries, typed by their path.
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/http.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/https.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/http.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/https.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/http.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/https.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/http.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/https.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/http.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/https.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
 ];
 
 #[derive(Default)]
