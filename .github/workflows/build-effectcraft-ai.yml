@@ -36,6 +36,7 @@ on:
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
+      # Rebuild main APK after account-gate import repair.
       - '.github/scripts/normalize_account_network_dependencies.py'
       - '.github/scripts/integrate_public_proxy_pool.py'
       - '.github/scripts/fetch_public_proxy_bootstrap.py'
