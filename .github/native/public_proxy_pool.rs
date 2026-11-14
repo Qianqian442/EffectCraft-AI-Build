@@ -346,8 +346,15 @@ pub(crate) fn account_http_request(
     body: Value,
     token: Option<&str>,
 ) -> Result<(u16, Value), String> {
-    if !base_url.starts_with("https://") || !base_url.ends_with(".workers.dev") {
-        return Err("账号服务地址必须是已配置的 Cloudflare HTTPS workers.dev 地址".to_string());
+    let Some(worker_host) = base_url.strip_prefix("https://") else {
+        return Err("账号服务地址必须使用 HTTPS".to_string());
+    };
+    if !worker_host.ends_with(".workers.dev")
+        || worker_host.is_empty()
+        || worker_host.contains(['/', ':', '@', '?', '#'])
+        || worker_host.starts_with('.')
+    {
+        return Err("账号服务地址必须是无路径、无凭据的 Cloudflare workers.dev 主机地址".to_string());
     }
     if !path.starts_with("/v1/") || path.contains("..") || path.contains('#') {
         return Err("账号 API 路径无效".to_string());
@@ -532,6 +539,12 @@ where
     let host = request.uri().host().ok_or_else(|| {
         WebSocketError::Io(io::Error::new(io::ErrorKind::InvalidInput, "WSS 主机名缺失"))
     })?;
+    if !host.ends_with(".workers.dev") || request.uri().port_u16().is_some_and(|port| port != 443) {
+        return Err(WebSocketError::Io(io::Error::new(
+            io::ErrorKind::PermissionDenied,
+            "公开代理隧道仅允许连接已配置的 Cloudflare workers.dev 账号主机",
+        )));
+    }
     let port = request.uri().port_u16().unwrap_or(443);
     let base_url = format!("https://{host}");
     let candidates = websocket_candidates(&base_url);
