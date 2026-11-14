@@ -1,4 +1,5 @@
 name: Build EffectCraft AI Android APK
+# EFFECTCRAFT_ON_DEMAND_VPN_REBUILD_TRIGGER_V1
 
 on:
   push:
