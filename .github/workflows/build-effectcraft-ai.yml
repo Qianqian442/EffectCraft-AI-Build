@@ -7,6 +7,7 @@ on:
       - '.github/workflows/build-effectcraft-ai.yml'
       - 'p2p-bridge/**'
       - '.github/scripts/integrate_p2p_bridge.py'
+      - '.github/scripts/integrate_on_demand_vpn.py'
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/add_qq_project_share.py'
