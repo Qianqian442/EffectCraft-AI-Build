@@ -95,7 +95,7 @@ def main() -> None:
     lib_gradle = llama / "examples/llama.android/lib/build.gradle.kts"
     lg = lib_gradle.read_text(encoding="utf-8")
     if "minSdk = 33" in lg:
-        lib_gradle.write_text(lg.replace("minSdk = 33", "minSdk = 28", 1), encoding="utf-8")
+        lg = lg.replace("minSdk = 33", "minSdk = 28", 1)
     elif "minSdk = 28" not in lg:
         raise SystemExit("Unexpected llama.cpp Android library minSdk; refusing an unsafe patch.")
 
@@ -116,6 +116,8 @@ def main() -> None:
         lg = once(lg, old_plugin_block, new_plugin_block, "llama.cpp host Gradle plugin classpath alignment")
     elif new_plugin_block not in lg:
         raise SystemExit("Unexpected llama.cpp Android library plugin block; refusing an unsafe Gradle patch.")
+    if "minSdk = 28" not in lg:
+        raise SystemExit("DeepSeek runtime minSdk did not remain at API 28 after Gradle plugin alignment.")
     lib_gradle.write_text(lg, encoding="utf-8")
 
     logging = llama / "examples/llama.android/lib/src/main/cpp/logging.h"
