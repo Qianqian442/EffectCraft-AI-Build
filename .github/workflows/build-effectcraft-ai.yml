@@ -378,12 +378,12 @@ jobs:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: python3 build-assets/.github/scripts/add_android_gallery_export.py
 
-      - name: Configure four project export buttons and the generic share action
+      - name: Configure four project export buttons and the QQ share action
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/configure_four_project_export_buttons.py
 
-      - name: Add complete project ZIP sharing to Android Sharesheet
+      - name: Add complete project ZIP sharing directly to QQ with Android fallback
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
