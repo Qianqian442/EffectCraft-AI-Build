@@ -224,6 +224,7 @@ public final class AdminAccountVpnService extends VpnService {
     /** Called immediately before one Cloudflare account API operation. */
     public static synchronized String startForTask(Context context, String host, List<InetAddress> workers) {
         if (!isAllowedHost(host)) return "ERROR:账号 VPN 只允许配置的 workers.dev 账号服务器";
+        if (Thread.currentThread().isInterrupted()) return "ERROR:本次操作已取消";
         if (taskActive) return "OK";
 
         String stage = "读取本机加密的 WARP 设备身份";
@@ -241,7 +242,14 @@ public final class AdminAccountVpnService extends VpnService {
                 bundle = registered == null ? "" : registered.toString();
                 if (bundle.isEmpty()) return "ERROR:Cloudflare 没有返回 WARP 设备配置";
                 saveEncryptedBundle(context, bundle);
+                // Preserve the newly created encrypted identity even if the user
+                // cancelled while the direct Cloudflare registration was in flight.
+                if (Thread.currentThread().isInterrupted()) {
+                    return "ERROR:本次操作已取消；WARP 设备身份已安全保存，可重试而无需重复注册";
+                }
             }
+
+            if (Thread.currentThread().isInterrupted()) return "ERROR:本次操作已取消";
 
             // Android allows only one active VpnService per user/profile.
             // Complete first-time Cloudflare registration over the phone's
@@ -277,10 +285,19 @@ public final class AdminAccountVpnService extends VpnService {
 
             long deadline = System.currentTimeMillis() + 50000L;
             while (System.currentTimeMillis() < deadline) {
+                if (Thread.currentThread().isInterrupted()) {
+                    stopForTask(context);
+                    return "ERROR:本次操作已取消，Cloudflare VPN 已请求关闭";
+                }
                 if (taskActive) return "OK";
-                if (!lastError.isEmpty()) return "ERROR:" + lastError;
+                if (!lastError.isEmpty()) {
+                    String failure = lastError;
+                    stopForTask(context);
+                    return "ERROR:" + failure;
+                }
                 Thread.sleep(150L);
             }
+            stopForTask(context);
             return "ERROR:Cloudflare WARP 在 50 秒内未能建立 MASQUE 隧道";
         } catch (SecurityException denied) {
             return "VPN_PERMISSION_REQUIRED";
