@@ -399,8 +399,7 @@ pub(crate) fn account_http_request(
     })?;
 
     let status = response.status().as_u16();
-    let mut response_body = String::new();
-    response.body_mut().read_to_string(&mut response_body)
+    let response_body = response.body_mut().read_to_string()
         .map_err(|_| "Cloudflare 响应读取失败".to_string())?;
     let value = serde_json::from_str::<Value>(&response_body)
         .unwrap_or_else(|_| serde_json::json!({"detail": "服务器返回的数据格式无法识别"}));
@@ -408,7 +407,7 @@ pub(crate) fn account_http_request(
 }
 
 fn proxy_stream(candidate: &Candidate) -> io::Result<TcpStream> {
-    let mut stream = TcpStream::connect_timeout(&candidate.address, Duration::from_secs(4))?;
+    let stream = TcpStream::connect_timeout(&candidate.address, Duration::from_secs(4))?;
     stream.set_read_timeout(Some(Duration::from_secs(8)))?;
     stream.set_write_timeout(Some(Duration::from_secs(8)))?;
     stream.set_nodelay(true)?;
@@ -551,7 +550,7 @@ where
     let mut last_error = direct_error;
 
     for candidate in candidates {
-        let mut stream = match open_tunnel(&candidate, host, port) {
+        let stream = match open_tunnel(&candidate, host, port) {
             Ok(stream) => stream,
             Err(_) => {
                 mark_bad(&candidate);
