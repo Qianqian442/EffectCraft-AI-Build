@@ -212,6 +212,26 @@ jobs:
           mkdir -p admin-app/app/libs
           cp "$HEV_AAR" admin-app/app/libs/hev-socks5-tunnel.aar
 
+      - name: Verify Ae branding and task-scoped admin VPN source
+        shell: bash
+        run: |
+          set -euo pipefail
+          MANIFEST="admin-app/app/src/main/AndroidManifest.xml"
+          ACTIVITY="admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java"
+          VPN="admin-app/app/src/main/java/com/qianqian/effectcraftadmin/AdminAccountVpnService.java"
+          API="admin-app/app/src/main/java/com/qianqian/effectcraftadmin/CloudflareProxyPool.java"
+          grep -Fq 'android:label="Ae账号管理"' "$MANIFEST"
+          grep -Fq 'text("Ae账号管理"' "$ACTIVITY"
+          if grep -R -n 'AE账号管理' admin-app/app/src/main; then
+            echo "Branding must use Ae, not AE." >&2
+            exit 1
+          fi
+          grep -Fq 'extends VpnService' "$VPN"
+          grep -Fq 'AdminAccountVpnService.startForTask' "$API"
+          grep -Fq 'AdminAccountVpnService.stopForTask' "$API"
+          grep -Fq 'AdminAccountVpnService' "$MANIFEST"
+          echo "Verified exact Ae账号管理 branding and on-demand admin VpnService wiring."
+
       - name: Build admin APK
         env:
           AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL || 'https://ae-cloud-account-api.q1939023856.workers.dev' }}
