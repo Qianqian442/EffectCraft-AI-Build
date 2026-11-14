@@ -75,7 +75,18 @@ jobs:
           test -s ../termux-android-sdk-setup.patch
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
           echo "NDK=$NDK" >> "$GITHUB_ENV"
-          ./scripts/setup-android-sdk.sh
+          if ! ./scripts/setup-android-sdk.sh; then
+            echo "sdkmanager returned non-zero; verifying every required SDK component before deciding whether to stop."
+            . scripts/properties.sh
+            test -f "$ANDROID_HOME/platform-tools/source.properties"
+            test -f "$ANDROID_HOME/build-tools/$TERMUX_ANDROID_BUILD_TOOLS_VERSION/source.properties"
+            test -f "$ANDROID_HOME/build-tools/$TERMUX_ANDROID_BUILD_TOOLS_VERSION/aapt2"
+            test -f "$ANDROID_HOME/build-tools/$TERMUX_ANDROID_BUILD_TOOLS_VERSION/apksigner"
+            for api in 35 28 24; do
+              test -f "$ANDROID_HOME/platforms/android-$api/android.jar"
+            done
+            echo "All pinned SDK packages are present; continuing despite sdkmanager's post-install exit status."
+          fi
           test -x "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android-clang"
           "$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/clang" --version
 
