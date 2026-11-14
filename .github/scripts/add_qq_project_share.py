@@ -91,30 +91,48 @@ def patch_activity(builder: Path) -> None:
                 if (!shareDirectory.isDirectory() && !shareDirectory.mkdirs()) {
                     throw new IOException("无法创建 QQ 分享暂存目录。");
                 }
-                String safeName = source.getName().replaceAll("[^A-Za-z0-9._-]", "_");
-                File sharedCopy = new File(shareDirectory,
-                    System.currentTimeMillis() + "-" + safeName);
-                try (java.io.BufferedInputStream input =
-                         new java.io.BufferedInputStream(new java.io.FileInputStream(source));
-                     java.io.BufferedOutputStream output =
-                         new java.io.BufferedOutputStream(new java.io.FileOutputStream(sharedCopy))) {
-                    byte[] buffer = new byte[64 * 1024];
-                    int count;
-                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
-                }
 
                 String lower = source.getName().toLowerCase(java.util.Locale.ROOT);
-                String mime = lower.endsWith(".zip") ? "application/zip"
-                    : lower.endsWith(".xml") ? "application/xml"
-                    : "application/octet-stream";
+                File sharePayload;
+                String mime;
+                if (lower.endsWith(".ecproj")) {
+                    // A mobile EffectCraft export is a collected folder: the .ecproj plus
+                    // (Footage) with every copied source image/video/audio/sequence. ZIP the
+                    // whole directory so the receiver gets one self-contained import package.
+                    File projectRoot = source.getParentFile();
+                    if (projectRoot == null || !projectRoot.isDirectory()) {
+                        throw new IOException("手机版完整工程素材目录不存在。");
+                    }
+                    String safeRoot = projectRoot.getName().replaceAll("[^A-Za-z0-9._-]", "_");
+                    sharePayload = new File(shareDirectory,
+                        "EffectCraft-Mobile-Project-" + safeRoot + "-" + System.currentTimeMillis() + ".zip");
+                    zipProjectDirectory(projectRoot, sharePayload);
+                    mime = "application/zip";
+                } else {
+                    String safeName = source.getName().replaceAll("[^A-Za-z0-9._-]", "_");
+                    sharePayload = new File(shareDirectory,
+                        System.currentTimeMillis() + "-" + safeName);
+                    try (java.io.BufferedInputStream input =
+                             new java.io.BufferedInputStream(new java.io.FileInputStream(source));
+                         java.io.BufferedOutputStream output =
+                             new java.io.BufferedOutputStream(new java.io.FileOutputStream(sharePayload))) {
+                        byte[] buffer = new byte[64 * 1024];
+                        int count;
+                        while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                    }
+                    mime = lower.endsWith(".zip") ? "application/zip"
+                        : lower.endsWith(".xml") ? "application/xml"
+                        : "application/octet-stream";
+                }
+
                 Uri uri = FileProvider.getUriForFile(
-                    activity, activity.getPackageName() + ".effectcraft.files", sharedCopy);
+                    activity, activity.getPackageName() + ".effectcraft.files", sharePayload);
                 Intent send = new Intent(Intent.ACTION_SEND);
                 send.setType(mime);
                 send.putExtra(Intent.EXTRA_STREAM, uri);
-                send.putExtra(Intent.EXTRA_SUBJECT, source.getName());
+                send.putExtra(Intent.EXTRA_SUBJECT, sharePayload.getName());
                 send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-                send.setClipData(ClipData.newUri(activity.getContentResolver(), source.getName(), uri));
+                send.setClipData(ClipData.newUri(activity.getContentResolver(), sharePayload.getName(), uri));
 
                 // Try QQ first. If it is absent or refuses the particular project format,
                 // gracefully show Android's Sharesheet as a fallback.
@@ -134,9 +152,49 @@ def patch_activity(builder: Path) -> None:
                     }
                 });
             } catch (Exception error) {
-                Log.e(TAG, "Could not share the exported EffectCraft project.", error);
+                Log.e(TAG, "Could not package/share the exported EffectCraft project.", error);
+                activity.runOnUiThread(() -> android.widget.Toast.makeText(
+                    activity, "工程打包或分享失败：" + error.getMessage(), android.widget.Toast.LENGTH_LONG).show());
             }
         });
+    }
+
+    // Zip the collected project directory without following symlinks outside it.
+    private static void zipProjectDirectory(File root, File archive) throws IOException {
+        String rootPath = root.getCanonicalPath();
+        try (ZipOutputStream output = new ZipOutputStream(
+                new BufferedOutputStream(new FileOutputStream(archive)))) {
+            addProjectFiles(rootPath, root, output);
+        } catch (IOException error) {
+            try { archive.delete(); } catch (Exception ignored) {}
+            throw error;
+        }
+    }
+
+    private static void addProjectFiles(String rootPath, File directory, ZipOutputStream output) throws IOException {
+        File[] children = directory.listFiles();
+        if (children == null) throw new IOException("无法读取工程素材目录：" + directory.getName());
+        for (File child : children) {
+            String canonical = child.getCanonicalPath();
+            if (!canonical.equals(rootPath) && !canonical.startsWith(rootPath + File.separator)) {
+                continue;
+            }
+            if (child.isDirectory()) {
+                addProjectFiles(rootPath, child, output);
+            } else if (child.isFile()) {
+                String relative = canonical.substring(rootPath.length()).replace(File.separatorChar, '/');
+                while (relative.startsWith("/")) relative = relative.substring(1);
+                if (relative.isEmpty()) continue;
+                output.putNextEntry(new ZipEntry(relative));
+                try (java.io.BufferedInputStream input =
+                         new java.io.BufferedInputStream(new java.io.FileInputStream(child))) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                }
+                output.closeEntry();
+            }
+        }
     }
 '''
         source = once(source, anchor, anchor + bridge, "Android project share-sheet implementation")
@@ -196,8 +254,10 @@ def main() -> None:
     activity = path.read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_EXPORT_FILE_QQ_SHARE_V2" not in activity:
         raise SystemExit("The Android project share-sheet implementation is missing.")
-    print("Added direct sharing of the last exported project file through QQ.")
-    print("The share bridge sends the selected AEP, XML or ZIP file; it prefers QQ and falls back to Android Sharesheet.")
+    if "zipProjectDirectory(projectRoot, sharePayload)" not in activity or "addProjectFiles(rootPath, child, output)" not in activity:
+        raise SystemExit("The Android full mobile-project ZIP packager is missing.")
+    print("Added direct sharing of exported project files through QQ.")
+    print("For mobile .ecproj exports, the share bridge ZIPs the collected project and all (Footage) assets before sending.")
 
 
 if __name__ == "__main__":
