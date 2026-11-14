@@ -40,7 +40,7 @@ final class CloudflareProxyPool {
     private static final long DIRECT_TTL_MS = 60L * 1000L;
     private static final int MAX_CANDIDATES = 600;
     private static final int MAX_PER_FEED = 80;
-    private static final int MAX_TRIES = 8;
+    private static final int MAX_TRIES = 18;
     private static final int CONNECT_TIMEOUT_MS = 2200;
     private static final int READ_TIMEOUT_MS = 3500;
 
