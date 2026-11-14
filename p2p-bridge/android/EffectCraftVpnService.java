@@ -207,7 +207,8 @@ public final class EffectCraftVpnService extends VpnService {
                 && !(a == 172 && second >= 16 && second <= 31)
                 && !(a == 192 && second == 168)
                 && !(a == 192 && second == 0)
-                && !(a == 198 && (second == 18 || second == 19));
+                && !(a == 198 && (second == 18 || second == 19 || second == 51))
+                && !(a == 203 && second == 0 && (b[2] & 255) == 113);
         }
         if (address instanceof Inet6Address) {
             byte[] b = address.getAddress();
@@ -271,6 +272,7 @@ public final class EffectCraftVpnService extends VpnService {
                 if (ipText.isEmpty()) continue;
                 InetAddress ip = InetAddress.getByName(ipText);
                 if (!isPublicAddress(ip)) continue;
+                if (ip instanceof Inet6Address && ipv6.isEmpty()) continue;
                 builder.addRoute(ip, ip instanceof Inet4Address ? 32 : 128);
                 routes++;
             }
