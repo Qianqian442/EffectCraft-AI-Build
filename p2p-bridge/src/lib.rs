@@ -28,6 +28,8 @@ use libp2p::{
 use serde::{Deserialize, Serialize};
 use tokio::{sync::mpsc::{self, UnboundedReceiver, UnboundedSender}, time::{interval, MissedTickBehavior}};
 
+mod vpn_stream;
+
 const DHT_PROTOCOL: StreamProtocol = StreamProtocol::new("/ipfs/kad/1.0.0");
 const RELAY_HOP_PROTOCOL: StreamProtocol = StreamProtocol::new("/libp2p/circuit/relay/0.2.0/hop");
 const ACCOUNT_RPC_PROTOCOL: StreamProtocol = StreamProtocol::new("/effectcraft/account-api/1.0.0");
@@ -130,6 +132,7 @@ struct EffectCraftBehaviour {
     identify: identify::Behaviour,
     ping: ping::Behaviour,
     account_rpc: request_response::json::Behaviour<AccountRpcRequest, AccountRpcResponse>,
+    vpn_stream: libp2p_stream::Behaviour,
 }
 
 #[derive(Default)]
@@ -230,6 +233,7 @@ fn build_swarm(key: identity::Keypair, is_admin: bool) -> Result<Swarm<EffectCra
                     [(ACCOUNT_RPC_PROTOCOL, ProtocolSupport::Full)],
                     request_response::Config::default(),
                 ),
+                vpn_stream: libp2p_stream::Behaviour::new(),
             })
         })?
         .build();
@@ -393,6 +397,12 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
         }
     };
 
+    let mut vpn_control = swarm.behaviour().vpn_stream.new_control();
+    let mut incoming_vpn_streams = vpn_control
+        .accept(libp2p::StreamProtocol::new(vpn_stream::PROTOCOL_NAME))
+        .expect("VPN stream protocol is registered only once");
+    let vpn_stream_slots = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
+
     if let Err(error) = swarm.listen_on("/ip4/0.0.0.0/tcp/0".parse().expect("valid TCP multiaddr")) {
         set_snapshot(|state| state.last_error = format!("TCP listener: {error}"));
     }
@@ -422,6 +432,7 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
     let mut listener_peers: HashMap<ListenerId, PeerId> = HashMap::new();
     let mut failed_until: HashMap<PeerId, Instant> = HashMap::new();
     let mut admin_peers: Vec<PeerId> = Vec::new();
+    let mut vpn_clients: HashSet<PeerId> = HashSet::new();
     let mut deferred_rpc: VecDeque<(AccountRpcRequest, std_mpsc::Sender<Result<AccountRpcResponse, String>>)> = VecDeque::new();
     let mut pending_rpc: HashMap<request_response::OutboundRequestId, std_mpsc::Sender<Result<AccountRpcResponse, String>>> = HashMap::new();
 
@@ -465,6 +476,26 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                     }
                 }
             }
+            incoming_vpn = futures::StreamExt::next(&mut incoming_vpn_streams) => {
+                if let Some((peer_id, stream)) = incoming_vpn {
+                    if is_admin && vpn_clients.contains(&peer_id) {
+                        if let Ok(permit) = vpn_stream_slots.clone().try_acquire_owned() {
+                            tokio::spawn(async move {
+                                let _permit = permit;
+                                if let Err(error) = vpn_stream::serve_admin_stream(stream).await {
+                                    set_snapshot(|state| {
+                                        state.last_error = format!("account VPN stream ended: {error}");
+                                    });
+                                }
+                            });
+                        } else {
+                            set_snapshot(|state| {
+                                state.last_error = "account VPN stream limit reached".to_string();
+                            });
+                        }
+                    }
+                }
+            }
             event = futures::StreamExt::next(&mut swarm) => {
                 let Some(event) = event else { break };
                 match event {
@@ -497,6 +528,11 @@ async fn run_node(key: identity::Keypair, is_admin: bool, mut commands: Unbounde
                         }
                     }
                     SwarmEvent::Behaviour(EffectCraftBehaviourEvent::Identify(identify::Event::Received { peer_id, info, .. })) => {
+                        if is_admin && info.agent_version == CLIENT_AGENT_VERSION {
+                            // Noise authenticates the peer key; this session marker
+                            // only permits EffectCraft client peers to request egress.
+                            vpn_clients.insert(peer_id);
+                        }
                         for address in &info.listen_addrs {
                             swarm.behaviour_mut().kad.add_address(&peer_id, address.clone());
                         }
