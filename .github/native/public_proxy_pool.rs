@@ -714,7 +714,7 @@ mod tests {
         let resolver = WorkerDnsResolver::new("ae-cloud-account-api.example.workers.dev", &pinned);
         let uri: ureq::http::Uri = "https://ae-cloud-account-api.example.workers.dev/v1/login".parse().unwrap();
         let resolved = resolver.resolve(&uri, &Config::default(), NextTimeout::default()).unwrap();
-        assert_eq!(resolved.as_slice(), &[pinned[0]]);
+        assert_eq!(&*resolved, &[pinned[0]]);
     }
 
     #[test]
