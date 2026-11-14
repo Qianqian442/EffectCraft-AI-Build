@@ -63,10 +63,10 @@ def main() -> None:
                 export_capcut = true;
             }
             ui.small("以上四个按钮分别生成对应软件的工程格式；目标软件不支持的项目内容会在导出报告中说明。");
-            if ui.button("打包并分享工程").clicked() {
+            if ui.button("打包并分享到QQ").clicked() {
                 share_project_package = true;
             }
-            ui.small("自动收集工程文件和引用素材，再打开手机系统分享面板。");"""
+            ui.small("自动收集工程文件和引用素材，优先发送到QQ；未安装QQ时提供系统分享方式。");"""
     source = replace_once(source, old_buttons, new_buttons, "four project export buttons and share action")
 
     old_project_actions = """    if collect_project_files {
