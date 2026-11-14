@@ -12,30 +12,12 @@ import urllib.request
 from pathlib import Path
 
 FEEDS = [
-    # Maintained feed with typed entries (http:// / socks5:// prefixes).
+    # Mainland China-only candidates; overseas and global proxy lists are intentionally excluded.
     ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/cn.txt", "http"),
-    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/hk.txt", "http"),
-    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/jp.txt", "http"),
-    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/sg.txt", "http"),
-    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/https.txt", "http"),
-    ("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/socks5.txt", "socks5"),
-    # Second independent maintained source: unprefixed endpoints, typed by file.
+    # Independent mainland-China-only source; protocol is encoded by each file path.
     ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/http.txt", "http"),
     ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/https.txt", "http"),
     ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/socks5.txt", "socks5"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/http.txt", "http"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/https.txt", "http"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/socks5.txt", "socks5"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/http.txt", "http"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/https.txt", "http"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/socks5.txt", "socks5"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/http.txt", "http"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/https.txt", "http"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/socks5.txt", "socks5"),
-    # Additional general pools as fallback.
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/http.txt", "http"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/https.txt", "http"),
-    ("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/socks5.txt", "socks5"),
 ]
 MAX_BODY = 1_000_000
 MAX_ENTRIES = 600
