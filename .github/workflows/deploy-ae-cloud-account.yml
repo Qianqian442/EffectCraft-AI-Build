@@ -63,7 +63,7 @@ jobs:
 
       - name: Apply account database schema
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '6ed9bd81b9aef69ba61060f33510f014' }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
@@ -81,7 +81,7 @@ jobs:
       - name: Deploy Worker
         id: deploy_worker
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '6ed9bd81b9aef69ba61060f33510f014' }}
         run: |
           set -euo pipefail
           LOG_FILE="$RUNNER_TEMP/ae-worker-deploy.log"
@@ -96,7 +96,7 @@ jobs:
 
       - name: Configure Worker runtime secrets
         env:
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || '6ed9bd81b9aef69ba61060f33510f014' }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
         run: |
