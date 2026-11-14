@@ -135,6 +135,8 @@ jobs:
         working-directory: termux-packages
         run: |
           set -euo pipefail
+          sudo install -d -o "$USER" -g "$USER" /data
+          printf 'aarch64\\n' > /data/TERMUX_ARCH
           ./build-package.sh -a aarch64 -i -j 2 hangover-wine
           ./build-package.sh -a aarch64 -i -j 2 termux-exec
 
