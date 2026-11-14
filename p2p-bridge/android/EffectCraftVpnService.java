@@ -208,20 +208,20 @@ public final class EffectCraftVpnService extends VpnService {
             String host = intent.getStringExtra("worker_host");
             String secret = intent.getStringExtra("socks_secret");
             if (startThread == null || !startThread.isAlive()) {
-                startThread = new Thread(() -> startTunnel(host, secret), "EffectCraft-VPN-start");
+                startThread = new Thread(() -> startTunnel(host, secret, intent.getStringExtra("worker_ips")), "EffectCraft-VPN-start");
                 startThread.start();
             }
         }
         return START_NOT_STICKY;
     }
 
-    private void startTunnel(String host, String secret) {
+    private void startTunnel(String host, String secret, String ipCsv) {
         try {
             if (!isAllowedHost(host) || secret == null || secret.length() != 64) {
                 throw new IllegalArgumentException("VPN task configuration is invalid");
             }
 
-            String[] addresses = getIntentWorkerAddresses(host);
+            String[] addresses = ipCsv == null ? new String[0] : ipCsv.split(",");
             Builder builder = new Builder()
                 .setSession("EffectCraft account task")
                 .setMtu(1400)
@@ -283,16 +283,6 @@ public final class EffectCraftVpnService extends VpnService {
             stopForeground(true);
             stopSelf();
         }
-    }
-
-    private String[] getIntentWorkerAddresses(String host) throws Exception {
-        String[] addresses = getSharedPreferences("effectcraft-vpn", MODE_PRIVATE)
-            .getString("worker_ips", "").split(",");
-        // The command bridge stores the current task IP list before starting the service.
-        if (addresses.length == 0 || addresses[0].isEmpty()) {
-            throw new IllegalStateException("Worker IP list was not provided");
-        }
-        return addresses;
     }
 
     private void stopTunnel() {
