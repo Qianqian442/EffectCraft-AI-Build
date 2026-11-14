@@ -66,16 +66,25 @@ struct Feed {
 }
 
 const FEEDS: &[Feed] = &[
+    // Mainland, nearby Asian regions first. Country files use type://ip:port.
+    Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/cn.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://proxy-scraper.de/country/cn/proxies.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/countries/cn.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/hk.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://proxy-scraper.de/country/hk/proxies.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/countries/hk.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/jp.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://proxy-scraper.de/country/jp/proxies.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/sg.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://proxy-scraper.de/country/sg/proxies.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    // Lists whose HTTPS TLS was checked by the feed maintainer.
     Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/https.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
-    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/https.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
     Feed { url: "https://proxy-scraper.de/https.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
+    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/https.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
     Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
-    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
     Feed { url: "https://proxy-scraper.de/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
-    Feed { url: "https://raw.githubusercontent.com/hproxy-com/free-proxy-list/main/https.txt", default_protocol: Protocol::HttpConnect, prefixed: false },
-    Feed { url: "https://raw.githubusercontent.com/hproxy-com/free-proxy-list/main/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
-    Feed { url: "https://raw.githubusercontent.com/monosans/proxy-list/main/proxies/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
-    Feed { url: "https://raw.githubusercontent.com/ProxyScrape/free-proxy-list/main/proxies/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
+    Feed { url: "https://cdn.jsdelivr.net/gh/maximilianfeix/free-proxy-list@main/socks5.txt", default_protocol: Protocol::Socks5, prefixed: false },
+    Feed { url: "https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/stable.txt", default_protocol: Protocol::HttpConnect, prefixed: true },
 ];
 
 #[derive(Default)]
@@ -161,7 +170,7 @@ fn fetch_feed(feed: &Feed, deadline: Instant) -> Vec<Candidate> {
         return Vec::new();
     }
     let remaining = deadline.saturating_duration_since(Instant::now());
-    let timeout = Duration::from_secs(3).min(remaining);
+    let timeout = Duration::from_millis(2500).min(remaining);
     let Ok(agent) = make_agent(None, timeout) else { return Vec::new(); };
     let Ok(mut response) = agent.get(feed.url).call() else { return Vec::new(); };
     if response.status().as_u16() != 200 {
@@ -185,7 +194,22 @@ fn refresh_pool() {
         return;
     }
 
-    let deadline = Instant::now() + Duration::from_secs(13);
+    // A build-time snapshot gives the first boot a candidate pool even when
+    // GitHub/JSDelivr list hosts are blocked on the user's carrier network.
+    {
+        let mut state = pool();
+        if state.candidates.is_empty() {
+            let mut seen = HashSet::new();
+            state.candidates = include_str!("public_proxy_bootstrap.txt")
+                .lines()
+                .filter_map(|line| parse_line(line, Protocol::HttpConnect, true))
+                .filter(|candidate| seen.insert(candidate.key()))
+                .take(MAX_POOL_SIZE)
+                .collect();
+        }
+    }
+
+    let deadline = Instant::now() + Duration::from_secs(20);
     let mut candidates = Vec::new();
     let mut seen = HashSet::new();
     for feed in FEEDS {
@@ -204,12 +228,21 @@ fn refresh_pool() {
 
     let mut state = pool();
     if !candidates.is_empty() {
-        state.candidates = candidates;
-        state.fetched_at = Some(Instant::now());
-    } else if state.fetched_at.is_none() {
-        // Avoid repeatedly downloading unavailable feeds on every account request.
-        state.fetched_at = Some(Instant::now());
+        let mut merged = Vec::new();
+        let mut merged_keys = HashSet::new();
+        for candidate in state.candidates.drain(..).chain(candidates.into_iter()) {
+            if merged_keys.insert(candidate.key()) {
+                merged.push(candidate);
+            }
+            if merged.len() >= MAX_POOL_SIZE {
+                break;
+            }
+        }
+        state.candidates = merged;
     }
+    // Refresh the timestamp even when feeds are unreachable. Preserve the last
+    // known list and retry later instead of hammering public feed hosts per login.
+    state.fetched_at = Some(Instant::now());
 }
 
 fn candidates_snapshot() -> Vec<Candidate> {
@@ -436,8 +469,9 @@ fn open_tunnel(candidate: &Candidate, host: &str, port: u16) -> io::Result<TcpSt
     Ok(stream)
 }
 
-fn websocket_candidate(base_url: &str) -> Option<Candidate> {
+fn websocket_candidates(base_url: &str) -> Vec<Candidate> {
     let deadline = Instant::now() + MAX_SCAN_TIME;
+    let mut healthy = Vec::new();
     for candidate in candidates_snapshot().into_iter().take(MAX_TEST_COUNT) {
         if Instant::now() >= deadline {
             break;
@@ -448,15 +482,16 @@ fn websocket_candidate(base_url: &str) -> Option<Candidate> {
         };
         if healthy_worker(&agent, base_url) {
             mark_good(&candidate);
-            return Some(candidate);
+            healthy.push(candidate);
+        } else {
+            mark_bad(&candidate);
         }
-        mark_bad(&candidate);
     }
-    None
+    healthy
 }
 
-/// Direct WSS first; then a verified HTTP CONNECT or SOCKS5 tunnel.
-/// TLS certificate/hostname checks are never disabled.
+/// Direct WSS first; then retry multiple verified HTTP CONNECT / SOCKS5 tunnels.
+/// The TLS hostname and certificate checks remain enabled for every attempt.
 pub(crate) fn connect_websocket<R>(
     request: R,
 ) -> Result<(WebSocket<MaybeTlsStream<TcpStream>>, Response), WebSocketError>
@@ -466,6 +501,9 @@ where
     let request = request.into_client_request()?;
     let direct_error = match tungstenite::connect(request.clone()) {
         Ok(connection) => return Ok(connection),
+        Err(error @ WebSocketError::Http(ref response)) if response.status().as_u16() == 401 => {
+            return Err(error);
+        }
         Err(error) => error,
     };
 
@@ -474,34 +512,60 @@ where
     })?;
     let port = request.uri().port_u16().unwrap_or(443);
     let base_url = format!("https://{host}");
-    let Some(candidate) = websocket_candidate(&base_url) else {
-        return Err(direct_error);
-    };
+    let candidates = websocket_candidates(&base_url);
+    let mut last_error = direct_error;
 
-    let stream = match open_tunnel(&candidate, host, port) {
-        Ok(stream) => stream,
-        Err(_) => {
+    for candidate in candidates {
+        let mut stream = match open_tunnel(&candidate, host, port) {
+            Ok(stream) => stream,
+            Err(_) => {
+                mark_bad(&candidate);
+                continue;
+            }
+        };
+        if stream.set_read_timeout(Some(Duration::from_secs(12))).is_err()
+            || stream.set_write_timeout(Some(Duration::from_secs(12))).is_err()
+        {
             mark_bad(&candidate);
-            return Err(direct_error);
+            continue;
         }
-    };
-    match tungstenite::client_tls_with_config(request, stream, None, None) {
-        Ok(connection) => {
-            mark_good(&candidate);
-            Ok(connection)
-        }
-        Err(tungstenite::HandshakeError::Failure(error)) => {
-            mark_bad(&candidate);
-            Err(error)
-        }
-        Err(tungstenite::HandshakeError::Interrupted(_)) => {
-            mark_bad(&candidate);
-            Err(WebSocketError::Io(io::Error::new(
-                io::ErrorKind::Other,
-                "WSS 代理握手未完成",
-            )))
+
+        match tungstenite::client_tls_with_config(request.clone(), stream, None, None) {
+            Ok((mut websocket, response)) => {
+                // The 12-second socket timeout is for the TLS/WebSocket handshake
+                // only. A long-lived WSS listener must not be killed while idle.
+                match websocket.get_mut() {
+                    MaybeTlsStream::Rustls(tls) => {
+                        let _ = tls.sock.set_read_timeout(None);
+                        let _ = tls.sock.set_write_timeout(Some(Duration::from_secs(30)));
+                    }
+                    MaybeTlsStream::Plain(socket) => {
+                        let _ = socket.set_read_timeout(None);
+                        let _ = socket.set_write_timeout(Some(Duration::from_secs(30)));
+                    }
+                    _ => {}
+                }
+                mark_good(&candidate);
+                return Ok((websocket, response));
+            }
+            Err(tungstenite::HandshakeError::Failure(error)) => {
+                if matches!(&error, WebSocketError::Http(response) if response.status().as_u16() == 401) {
+                    return Err(error);
+                }
+                last_error = error;
+                mark_bad(&candidate);
+            }
+            Err(tungstenite::HandshakeError::Interrupted(_)) => {
+                last_error = WebSocketError::Io(io::Error::new(
+                    io::ErrorKind::Other,
+                    "WSS 代理握手未完成",
+                ));
+                mark_bad(&candidate);
+            }
         }
     }
+
+    Err(last_error)
 }
 
 #[cfg(test)]
