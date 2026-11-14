@@ -63,7 +63,7 @@ def main() -> None:
             if ui.button("Ae 工程导出（.aep）").clicked() {
                 export_aep = true;
             }
-            if ui.button("Ae 手机版完整工程导出（含素材）").clicked() {
+            if ui.button("EffectCraft 手机版完整工程导出（含素材）").clicked() {
                 export_mobile_effectcraft_project = true;
             }
             if ui.button("AM 工程导出（.xml）").clicked() {
@@ -75,7 +75,7 @@ def main() -> None:
             if ui.button("CapCut 工程导出（.zip）").clicked() {
                 export_capcut = true;
             }
-            ui.small("电脑版 After Effects 使用 .aep；手机版完整工程会收集 .ecproj、图片、视频、音频和序列素材。");
+            ui.small("电脑版 After Effects 使用 .aep；EffectCraft 手机版完整工程会收集 .ecproj、图片、视频、音频和序列素材。");
             ui.small("完整工程分享时自动压缩成 ZIP；接收方在文件→导入中选择 ZIP 即可导入。");
             ui.small("AM、NV、CapCut 分别导出；不支持转换的项目内容会在导出报告中说明。");
             if let Some(path) = last_exported_path.as_ref() {
@@ -129,7 +129,7 @@ def main() -> None:
         }
     }
 """
-    source = replace_once(source, aep_anchor, aep_addition + mobile_addition + aep_anchor, "desktop and mobile Ae project export command dispatch")
+    source = replace_once(source, aep_anchor, aep_addition + mobile_addition + aep_anchor, "desktop Ae and mobile EffectCraft project export command dispatch")
 
     for variable, command, label in [
         ("export_alight_motion", "file.exportAlightMotion", "AM"),
@@ -186,7 +186,7 @@ def main() -> None:
 
     if source.count('ui.button("Ae 工程导出（.aep）")') != 1:
         raise SystemExit("Desktop Ae project export button was not installed exactly once")
-    if source.count('ui.button("Ae 手机版完整工程导出（含素材）")') != 1:
+    if source.count('ui.button("EffectCraft 手机版完整工程导出（含素材）")') != 1:
         raise SystemExit("Complete mobile EffectCraft project export button was not installed exactly once")
     for label in ["AM 工程导出（.xml）", "NV 工程导出（.zip）", "CapCut 工程导出（.zip）"]:
         if source.count(f'ui.button("{label}")') != 1:
@@ -234,7 +234,7 @@ def main() -> None:
         "abort complete export before copying if any source media is missing",
     )
     write_anchor = "    s.write_output_with(&protected, &out, proj.to_json().as_bytes())?;"
-    write_event = write_anchor + '\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": out, "format": "Ae 手机版完整工程（含素材）"}) });'
+    write_event = write_anchor + '\n    s.events.push(crate::Event::Frontend { command: "effectcraft.projectExported".into(), params: json!({"path": out, "format": "EffectCraft 手机版完整工程（含素材）"}) });'
     if write_event not in engine_source:
         if engine_source.count(write_anchor) != 1:
             raise SystemExit("Could not safely add the complete mobile project export success event")
