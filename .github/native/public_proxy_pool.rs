@@ -94,6 +94,7 @@ struct PoolState {
     last_good: Option<Candidate>,
     last_good_at: Option<Instant>,
     failed_until: HashMap<String, Instant>,
+    refreshing: bool,
 }
 
 static POOL: OnceLock<Mutex<PoolState>> = OnceLock::new();
@@ -186,63 +187,68 @@ fn fetch_feed(feed: &Feed, deadline: Instant) -> Vec<Candidate> {
 }
 
 fn refresh_pool() {
-    let refresh_needed = {
-        let state = pool();
-        state.fetched_at.map_or(true, |at| at.elapsed() >= FEED_REFRESH)
+    let should_refresh = {
+        let mut state = pool();
+        if state.fetched_at.is_some_and(|at| at.elapsed() < FEED_REFRESH) || state.refreshing {
+            false
+        } else {
+            // Use the packaged snapshot immediately on first boot.
+            if state.candidates.is_empty() {
+                let mut seen = HashSet::new();
+                state.candidates = include_str!("public_proxy_bootstrap.txt")
+                    .lines()
+                    .filter_map(|line| parse_line(line, Protocol::HttpConnect, true))
+                    .filter(|candidate| seen.insert(candidate.key()))
+                    .take(MAX_POOL_SIZE)
+                    .collect();
+            }
+            state.refreshing = true;
+            state.fetched_at = Some(Instant::now());
+            true
+        }
     };
-    if !refresh_needed {
+    if !should_refresh {
         return;
     }
 
-    // A build-time snapshot gives the first boot a candidate pool even when
-    // GitHub/JSDelivr list hosts are blocked on the user's carrier network.
-    {
+    // Refresh feeds away from the login/request thread. Existing packaged or
+    // last-known candidates remain available while this refresh runs.
+    std::thread::spawn(|| {
+        let deadline = Instant::now() + Duration::from_secs(20);
+        let mut candidates = Vec::new();
+        let mut seen = HashSet::new();
+
+        for feed in FEEDS {
+            if Instant::now() >= deadline || candidates.len() >= MAX_POOL_SIZE {
+                break;
+            }
+            for candidate in fetch_feed(feed, deadline) {
+                if seen.insert(candidate.key()) {
+                    candidates.push(candidate);
+                }
+                if candidates.len() >= MAX_POOL_SIZE {
+                    break;
+                }
+            }
+        }
+
         let mut state = pool();
-        if state.candidates.is_empty() {
-            let mut seen = HashSet::new();
-            state.candidates = include_str!("public_proxy_bootstrap.txt")
-                .lines()
-                .filter_map(|line| parse_line(line, Protocol::HttpConnect, true))
-                .filter(|candidate| seen.insert(candidate.key()))
-                .take(MAX_POOL_SIZE)
-                .collect();
-        }
-    }
-
-    let deadline = Instant::now() + Duration::from_secs(20);
-    let mut candidates = Vec::new();
-    let mut seen = HashSet::new();
-    for feed in FEEDS {
-        if Instant::now() >= deadline || candidates.len() >= MAX_POOL_SIZE {
-            break;
-        }
-        for candidate in fetch_feed(feed, deadline) {
-            if seen.insert(candidate.key()) {
-                candidates.push(candidate);
+        if !candidates.is_empty() {
+            let mut merged = Vec::new();
+            let mut merged_keys = HashSet::new();
+            for candidate in state.candidates.drain(..).chain(candidates.into_iter()) {
+                if merged_keys.insert(candidate.key()) {
+                    merged.push(candidate);
+                }
+                if merged.len() >= MAX_POOL_SIZE {
+                    break;
+                }
             }
-            if candidates.len() >= MAX_POOL_SIZE {
-                break;
-            }
+            state.candidates = merged;
         }
-    }
-
-    let mut state = pool();
-    if !candidates.is_empty() {
-        let mut merged = Vec::new();
-        let mut merged_keys = HashSet::new();
-        for candidate in state.candidates.drain(..).chain(candidates.into_iter()) {
-            if merged_keys.insert(candidate.key()) {
-                merged.push(candidate);
-            }
-            if merged.len() >= MAX_POOL_SIZE {
-                break;
-            }
-        }
-        state.candidates = merged;
-    }
-    // Refresh the timestamp even when feeds are unreachable. Preserve the last
-    // known list and retry later instead of hammering public feed hosts per login.
-    state.fetched_at = Some(Instant::now());
+        state.fetched_at = Some(Instant::now());
+        state.refreshing = false;
+    });
 }
 
 fn candidates_snapshot() -> Vec<Candidate> {
