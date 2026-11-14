@@ -19,7 +19,7 @@ import (
 
 const (
 	cloudflareH2RangePrefix = "162.159.198."
-	scannerMaxCandidates   = 48
+	scannerMaxCandidates   = 32
 	scannerMaxWorkers      = 8
 	scannerMaxResults      = 4
 	scannerProbeTimeout    = 2200 * time.Millisecond
