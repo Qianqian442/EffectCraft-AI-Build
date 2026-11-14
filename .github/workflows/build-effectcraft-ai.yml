@@ -711,6 +711,13 @@ jobs:
           grep -Fq 'callWarp("setScannerStorage"' build-assets/p2p-bridge/android/EffectCraftVpnService.java
           grep -Fq 'private static String scannerNetworkIdentity(Context context)' build-assets/p2p-bridge/android/EffectCraftVpnService.java
           grep -Fq 'android.permission.ACCESS_NETWORK_STATE' build-assets/.github/scripts/integrate_on_demand_vpn.py
+          grep -Fq 'func configureDirectRegistrationClient()' build-assets/warp-mobile/mobile.go
+          grep -Fq 'Proxy:                 nil' build-assets/warp-mobile/mobile.go
+          grep -Fq 'Timeout: 15 * time.Second' build-assets/warp-mobile/mobile.go
+          grep -Fq 'registrationMu.Lock()' build-assets/warp-mobile/mobile.go
+          grep -Fq 'attemptTimer := time.AfterFunc(6*time.Second, attemptCancel)' build-assets/.github/scripts/patch_usque_for_android.py
+          grep -Fq 'var proxyURL *url.URL // Direct Cloudflare underlay only; no proxy or relay.' build-assets/.github/scripts/patch_usque_for_android.py
+          grep -Fq 'Timeout: 5 * time.Second, KeepAlive: 15 * time.Second' build-assets/.github/scripts/patch_usque_for_android.py
 
       - name: Install cargo-ndk
         shell: bash
