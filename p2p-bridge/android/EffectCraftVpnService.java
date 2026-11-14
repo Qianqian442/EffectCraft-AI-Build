@@ -107,6 +107,7 @@ public final class EffectCraftVpnService extends VpnService {
             String config = NativeP2P.configureVpnProxy(host, csv.toString(), secret.toString());
             if (config == null || !config.equals("OK")) return "ERROR:" + config;
 
+            lastError = "";
             Intent intent = new Intent(context, EffectCraftVpnService.class)
                 .setAction(ACTION_START)
                 .putExtra("worker_host", host)
