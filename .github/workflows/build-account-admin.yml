@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'admin-app/**'
+      - '.github/scripts/fetch_public_proxy_bootstrap.py'
       - 'p2p-bridge/**'
       - '.github/workflows/build-account-admin.yml'
   pull_request:
@@ -119,6 +120,18 @@ jobs:
           test -s "$HOME/.android/debug.keystore"
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
           echo "Persistent admin APK signing key is ready."
+
+      - name: Add public proxy bootstrap snapshot for Cloudflare admin mode
+        if: ${{ vars.AE_ACCOUNT_API_URL != '' }}
+        env:
+          AE_ACCOUNT_API_URL: ${{ vars.AE_ACCOUNT_API_URL }}
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/fetch_public_proxy_bootstrap.py
+          mkdir -p admin-app/app/src/main/assets
+          python3 .github/scripts/fetch_public_proxy_bootstrap.py --output admin-app/app/src/main/assets/public-proxy-bootstrap.txt
+          test -s admin-app/app/src/main/assets/public-proxy-bootstrap.txt
+          echo "Packed $(wc -l < admin-app/app/src/main/assets/public-proxy-bootstrap.txt) proxy candidates for the admin APK."
 
       - name: Build admin APK
         env:
