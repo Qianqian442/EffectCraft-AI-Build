@@ -72,6 +72,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        AdminAccountVpnService.attachActivity(this);
         boolean cloudMode = CloudflareProxyPool.isCloudflareUrl(BuildConfig.ACCOUNT_API_URL);
         firstAdminPassword = cloudMode ? null : LanAccountServer.ensureAdminPassword(this);
         if (!cloudMode && isNodeServerEnabled()) {
@@ -463,7 +464,7 @@ public final class MainActivity extends Activity {
                 JSONObject parsed;
                 if (isCloudflareMode()) {
                     CloudflareProxyPool.ApiResponse response = CloudflareProxyPool.request(
-                        getApplicationContext(), server, method, path, body, auth ? adminToken : ""
+                        this, server, method, path, body, auth ? adminToken : ""
                     );
                     code = response.status;
                     parsed = response.body;
@@ -806,6 +807,13 @@ public final class MainActivity extends Activity {
 
     private void toast(String message) {
         Toast.makeText(this, message, Toast.LENGTH_LONG).show();
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == AdminAccountVpnService.PERMISSION_REQUEST_CODE) {
+            AdminAccountVpnService.onPermissionResult(resultCode);
+        }
     }
 
     @Override protected void onDestroy() {
