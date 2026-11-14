@@ -36,6 +36,7 @@ on:
       - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/integrate_public_proxy_pool.py'
       - '.github/scripts/fetch_public_proxy_bootstrap.py'
+      - '.github/scripts/validate_public_proxy_pool.sh'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
@@ -603,6 +604,12 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android, wasm32-unknown-unknown
+
+      - name: Compile and test public proxy pool in isolation
+        env:
+          BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
+          RUNNER_TEMP: ${{ runner.temp }}
+        run: bash build-assets/.github/scripts/validate_public_proxy_pool.sh
 
       - name: Build built-in Sapphire-compatible WASM effects
         env:
