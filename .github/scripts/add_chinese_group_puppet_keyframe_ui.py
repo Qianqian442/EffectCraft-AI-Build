@@ -430,6 +430,8 @@ fn sync_project_file_to_timeline(app: &mut EffectcraftApp) {
         };
     app.session.state.selected_layers = selected_layers;
     app.session.state.selected_props = selected_props;
+    app.session.state.selected_keys.clear();
+    app.session.state.selected_vertices.clear();
 }'''
     source = replace_once(source, old, new, "Project file click to timeline and curve selection")
     path.write_text(source, encoding="utf-8")
