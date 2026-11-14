@@ -1060,20 +1060,3 @@ pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeClearVpnPro
 ) {
     vpn_proxy::clear_worker_config();
 }
-#[no_mangle]
-pub extern "system" fn Java_com_artcraft_effectcraft_NativeP2P_nativeSetVpnControlToken(
-    mut env: JNIEnv,
-    _class: JClass,
-    token: JString,
-) {
-    let token = match env.get_string(&token) {
-        Ok(value) => value.to_string_lossy().into_owned(),
-        Err(error) => {
-            set_snapshot(|state| state.last_error = format!("VPN control token read failed: {error}"));
-            return;
-        }
-    };
-    if let Err(error) = vpn_proxy::set_vpn_control_token(&token) {
-        set_snapshot(|state| state.last_error = error);
-    }
-}
