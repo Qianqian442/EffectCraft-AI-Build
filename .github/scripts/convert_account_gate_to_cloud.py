@@ -138,6 +138,18 @@ def main() -> None:
         'ui.button("重新检测连接")',
     )
     source = source.replace(
+        'if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新检测连接")).clicked() {\n'
+        '                app.account.retry(config);\n'
+        '            }',
+        'if app.account.status.contains("云端账号服务器已由管理员关闭") {\n'
+        '                if ui.button("OK").clicked() {\n'
+        '                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);\n'
+        '                }\n'
+        '            } else if ui.add_enabled(app.account.pending.is_none(), egui::Button::new("重新检测连接")).clicked() {\n'
+        '                app.account.retry(config);\n'
+        '            }',
+    )
+    source = source.replace(
         '                        self.last_verified = Some(std::time::Instant::now());\n',
         "",
     )
