@@ -36,7 +36,7 @@ def main() -> None:
     lib = lib_path.read_text(encoding="utf-8")
     if "EFFECTCRAFT_CLOUDFLARE_ACCOUNT_GATE_V1" not in account:
         raise SystemExit("Cloudflare account conversion must run before public proxy integration")
-    if MARKER in account and "public_proxy_pool.rs" in lib:
+    if MARKER in account and "mod public_proxy_pool;" in lib:
         print("Public proxy pool is already integrated.")
         return
 
