@@ -96,6 +96,11 @@ func RegisterDevice() (string, error) {
 	endpointSet := make([]string, 0, 16)
 	seen := make(map[string]bool)
 	for _, peer := range enrolled.Config.Peers {
+		// The TLS pin belongs to the selected MASQUE peer key. Never rotate to
+		// an endpoint advertising a different public key without its own pin.
+		if peer.PublicKey != firstPeer.PublicKey {
+			continue
+		}
 		ips := make([]net.IP, 0, 2)
 		if ip, ipErr := endpointIP(peer.Endpoint.V4); ipErr == nil {
 			ips = append(ips, ip)
