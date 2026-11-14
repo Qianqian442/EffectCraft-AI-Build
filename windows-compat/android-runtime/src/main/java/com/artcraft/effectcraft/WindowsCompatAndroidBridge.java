@@ -67,7 +67,10 @@ public final class WindowsCompatAndroidBridge {
         applicationContext = app;
         try {
             Path root = app.getFilesDir().toPath().resolve("windows-compat");
-            runtimeManager = new WinlatorBionicRuntimeManager(root, RuntimeAssetInstaller.httpFetcher());
+            Path execBridge = Paths.get(app.getApplicationInfo().nativeLibraryDir)
+                    .resolve("libeffectcraft-exec.so");
+            runtimeManager = new WinlatorBionicRuntimeManager(
+                    root, RuntimeAssetInstaller.httpFetcher(), execBridge);
             Log.i(TAG, "Windows compatibility runtime bridge initialized in app-private storage.");
         } catch (IOException error) {
             runtimeManager = null;
