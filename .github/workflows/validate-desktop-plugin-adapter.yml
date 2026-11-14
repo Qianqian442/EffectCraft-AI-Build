@@ -174,7 +174,7 @@ jobs:
           grep -F 'qqSend.setPackage("com.tencent.mobileqq")' artcraft/templates/android/SafActivity.java
           grep -F '分享到QQ或其他应用' artcraft/templates/android/SafActivity.java
           grep -F 'share_exported_project' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
-          grep -F 'Ae 手机版完整工程导出（含素材）' artcraft/source/effectcraft/crates/ui-egui/src/header.rs
+          grep -F 'EffectCraft 手机版完整工程导出（含素材）' artcraft/source/effectcraft/crates/ui-egui/src/header.rs
           grep -F 'let mut errors: Vec<String> = Vec::new();' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
           grep -F 'pairs.push((src.clone(), dst, relative));' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
           grep -F 'new_paths.push(relative.clone());' artcraft/source/effectcraft/crates/engine/src/cmd/file_more.rs
