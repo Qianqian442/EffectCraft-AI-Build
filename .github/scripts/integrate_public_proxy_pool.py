@@ -96,7 +96,7 @@ def main() -> None:
     if bootstrap_destination.stat().st_size == 0:
         raise SystemExit("Public proxy bootstrap snapshot is empty")
     print("Integrated dynamic public proxy candidates for HTTPS and WSS Cloudflare account traffic.")
-    print("Direct HTTPS remains preferred; only real Worker health-checked HTTP CONNECT/SOCKS5 routes are used.")
+    print("Direct HTTPS remains preferred; candidate routes are transport-probed without Worker health requests.")
     print("TLS certificate verification remains enabled; account POST operations are never blindly replayed.")
 
 
