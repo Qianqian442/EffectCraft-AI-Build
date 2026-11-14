@@ -5,12 +5,15 @@ import android.content.Context;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.Inet4Address;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
+import java.net.Socket;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -197,10 +200,10 @@ final class CloudflareProxyPool {
             }
         }
 
-        boolean directOk = false;
-        try {
-            directOk = workerHealthy(baseUrl, Proxy.NO_PROXY);
-        } catch (Exception ignored) {}
+        // Probe only TCP / proxy CONNECT reachability here. Do not call Worker
+        // /health per candidate: the actual account API request below is the one
+        // and only Cloudflare Worker invocation for this operation.
+        boolean directOk = directTransportAvailable(baseUrl, 443);
         synchronized (LOCK) {
             directCheckedAt = System.currentTimeMillis();
             directHealthy = directOk;
@@ -212,11 +215,7 @@ final class CloudflareProxyPool {
         int tried = 0;
         for (Candidate candidate : candidates) {
             if (tried++ >= MAX_TRIES) break;
-            boolean healthy = false;
-            try {
-                healthy = workerHealthy(baseUrl, candidate.proxy());
-            } catch (Exception ignored) {}
-            if (healthy) {
+            if (proxyTransportAvailable(candidate, baseUrl, 443)) {
                 synchronized (LOCK) {
                     lastGood = candidate;
                     lastGoodAt = System.currentTimeMillis();
@@ -227,7 +226,94 @@ final class CloudflareProxyPool {
             markBad(candidate);
         }
 
-        throw new java.io.IOException("Cloudflare 直连失败，公开代理池暂时没有通过真实 HTTPS/TLS 检查的节点。请稍后重试。");
+        throw new java.io.IOException("Cloudflare 直连失败，当前公开代理批次无法建立到账号服务的 TCP/TLS 隧道。请稍后重试。");
+    }
+
+    private static boolean directTransportAvailable(String baseUrl, int port) {
+        try {
+            URL url = new URL(baseUrl);
+            InetAddress[] addresses = InetAddress.getAllByName(url.getHost());
+            for (int i = 0; i < Math.min(addresses.length, 4); i++) {
+                try (Socket socket = new Socket()) {
+                    socket.connect(new InetSocketAddress(addresses[i], port), CONNECT_TIMEOUT_MS);
+                    return true;
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+        return false;
+    }
+
+    private static boolean proxyTransportAvailable(Candidate candidate, String host, int port) {
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(candidate.ip, candidate.port), CONNECT_TIMEOUT_MS);
+            socket.setSoTimeout(READ_TIMEOUT_MS);
+            DataInputStream input = new DataInputStream(socket.getInputStream());
+            DataOutputStream output = new DataOutputStream(socket.getOutputStream());
+            if ("http".equals(candidate.protocol)) {
+                byte[] request = ("CONNECT " + host + ":" + port + " HTTP/1.1\\r\\n"
+                    + "Host: " + host + ":" + port + "\\r\\n"
+                    + "Proxy-Connection: keep-alive\\r\\n\\r\\n").getBytes(StandardCharsets.US_ASCII);
+                output.write(request);
+                output.flush();
+                String status = readAsciiLine(input, 4096);
+                if (status == null || !(status.startsWith("HTTP/1.0 200") || status.startsWith("HTTP/1.1 200"))) {
+                    return false;
+                }
+                int total = status.length();
+                String line;
+                while ((line = readAsciiLine(input, 4096)) != null && !line.isEmpty()) {
+                    total += line.length();
+                    if (total > 16384) return false;
+                }
+                return line != null;
+            }
+
+            output.write(new byte[] {5, 1, 0});
+            output.flush();
+            int version = input.readUnsignedByte();
+            int method = input.readUnsignedByte();
+            if (version != 5 || method != 0) return false;
+
+            byte[] hostBytes = host.getBytes(StandardCharsets.US_ASCII);
+            if (hostBytes.length == 0 || hostBytes.length > 255) return false;
+            output.writeByte(5);
+            output.writeByte(1);
+            output.writeByte(0);
+            output.writeByte(3);
+            output.writeByte(hostBytes.length);
+            output.write(hostBytes);
+            output.writeShort(port);
+            output.flush();
+
+            int responseVersion = input.readUnsignedByte();
+            int reply = input.readUnsignedByte();
+            input.readUnsignedByte(); // RSV
+            int addressType = input.readUnsignedByte();
+            if (responseVersion != 5 || reply != 0) return false;
+            if (addressType == 1) input.skipBytes(4);
+            else if (addressType == 4) input.skipBytes(16);
+            else if (addressType == 3) input.skipBytes(input.readUnsignedByte());
+            else return false;
+            input.skipBytes(2);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private static String readAsciiLine(DataInputStream input, int maxBytes) throws Exception {
+        ByteArrayOutputStream line = new ByteArrayOutputStream();
+        while (line.size() < maxBytes) {
+            int value = input.read();
+            if (value < 0) return line.size() == 0 ? null : line.toString("US-ASCII");
+            if (value == '\\n') {
+                byte[] bytes = line.toByteArray();
+                int length = bytes.length > 0 && bytes[bytes.length - 1] == '\\r' ? bytes.length - 1 : bytes.length;
+                return new String(bytes, 0, length, StandardCharsets.US_ASCII);
+            }
+            line.write(value);
+        }
+        throw new java.io.IOException("Proxy response line exceeds limit");
     }
 
     private static HttpsURLConnection openHttps(URL url, Proxy proxy) throws Exception {
@@ -239,22 +325,6 @@ final class CloudflareProxyPool {
         connection.setReadTimeout(READ_TIMEOUT_MS);
         connection.setInstanceFollowRedirects(false);
         return connection;
-    }
-
-    private static boolean workerHealthy(String baseUrl, Proxy proxy) throws Exception {
-        URL health = new URL(baseUrl.replaceAll("/+$", "") + "/health");
-        HttpsURLConnection connection = null;
-        try {
-            connection = openHttps(health, proxy);
-            connection.setRequestMethod("GET");
-            connection.setRequestProperty("Accept", "application/json");
-            int status = connection.getResponseCode();
-            if (status != 200) return false;
-            JSONObject result = new JSONObject(new String(readBounded(connection.getInputStream(), 32 * 1024), StandardCharsets.UTF_8));
-            return result.optBoolean("ok", false) && result.optBoolean("database", false);
-        } finally {
-            if (connection != null) connection.disconnect();
-        }
     }
 
     private static void loadBootstrapLocked(Context context) {
