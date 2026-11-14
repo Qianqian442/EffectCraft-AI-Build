@@ -51,29 +51,12 @@ final class CloudflareProxyPool {
     }
 
     private static final Feed[] FEEDS = new Feed[] {
-        // Main feed with protocol-prefixed entries: mainland and nearby regions first.
+        // Mainland China-only proxy candidates. No HK, JP, SG or global fallback feeds.
         new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/cn.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/hk.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/jp.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/sg.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/https.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/socks5.txt", "socks5"),
-        // Independent second feed. Protocol is inferred from the list file.
+        // Independent mainland-China-only source; protocol is defined by each file.
         new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/http.txt", "http"),
         new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/https.txt", "http"),
         new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/socks5.txt", "socks5"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/http.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/https.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/hk/socks5.txt", "socks5"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/http.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/https.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/jp/socks5.txt", "socks5"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/http.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/https.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/sg/socks5.txt", "socks5"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/http.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/https.txt", "http"),
-        new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/socks5.txt", "socks5"),
     };
 
     private static final LinkedHashMap<String, Candidate> CANDIDATES = new LinkedHashMap<>();
