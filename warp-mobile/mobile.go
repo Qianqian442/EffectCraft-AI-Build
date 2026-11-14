@@ -176,15 +176,15 @@ func RegisterDevice() (string, error) {
 					seenUDP[candidate] = true
 					endpoints = append(endpoints, candidate)
 				}
-				if len(endpoints) >= 16 {
+				if len(endpoints) >= 6 {
 					break
 				}
 			}
-			if len(endpoints) >= 16 {
+			if len(endpoints) >= 6 {
 				break
 			}
 		}
-		if len(endpoints) >= 16 {
+		if len(endpoints) >= 6 {
 			break
 		}
 	}
@@ -325,7 +325,7 @@ func parseEndpoints(value string) ([]net.Addr, error) {
 		}
 	}
 	if len(endpoints) == 0 { return nil, errors.New("Cloudflare supplied no MASQUE endpoints") }
-	if len(endpoints) > 16 { endpoints = endpoints[:16] }
+	if len(endpoints) > 6 { endpoints = endpoints[:6] }
 	return endpoints, nil
 }
 
