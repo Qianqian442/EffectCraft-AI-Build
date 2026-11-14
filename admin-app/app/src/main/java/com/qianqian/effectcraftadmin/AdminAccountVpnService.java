@@ -209,7 +209,7 @@ public final class AdminAccountVpnService extends VpnService {
     }
 
     /** Called immediately before one Cloudflare account API operation. */
-    public static synchronized String startForTask(Context context, String host) {
+    public static synchronized String startForTask(Context context, String host, List<InetAddress> workers) {
         if (!isAllowedHost(host)) return "ERROR:账号 VPN 只允许配置的 workers.dev 账号服务器";
         if (taskActive) return "OK";
 
@@ -245,9 +245,10 @@ public final class AdminAccountVpnService extends VpnService {
                 scannerNetworkIdentity(context));
 
             JSONObject json = new JSONObject(bundle);
-            stage = "解析 Cloudflare Worker 账号服务域名";
-            List<InetAddress> workers = resolveWorkerAddresses(host);
-            if (workers.isEmpty()) return "ERROR:Worker DNS 没有返回可用的公网地址";
+            stage = "使用 Cloudflare 加密 DNS 验证 Worker 账号服务地址";
+            if (workers == null || workers.isEmpty()) {
+                return "ERROR:Cloudflare DoH 没有返回可用的 Worker 公网地址";
+            }
 
             stage = "启动 Android 内置 WARP VPN 服务";
             Intent intent = new Intent(context.getApplicationContext(), AdminAccountVpnService.class)
