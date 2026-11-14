@@ -39,6 +39,7 @@ FEEDS = [
 ]
 MAX_BODY = 1_000_000
 MAX_ENTRIES = 600
+MAX_PER_FEED = 80
 
 
 def valid_endpoint(line: str, default_protocol: str) -> str | None:
@@ -93,11 +94,15 @@ def main() -> int:
         except Exception as error:
             print(f"Feed unavailable: {url} ({type(error).__name__})")
             continue
+        feed_added = 0
         for line in content.splitlines():
+            if feed_added >= MAX_PER_FEED:
+                break
             candidate = valid_endpoint(line, default_protocol)
             if candidate and candidate not in seen:
                 seen.add(candidate)
                 result.append(candidate)
+                feed_added += 1
             if len(result) >= MAX_ENTRIES:
                 break
         if len(result) >= MAX_ENTRIES:
