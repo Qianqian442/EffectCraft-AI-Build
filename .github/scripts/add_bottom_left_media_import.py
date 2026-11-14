@@ -55,13 +55,13 @@ def patch_file_import_auto_add(root: Path) -> None:
     let errors = if b_p(p, "newComp").unwrap_or(false) { new_comp(s, r) } else { add_to_comp(s, r, target, p) };'''
         new = '''fn finish_import(s: &mut Session, r: &mut Value, target: Option<ItemId>, p: &Value) {
     // EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V2
-    // A regular media import also creates a layer in the currently active composition.
-    // Explicit addToComp=false remains an opt-out, and New Comp keeps its own workflow.
-    let errors = if b_p(p, "newComp").unwrap_or(false) {
+    // A normal import creates a layer in the open composition. Without an open composition,
+    // the imported pictures/videos become a new composition instead of staying invisible.
+    let errors = if b_p(p, "newComp").unwrap_or(false) || target.is_none() {
         new_comp(s, r)
     } else {
         let mut params = p.clone();
-        if params.get("addToComp").is_none() && target.is_some() {
+        if params.get("addToComp").is_none() {
             params["addToComp"] = json!(true);
         }
         if params.get("addToComp").and_then(Value::as_bool) == Some(true)
@@ -135,6 +135,60 @@ def patch_layer_add_item_fit_spec(root: Path) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def patch_picture_video_only_media_picker(root: Path) -> None:
+    """Limit the normal Import Media command to still-image formats; video formats are appended upstream."""
+    path = root / "crates/ui-egui/src/menus/frontend.rs"
+    source = path.read_text(encoding="utf-8")
+    old = '''    const MEDIA: &[&str] = &[
+        "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp", "exr", "dpx", "cin", "wav", "aif", "aiff", "mp3", "flac", "ogg", "opus", "svg", "pdf", "ai",
+        "eps", "psd", "psb", "tga", "hdr", "gltf", "glb", "obj", "stl", "fbx", "json", "csv", "tsv",
+    ];'''
+    new = '''    // EFFECTCRAFT_ANDROID_PICTURE_VIDEO_IMPORT_ONLY_V1
+    // The ordinary Android Import Media button is for pictures and videos only.
+    const MEDIA: &[&str] = &[
+        "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp", "exr", "svg",
+        "psd", "psb", "tga", "hdr", "dpx", "cin",
+    ];'''
+    replace_once(source, old, new, "Image-only import extension filter")
+    path.write_text(source, encoding="utf-8")
+
+
+def patch_project_new_comp_from_selected_media(root: Path) -> None:
+    """Make the Project panel's New Composition button turn selected picture/video items into layers."""
+    path = root / "crates/ui-egui/src/panels/project.rs"
+    source = path.read_text(encoding="utf-8")
+    old = '''                "newComp" => crate::panels::dialogs::open_new_comp(app),'''
+    new = r'''                "newComp" => {
+                    let selected_media = app.session.state.project_selection.iter().any(|id| {
+                        app.session.project.item(*id).is_some_and(|item| {
+                            matches!(&item.kind, ItemKind::Footage(f) if matches!(
+                                f.kind,
+                                effectcraft_engine::project::FootageKind::Still
+                                    | effectcraft_engine::project::FootageKind::Sequence
+                                    | effectcraft_engine::project::FootageKind::Video
+                            ))
+                        })
+                    });
+                    if selected_media {
+                        actions.push(("file.newCompFromSelection".into(), json!({"single": true})));
+                    } else {
+                        crate::panels::dialogs::open_new_comp(app);
+                    }
+                },'''
+    replace_once(source, old, new, "New Composition button selected-media routing")
+    path.write_text(source, encoding="utf-8")
+
+
+def patch_new_comp_layer_fit(root: Path) -> None:
+    """Fit every imported media layer when creating a comp from selected Project-panel items."""
+    path = root / "crates/engine/src/cmd/file_more.rs"
+    source = path.read_text(encoding="utf-8")
+    old = 'layers.push(s.execute("layer.addItem", json!({"comp": cid.0, "item": item.0, "duration": still}))?["layer"].clone());'
+    new = 'layers.push(s.execute("layer.addItem", json!({"comp": cid.0, "item": item.0, "duration": still, "fitToComp": true}))?["layer"].clone());'
+    replace_once(source, old, new, "Fit layers created from selected media")
+    path.write_text(source, encoding="utf-8")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -143,6 +197,9 @@ def main() -> None:
     patch_file_import_auto_add(root)
     patch_layer_add_item_fit(root)
     patch_layer_add_item_fit_spec(root)
+    patch_picture_video_only_media_picker(root)
+    patch_project_new_comp_from_selected_media(root)
+    patch_new_comp_layer_fit(root)
     print("Moved the media import shortcut into the Project panel footer to avoid Timeline overlap.")
     print("Regular imports now create a layer in the active composition and fit it to the comp frame.")
     print("Imported files remain in the Project panel and their layers appear in the Timeline.")
