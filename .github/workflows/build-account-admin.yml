@@ -82,6 +82,7 @@ jobs:
           grep -Fq 'registerDevice()' "$RUNNER_TEMP/warp-bridge-api.txt"
           grep -Fq 'startTunnel(java.lang.String, long, java.lang.String, java.lang.String)' "$RUNNER_TEMP/warp-bridge-api.txt"
           grep -Fq 'stopTunnel()' "$RUNNER_TEMP/warp-bridge-api.txt"
+          grep -Fq 'setScannerStorage(java.lang.String, java.lang.String)' "$RUNNER_TEMP/warp-bridge-api.txt"
       - name: Upload MASQUE engine build artifact
         uses: actions/upload-artifact@v4
         with:
@@ -215,7 +216,9 @@ jobs:
           VPN="admin-app/app/src/main/java/com/qianqian/effectcraftadmin/AdminAccountVpnService.java"
           API="admin-app/app/src/main/java/com/qianqian/effectcraftadmin/CloudflareProxyPool.java"
           MOBILE="warp-mobile/mobile.go"
+          SCANNER="warp-mobile/endpoint_scanner.go"
           grep -Fq 'android:label="Ae账号管理"' "$MANIFEST"
+          grep -Fq 'android.permission.ACCESS_NETWORK_STATE' "$MANIFEST"
           grep -Fq 'text("Ae账号管理"' "$ACTIVITY"
           if grep -R -n 'AE账号管理' admin-app/app/src/main; then
             echo "Branding must use Ae, not AE." >&2
@@ -241,6 +244,14 @@ jobs:
           grep -Fq 'attemptTimer := time.AfterFunc(6*time.Second, attemptCancel)' .github/scripts/patch_usque_for_android.py
           grep -Fq 'if len(endpoints) >= 6 {' "$MOBILE"
           grep -Fq 'if len(endpoints) > 6 {' "$MOBILE"
+          grep -Fq 'func SetScannerStorage(path string, networkIdentity string)' "$SCANNER"
+          grep -Fq 'func scanCloudflareHTTP2(' "$SCANNER"
+          grep -Fq 'scannerMaxCandidates   = 32' "$SCANNER"
+          grep -Fq 'callWarp("setScannerStorage"' "$VPN"
+          grep -Fq 'private static String scannerNetworkIdentity(Context context)' "$VPN"
+          grep -Fq 'scanCloudflareHTTP2(ctx, tlsConfig, defaultH2)' "$MOBILE"
+          grep -Fq 'TestMakeH2CandidatesPrioritizesKnownFastEndpoints' warp-mobile/endpoint_scanner_test.go
+          grep -Fq 'TestScannerNetworkIdentityIsHashedAndSeparated' warp-mobile/endpoint_scanner_test.go
           grep -Fq 'var proxyURL *url.URL // Direct Cloudflare underlay only; no proxy or relay.' .github/scripts/patch_usque_for_android.py
           grep -Fq 'Timeout: 5 * time.Second, KeepAlive: 15 * time.Second' .github/scripts/patch_usque_for_android.py
           python3 - <<'PY'
