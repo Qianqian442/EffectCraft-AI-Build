@@ -45,15 +45,15 @@ def patch_visual_media_picker(root: Path) -> None:
     source = replace_once(
         source,
         '''        Ask::OpenProject => {
-            let Some(f) = app.hooks.pick_open_project.as_ref() else { return Some(Err("no file dialog available (pass \`path\`)".into())) };
+            let Some(f) = app.hooks.pick_open_project.as_ref() else { return Some(Err("no file dialog available (pass `path`)".into())) };
             f().map(|s| json!(s))
         }''',
         '''        Ask::VisualMedia => {
-            let Some(f) = app.hooks.pick_files.as_ref() else { return Some(Err("no file dialog available (pass \`paths\`)".into())) };
+            let Some(f) = app.hooks.pick_files.as_ref() else { return Some(Err("no file dialog available (pass `paths`)".into())) };
             picked_value(key, f(&footage(VISUAL_MEDIA)))
         }
         Ask::OpenProject => {
-            let Some(f) = app.hooks.pick_open_project.as_ref() else { return Some(Err("no file dialog available (pass \`path\`)".into())) };
+            let Some(f) = app.hooks.pick_open_project.as_ref() else { return Some(Err("no file dialog available (pass `path`)".into())) };
             f().map(|s| json!(s))
         }''',
         "visual media fallback picker mapping",
