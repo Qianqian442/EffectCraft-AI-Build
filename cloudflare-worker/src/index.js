@@ -780,7 +780,7 @@ async function route(request, env) {
     if (request.method === "GET" && url.pathname === "/v1/me") return await me(request, env);
     if (request.method === "POST" && url.pathname === "/v1/profile") return await updateProfile(request, env);
     if (request.method === "GET" && url.pathname === "/v1/admin/users") return await adminUsers(request, env, url);
-    const match = url.pathname.match(/^\/v1\/admin\/users\/([^/]+)(?:\/(ban))?$/);
+    const match = url.pathname.match(/^\/v1\/admin\/users\/([^/]+)(?:\/(ban|delete))?$/);
     if (match && request.method === "GET" && !match[2]) return await adminUser(request, env, decodeURIComponent(match[1]));
     if (match && request.method === "POST" && match[2] === "ban") return await adminBan(request, env, decodeURIComponent(match[1]));
     if (match && request.method === "POST" && match[2] === "delete") return await adminDeleteUser(request, env, decodeURIComponent(match[1]));
