@@ -8,7 +8,7 @@ from pathlib import Path
 
 
 PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V6"
-FINISH_MARKER = "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V3"
+FINISH_MARKER = "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V4"
 FIT_MARKER = "EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2"
 PICKER_MARKER = "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2"
 TRIM_MARKER = "EFFECTCRAFT_ANDROID_TOUCH_TRIM_HANDLES_V1"
@@ -108,19 +108,19 @@ def patch_file_import_auto_add(root: Path) -> None:
         old = '''fn finish_import(s: &mut Session, r: &mut Value, target: Option<ItemId>, p: &Value) {
     let errors = if b_p(p, "newComp").unwrap_or(false) { new_comp(s, r) } else { add_to_comp(s, r, target, p) };'''
         new = '''fn finish_import(s: &mut Session, r: &mut Value, target: Option<ItemId>, p: &Value) {
-    // EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V3
-    // The special Project-panel Media button inserts images/videos into the active comp.
-    // Generic File > Import retains its original behavior and its full media-type support.
+    // EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V4
+    // Only the dedicated Project-panel Media button adds pictures/videos to the comp.
+    // Generic File > Import retains its original behavior and complete media-type support.
+    // Still-layer duration continues to follow the user's original Import preferences.
     let picture_video_import = b_p(p, "picturesAndVideos").unwrap_or(false);
     let errors = if b_p(p, "newComp").unwrap_or(false) {
-        new_comp(s, r, picture_video_import.then_some(10.0), picture_video_import)
+        new_comp(s, r, None, picture_video_import)
     } else if picture_video_import && target.is_none() {
-        new_comp(s, r, Some(10.0), true)
+        new_comp(s, r, None, true)
     } else if picture_video_import {
         let mut media_params = p.clone();
         media_params["addToComp"] = json!(true);
         media_params["fitToComp"] = json!(true);
-        media_params["stillDuration"] = json!(10.0);
         add_to_comp(s, r, target, &media_params)
     } else {
         add_to_comp(s, r, target, p)
@@ -161,9 +161,7 @@ def patch_file_import_auto_add(root: Path) -> None:
     }'''
         new_add_start = '''    let add = imported(s, r);
     let picture_video_import = b_p(p, "picturesAndVideos").unwrap_or(false);
-    let still_duration = f_p(p, "stillDuration")
-        .filter(|duration| duration.is_finite() && *duration > 0.0)
-        .unwrap_or(10.0);
+    let still_duration = f_p(p, "stillDuration").filter(|duration| duration.is_finite() && *duration > 0.0);
     let mut errors = vec![];
     let mut created_layers = Vec::new();
     for (k, item) in add.into_iter().enumerate() {
@@ -180,9 +178,12 @@ def patch_file_import_auto_add(root: Path) -> None:
                 matches!(&it.kind, ItemKind::Footage(f) if f.kind == FootageKind::Still)
             });
             if still {
-                // Stills start at 10 seconds, not a hard-coded 4-second limit. The
-                // selected layer can be shortened or extended by dragging its Out edge.
-                params["duration"] = json!(still_duration);
+                // Do not force an import duration here. The engine uses the user's
+                // existing Import > Still Footage preference; the timeline Out edge
+                // remains freely draggable in either direction.
+                if let Some(duration) = still_duration {
+                    params["duration"] = json!(duration);
+                }
             }
         }
         match s.execute("layer.addItem", params) {
@@ -424,7 +425,7 @@ def patch_timeline_right_edge_extends_composition(root: Path) -> None:
         new_out = '''                    if let Some(d) = out_delta {
                         let requested_out = l.out_point + d;
                         l.out_point = if extend_comp {
-                            requested_out.max(l.in_point + fd).min(Tick::from_seconds_f64(24.0 * 60.0 * 60.0))
+                            requested_out.max(l.in_point + fd)
                         } else {
                             requested_out.min(comp_dur.max(l.out_point)).max(l.in_point + fd)
                         };
@@ -504,7 +505,7 @@ def main() -> None:
     patch_timeline_right_edge_extends_composition(root)
     print("Added separate Project-panel buttons for image/video import and project import.")
     print("Only the dedicated Media button filters to pictures/videos and auto-adds them to the comp.")
-    print("Still images from the dedicated Media button start at 10 seconds; their Out edge remains adjustable.")
+    print("Still-image duration follows the user's Import preferences and has no artificial duration ceiling; Out edge remains freely adjustable.")
     print("All generic File > Import and New Composition behavior remains unchanged.")
 
 
