@@ -9,6 +9,7 @@ It also verifies that the Android locale default patch actually landed.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -179,26 +180,28 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified only the dedicated Media button filters to pictures/videos; generic File > Import retains other media types.")
 
     file_cmd = (root / "crates/engine/src/cmd/file.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V3" not in file_cmd or "picturesAndVideos" not in file_cmd:
+    if "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V4" not in file_cmd or "picturesAndVideos" not in file_cmd:
         raise SystemExit("The picture/video shortcut is not scoped separately from generic File > Import.")
-    if 'new_comp(s, r, Some(10.0), true)' not in file_cmd or 'json!(still_duration)' not in file_cmd:
-        raise SystemExit("Still images imported through the dedicated button do not start with a 10-second adjustable duration.")
-    if "fitToComp" not in file_cmd:
-        raise SystemExit("Imported media no longer receives its optional comp-fit behavior.")
+    if "new_comp(s, r, None, true)" not in file_cmd:
+        raise SystemExit("Picture/video imports without an active composition do not create a fitted composition.")
+    if "json!(still_duration)" in file_cmd and "stillDuration" not in file_cmd:
+        raise SystemExit("A removed optional duration parameter is still being applied.")
     layer_create = (root / "crates/engine/src/cmd/layer/create.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2" not in layer_create:
         raise SystemExit("Imported picture/video layers no longer fit the composition when explicitly requested.")
     file_more = (root / "crates/engine/src/cmd/file_more.rs").read_text(encoding="utf-8")
     if 'b_p(p, "fitToComp").unwrap_or(false)' not in file_more:
         raise SystemExit("Fit-to-comp is not an opt-in setting for New Comp from Selection.")
-    print("Verified media-only auto-add, 10-second still default and opt-in fit; generic imports and New Composition behavior are preserved.")
+    print("Verified media-only auto-add and optional fit; still duration follows existing user preferences.")
 
     menu = (root / "crates/engine/src/menus.rs").read_text(encoding="utf-8")
-    import_start = menu.find("  Import\\n")
-    import_end = menu.find("  Import Recent Footage\\n", import_start)
-    if import_start < 0 or import_end < 0:
+    import_match = re.search(r"(?m)^  Import\\r?$", menu)
+    if not import_match:
         raise SystemExit("The original File > Import menu block is missing.")
-    visible_import = menu[import_start:import_end]
+    end_match = re.search(r"(?m)^  Import Recent Footage\\r?$", menu[import_match.end():])
+    if not end_match:
+        raise SystemExit("The end of the File > Import menu block is missing.")
+    visible_import = menu[import_match.start():import_match.end() + end_match.start()]
     if "EffectCraft Project... | file.importProject" in visible_import:
         raise SystemExit("The native Project import action is still in its old File > Import position.")
     required_imports = [
@@ -218,7 +221,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     import_project_command = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in import_project_command:
         raise SystemExit("The native Project importer command was removed instead of relocated.")
-    print("Verified Project import moved out of File > Import while all original import commands remain available.")
+    print("Verified Project import moved to the Project panel while all original import commands remain available.")
 
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V3" not in timeline or "let keyframe_enabled = selected_layer.is_some();" not in timeline:
@@ -236,6 +239,8 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     timing = (root / "crates/engine/src/cmd/layer/timing.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_EXTEND_COMP_ON_LAYER_OUT_DRAG_V1" not in timing or "if extend_comp" not in timing:
         raise SystemExit("Dragging a layer's Out edge cannot extend the composition duration.")
+    if "24.0 * 60.0 * 60.0" in timing or "Tick::from_seconds_f64(24.0" in timing:
+        raise SystemExit("Timeline duration still has an artificial 24-hour drag ceiling.")
     if "comp.work_area.1 = required_end" not in timing:
         raise SystemExit("Composition work area no longer follows the extended composition end.")
     timeline_source = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
