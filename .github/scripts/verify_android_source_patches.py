@@ -1,3 +1,4 @@
+# Rebuild trigger: ensure final module-scope export-helper repair is included.
 #!/usr/bin/env python3
 """Final source gate for the generated Android EffectCraft checkout.
 
