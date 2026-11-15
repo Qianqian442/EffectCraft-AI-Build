@@ -170,7 +170,7 @@ fn safe_account_status(account: &AccountState) -> String {
         source = replace_once(
             source,
             "pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {",
-            safe_status_helper + "\\npub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {",
+            safe_status_helper + "\npub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {",
             "privacy-safe account status renderer",
         )
     show_start = source.find("pub(crate) fn show(")
