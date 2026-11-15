@@ -43,6 +43,9 @@ jobs:
           mkdir -p "$RUNNER_TEMP/llvm-mingw"
           tar -xJf "$archive" --strip-components=1 -C "$RUNNER_TEMP/llvm-mingw"
           echo "$RUNNER_TEMP/llvm-mingw/bin" >> "$GITHUB_PATH"
+          export PATH="$RUNNER_TEMP/llvm-mingw/bin:$PATH"
+          test -x "$RUNNER_TEMP/llvm-mingw/bin/x86_64-w64-mingw32-clang"
+          test -x "$RUNNER_TEMP/llvm-mingw/bin/i686-w64-mingw32-clang"
           x86_64-w64-mingw32-clang --version
           i686-w64-mingw32-clang --version
 
