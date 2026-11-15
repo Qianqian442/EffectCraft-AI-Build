@@ -109,6 +109,7 @@ def translate_ui_label(value: str) -> str:
         "缓入 (Shift+F9)": "缓入",
         "缓出 (Ctrl+Shift+F9)": "缓出",
         "getartcraft.com 上的 效果工坊": "效果工坊官方网站",
+        "视频开始 (ISO 日期时间、hh:mm:ss、时间码；为空: 文件日期)": "视频开始时间（标准日期时间、时分秒、时间码；留空则使用文件日期）",
         "在 macOS 上使用窗口内菜单栏": "在苹果电脑系统上使用窗口内菜单栏",
         "GitHub 上的 效果工坊": "效果工坊代码仓库",
         "Lottie 动画": "矢量动画",
@@ -170,12 +171,19 @@ def translate_ui_label(value: str) -> str:
         ("X", "横向"),
         ("Y", "纵向"),
         ("Enter", "回车"),
+        ("GitHub", "代码仓库"),
+        ("Lottie", "矢量动画"),
+        ("wgpu", "图形渲染框架"),
+        ("macOS", "苹果电脑系统"),
+        ("getartcraft.com", "效果工坊官网"),
     )
     for old, new in replacements:
         value = value.replace(old, new)
     value = value.replace("⌘/控制键+Enter", "组合键+回车")
     value = value.replace("⌘/控制键+回车", "组合键+回车")
     value = value.replace(" • ", " · ")
+    value = value.replace("代码仓库 上的 效果工坊", "效果工坊代码仓库")
+    value = value.replace("代码仓库 上的源代码", "效果工坊项目源代码")
     return re.sub(r"\s+", " ", value).strip()
 
 
