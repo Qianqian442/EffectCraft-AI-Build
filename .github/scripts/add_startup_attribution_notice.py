@@ -59,17 +59,22 @@ fn effectcraft_startup_attribution_notice(ctx: &egui::Context) {
         .id(egui::Id::new("effectcraft-startup-attribution-window"))
         .order(egui::Order::Foreground)
         .default_pos(screen.center() - egui::vec2(164.0, 78.0))
-        .fixed_size((328.0, 156.0))
+        .fixed_size((328.0, 252.0))
         .movable(true)
         .collapsible(false)
         .resizable(false)
         .title_bar(true)
         .show(ctx, |ui| {
-            ui.add_space(12.0);
+            ui.add_space(8.0);
             ui.vertical_centered(|ui| {
-                ui.add_space(14.0);
-                ui.label("该Ae软件由千千改装与新增功能，QQ号：1939023875");
-                ui.add_space(18.0);
+                ui.heading("千千制作");
+                ui.add_space(8.0);
+                ui.label("如果别人倒卖请联系我们QQ群：1132864094");
+                ui.label("我们不会在任何官方群外公益/发布软件");
+                ui.label("不会在任何一个网盘上发布");
+                ui.label("举报并核实成功会为你发放一笔现金");
+                ui.label("（群内有千千才是官方群）");
+                ui.add_space(12.0);
                 if ui.button("OK").clicked() {
                     dismissed = true;
                 }
