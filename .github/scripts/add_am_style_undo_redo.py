@@ -61,11 +61,16 @@ def patch_header(root: Path) -> None:
     if MARKER in source:
         return
 
-    source = replace_once(
-        source,
-        "    let x = brand_and_home(app, ui, &p, x, cy);\n    let x = tool_slots(app, ui, &p, x, cy);\n",
-        "    let x = brand_and_home(app, ui, &p, x, cy);\n    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\n    let x = history_buttons(app, ui, &p, x, cy);\n    let x = tool_slots(app, ui, &p, x, cy);\n",
-        "place touch Undo / Redo controls in the top toolbar",
+    # Earlier toolbar patches insert the plug-in and Puppet shortcuts between the
+    # brand/home buttons and tool slots. Anchor on the stable tool-slot call instead.
+    slot_call = "    let x = tool_slots(app, ui, &p, x, cy);\n"
+    if source.count(slot_call) != 1:
+        raise SystemExit("Could not uniquely locate the toolbar tool-slot call for Undo / Redo.")
+    source = source.replace(
+        slot_call,
+        "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\n"
+        "    let x = history_buttons(app, ui, &p, x, cy);\n" + slot_call,
+        1,
     )
 
     helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them.\n"
