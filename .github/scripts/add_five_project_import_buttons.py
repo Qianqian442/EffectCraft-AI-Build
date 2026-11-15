@@ -38,7 +38,6 @@ def patch_file_menu(root: Path) -> None:
     new_block = """  Import
     File... | file.import
     Multiple Files... | file.importMultiple
-    EffectCraft Project... | file.importProject
     ---
     工程格式导入
       导入电脑版AE工程... | file.importAepDesktop
@@ -91,12 +90,13 @@ def main() -> None:
         "导入AM工程... | file.importAlightMotionProject",
         "导入NV工程... | file.importNodeVideoProject",
         "导入CapCut工程... | file.importCapCutProject",
-        "EffectCraft Project... | file.importProject",
         "File... | file.import",
         "Multiple Files... | file.importMultiple",
     ):
         if item not in visible:
             raise SystemExit(f"Missing File > Import action: {item}")
+    if "EffectCraft Project... | file.importProject" in visible:
+        raise SystemExit("The native project import must remain in the Project panel instead of appearing as a sixth File-menu choice.")
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_FIVE_PROJECT_IMPORT_BUTTONS_V1" in project:
