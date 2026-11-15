@@ -8,14 +8,10 @@ import tomllib
 from pathlib import Path
 
 CANONICAL = {
-    "ureq": 'ureq = { version = "3.5", features = ["socks-proxy"] }',
-    "tungstenite": 'tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }',
     "roxmltree": 'roxmltree = "0.21.2"',
     "zip": 'zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }',
 }
 ANCHORS = {
-    "ureq": "serde_json = ",
-    "tungstenite": "ureq = ",
     "roxmltree": "rayon = ",
     "zip": "wasmi = ",
 }
@@ -121,7 +117,7 @@ def main() -> None:
 
     manifest.write_text(normalized, encoding="utf-8")
     print("Workspace Cargo.toml normalized and parsed successfully.")
-    print("Exactly one account/network entry each: ureq, tungstenite, roxmltree, zip.")
+    print("Exactly one project/plugin dependency entry each: roxmltree and zip. The main APK account connection remains on its administrator-server P2P transport.")
 
     # The Android builder parses these manifests before creating the launcher.
     # Validate them here, with file/line diagnostics instead of a late build failure.
