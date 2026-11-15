@@ -72,10 +72,14 @@ async function passwordCryptoRequest(env, path, body) {
     return await res.json();
   } catch (error) {
     if (error instanceof HttpError) throw error;
-    console.error("password-crypto-do-error", error && error.message ? error.message : String(error), path);
+    const errorName = error && error.name ? String(error.name).slice(0, 80) : "Error";
+    const errorMessage = error && error.message ? String(error.message).slice(0, 240) : String(error).slice(0, 240);
+    console.error("password-crypto-do-error", errorName, errorMessage, path);
     throw new HttpError(503, "密码计算服务暂时不可用，请稍后重试", {
       code: "password_service_unavailable",
-      upstream_code: "fetch_exception"
+      upstream_code: "fetch_exception",
+      upstream_error_name: errorName,
+      upstream_error_message: errorMessage
     });
   }
 }
@@ -552,7 +556,9 @@ async function route(request, env) {
         stage,
         reason: error instanceof HttpError ? error.message : "internal_error",
         upstream_status: Number(extra.upstream_status || 0),
-        upstream_code: String(extra.upstream_code || "unspecified")
+        upstream_code: String(extra.upstream_code || "unspecified"),
+        upstream_error_name: String(extra.upstream_error_name || ""),
+        upstream_error_message: String(extra.upstream_error_message || "")
       });
     }
   }
