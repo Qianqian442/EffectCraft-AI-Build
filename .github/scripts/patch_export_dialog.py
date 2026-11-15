@@ -522,10 +522,24 @@ fn export_progress_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                 window_ui.label(format!("当前项目：{current_name}"));
             }
             window_ui.add_space(8.0);
-            window_ui.label(format!("导出进度：{:.0}%", fraction.clamp(0.0, 1.0) * 100.0));
-            window_ui.add(egui::ProgressBar::new(fraction.clamp(0.0, 1.0)).desired_width(320.0).show_percentage());
-            if total_frames > 0 {
+            // Some encoders and render backends do not report a frame total until the
+            // first frame has been rendered. Do not display a misleading permanent 0%.
+            // Show an indeterminate preparation state until real frame progress exists.
+            if total_frames > 0 && done_frames > 0 {
+                window_ui.label(format!("导出进度：{:.0}%", fraction.clamp(0.0, 1.0) * 100.0));
+                window_ui.add(egui::ProgressBar::new(fraction.clamp(0.0, 1.0)).desired_width(320.0).show_percentage());
                 window_ui.label(format!("当前任务：{done_frames} / {total_frames} 帧"));
+            } else if rendering {
+                window_ui.horizontal(|progress_ui| {
+                    progress_ui.spinner();
+                    progress_ui.label("正在准备导出并渲染首帧；真实进度就绪后会显示百分比…");
+                });
+            } else if total_frames > 0 {
+                window_ui.label(format!("正在准备导出：共 {total_frames} 帧，等待首帧完成…"));
+                window_ui.horizontal(|progress_ui| {
+                    progress_ui.spinner();
+                    progress_ui.label("等待渲染进度数据");
+                });
             }
             if let Some(state) = progress.as_ref() {
                 if state.items_total > 0 {
