@@ -1,25 +1,20 @@
-# EffectCraft DeepSeek AI Plugin
+# Ae DeepSeek AI model package
 
-This companion runs local DeepSeek inference for the EffectCraft Android host.
+This directory contains the local DeepSeek runtime sources that are embedded into the main Ae Android APK, plus the metadata and Kotlin helpers used by the model manager.
 
-## Import package
+## Delivery format
 
-The downloadable release is `EffectCraft-DeepSeek-AI-Plugin.zip`. It contains:
-- `plugin.apk`: the signed ARM64 Android companion package
-- `plugin.json`: package metadata and the embedded APK SHA-256
+The runtime and model manager are part of the main Ae APK. The model itself is delivered as one importable ZIP data package:
 
-Import the ZIP from EffectCraft's plug-in import entry. The host checks the package name and signing certificate, extracts the companion APK, and invokes Android's PackageInstaller. Android may request the one-time "install unknown apps" permission and a final installation confirmation. This system confirmation is required by Android; the ZIP avoids making users handle a separate APK file manually, but the companion remains an Android-installed package.
+- `ai-model.json`
+- `DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf` (approximately 1.02 GB)
 
-- Android package: `com.artcraft.effectcraft.aiassistant`
-- Service action: `com.artcraft.effectcraft.aiassistant.BIND_INFERENCE`
-- Service class: `com.artcraft.effectcraft.aiassistant.InferenceService`
-- ABI: `arm64-v8a`
-- Minimum Android version: Android 9 / API 28
-- Inference: on-device llama.cpp; no cloud inference endpoint is used.
+The ZIP is **not an APK** and does not ask Android to install another application. In Ae, open the AI assistant, choose **导入 AI 模型包**, and select the ZIP. The app copies the model into its private storage after validating the package identifier, file length and SHA-256 checksum.
 
-The companion contains the llama.cpp Android inference runtime. The DeepSeek model is downloaded once from the model manager and stored in the companion's app-private external-files directory. After the model download finishes, inference runs locally and can work without a network connection.
+The existing in-app network download path remains available as a fallback. Once the model is imported or downloaded, text inference runs locally without a network connection.
 
-Model: DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS (GGUF, approximately 1.02 GB), from the bartowski model repository:
-https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF
+## Build
 
-The embedded APK must be signed with the same persistent EffectCraft certificate as the host APK. The release workflow restores that key from the repository's Actions cache and verifies the certificate fingerprint before publishing.
+Run the GitHub Actions workflow **Build Ae DeepSeek AI model package (ZIP only)**. It downloads the quantized model, creates the checksum manifest, verifies the ZIP, and publishes `Ae-DeepSeek-AI-Plugin.zip`.
+
+The Android runtime is built as part of the main APK workflow. This workflow does not build or publish a standalone companion APK.
