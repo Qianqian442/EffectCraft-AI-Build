@@ -64,21 +64,21 @@ def patch_header(root: Path) -> None:
     # make_header_scrollable.py wraps the toolbar in a ScrollArea and renders
     # its controls with scroll_ui. Insert into that active toolbar first; retain
     # the original-header fallback for non-scrolling desktop/source variants.
-    scroll_slot_call = "            let x = tool_slots(app, scroll_ui, &p, x, cy);\\n"
-    original_slot_call = "    let x = tool_slots(app, ui, &p, x, cy);\\n"
+    scroll_slot_call = "            let x = tool_slots(app, scroll_ui, &p, x, cy);\n"
+    original_slot_call = "    let x = tool_slots(app, ui, &p, x, cy);\n"
     if source.count(scroll_slot_call) == 1:
         source = source.replace(
             scroll_slot_call,
-            "            // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
-            "            let x = history_buttons(app, scroll_ui, &p, x, cy);\\n"
+            "            // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\n"
+            "            let x = history_buttons(app, scroll_ui, &p, x, cy);\n"
             + scroll_slot_call,
             1,
         )
     elif source.count(original_slot_call) == 1:
         source = source.replace(
             original_slot_call,
-            "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
-            "    let x = history_buttons(app, ui, &p, x, cy);\\n"
+            "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\n"
+            "    let x = history_buttons(app, ui, &p, x, cy);\n"
             + original_slot_call,
             1,
         )
