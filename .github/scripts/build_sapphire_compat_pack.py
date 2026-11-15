@@ -42,6 +42,24 @@ def parse_and_validate_manifest(source_text: str, name: str, effect_id: str) -> 
     params = manifest.get("params")
     if not isinstance(params, list) or not params:
         raise SystemExit(f"Manifest parameters missing for {name}")
+
+    # The Android interface is Simplified Chinese only. Reject any visible English labels
+    # rather than rendering bilingual or untranslated effect/parameter names.
+    visible_labels = [
+        ("effect name", manifest.get("name")),
+        ("category", manifest.get("category")),
+        ("description", manifest.get("description")),
+        ("author", manifest.get("author")),
+    ]
+    for index, param in enumerate(params):
+        visible_labels.append((f"parameter {index + 1}", param.get("name")))
+        for option_index, option in enumerate(param.get("options", [])):
+            visible_labels.append((f"parameter {index + 1} option {option_index + 1}", option))
+    for label, value in visible_labels:
+        if not isinstance(value, str) or not value.strip():
+            raise SystemExit(f"Missing Chinese visible label {label} in {name}")
+        if re.search(r"[A-Za-z]", value):
+            raise SystemExit(f"English UI text is not allowed in the Simplified Chinese pack: {name} {label}: {value}")
     ids = [param.get("id") for param in params]
     if any(not isinstance(item, str) or not item for item in ids) or len(ids) != len(set(ids)):
         raise SystemExit(f"Parameter IDs must be non-empty and unique for {name}")
@@ -104,9 +122,9 @@ def main() -> None:
         })
 
     bundle = {
-        "name": "EffectCraft Sapphire-compatible effects",
+        "name": "蓝宝石兼容效果插件包",
         "version": "2.0.0",
-        "format": "EffectCraft sandboxed WebAssembly effect modules",
+        "format": "效果工坊安全隔离效果模块",
         "desktop_binary_support": False,
         "effects": records,
     }
