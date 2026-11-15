@@ -59,20 +59,54 @@ export class AccountSessionHub {
     // 10ms Workers Free request CPU budget. Durable Objects have a longer
     // per-request CPU allowance and this object keeps no password material.
     if (request.method === "POST" && url.pathname === "/password/hash") {
-      const body = await request.json();
-      const password = String(body.password || "");
-      if (password.length < 8 || password.length > 128) {
-        return Response.json({ error: "invalid password length" }, { status: 422 });
+      let stage = "parse";
+      try {
+        const body = await request.json();
+        const password = String(body.password || "");
+        if (password.length < 8 || password.length > 128) {
+          return Response.json({ error: "invalid_password_length", code: "invalid_password_length" }, { status: 422 });
+        }
+        stage = "pbkdf2_hash";
+        const hash = await passwordHash(password);
+        if (typeof hash !== "string" || !hash.startsWith("pbkdf2-sha256$")) {
+          throw new Error("hash_output_invalid");
+        }
+        return Response.json({ hash });
+      } catch (error) {
+        const name = error && error.name ? String(error.name) : "Error";
+        const message = error && error.message ? String(error.message).slice(0, 180) : "unknown_error";
+        console.error("password-hash-handler-failed", stage, name, message);
+        return Response.json({
+          error: "password_hash_failed",
+          code: "password_hash_failed",
+          stage,
+          error_name: name,
+          error_message: message
+        }, { status: 500 });
       }
-      return Response.json({ hash: await passwordHash(password) });
     }
 
     if (request.method === "POST" && url.pathname === "/password/verify") {
-      const body = await request.json();
-      const password = String(body.password || "");
-      const stored = String(body.stored || "");
-      if (!password || !stored) return Response.json({ valid: false });
-      return Response.json({ valid: await verifyPassword(password, stored) });
+      let stage = "parse";
+      try {
+        const body = await request.json();
+        const password = String(body.password || "");
+        const stored = String(body.stored || "");
+        if (!password || !stored) return Response.json({ valid: false });
+        stage = "pbkdf2_verify";
+        return Response.json({ valid: await verifyPassword(password, stored) });
+      } catch (error) {
+        const name = error && error.name ? String(error.name) : "Error";
+        const message = error && error.message ? String(error.message).slice(0, 180) : "unknown_error";
+        console.error("password-verify-handler-failed", stage, name, message);
+        return Response.json({
+          error: "password_verify_failed",
+          code: "password_verify_failed",
+          stage,
+          error_name: name,
+          error_message: message
+        }, { status: 500 });
+      }
     }
     if (url.pathname === "/v1/events") {
       if ((request.headers.get("upgrade") || "").toLowerCase() !== "websocket") {
