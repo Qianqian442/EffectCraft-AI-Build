@@ -577,7 +577,7 @@ def patch_toolbar(root: Path) -> None:
     else:
         raise SystemExit("Could not locate the WASM plug-in import state in the toolbar.")
 
-    wasm_button = '''                if popup.button("导入电脑插件包或效果模块文件（.wasm、.wat、.zip）").clicked() {
+    wasm_button = '''                if popup.button("导入效果插件包（支持 .wasm、.wat、.zip）").clicked() {
                     import_wasm = true;
                 }
 '''
