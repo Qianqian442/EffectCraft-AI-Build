@@ -8,7 +8,7 @@ use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
 use std::net::{Ipv4Addr, SocketAddr, TcpStream};
-use std::sync::{Mutex, MutexGuard, OnceLock};
+use std::sync::{mpsc, Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 use tungstenite::client::IntoClientRequest;
 use tungstenite::handshake::client::Response;
@@ -22,8 +22,9 @@ const GOOD_TTL: Duration = Duration::from_secs(2 * 60);
 const MAX_FEED_BYTES: usize = 1_000_000;
 const MAX_POOL_SIZE: usize = 600;
 const MAX_PER_FEED: usize = 80;
-const MAX_TEST_COUNT: usize = 18;
-const MAX_SCAN_TIME: Duration = Duration::from_secs(28);
+const MAX_TEST_COUNT: usize = 12;
+const MAX_SCAN_TIME: Duration = Duration::from_secs(12);
+const PARALLEL_PROBES: usize = 4;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 enum Protocol {
@@ -287,7 +288,7 @@ fn mark_bad(candidate: &Candidate) {
 // A successful health result is cached briefly, so normal account operations do
 // not add a health request each time.
 fn probe_cloud_health(base_url: &str, candidate: Option<&Candidate>) -> bool {
-    let Ok(agent) = make_agent(candidate, Duration::from_secs(5)) else {
+    let Ok(agent) = make_agent(candidate, Duration::from_secs(4)) else {
         return false;
     };
     let endpoint = format!("{}/health", base_url.trim_end_matches('/'));
@@ -337,21 +338,57 @@ fn mark_direct_bad() {
 
 fn select_http_route(base_url: &str) -> Result<(Agent, Option<Candidate>), String> {
     if direct_https_healthy(base_url) {
-        return Ok((make_agent(None, Duration::from_secs(8))?, None));
+        return Ok((make_agent(None, Duration::from_secs(12))?, None));
     }
 
     let deadline = Instant::now() + MAX_SCAN_TIME;
-    for candidate in candidates_snapshot().into_iter().take(MAX_TEST_COUNT) {
+    let candidates = candidates_snapshot()
+        .into_iter()
+        .take(MAX_TEST_COUNT)
+        .collect::<Vec<_>>();
+
+    // Test a small batch concurrently. This avoids making a user wait through
+    // several sequential 4-second dead-proxy timeouts, while bounding the total
+    // number of Worker health checks to MAX_TEST_COUNT.
+    for batch in candidates.chunks(PARALLEL_PROBES) {
         if Instant::now() >= deadline {
             break;
         }
-        if probe_cloud_health(base_url, Some(&candidate)) {
-            mark_good(&candidate);
-            return Ok((make_agent(Some(&candidate), Duration::from_secs(8))?, Some(candidate)));
+        let (tx, rx) = mpsc::channel();
+        for candidate in batch.iter().cloned() {
+            let tx = tx.clone();
+            let base = base_url.to_string();
+            std::thread::spawn(move || {
+                let healthy = probe_cloud_health(&base, Some(&candidate));
+                if healthy {
+                    mark_good(&candidate);
+                } else {
+                    mark_bad(&candidate);
+                }
+                let _ = tx.send((candidate, healthy));
+            });
         }
-        mark_bad(&candidate);
+        drop(tx);
+
+        let mut remaining_results = batch.len();
+        while remaining_results > 0 {
+            let remaining_time = deadline.saturating_duration_since(Instant::now());
+            if remaining_time.is_zero() {
+                break;
+            }
+            match rx.recv_timeout(remaining_time) {
+                Ok((candidate, true)) => {
+                    return Ok((make_agent(Some(&candidate), Duration::from_secs(12))?, Some(candidate)));
+                }
+                Ok((_candidate, false)) => {
+                    remaining_results -= 1;
+                }
+                Err(_) => break,
+            }
+        }
     }
-    Err("Cloudflare 直连 HTTPS/TLS 健康检查未通过，当前备用代理节点也暂时无法建立安全连接。".to_string())
+
+    Err("云端服务器直连超时，备用安全线路也未能连接。请检查网络后重新检测。".to_string())
 }
 
 /// Selects a real Cloudflare route first, then sends one account request.
