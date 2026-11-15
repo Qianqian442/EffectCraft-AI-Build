@@ -137,6 +137,28 @@ def main() -> None:
         'ui.label(&app.account.server_url);',
         'ui.label("正在安全验证账号，请稍候…");',
     )
+
+    # Hide the configured endpoint from every account-state UI branch, including
+    # restored-session verification and unavailable/retry screens. Keep the URL
+    # only in AccountState for internal HTTPS requests and token persistence.
+    source = re.sub(
+        r'(?m)^([ \\t]*)ui\\.(?:label|small|weak|monospace|text_edit_singleline)\\([^;\\n]*server_url[^;\\n]*\\);',
+        r'\\1ui.label("服务器连接地址已隐藏，系统会自动选择连接线路");',
+        source,
+    )
+    source = source.replace(
+        'ui.label(&app.account.status);',
+        'ui.label(app.account.status.replace(app.account.server_url.as_str(), "服务器地址已隐藏"));',
+    )
+    show_start = source.find("pub(crate) fn show(")
+    if show_start < 0:
+        raise SystemExit("Account UI entry point was not found during server-address privacy check.")
+    account_ui = source[show_start:]
+    if re.search(
+        r'(?m)^\\s*ui\\.(?:label|small|weak|monospace|text_edit_singleline)\\([^;\\n]*server_url',
+        account_ui,
+    ):
+        raise SystemExit("A visible account UI control still references the internal server URL.")
     source = source.replace(
         'self.status = format!("云端账号服务器连接超时或失败：{error}");',
         'self.status = format!("连接云端账号服务器失败：{error}");',
