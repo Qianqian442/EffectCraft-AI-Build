@@ -699,7 +699,6 @@ public final class MainActivity extends Activity {
         page.invalidate();
     }
 
-    private void updateVisibleUser(JSONObject user) {
     private void addWhitelistPanel(LinearLayout page) {
         if (!isCloudflareMode()) return;
         LinearLayout panel = new LinearLayout(this);
