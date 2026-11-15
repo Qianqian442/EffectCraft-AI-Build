@@ -332,7 +332,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     curve_playhead_required = (
         "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_SOURCE_V3",
         "fn android_playhead_curve_segment(app: &EffectcraftApp, playhead: Tick)",
-        "android_curve_quick_access(app, ui, rect, g.time)",
+        "android_curve_quick_access(app, ui, rect, g.tl.time)",
         "app.session.state.selected_keys",
     )
     missing_curve = [token for token in curve_playhead_required if token not in timeline]
@@ -344,7 +344,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The curve resolver does not use the displayed Timeline playhead.")
     if "android_playhead_curve_segment(app, playhead)" not in timeline:
         raise SystemExit("The curve picker is not using its visible playhead argument.")
-    if "android_curve_quick_access(app, ui, rect, g.time)" not in timeline:
+    if "android_curve_quick_access(app, ui, rect, g.tl.time)" not in timeline:
         raise SystemExit("The curve picker is not receiving the Timeline's displayed current-time indicator.")
     if "app.session.state.selected_keys" not in timeline:
         raise SystemExit("The curve resolver does not use selected keyframes to identify the target property.")
