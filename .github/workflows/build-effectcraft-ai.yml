@@ -51,6 +51,7 @@ on:
       - '.github/scripts/add_mobile_touch_scroll.py'
       - '.github/scripts/add_mobile_rsmb_controls.py'
       - '.github/scripts/add_effect_controls_crash_guard.py'
+      - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/scripts/ai_video_export.rs'
       - '.github/scripts/sapphire_compat_pack.rs'
       - '.github/scripts/build_sapphire_compat_pack.py'
@@ -104,6 +105,7 @@ jobs:
             .github/scripts/add_curve_quick_access.py \
             .github/scripts/add_ai_assistant_fullscreen_drag.py \
             .github/scripts/add_effect_controls_crash_guard.py \
+            .github/scripts/add_am_style_undo_redo.py \
             .github/scripts/add_open_source_craft_plugins.py
 
   build:
@@ -604,6 +606,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_effect_controls_crash_guard.py
           python3 build-assets/.github/scripts/add_effect_controls_crash_guard.py
+
+      - name: Add AM-style touch Undo and Redo controls
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_am_style_undo_redo.py
+          python3 build-assets/.github/scripts/add_am_style_undo_redo.py
 
       - name: Verify final Android source patches and repair missing export helper
         env:
