@@ -7,7 +7,7 @@
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::{self, Read, Write};
-use std::net::{Ipv4Addr, SocketAddr, TcpStream, ToSocketAddrs};
+use std::net::{Ipv4Addr, SocketAddr, TcpStream};
 use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::time::{Duration, Instant};
 use tungstenite::client::IntoClientRequest;
@@ -86,6 +86,7 @@ struct PoolState {
 }
 
 static POOL: OnceLock<Mutex<PoolState>> = OnceLock::new();
+static DIRECT_HEALTH: OnceLock<Mutex<Option<(bool, Instant)>>> = OnceLock::new();
 
 fn pool() -> MutexGuard<'static, PoolState> {
     POOL.get_or_init(|| Mutex::new(PoolState::default()))
@@ -281,27 +282,61 @@ fn mark_bad(candidate: &Candidate) {
     }
 }
 
-// Probe transport reachability without consuming a Cloudflare Worker invocation.
-// A TCP connection to :443 (or a proxy CONNECT/SOCKS5 tunnel to :443) is enough
-// to select a route; the actual account request below performs the single HTTPS call.
-fn direct_transport_available(host: &str, port: u16) -> bool {
-    let Ok(addresses) = (host, port).to_socket_addrs() else {
+// Verify the full HTTPS/TLS path rather than only TCP :443 reachability.
+// Some mobile networks can establish TCP while blocking or interrupting TLS.
+// A successful health result is cached briefly, so normal account operations do
+// not add a health request each time.
+fn probe_cloud_health(base_url: &str, candidate: Option<&Candidate>) -> bool {
+    let Ok(agent) = make_agent(candidate, Duration::from_secs(5)) else {
         return false;
     };
-    addresses
-        .take(4)
-        .any(|address| TcpStream::connect_timeout(&address, Duration::from_secs(2)).is_ok())
+    let endpoint = format!("{}/health", base_url.trim_end_matches('/'));
+    let Ok(mut response) = agent.get(&endpoint).call() else {
+        return false;
+    };
+    if response.status().as_u16() != 200 {
+        return false;
+    }
+    let Ok(body) = response.body_mut().read_to_string() else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_str::<Value>(&body) else {
+        return false;
+    };
+    value.get("ok").and_then(Value::as_bool) == Some(true)
+        && value.get("database").and_then(Value::as_bool) == Some(true)
 }
 
-fn proxy_transport_available(candidate: &Candidate, host: &str, port: u16) -> bool {
-    open_tunnel(candidate, host, port).is_ok()
+fn direct_https_healthy(base_url: &str) -> bool {
+    let cache = DIRECT_HEALTH.get_or_init(|| Mutex::new(None));
+    {
+        let state = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if let Some((healthy, checked_at)) = state.as_ref().copied() {
+            let ttl = if healthy {
+                Duration::from_secs(60)
+            } else {
+                Duration::from_secs(10)
+            };
+            if checked_at.elapsed() < ttl {
+                return healthy;
+            }
+        }
+    }
+
+    let healthy = probe_cloud_health(base_url, None);
+    let mut state = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    *state = Some((healthy, Instant::now()));
+    healthy
+}
+
+fn mark_direct_bad() {
+    let cache = DIRECT_HEALTH.get_or_init(|| Mutex::new(None));
+    let mut state = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    *state = Some((false, Instant::now()));
 }
 
 fn select_http_route(base_url: &str) -> Result<(Agent, Option<Candidate>), String> {
-    let host = base_url
-        .strip_prefix("https://")
-        .ok_or_else(|| "账号服务地址必须使用 HTTPS".to_string())?;
-    if direct_transport_available(host, 443) {
+    if direct_https_healthy(base_url) {
         return Ok((make_agent(None, Duration::from_secs(8))?, None));
     }
 
@@ -310,13 +345,13 @@ fn select_http_route(base_url: &str) -> Result<(Agent, Option<Candidate>), Strin
         if Instant::now() >= deadline {
             break;
         }
-        if proxy_transport_available(&candidate, host, 443) {
+        if probe_cloud_health(base_url, Some(&candidate)) {
             mark_good(&candidate);
             return Ok((make_agent(Some(&candidate), Duration::from_secs(8))?, Some(candidate)));
         }
         mark_bad(&candidate);
     }
-    Err("Cloudflare 直连失败，当前批次的代理节点无法建立到 Cloudflare 的安全传输通道。".to_string())
+    Err("Cloudflare 直连 HTTPS/TLS 健康检查未通过，当前备用代理节点也暂时无法建立安全连接。".to_string())
 }
 
 /// Selects a real Cloudflare route first, then sends one account request.
@@ -372,19 +407,35 @@ pub(crate) fn account_http_request(
     };
     // Never replay a submitted POST: the upstream may have committed it before
     // the transport error occurred.
-    let mut response = response_result.map_err(|_| {
-        if route.is_some() {
-            "已通过代理连接 Cloudflare，但账号操作的响应中断；本次不会重复提交。".to_string()
-        } else {
-            "Cloudflare 直连操作的响应中断；本次不会重复提交。".to_string()
+    let mut response = match response_result {
+        Ok(response) => response,
+        Err(_) => {
+            if let Some(candidate) = route.as_ref() {
+                mark_bad(candidate);
+                return Err("已通过代理连接 Cloudflare，但账号操作的响应中断；本次不会重复提交。".to_string());
+            }
+            mark_direct_bad();
+            return Err("Cloudflare 直连 HTTPS/TLS 响应中断；本次不会重复提交，请重新尝试备用连接。".to_string());
         }
-    })?;
+    };
 
     let status = response.status().as_u16();
-    let response_body = response.body_mut().read_to_string()
-        .map_err(|_| "Cloudflare 响应读取失败".to_string())?;
+    let response_body = match response.body_mut().read_to_string() {
+        Ok(body) => body,
+        Err(_) => {
+            if let Some(candidate) = route.as_ref() {
+                mark_bad(candidate);
+            } else {
+                mark_direct_bad();
+            }
+            return Err("Cloudflare 响应读取中断；本次不会重复提交。".to_string());
+        }
+    };
     let value = serde_json::from_str::<Value>(&response_body)
         .unwrap_or_else(|_| serde_json::json!({"detail": "服务器返回的数据格式无法识别"}));
+    if let Some(candidate) = route.as_ref() {
+        mark_good(candidate);
+    }
     Ok((status, value))
 }
 
