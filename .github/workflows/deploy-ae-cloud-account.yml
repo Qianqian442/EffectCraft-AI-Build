@@ -2,7 +2,7 @@ name: Deploy Ae Cloud Account API
 
 on:
   push:
-    branches: [main, ae-additive-build-2026-11-15]
+    branches: [main]
     paths:
       - '.github/workflows/deploy-ae-cloud-account.yml'
       - 'cloudflare-worker/**'
