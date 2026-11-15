@@ -500,6 +500,30 @@ async function adminNetworkNodes(request, env) {
 async function route(request, env) {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: JSON_HEADERS });
+  if (request.method === "GET" && url.pathname === "/health/deep") {
+    const supplied = request.headers.get("x-effectcraft-health-token") || "";
+    const expected = env.JWT_SECRET || "";
+    if (!expected || !constantTimeEqual(encoder.encode(supplied), encoder.encode(expected))) {
+      return new Response(null, { status: 404 });
+    }
+    try {
+      const probe = await env.DB.prepare("SELECT 1 AS connected").first();
+      const connected = Number(probe && probe.connected) === 1;
+      const challenge = "EffectCraft-Health-" + crypto.randomUUID() + "-A1!";
+      const hash = await passwordHash(env, challenge);
+      const passwordOk = await verifyPassword(env, challenge, hash);
+      const ok = connected && passwordOk;
+      return response({
+        ok,
+        service: "Ae Cloud Account API",
+        database: connected,
+        password_service: passwordOk
+      }, ok ? 200 : 503);
+    } catch (error) {
+      console.error("deep-health-error", error && error.message ? error.message : String(error));
+      return fail(503, "密码计算服务自检失败", { code: "password_service_unavailable" });
+    }
+  }
   if (request.method === "GET" && url.pathname === "/health") {
     if (!env.DB) {
       return response({ ok: false, service: "Ae Cloud Account API", database: false }, 503);
