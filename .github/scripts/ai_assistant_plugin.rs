@@ -315,7 +315,7 @@ fn with_android_vm<T>(
 fn ai_plugin_available() -> bool {
     with_android_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
-            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.AeActivity"))?;
+            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.EffectCraftActivity"))?;
             Ok(env.call_static_method(
                 &activity_class,
                 jni::jni_str!("isAiPluginInstalled"),
@@ -335,7 +335,7 @@ fn ai_plugin_available() -> bool {
 fn ai_plugin_submit(request_id: &str, prompt: &str) -> Result<bool, String> {
     with_android_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<bool> {
-            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.AeActivity"))?;
+            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.EffectCraftActivity"))?;
             let id = env.new_string(request_id)?;
             let prompt = env.new_string(prompt)?;
             Ok(env.call_static_method(
@@ -352,7 +352,7 @@ fn ai_plugin_submit(request_id: &str, prompt: &str) -> Result<bool, String> {
 fn ai_plugin_poll(request_id: &str) -> Result<Option<String>, String> {
     with_android_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<Option<String>> {
-            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.AeActivity"))?;
+            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.EffectCraftActivity"))?;
             let id = env.new_string(request_id)?;
             let object = env.call_static_method(
                 &activity_class,
@@ -383,7 +383,7 @@ fn ai_plugin_poll(_request_id: &str) -> Result<Option<String>, String> {
 pub(crate) fn open_ai_plugin_import() -> Result<(), String> {
     with_android_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.AeActivity"))?;
+            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.EffectCraftActivity"))?;
             env.call_static_method(
                 &activity_class,
                 jni::jni_str!("openAiPluginImport"),
@@ -404,7 +404,7 @@ pub(crate) fn open_ai_plugin_import() -> Result<(), String> {
 fn open_ai_plugin_manager() -> Result<(), String> {
     with_android_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.AeActivity"))?;
+            let activity_class = env.load_class(jni::jni_str!("com.artcraft.effectcraft.EffectCraftActivity"))?;
             env.call_static_method(
                 &activity_class,
                 jni::jni_str!("openAiPluginManager"),
