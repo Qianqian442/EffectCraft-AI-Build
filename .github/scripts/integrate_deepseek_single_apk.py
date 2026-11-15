@@ -337,11 +337,15 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     if 'ui.button("导入 AI 插件")' in a or "请先点击“导入 AI 插件”" in a:
         raise SystemExit("AI assistant still contains a companion-plugin import path; refusing to claim single-APK integration.")
     assistant.write_text(a, encoding="utf-8")
+    # The APK build copied the helper before these user-visible strings were normalized.
+    # Write the final source into the EffectCraft tree so the fullscreen patch and build
+    # compile the same in-app assistant UI that was just verified above.
+    assistant_target = effectcraft / "crates/ui-egui/src/ai_assistant.rs"
+    assistant_target.write_text(a, encoding="utf-8")
 
-    print("DeepSeek model manager and inference service are staged inside the main APK.")
-    print("The host binds to its own in-process Android service; no companion APK/ZIP is needed.")
-    print("The approximately 1.02 GB GGUF model remains a one-time download inside the APK's app-private storage.")
-    print("Inference remains local/offline after the model download.")
+    print("DeepSeek llama.cpp runtime, manager and inference service are integrated into the main APK.")
+    print("The AI ZIP is a model-only package imported by the in-app manager; Android does not install another APK.")
+    print("The approximately 1.02 GB GGUF is imported into app-private storage and then used for local/offline inference.")
 
 if __name__ == "__main__":
     main()
