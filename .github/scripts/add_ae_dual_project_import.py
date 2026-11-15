@@ -111,7 +111,7 @@ def main() -> None:
     # Keep the original AE dry-run/loss-consent path and apply it to the new desktop alias.
     replace_once(
         losses,
-        '    let command = if id == "file.importAep" || id == "file.importAepDesktop" || id == "file.importAepMobilePackage" {\n        Some(id)',
+        '    let command = if id == "file.importAep" || id == "file.importAepDesktop" {\n        Some(id)',
         '    let command = if id == "file.importAep" || id == "file.importAepDesktop" {\n        Some(id)',
         "protect the new desktop AE entry with the original loss confirmation",
     )
@@ -133,8 +133,8 @@ def main() -> None:
         raise SystemExit("The desktop AE menu entry is missing")
     if "EffectCraft 手机版工程... | file.importEffectCraftMobile" not in menu_now:
         raise SystemExit("The EffectCraft mobile menu entry is missing")
-    if 'id == "file.importAep" || id == "file.importAepDesktop" || id == "file.importAepMobilePackage"' not in losses_now:
-        raise SystemExit("The desktop/mobile AE loss confirmation guard is missing")
+    if 'id == "file.importAep" || id == "file.importAepDesktop"' not in losses_now:
+        raise SystemExit("The desktop AE loss confirmation guard is missing")
     print("Desktop import: .aep/.aepx through the original After Effects importer.")
     print("Mobile import: EffectCraft .ecproj/.ecprojx or the ZIP exported by EffectCraft mobile, including collected footage.")
     print("Original Import Project and original After Effects import commands remain available.")
