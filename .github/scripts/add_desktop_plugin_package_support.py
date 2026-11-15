@@ -130,35 +130,35 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             ("org.effectcraft.compat.rsmb-motion-blur", "RSMB 风格方向模糊（非原版）",
              "安卓方向模糊兼容效果；不是原厂 RSMB 运动矢量估算")
         } else if token.contains("sglowaura") || token.contains("sapphireglowaura") || token.contains("glowaura") {
-            ("org.effectcraft.sapphire.compat.glow-aura", "Sapphire-style Glow Aura",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.glow-aura", "蓝宝石光晕氛围",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else if token.contains("sglow") || token.contains("sapphireglow") {
-            ("org.effectcraft.sapphire.compat.glow", "Sapphire-style Glow",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.glow", "蓝宝石光晕",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else if token.contains("slensflare") || token.contains("sapphirelensflare") {
-            ("org.effectcraft.sapphire.compat.lensflare", "Sapphire-style LensFlare",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.lensflare", "蓝宝石镜头光斑",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else if token.contains("sblur") || token.contains("sapphireblur") {
-            ("org.effectcraft.sapphire.compat.blur", "Sapphire-style Blur",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.blur", "蓝宝石模糊",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else if token.contains("sdistort") || token.contains("sapphiredistort") {
-            ("org.effectcraft.sapphire.compat.distort", "Sapphire-style Distort",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.distort", "蓝宝石扭曲",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else if token.contains("sstylize") || token.contains("sapphirestylize") {
-            ("org.effectcraft.sapphire.compat.stylize", "Sapphire-style Stylize",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.stylize", "蓝宝石风格化",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else if token.contains("sglint") || token.contains("sapphireglint") {
-            ("org.effectcraft.sapphire.compat.glint", "Sapphire-style Glint",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.glint", "蓝宝石星芒",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else if token.contains("srays") || token.contains("sapphirerays") {
-            ("org.effectcraft.sapphire.compat.rays", "Sapphire-style Rays",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.rays", "蓝宝石光线",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else if token.contains("shalftone") || token.contains("sapphirehalftone") {
-            ("org.effectcraft.sapphire.compat.halftone", "Sapphire-style HalfTone",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.halftone", "蓝宝石半色调",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else if token.contains("spixelsort") || token.contains("sapphirepixelsort") {
-            ("org.effectcraft.sapphire.compat.pixelsort", "Sapphire-style PixelSort",
-             "EffectCraft 兼容重实现；不是原厂 Sapphire")
+            ("org.effectcraft.sapphire.compat.pixelsort", "蓝宝石像素排序",
+             "效果工坊兼容重实现；并非电脑版原厂插件")
         } else {
             return None;
         };
