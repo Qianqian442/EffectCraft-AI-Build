@@ -65,9 +65,9 @@ def main() -> None:
         source,
         "    code = version_code(version)\\n",
         "    code = version_code(version)\\n"
-        "    build_number = os.environ.get(\\"GITHUB_RUN_NUMBER\\", \\"\\")\\n"
-        "    if build_number.isdigit():\\n"
-        "        code = max(code, 50_000_000 + int(build_number))\\n",
+        "    build_number = os.environ.get(\"GITHUB_RUN_NUMBER\", \"\")\n"
+        "    if build_number.isdigit():\n"
+        "        code = max(code, 50_000_000 + int(build_number))\n",
         "monotonic APK versionCode",
     )
     old_app = '    application = android_meta.get("application") or {}'
