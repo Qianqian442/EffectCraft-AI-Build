@@ -290,6 +290,14 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The curve action does not resolve keyframe segments from the Timeline playhead.")
     if "layer.comp_time(pair[0].time)" not in timeline or "layer.comp_time(pair[1].time)" not in timeline:
         raise SystemExit("The curve resolver does not account for the layer's comp-time mapping.")
+    if "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_SOURCE_V3" not in timeline:
+        raise SystemExit("The curve resolver does not use the displayed Timeline playhead.")
+    if "android_playhead_curve_segment(app, playhead)" not in timeline:
+        raise SystemExit("The curve picker is not using its visible playhead argument.")
+    if "android_curve_quick_access(app, ui, rect, g.time)" not in timeline:
+        raise SystemExit("The curve picker is not receiving the Timeline's displayed current-time indicator.")
+    if "app.session.state.selected_keys" not in timeline:
+        raise SystemExit("The curve resolver does not use selected keyframes to identify the target property.")
     viewer = (root / "crates/ui-egui/src/panels/viewer.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_PROJECT_FILE_VIEWER_SELECTION_V3" not in viewer:
         raise SystemExit("Composition viewer selection is not synchronized for direct keyframing.")
