@@ -61,7 +61,7 @@ class InferenceService : Service() {
                 try {
                     replyTo.send(response)
                 } catch (_: Exception) {
-                    // The EffectCraft host may have closed its chat panel.
+                    // The Ae host may have closed its chat panel.
                 }
             }
         }
@@ -70,7 +70,7 @@ class InferenceService : Service() {
     private suspend fun infer(prompt: String): String {
         val model = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), MODEL_FILE)
         if (!model.isFile || model.length() < MIN_MODEL_BYTES) {
-            throw IllegalStateException("请先打开“EffectCraft DeepSeek AI 插件”，下载约 1.02 GB 的本地模型。")
+            throw IllegalStateException("请先打开“Ae DeepSeek AI 插件”，下载约 1.02 GB 的本地模型。")
         }
 
         val engine = AiChat.getInferenceEngine(applicationContext)
@@ -87,7 +87,7 @@ class InferenceService : Service() {
         if (initialized is InferenceEngine.State.Initialized) {
             engine.loadModel(model.absolutePath)
             engine.setSystemPrompt(
-                "你是 EffectCraft 0.21.1 中文操作助手。用简体中文回答，优先给出准确菜单路径和分步操作；没有依据时明确说不知道，不要编造。你熟悉素材导入、时间轴、合成、图层、关键帧、效果、项目导入导出和视频导出。"
+                "你是 Ae 中文操作助手。用简体中文回答，优先给出准确菜单路径和分步操作；没有依据时明确说不知道，不要编造。你熟悉素材导入、时间轴、合成、图层、关键帧、效果、项目导入导出和视频导出。"
             )
         }
         return engine.sendUserPrompt(prompt, predictLength = 256).toList().joinToString("").trim()
