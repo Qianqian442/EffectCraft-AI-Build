@@ -94,6 +94,7 @@ jobs:
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
             .github/scripts/add_bottom_left_media_import.py \
             .github/scripts/configure_android_storage_fallback.py \
+            .github/scripts/add_project_import_formats.py \
             .github/scripts/add_curve_quick_access.py
 
   build:
