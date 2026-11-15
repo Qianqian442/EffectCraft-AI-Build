@@ -160,6 +160,75 @@ public final class LanAccountServerAccountFlowTest {
     }
 
     @Test
+    public void qqAndWechatAreImmutableAndOnlyPermanentBansCanBeDeleted() throws Exception {
+        JSONObject registration = call("POST", "/v1/register", "", json(
+            "qq", "1900111222",
+            "wechat", "wechat_fixed_1",
+            "name", "Permanent Ban Test",
+            "password", "permanent-test-pass",
+            "avatar_url", ""
+        ));
+        assertEquals(200, status(registration));
+        JSONObject user = body(registration).getJSONObject("user");
+        String id = user.getString("id");
+        String token = body(registration).getString("token");
+
+        JSONObject changedId = call("POST", "/v1/profile", token, json(
+            "qq", "1999888777",
+            "wechat", "wechat_changed_2",
+            "name", "Must Not Change IDs",
+            "avatar_url", ""
+        ));
+        assertEquals("QQ/WeChat identifiers cannot be changed after registration", 403, status(changedId));
+
+        JSONObject unchanged = call("GET", "/v1/me", token, new JSONObject());
+        assertEquals(200, status(unchanged));
+        assertEquals("1900111222", body(unchanged).getJSONObject("user").getString("qq"));
+        assertEquals("wechat_fixed_1", body(unchanged).getJSONObject("user").getString("wechat"));
+
+        JSONObject timedBan = call("POST", "/v1/admin/users/" + id + "/ban", adminToken, json(
+            "banned_until", Instant.now().plus(2, ChronoUnit.HOURS).toString(),
+            "reason", "temporary test ban"
+        ));
+        assertEquals(200, status(timedBan));
+        assertFalse(body(timedBan).getJSONObject("user").optBoolean("permanently_banned", false));
+
+        JSONObject timedDelete = call("POST", "/v1/admin/users/" + id + "/delete", adminToken, new JSONObject());
+        assertEquals("timed bans must not permit account deletion", 409, status(timedDelete));
+
+        JSONObject permanentBan = call("POST", "/v1/admin/users/" + id + "/ban", adminToken, json(
+            "permanent", true,
+            "reason", "automated permanent-ban test"
+        ));
+        assertEquals(200, status(permanentBan));
+        assertTrue(body(permanentBan).getJSONObject("user").optBoolean("permanently_banned", false));
+
+        JSONObject blockedLogin = call("POST", "/v1/login", "", json(
+            "identifier", "1900111222",
+            "password", "permanent-test-pass"
+        ));
+        assertEquals(423, status(blockedLogin));
+        assertTrue(body(blockedLogin).getJSONObject("detail").optBoolean("permanent", false));
+
+        JSONObject deleted = call("POST", "/v1/admin/users/" + id + "/delete", adminToken, new JSONObject());
+        assertEquals(200, status(deleted));
+        assertTrue(body(deleted).optBoolean("deleted", false));
+        assertTrue(body(deleted).optBoolean("identifiers_reusable", false));
+        assertTrue(body(deleted).optBoolean("whitelist_preserved", false));
+
+        JSONObject reRegistered = call("POST", "/v1/register", "", json(
+            "qq", "1900111222",
+            "wechat", "wechat_fixed_1",
+            "name", "Registered Again",
+            "password", "new-account-pass",
+            "avatar_url", ""
+        ));
+        assertEquals("the released QQ/WeChat identifiers can be registered again", 200, status(reRegistered));
+        assertEquals("1900111222", body(reRegistered).getJSONObject("user").getString("qq"));
+        assertEquals("wechat_fixed_1", body(reRegistered).getJSONObject("user").getString("wechat"));
+    }
+
+    @Test
     public void p2pLoopbackBridgeForwardsARegistrationIntoSqlite() throws Exception {
         P2PAccountBridge.start(server);
         try (Socket socket = new Socket(InetAddress.getByName("127.0.0.1"), 8788)) {
