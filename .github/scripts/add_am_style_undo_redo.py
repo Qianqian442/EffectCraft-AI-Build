@@ -61,12 +61,33 @@ def patch_header(root: Path) -> None:
     if MARKER in source:
         return
 
-    # Locate the active UI variable from the actual header source. Other additive
-    # patches may wrap or rename the scroll-area child, so do not assume it is ui or
-    # scroll_ui. Insert directly before the existing tool-slot renderer.
-    import re
-    insertion_pattern = re.compile(
-        r'(?m)^(?P<indent>\s*)let x = tool_slots\(app, (?P<ui>[A-Za-z_][A-Za-z0-9_]*), &p, x, cy\);
+    # Find the actual tool_slots call after all earlier header patches. The UI
+    # variable may be ui or the responsive scroll-area child; preserve whichever
+    # identifier the source currently uses.
+    call_prefix = "let x = tool_slots(app, "
+    call_suffix = ", &p, x, cy);"
+    matching_lines = [
+        line for line in source.splitlines()
+        if line.strip().startswith(call_prefix) and line.strip().endswith(call_suffix)
+    ]
+    if len(matching_lines) != 1:
+        raise SystemExit(
+            "place touch Undo / Redo controls before the remaining toolbar tools: "
+            f"expected one tool_slots() call, found {len(matching_lines)}"
+        )
+    original_line = matching_lines[0]
+    stripped_line = original_line.strip()
+    indent = original_line[:len(original_line) - len(original_line.lstrip())]
+    ui_name = stripped_line[len(call_prefix):-len(call_suffix)]
+    if not ui_name or not ui_name.replace("_", "").isalnum():
+        raise SystemExit(f"Unexpected toolbar UI variable for Undo/Redo: {ui_name!r}")
+    replacement = "\n".join((
+        f"{indent}// {MARKER}",
+        f"{indent}let x = history_buttons(app, {ui_name}, &p, x, cy);",
+        original_line,
+    ))
+    source = source.replace(original_line, replacement, 1)
+
     helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them.\n"
     helper = r'''/// AM-style touch controls for the project's native edit history.
 /// Continuous timeline gestures are already coalesced by the engine into one history step.
