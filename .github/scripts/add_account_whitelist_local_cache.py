@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -214,29 +215,27 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         "local whitelist check before registration",
     )
 
-    source = replace_once(
-        source,
-        '''            Ok(response) if response.status == 423 => {
-                let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
-                self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
-                self.permanently_banned = detail.get("permanent").and_then(Value::as_bool).unwrap_or(false)
-                    || detail.get("permanently_banned").and_then(Value::as_bool).unwrap_or(false);
-                self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
-                self.mode = Mode::Banned;
-                self.status.clear();
-            }''',
-        '''            Ok(response) if response.status == 423 => {
-                let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
-                self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
-                self.permanently_banned = detail.get("permanent").and_then(Value::as_bool).unwrap_or(false)
-                    || detail.get("permanently_banned").and_then(Value::as_bool).unwrap_or(false);
-                self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
-                self.persist_ban(config);
-                self.mode = Mode::Banned;
-                self.status = "封禁信息已保存到本机；下次打开无需连接服务器即可查看封禁状态。".to_string();
-            }''',
-        "persist server ban state locally",
+    # Match the ban response by its stable internal fields. The cloud-account
+    # conversion and avatar picker may reformat surrounding code, so avoid binding
+    # this change to the entire match-arm text.
+    ban_pattern = re.compile(
+        r'(?m)^(?P<indent>[ \\t]*)self\\.ban_reason = detail\\.get\\("reason"\\)\\.and_then\\(Value::as_str\\)\\.unwrap_or\\("未填写原因"\\)\\.to_string\\(\\);\\n'
+        r'(?P=indent)self\\.mode = Mode::Banned;\\n'
+        r'(?P=indent)self\\.status\\.clear\\(\\);'
     )
+    def persist_local_ban(match: re.Match[str]) -> str:
+        indent = match.group("indent")
+        ban_line = match.group(0).split("\\n", 1)[0]
+        return "\\n".join((
+            ban_line,
+            f"{indent}self.persist_ban(config);",
+            f"{indent}self.mode = Mode::Banned;",
+            f'{indent}self.status = "封禁信息已保存到本机；下次打开无需连接服务器即可查看封禁状态。".to_string();',
+        ))
+    source, ban_matches = ban_pattern.subn(persist_local_ban, source, count=1)
+    if ban_matches != 1:
+        raise SystemExit(f"persist server ban state locally: expected one ban response, found {ban_matches}")
+
     source = replace_once(
         source,
         '''            Ok(response) if !(200..300).contains(&response.status) => {
@@ -422,6 +421,28 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         insertion = ui.index(dependency_header) + len(dependency_header)
         ui = ui[:insertion] + 'sha2 = { workspace = true }\n' + ui[insertion:]
         ui_path.write_text(ui, encoding="utf-8")
+
+    # Cargo runs with --locked. sha2 0.10.9 already exists transitively in the
+    # upstream lockfile; add it to the UI crate's direct dependency list.
+    lock_path = root / "Cargo.lock"
+    lock_source = lock_path.read_text(encoding="utf-8")
+    package_match = re.search(
+        r'(?m)^\\[\\[package\\]\\]\\nname = "effectcraft-ui-egui"\\nversion = "[^"]+"\\ndependencies = \\[\\n',
+        lock_source,
+    )
+    if package_match is None:
+        raise SystemExit("Cannot add sha2 to Cargo.lock: effectcraft-ui-egui package is missing")
+    package_end = lock_source.find("\\n]\\n", package_match.end())
+    if package_end < 0:
+        raise SystemExit("Cannot add sha2 to Cargo.lock: UI dependency list is incomplete")
+    dependency_block = lock_source[package_match.end():package_end]
+    if '"sha2"' not in dependency_block and '"sha2 0.10.9"' not in dependency_block:
+        marker = ' "serde_json",'
+        if dependency_block.count(marker) != 1:
+            raise SystemExit("Cannot add sha2 to Cargo.lock: serde_json dependency anchor is not unique")
+        dependency_block = dependency_block.replace(marker, marker + '\\n "sha2",', 1)
+        lock_source = lock_source[:package_match.end()] + dependency_block + lock_source[package_end:]
+        lock_path.write_text(lock_source, encoding="utf-8")
 
     print("Added local hashed QQ/WeChat whitelist checks, local startup refresh and offline-persisted ban state.")
     print("Cloudflare remains authoritative and still checks registration, login, session and profile requests.")
