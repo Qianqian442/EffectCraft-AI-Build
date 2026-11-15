@@ -53,7 +53,7 @@ public final class HangoverBionicLaunchProfileSelfTest {
             check(command.size() == 5, "linker64 command must preserve guest executable and arguments");
             check(command.get(0).equals("/system/bin/linker64"), "Wine Bionic ELF must be entered through linker64");
             check(command.get(1).endsWith("/opt/hangover-wine/bin/wine64"), "Wine64 must be the Bionic host executable");
-            check(command.get(2).equals("Z:\\data\\user\\0\\host\\effectcraft-aex-host-x64.exe"),
+            check(command.get(2).equals(HangoverBionicLaunchProfile.toWineDosPath(guest)),
                     "Android private guest path must map to Wine Z: drive");
             check(command.get(3).equals("--plugin") && command.get(4).equals("Z:\\data\\sample.aex"),
                     "AEX worker arguments must remain unchanged");
