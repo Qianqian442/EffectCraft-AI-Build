@@ -8,7 +8,7 @@ CFLAGS="-O2 -g -Wall -Wextra -Werror -fPIE"
 
 "$CC" $CFLAGS "$ROOT/exec_child.c" -pie -o "$WORK/runtime/exec-child"
 "$CC" $CFLAGS "$ROOT/linker_stub.c" -pie -o "$WORK/linker-stub"
-"$CC" $CFLAGS "$ROOT/exec_parent.c" -pie -o "$WORK/exec-parent"
+"$CC" $CFLAGS "$ROOT/exec_parent.c" -pie -ldl -o "$WORK/exec-parent"
 "$CC" -shared -fPIC -O2 -g -Wall -Wextra -Werror -DEFFECTCRAFT_HOST_TEST \
   "$ROOT/../src/effectcraft_exec_bridge.c" -o "$WORK/libeffectcraft-exec.so"
 
