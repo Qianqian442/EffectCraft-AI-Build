@@ -278,6 +278,81 @@ def patch_new_comp_layer_fit(root: Path) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def patch_timeline_right_edge_extends_composition(root: Path) -> None:
+    """Dragging a layer's right edge may extend the composition instead of stopping at its end."""
+    timing_path = root / "crates/engine/src/cmd/layer/timing.rs"
+    source = timing_path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_EXTEND_COMP_ON_LAYER_OUT_DRAG_V1"
+    if marker not in source:
+        old_flag = '    let (in_delta, out_delta) = (snap("inDelta"), snap("outDelta"));\n'
+        new_flag = old_flag + '    let extend_comp = b_p(p, "extendComp").unwrap_or(false);\n'
+        source = replace_once(source, old_flag, new_flag, "Enable composition extension for timeline Out-edge drags")
+
+        old_out = '''                    if let Some(d) = out_delta {
+                        l.out_point = (l.out_point + d).min(comp_dur.max(l.out_point)).max(l.in_point + fd);
+                    }
+'''
+        new_out = '''                    if let Some(d) = out_delta {
+                        let requested_out = l.out_point + d;
+                        l.out_point = if extend_comp {
+                            requested_out.max(l.in_point + fd).min(Tick::from_seconds_f64(24.0 * 60.0 * 60.0))
+                        } else {
+                            requested_out.min(comp_dur.max(l.out_point)).max(l.in_point + fd)
+                        };
+                    }
+'''
+        source = replace_once(source, old_out, new_out, "Allow right-edge drag to pass the current composition end")
+
+        old_end = '''        }
+        Ok(())
+    })?;
+    Ok(Value::Null)
+}'''
+        new_end = '''        }
+        // EFFECTCRAFT_ANDROID_EXTEND_COMP_ON_LAYER_OUT_DRAG_V1
+        // When the user pulls a layer's Out edge past the composition end, grow the
+        // composition and (when it previously followed the comp end) its work area too.
+        // This keeps the newly visible clip duration, ruler and export range in sync.
+        if extend_comp {
+            let old_duration = comp_dur;
+            let required_end = comp.layers.iter().fold(old_duration, |end, layer| end.max(layer.out_point));
+            if required_end > old_duration {
+                comp.duration = required_end;
+                if comp.work_area.1 == old_duration {
+                    comp.work_area.1 = required_end;
+                }
+            }
+        }
+        Ok(())
+    })?;
+    Ok(Value::Null)
+}'''
+        source = replace_once(source, old_end, new_end, "Extend composition after an Out-edge drag")
+        timing_path.write_text(source, encoding="utf-8")
+
+    timeline_path = root / "crates/ui-egui/src/panels/timeline.rs"
+    timeline = timeline_path.read_text(encoding="utf-8")
+    ui_marker = "EFFECTCRAFT_ANDROID_LAYER_OUT_DRAG_EXTENDS_COMP_V1"
+    if ui_marker not in timeline:
+        old_match = '''                let params = match kind {
+                    "move" => json!({"layers": targets, "delta": d, "merge": drag_key}),
+                    "in" => json!({"layers": targets, "inDelta": d, "merge": drag_key}),
+                    _ => json!({"layers": targets, "outDelta": d, "merge": drag_key}),
+                };
+'''
+        new_match = '''                // EFFECTCRAFT_ANDROID_LAYER_OUT_DRAG_EXTENDS_COMP_V1
+                // Right-edge trimming may extend the comp itself; left-edge trimming and
+                // layer movement retain their original behavior.
+                let params = match kind {
+                    "move" => json!({"layers": targets, "delta": d, "merge": drag_key}),
+                    "in" => json!({"layers": targets, "inDelta": d, "merge": drag_key}),
+                    _ => json!({"layers": targets, "outDelta": d, "extendComp": true, "merge": drag_key}),
+                };
+'''
+        timeline = replace_once(timeline, old_match, new_match, "Enable composition extension from the layer Out-edge handle")
+        timeline_path.write_text(timeline, encoding="utf-8")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -290,7 +365,9 @@ def main() -> None:
     patch_project_new_comp_from_selected_media(root)
     patch_new_comp_layer_fit(root)
     patch_project_panel_footer_responsive(root)
-    print("Moved the media import shortcut into the Project panel footer to avoid Timeline overlap.")
+    patch_timeline_right_edge_extends_composition(root)
+    print("Kept the media import shortcut visible in the Project panel without overlapping other controls.")
+    print("Dragging a layer's right edge now extends the composition and its timeline/export range when needed.")
     print("Regular imports now create a layer in the active composition and fit it to the comp frame.")
     print("Imported files remain in the Project panel and their layers appear in the Timeline.")
 
