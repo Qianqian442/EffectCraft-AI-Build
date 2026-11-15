@@ -95,6 +95,10 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
     // EFFECTCRAFT_ANDROID_SINGLE_EXPORT_BUTTON_V1
     // The original Export button lives in right_side(); do not add another hit target here.
+    // Keep desktop AE plug-in migration dialogs wired after rebuilding this show() function.
+    #[cfg(not(target_arch = "wasm32"))]
+    crate::plugin_migration::show(app, ui.ctx());
+
     // Render modal dialogs outside the horizontally clipped toolbar child.
     export_dialog(app, ui);
     export_progress_dialog(app, ui);
