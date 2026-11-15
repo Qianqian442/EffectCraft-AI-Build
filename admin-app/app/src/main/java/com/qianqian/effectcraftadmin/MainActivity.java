@@ -833,7 +833,8 @@ public final class MainActivity extends Activity {
         String qq = user.optString("qq", "");
         String wechat = user.optString("wechat", "");
         String until = user.optString("banned_until", "");
-        boolean banned = !until.isEmpty() && !until.equals("null");
+        boolean permanent = "PERMANENT".equalsIgnoreCase(until);
+        boolean banned = permanent || (!until.isEmpty() && !until.equals("null"));
         LinearLayout row = new LinearLayout(this);
         row.setOrientation(LinearLayout.HORIZONTAL);
         row.setGravity(Gravity.CENTER_VERTICAL);
@@ -869,7 +870,7 @@ public final class MainActivity extends Activity {
         info.addView(label);
         info.addView(ids);
         if (banned) {
-            TextView ban = text("封禁至 " + until, 10, true);
+            TextView ban = text(permanent ? "永久封号" : "封禁至 " + until, 10, true);
             ban.setTextColor(Color.rgb(180, 58, 58));
             info.addView(ban);
         }
@@ -941,7 +942,7 @@ public final class MainActivity extends Activity {
                 "\n微信号：" + user.optString("wechat") +
                 "\n注册时间：" + user.optString("created_at") +
                 "\n头像：" + avatarDescription +
-                "\n封禁截止：" + user.optString("banned_until") +
+                "\n封禁截止：" + ("PERMANENT".equalsIgnoreCase(user.optString("banned_until")) ? "永久封号" : user.optString("banned_until")) +
                 "\n封禁原因：" + user.optString("ban_reason");
         new AlertDialog.Builder(this).setTitle("账号个人信息")
                 .setMessage(message)
@@ -949,6 +950,16 @@ public final class MainActivity extends Activity {
     }
 
     private void chooseBan(String id) {
+        new AlertDialog.Builder(this)
+                .setTitle("选择封禁方式")
+                .setItems(new String[]{"定时封禁", "永久封号"}, (dialog, which) -> {
+                    if (which == 0) chooseTimedBan(id);
+                    else askBanReason(id, null);
+                })
+                .show();
+    }
+
+    private void chooseTimedBan(String id) {
         Calendar selected = Calendar.getInstance();
         new DatePickerDialog(this, (view, year, month, day) -> {
             selected.set(Calendar.YEAR, year);
@@ -969,8 +980,8 @@ public final class MainActivity extends Activity {
         reason.setHint("填写封禁原因（必填）");
         reason.setMinLines(2);
         reason.setGravity(Gravity.TOP);
-        new AlertDialog.Builder(this).setTitle("确认封禁")
-                .setMessage("封禁截止：" + until.getTime())
+        new AlertDialog.Builder(this).setTitle(until == null ? "确认永久封号" : "确认定时封禁")
+                .setMessage(until == null ? "该账号将永久无法登录，只有管理员手动解封后才能恢复。" : "封禁截止：" + until.getTime())
                 .setView(reason)
                 .setNegativeButton("取消", null)
                 .setPositiveButton("确认封禁", (dialog, which) -> {
@@ -978,15 +989,16 @@ public final class MainActivity extends Activity {
                     if (why.isEmpty()) { toast("请填写封禁原因"); return; }
                     JSONObject body = new JSONObject();
                     try {
-                        body.put("banned_until", Instant.ofEpochMilli(until.getTimeInMillis()).toString());
+                        body.put("banned_until", until == null ? "PERMANENT" : Instant.ofEpochMilli(until.getTimeInMillis()).toString());
                         body.put("reason", why);
                     } catch (Exception ignored) {}
                     requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
                         if (result != null) {
                             int delivered = result.optInt("notification_delivered", 0);
+                            String action = until == null ? "已永久封号" : "已定时封禁";
                             toast(delivered > 0
-                                ? "已封禁，并已通知在线 Ae 设备（" + delivered + " 个连接）"
-                                : "封禁记录已保存；未发现在线 Ae 连接，对方下次联网或打开 Ae 时核验");
+                                ? action + "，并已通知在线 Ae 设备（" + delivered + " 个连接）"
+                                : action + "记录已保存；未发现在线 Ae 连接，对方下次联网或打开 Ae 时核验");
                             updateVisibleUser(result.optJSONObject("user"));
                         }
                     });
