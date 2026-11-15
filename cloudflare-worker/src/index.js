@@ -43,16 +43,34 @@ function randomBytes(size) {
 }
 
 async function passwordCryptoRequest(env, path, body) {
-  if (!env.ACCOUNT_SESSIONS) throw new Error("密码计算服务尚未绑定");
-  const id = env.ACCOUNT_SESSIONS.idFromName("__ae_password_crypto__");
-  const stub = env.ACCOUNT_SESSIONS.get(id);
-  const res = await stub.fetch("https://account-session.internal" + path, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) throw new Error("密码计算服务暂时不可用");
-  return res.json();
+  if (!env.ACCOUNT_SESSIONS) {
+    console.error("password-crypto-binding-missing");
+    throw new HttpError(503, "密码计算服务尚未就绪，请稍后重试", {
+      code: "password_service_unavailable"
+    });
+  }
+  try {
+    const id = env.ACCOUNT_SESSIONS.idFromName("__ae_password_crypto__");
+    const stub = env.ACCOUNT_SESSIONS.get(id);
+    const res = await stub.fetch("https://account-session.internal" + path, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) {
+      console.error("password-crypto-do-response", res.status, path);
+      throw new HttpError(503, "密码计算服务暂时不可用，请稍后重试", {
+        code: "password_service_unavailable"
+      });
+    }
+    return await res.json();
+  } catch (error) {
+    if (error instanceof HttpError) throw error;
+    console.error("password-crypto-do-error", error && error.message ? error.message : String(error));
+    throw new HttpError(503, "密码计算服务暂时不可用，请稍后重试", {
+      code: "password_service_unavailable"
+    });
+  }
 }
 async function passwordHash(env, password) {
   const result = await passwordCryptoRequest(env, "/password/hash", { password });
@@ -489,13 +507,37 @@ async function route(request, env) {
     try {
       const probe = await env.DB.prepare("SELECT 1 AS connected").first();
       const connected = Number(probe && probe.connected) === 1;
+      let passwordService = false;
+      try {
+        if (env.ACCOUNT_SESSIONS) {
+          const id = env.ACCOUNT_SESSIONS.idFromName("__ae_password_crypto_health__");
+          const stub = env.ACCOUNT_SESSIONS.get(id);
+          const passwordProbe = await stub.fetch("https://account-session.internal/health");
+          if (passwordProbe.ok) {
+            const result = await passwordProbe.json();
+            passwordService = result && result.ok === true;
+          }
+        }
+      } catch (error) {
+        console.error("health-password-service-error", error && error.message ? error.message : String(error));
+      }
+      // Keep database health separate so the existing admin app can still log in
+      // and repair the password service if its Durable Object is unavailable.
       return response(
-        { ok: connected, service: "Ae Cloud Account API", database: connected },
+        {
+          ok: connected,
+          service: "Ae Cloud Account API",
+          database: connected,
+          password_service: passwordService
+        },
         connected ? 200 : 503
       );
     } catch (error) {
       console.error("health-database-error", error && error.message ? error.message : String(error));
-      return response({ ok: false, service: "Ae Cloud Account API", database: false }, 503);
+      return response(
+        { ok: false, service: "Ae Cloud Account API", database: false, password_service: false },
+        503
+      );
     }
   }
   if (!env.DB) return fail(503, "云端数据库尚未绑定");
