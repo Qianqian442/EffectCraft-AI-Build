@@ -675,13 +675,15 @@ public final class MainActivity extends Activity {
         Button search = button("搜索账号");
         page.addView(search, new LinearLayout.LayoutParams(-1, dp(46)));
         search.setOnClickListener(v -> loadUsers(searchInput.getText().toString()));
-        ScrollView scroll = new ScrollView(this);
+        // Keep the whole admin page scrollable. Previously only the user rows
+        // lived in a weighted ScrollView, while the server and whitelist panels
+        // stayed outside it; on short screens this could collapse the list area
+        // and make the ban/unban actions unreachable.
         rows = new LinearLayout(this);
         rows.setOrientation(LinearLayout.VERTICAL);
-        scroll.addView(rows);
-        LinearLayout.LayoutParams scrollParams = new LinearLayout.LayoutParams(-1, 0, 1);
-        scrollParams.topMargin = dp(12);
-        page.addView(scroll, scrollParams);
+        LinearLayout.LayoutParams rowsParams = new LinearLayout.LayoutParams(-1, -2);
+        rowsParams.topMargin = dp(12);
+        page.addView(rows, rowsParams);
         Button logout = button("退出管理员账号");
         page.addView(logout, new LinearLayout.LayoutParams(-1, dp(46)));
         logout.setOnClickListener(v -> {
@@ -689,7 +691,17 @@ public final class MainActivity extends Activity {
             getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
             showLogin();
         });
-        setRoot(page);
+        ScrollView pageScroll = new ScrollView(this);
+        pageScroll.setFillViewport(true);
+        pageScroll.setVerticalScrollBarEnabled(true);
+        pageScroll.setClipToPadding(false);
+        pageScroll.addView(page, new ScrollView.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+        ));
+        LinearLayout screen = new LinearLayout(this);
+        screen.setOrientation(LinearLayout.VERTICAL);
+        screen.addView(pageScroll, new LinearLayout.LayoutParams(-1, -1));
+        setRoot(screen);
         if (users == null) return;
         for (int i = 0; i < users.length(); i++) {
             JSONObject user = users.optJSONObject(i);
