@@ -327,7 +327,13 @@ def patch_timeline_right_edge_extends_composition(root: Path) -> None:
     })?;
     Ok(Value::Null)
 }'''
-        source = replace_once(source, old_end, new_end, "Extend composition after an Out-edge drag")
+        timing_start = source.find("pub(super) fn timing(")
+        timing_end = source.find("\npub(super) fn move_frames", timing_start)
+        if timing_start < 0 or timing_end < 0:
+            raise SystemExit("Could not isolate the layer timing command for the composition-extension patch")
+        timing_fn = source[timing_start:timing_end]
+        timing_fn = replace_once(timing_fn, old_end, new_end, "Extend composition after an Out-edge drag")
+        source = source[:timing_start] + timing_fn + source[timing_end:]
         timing_path.write_text(source, encoding="utf-8")
 
     timeline_path = root / "crates/ui-egui/src/panels/timeline.rs"
