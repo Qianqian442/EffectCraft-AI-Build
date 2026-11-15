@@ -1138,10 +1138,12 @@ fn import_aep_mobile_package(s: &mut Session, p: &J) -> Result<J> {
     if ext(&path) != "zip" {
         return Err(err("手机版 AE 工程请先选择手机 AE 应用原样导出的工程包（通常为 ZIP）。"));
     }
-    let file = std::fs::File::open(&path)
-        .or_else(|_| s.services.read_file(&path))
-        .map_err(|e| err(format!("无法读取手机版 AE 工程包：{e}")))?;
-    let archive = zip::ZipArchive::new(file)
+    let bytes = match std::fs::read(&path) {
+        Ok(bytes) => bytes,
+        Err(_) => s.services.read_file(&path)
+            .map_err(|e| err(format!("无法读取手机版 AE 工程包：{e}")))?,
+    };
+    let archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| err(format!("手机版 AE 工程包不是有效 ZIP：{e}")))?;
     let mut names = Vec::new();
     for index in 0..archive.len().min(32) {
