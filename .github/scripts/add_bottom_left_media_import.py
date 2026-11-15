@@ -307,7 +307,7 @@ def patch_project_panel_footer_responsive(root: Path) -> None:
         }
         dresp.on_hover_text(crate::i18n::tr("Project color depth: click to cycle 8/16/32 bpc, Alt-click for Project Settings"));
     }'''
-    replace_once(source, old, new, "Project footer responsive control layout")
+    source = replace_once(source, old, new, "Project footer responsive control layout")
     path.write_text(source, encoding="utf-8")
 
 
@@ -369,10 +369,10 @@ def patch_new_comp_layer_fit(root: Path) -> None:
     source = path.read_text(encoding="utf-8")
     old = 'layers.push(s.execute("layer.addItem", json!({"comp": cid.0, "item": item.0, "duration": still}))?["layer"].clone());'
     new = 'layers.push(s.execute("layer.addItem", json!({"comp": cid.0, "item": item.0, "duration": still, "fitToComp": b_p(p, "fitToComp").unwrap_or(false)}))?["layer"].clone());'
-    replace_once(source, old, new, "Pass the explicit fitToComp option to new compositions")
+    source = replace_once(source, old, new, "Pass the explicit fitToComp option to new compositions")
     old_spec = '{duration? (s, for stills), single?: bool (one comp for all), dimensionsFrom?: index, sequence?: bool, overlap?: bool, overlapDuration? (s), transition?: off|dissolveFront|crossDissolve, addToRenderQueue?: bool} → {comps}'
     new_spec = '{duration? (s, for stills), single?: bool (one comp for all), dimensionsFrom?: index, sequence?: bool, overlap?: bool, overlapDuration? (s), transition?: off|dissolveFront|crossDissolve, addToRenderQueue?: bool, fitToComp?: bool} → {comps}'
-    replace_once(source, old_spec, new_spec, "Document optional fitToComp on New Comp from Selection")
+    source = replace_once(source, old_spec, new_spec, "Document optional fitToComp on New Comp from Selection")
     path.write_text(source, encoding="utf-8")
 
 
