@@ -108,6 +108,7 @@ def translate_ui_label(value: str) -> str:
         "缓动 (F9)": "缓动",
         "缓入 (Shift+F9)": "缓入",
         "缓出 (Ctrl+Shift+F9)": "缓出",
+        "getartcraft.com 上的 EffectCraft": "效果工坊官方网站",
         "getartcraft.com 上的 效果工坊": "效果工坊官方网站",
         "视频开始 (ISO 日期时间、hh:mm:ss、时间码；为空: 文件日期)": "视频开始时间（标准日期时间、时分秒、时间码；留空则使用文件日期）",
         "在 macOS 上使用窗口内菜单栏": "在苹果电脑系统上使用窗口内菜单栏",
