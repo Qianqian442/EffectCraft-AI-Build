@@ -82,14 +82,24 @@ pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {
     poll_result(state, &ctx);
 
     let screen = ctx.content_rect();
-    // Keep the floating assistant avatar both tappable and draggable. The Area itself
-    // is fixed for this frame; a child click-and-drag response moves its saved position.
-    // This avoids the old parent-Area drag gesture swallowing taps on Android.
+    // EFFECTCRAFT_ANDROID_AI_BUBBLE_FULL_SCREEN_DRAG_V1
+    // The floating assistant can be dragged throughout the full available editor viewport.
+    // Keep the entire 48px bubble on-screen after orientation, window-size and inset changes.
+    // The Area itself is fixed for this frame; its child handles click + drag separately.
     let default_bubble_pos = pos2(
         (screen.max.x - 64.0).max(screen.min.x + 8.0),
         (screen.max.y - 92.0).max(screen.min.y + 8.0),
     );
-    let bubble_pos = state.bubble_pos.unwrap_or(default_bubble_pos);
+    let max_bubble_x = (screen.max.x - 48.0).max(screen.min.x);
+    let max_bubble_y = (screen.max.y - 48.0).max(screen.min.y);
+    let requested_bubble_pos = state.bubble_pos.unwrap_or(default_bubble_pos);
+    let bubble_pos = pos2(
+        requested_bubble_pos.x.clamp(screen.min.x, max_bubble_x),
+        requested_bubble_pos.y.clamp(screen.min.y, max_bubble_y),
+    );
+    if state.bubble_pos.is_some() {
+        state.bubble_pos = Some(bubble_pos);
+    }
     let mut dragged_bubble_to = None;
     egui::Area::new(Id::new("effectcraft-ai-bubble"))
         .order(Order::Foreground)
