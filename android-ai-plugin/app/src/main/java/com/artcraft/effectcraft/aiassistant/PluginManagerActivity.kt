@@ -3,6 +3,7 @@ package com.artcraft.effectcraft.aiassistant
 import android.app.Activity
 import android.app.DownloadManager
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -15,11 +16,18 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import java.io.File
+import java.io.BufferedInputStream
+import java.io.ByteArrayOutputStream
+import java.io.FileOutputStream
+import java.security.MessageDigest
+import java.util.zip.ZipInputStream
+import org.json.JSONObject
 
 class PluginManagerActivity : Activity() {
     private lateinit var statusText: TextView
     private lateinit var progressBar: ProgressBar
     private lateinit var downloadButton: Button
+    private lateinit var importButton: Button
     private val handler = Handler(Looper.getMainLooper())
     private val preferences by lazy { getSharedPreferences("deepseek_plugin", Context.MODE_PRIVATE) }
     private val modelFile: File
@@ -95,7 +103,7 @@ class PluginManagerActivity : Activity() {
             downloadButton.text = "模型已就绪"
             downloadButton.isEnabled = false
         } else {
-            statusText.text = "插件已安装。首次使用需要下载约 1.02 GB 的 DeepSeek 模型；下载完成后可离线推理。"
+            statusText.text = "尚未准备本地模型。可导入 AI 插件包 ZIP，也可直接下载约 1.02 GB 的 DeepSeek 模型。"
             handler.post(pollDownload)
         }
     }
@@ -112,7 +120,7 @@ class PluginManagerActivity : Activity() {
             gravity = Gravity.CENTER
         }, matchWidth())
         root.addView(TextView(this).apply {
-            text = "独立本地推理引擎 · ARM64 · 无云端 API"
+            text = "集成在 EffectCraft 主程序内 · 本地推理 · 无云端 API"
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding(0, dp(12), 0, dp(18))
@@ -130,8 +138,13 @@ class PluginManagerActivity : Activity() {
             topMargin = dp(20)
             bottomMargin = dp(20)
         })
+        importButton = Button(this).apply {
+            text = "导入 AI 插件包 ZIP"
+            setOnClickListener { chooseModelPackage() }
+        }
+        root.addView(importButton, matchWidth())
         downloadButton = Button(this).apply {
-            text = "下载 DeepSeek 本地模型（约 1.02 GB）"
+            text = "直接下载 DeepSeek 本地模型（约 1.02 GB）"
             setOnClickListener { beginDownload() }
         }
         root.addView(downloadButton, matchWidth())
@@ -142,6 +155,165 @@ class PluginManagerActivity : Activity() {
             setPadding(0, dp(24), 0, 0)
         }, matchWidth())
         setContentView(root)
+    }
+
+    private fun chooseModelPackage() {
+        val picker = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/x-zip-compressed"))
+            putExtra(Intent.EXTRA_TITLE, "选择 EffectCraft DeepSeek AI 插件包")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+        startActivityForResult(picker, IMPORT_MODEL_REQUEST)
+    }
+
+    @Deprecated("Use the model package picker result")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != IMPORT_MODEL_REQUEST || resultCode != Activity.RESULT_OK) return
+        val uri = data?.data ?: run {
+            statusText.text = "没有取得所选文件，请重新选择。"
+            return
+        }
+        importButton.isEnabled = false
+        downloadButton.isEnabled = false
+        progressBar.progress = 0
+        statusText.text = "正在验证并导入 AI 插件包…"
+        Thread({ importModelPackage(uri) }, "EffectCraftModelPackageImport").start()
+    }
+
+    private fun importModelPackage(uri: Uri) {
+        val parent = modelFile.parentFile ?: run {
+            runOnUiThread {
+                statusText.text = "无法创建本地模型目录。"
+                importButton.isEnabled = true
+                downloadButton.isEnabled = true
+            }
+            return
+        }
+        val partial = File(parent, MODEL_FILE + ".importing")
+        var completed = false
+        try {
+            if ((!parent.isDirectory && !parent.mkdirs()) || !parent.isDirectory) {
+                throw IllegalStateException("无法创建应用内部模型目录。")
+            }
+            var manifest: JSONObject? = null
+            var expectedSize = 0L
+            var expectedSha256 = ""
+            var copied = 0L
+            var foundModel = false
+            val digest = MessageDigest.getInstance("SHA-256")
+            val buffer = ByteArray(1024 * 1024)
+            val raw = contentResolver.openInputStream(uri)
+                ?: throw IllegalStateException("无法读取所选 AI 插件包。")
+            raw.use { input ->
+                ZipInputStream(BufferedInputStream(input)).use { zip ->
+                    var entry = zip.nextEntry
+                    while (entry != null) {
+                        when (entry.name) {
+                            "plugin.json" -> {
+                                val bytes = ByteArrayOutputStream()
+                                val smallBuffer = ByteArray(4096)
+                                var manifestBytes = 0
+                                while (true) {
+                                    val count = zip.read(smallBuffer)
+                                    if (count < 0) break
+                                    manifestBytes += count
+                                    if (manifestBytes > 64 * 1024) {
+                                        throw IllegalStateException("AI 插件包清单文件过大。")
+                                    }
+                                    bytes.write(smallBuffer, 0, count)
+                                }
+                                val parsed = JSONObject(bytes.toString("UTF-8"))
+                                if (parsed.optString("format") != MODEL_PACKAGE_FORMAT ||
+                                    parsed.optInt("format_version", 0) != 1 ||
+                                    parsed.optString("id") != MODEL_PACKAGE_ID ||
+                                    parsed.optString("model_file") != MODEL_FILE) {
+                                    throw IllegalStateException("这不是 EffectCraft DeepSeek AI 模型插件包。")
+                                }
+                                expectedSize = parsed.optLong("model_size_bytes", 0L)
+                                expectedSha256 = parsed.optString("model_sha256", "")
+                                if (expectedSize < MIN_MODEL_BYTES ||
+                                    expectedSize > MAX_MODEL_BYTES ||
+                                    !expectedSha256.matches(Regex("^[0-9a-fA-F]{64}$"))) {
+                                    throw IllegalStateException("AI 插件包模型大小或校验信息不正确。")
+                                }
+                                manifest = parsed
+                            }
+                            MODEL_FILE, "models/" + MODEL_FILE -> {
+                                if (manifest == null) {
+                                    throw IllegalStateException("插件包清单缺失或顺序不正确。")
+                                }
+                                FileOutputStream(partial, false).use { output ->
+                                    while (true) {
+                                        val count = zip.read(buffer)
+                                        if (count < 0) break
+                                        copied += count.toLong()
+                                        if (copied > MAX_MODEL_BYTES || copied > expectedSize) {
+                                            throw IllegalStateException("模型文件超过清单声明的大小。")
+                                        }
+                                        output.write(buffer, 0, count)
+                                        digest.update(buffer, 0, count)
+                                        if (copied % (16L * 1024L * 1024L) < buffer.size) {
+                                            val percent = ((copied * 100L) / expectedSize).toInt().coerceIn(0, 99)
+                                            handler.post {
+                                                progressBar.progress = percent
+                                                statusText.text = "正在导入 DeepSeek 本地模型：$percent%（" +
+                                                    formatBytes(copied) + " / " + formatBytes(expectedSize) + "）"
+                                            }
+                                        }
+                                    }
+                                }
+                                foundModel = true
+                            }
+                            else -> {
+                                // Ignore unrelated metadata files; never extract arbitrary paths.
+                                while (zip.read(buffer) >= 0) { }
+                            }
+                        }
+                        zip.closeEntry()
+                        entry = zip.nextEntry
+                    }
+                }
+            }
+            if (manifest == null || !foundModel || copied < MIN_MODEL_BYTES) {
+                throw IllegalStateException("插件包中没有完整的 DeepSeek 模型文件。")
+            }
+            if (copied != expectedSize) {
+                throw IllegalStateException("模型文件大小与插件清单不一致。")
+            }
+            val actualSha = digest.digest().joinToString("") { "%02x".format(it) }
+            if (!actualSha.equals(expectedSha256, ignoreCase = true)) {
+                throw IllegalStateException("模型校验失败；文件可能已损坏，请重新下载插件包。")
+            }
+            if (modelFile.exists() && !modelFile.delete()) {
+                throw IllegalStateException("无法替换旧模型文件，请先关闭正在使用的 AI 助手。")
+            }
+            if (!partial.renameTo(modelFile)) {
+                partial.inputStream().use { source ->
+                    FileOutputStream(modelFile).use { target -> source.copyTo(target) }
+                }
+                partial.delete()
+            }
+            completed = true
+            handler.post {
+                progressBar.progress = 100
+                statusText.text = "DeepSeek 本地模型导入成功。现在可以断网使用 AI 助手。"
+                downloadButton.text = "模型已就绪"
+                downloadButton.isEnabled = false
+                importButton.isEnabled = true
+            }
+        } catch (error: Exception) {
+            partial.delete()
+            handler.post {
+                statusText.text = "AI 插件包导入失败：" + (error.message ?: error.javaClass.simpleName)
+                importButton.isEnabled = true
+                downloadButton.isEnabled = true
+            }
+        } finally {
+            if (!completed) partial.delete()
+        }
     }
 
     private fun beginDownload() {
@@ -204,6 +376,10 @@ class PluginManagerActivity : Activity() {
     }
 
     companion object {
+        private const val IMPORT_MODEL_REQUEST = 0x5D31
+        private const val MODEL_PACKAGE_FORMAT = "effectcraft-ai-model-plugin"
+        private const val MODEL_PACKAGE_ID = "com.artcraft.effectcraft.deepseek.model"
+        private const val MAX_MODEL_BYTES = 2L * 1024L * 1024L * 1024L
         private const val MODEL_FILE = "DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf"
         private const val KEY_DOWNLOAD_ID = "model_download_id"
         private const val KEY_USE_MIRROR = "model_download_use_mirror"
