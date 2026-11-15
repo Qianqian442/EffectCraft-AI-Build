@@ -522,6 +522,7 @@ fn export_progress_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                 window_ui.label(format!("当前项目：{current_name}"));
             }
             window_ui.add_space(8.0);
+            window_ui.label(format!("导出进度：{:.0}%", fraction.clamp(0.0, 1.0) * 100.0));
             window_ui.add(egui::ProgressBar::new(fraction.clamp(0.0, 1.0)).desired_width(320.0).show_percentage());
             if total_frames > 0 {
                 window_ui.label(format!("当前任务：{done_frames} / {total_frames} 帧"));
