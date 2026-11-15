@@ -104,8 +104,10 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         (
             "选择封禁类型",
             "永久封号",
-            'button(permanent ? "删除账号" : "封禁")',
+            'button("封禁")',
             'button("解禁")',
+            'Button deleteButton = button("删除账号")',
+            "if (permanent)",
             "private void deleteUser(String id)",
             "白名单记录不会删除",
         ),
