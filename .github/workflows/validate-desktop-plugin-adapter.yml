@@ -150,12 +150,15 @@ jobs:
           grep -F 'shareProjectPackage' artcraft/templates/android/SafActivity.java
           grep -F 'share_project_package' artcraft/source/effectcraft/crates/ui-egui/src/android_gallery.rs
 
-      - name: Validate the original AE menu and connect AEP/AEPX to Import Project
+      - name: Validate one unified Import Project menu for all supported project formats
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: |
           python3 .github/scripts/add_project_import_formats.py
           python3 .github/scripts/add_am_nv_project_import.py
+          grep -F '导入工程... | file.importProject' effectcraft/crates/engine/src/menus.rs
+          ! grep -F 'After Effects Project... | file.importAep' effectcraft/crates/engine/src/menus.rs
+          ! grep -F 'Adobe Premiere Pro Project... | file.importTimeline' effectcraft/crates/engine/src/menus.rs
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
 
