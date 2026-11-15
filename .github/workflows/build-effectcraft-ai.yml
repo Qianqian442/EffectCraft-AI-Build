@@ -33,11 +33,7 @@ on:
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
-      - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/normalize_account_network_dependencies.py'
-      - '.github/scripts/integrate_public_proxy_pool.py'
-      - '.github/scripts/fetch_public_proxy_bootstrap.py'
-      - '.github/scripts/validate_public_proxy_pool.sh'
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
@@ -88,9 +84,6 @@ jobs:
             .github/scripts/install_ai_plugin_bridge.py \
             .github/scripts/add_plugin_import_button.py \
             .github/scripts/fix_viewer_drag_selection.py \
-            .github/scripts/integrate_public_proxy_pool.py \
-            .github/scripts/fetch_public_proxy_bootstrap.py \
-            .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
             .github/scripts/add_bottom_left_media_import.py \
             .github/scripts/configure_android_storage_fallback.py \
@@ -99,7 +92,7 @@ jobs:
 
   build:
     needs: validate-patches
-    # Build the main APK even before Cloudflare is configured; retain the current admin-phone account mode until a real Worker URL is supplied.
+    # Keep the main APK's account client connected to the administrator-hosted server over its existing P2P transport. Do not rewrite it to Cloudflare HTTPS or a public proxy pool.
     name: Build EffectCraft 0.21.1 with AI helper
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -456,32 +449,6 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_account_avatar_picker.py
           python3 build-assets/.github/scripts/add_account_avatar_picker.py
 
-      - name: Convert account gate to cloud HTTPS and real-time ban notifications
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          AE_ACCOUNT_API_URL: https://ae-account-api-gateway.pages.dev
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
-          python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
-
-      - name: Integrate dynamic public proxy pool for Cloudflare account HTTPS and WSS
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
-          AE_ACCOUNT_API_URL: https://ae-account-api-gateway.pages.dev
-          PUBLIC_PROXY_BOOTSTRAP_FILE: ${{ runner.temp }}/effectcraft-public-proxy-bootstrap.txt
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/fetch_public_proxy_bootstrap.py
-          python3 build-assets/.github/scripts/fetch_public_proxy_bootstrap.py --output "$PUBLIC_PROXY_BOOTSTRAP_FILE"
-          python3 -m py_compile build-assets/.github/scripts/integrate_public_proxy_pool.py
-          python3 build-assets/.github/scripts/integrate_public_proxy_pool.py
-          grep -Fq "EFFECTCRAFT_PUBLIC_PROXY_POOL_V1" "$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
-          grep -Fq "socks-proxy" "$EFFECTCRAFT_DIR/Cargo.toml"
-          grep -Fq "rustls-tls-webpki-roots" "$EFFECTCRAFT_DIR/Cargo.toml"
-          test -s "$EFFECTCRAFT_DIR/crates/ui-egui/src/public_proxy_pool.rs"
-          test -s "$EFFECTCRAFT_DIR/crates/ui-egui/src/public_proxy_bootstrap.txt"
-          echo "Proxy bootstrap candidate count: $(wc -l < "$EFFECTCRAFT_DIR/crates/ui-egui/src/public_proxy_bootstrap.txt")"
-
       - name: Add independent connected Puppet pin rigs
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
@@ -611,12 +578,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android, wasm32-unknown-unknown
-
-      - name: Compile and test public proxy pool in isolation
-        env:
-          BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
-          RUNNER_TEMP: ${{ runner.temp }}
-        run: bash build-assets/.github/scripts/validate_public_proxy_pool.sh
 
       - name: Build built-in Sapphire-compatible WASM effects
         env:
