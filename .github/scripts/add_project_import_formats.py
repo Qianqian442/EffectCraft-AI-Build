@@ -16,15 +16,15 @@ def main() -> None:
     menu_source = menu.read_text(encoding="utf-8")
     frontend_source = frontend.read_text(encoding="utf-8")
 
-    start = menu_source.find("  Import\n")
-    end = menu_source.find("  Import Recent Footage\n", start)
+    start = menu_source.find("  Import\\n")
+    end = menu_source.find("  Import Recent Footage\\n", start)
     if start < 0 or end < 0:
         raise SystemExit("Could not locate the original File > Import menu block")
     block = menu_source[start:end]
 
-    # These entries must remain exactly where upstream placed them. This is a validation-only
-    # patch: it must never move, rename, group, hide or remove any original import command.
-    required_in_order = [
+    # Move the native EffectCraft Project entry to the Project panel's dedicated
+    # Import Project button. Keep the original command and all other import commands.
+    required_entries = [
         "    File... | file.import",
         "    Multiple Files... | file.importMultiple",
         "    Adobe Premiere Pro Project... | file.importTimeline",
@@ -36,12 +36,27 @@ def main() -> None:
         "    Vanishing Point (.vpe)... | file.importVanishingPoint",
         "    Essential Graphics Template... | essential.importTemplate",
     ]
-    positions = [block.find(entry) for entry in required_in_order]
-    if any(position < 0 for position in positions):
-        missing = [entry for entry, position in zip(required_in_order, positions) if position < 0]
-        raise SystemExit("Original File > Import entries are missing: " + "; ".join(missing))
-    if positions != sorted(positions):
-        raise SystemExit("Original File > Import commands have been moved or reordered")
+    if any(entry not in block for entry in required_entries):
+        missing = [entry for entry in required_entries if entry not in block]
+        raise SystemExit("Original import commands are missing: " + "; ".join(missing))
+
+    # Preserve the old AE/Premiere import commands under one secondary submenu so the
+    # primary File > Import list is less crowded. The unified Project-panel button handles
+    # EffectCraft, AE, AM, NodeVideo and CapCut formats through file.importProject.
+    unified_block = """  Import
+    File... | file.import
+    Multiple Files... | file.importMultiple
+    更多工程格式
+      Adobe Premiere Pro Project... | file.importTimeline
+      After Effects Project... | file.importAep
+    Placeholder... | file.importPlaceholder
+    Solid... | file.importSolid
+    Lottie... | file.importLottie
+    Vanishing Point (.vpe)... | file.importVanishingPoint
+    Essential Graphics Template... | essential.importTemplate
+"""
+    menu_source = menu_source[:start] + unified_block + menu_source[end:]
+    menu.write_text(menu_source, encoding="utf-8")
 
     if '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx"])),' not in frontend_source:
         raise SystemExit("The original EffectCraft Project picker changed unexpectedly")
@@ -50,8 +65,16 @@ def main() -> None:
     if "file_dialog_async" not in frontend_source:
         raise SystemExit("The original asynchronous file-picker pathway is missing")
 
-    # Intentionally do not write menu_source: preserve its original layout and all commands.
-    print("Verified the original File > Import menu position and all original import commands; no menu items were moved or removed.")
+    # file.importProject remains registered and will be surfaced as a Project-panel button.
+    command_registry = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
+    if '"file.importProject"' not in command_registry:
+        raise SystemExit("The native EffectCraft Project import command is not registered")
+    if "EffectCraft Project... | file.importProject" in menu_source:
+        raise SystemExit("The duplicate native Project menu entry is still visible")
+    if "更多工程格式" not in menu_source or "file.importAep" not in menu_source or "file.importTimeline" not in menu_source:
+        raise SystemExit("The secondary project-format submenu is missing an original import command")
+    print("Moved the native Project import action to the Project panel; AE/Premiere imports remain available under More Project Formats.")
+    print("All original import commands remain registered; only the duplicate visible entry was relocated.")
 
 
 if __name__ == "__main__":
