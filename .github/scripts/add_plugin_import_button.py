@@ -72,7 +72,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     let response = ui
         .put(rect, egui::Button::new("导入插件"))
         .on_hover_text("导入效果插件包、电脑插件文件或本地人工智能插件包");
-    app.auto.add_response("header.importPlugin", &response, "Import Plug-in");
+    app.auto.add_response("header.importPlugin", &response, "导入插件");
     widgets::focus_outline(ui, &response, &app.tokens);
     if response.clicked() {
         menu_open = !menu_open;
