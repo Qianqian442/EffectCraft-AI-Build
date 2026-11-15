@@ -161,25 +161,37 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified the five requested independent project-export buttons and honest AE desktop status.")
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V5" not in project:
-        raise SystemExit("The visible Project-panel Import Media control is missing.")
-    if "compact_import_layout" not in project or "import_rect.max.y + 6.0" not in project:
-        raise SystemExit("The narrow-screen Import Media layout no longer moves the header below the button.")
-    print("Verified the image/video Import Media button uses a non-overlapping narrow-screen layout.")
+    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V6" not in project:
+        raise SystemExit("The Project panel is missing its separate Import Media and Import Project buttons.")
+    if "project.importProject" not in project or '"file.importProject"' not in project:
+        raise SystemExit("The Project-panel Import Project button is not connected to the unified project importer.")
+    if "compact_import_layout" not in project or "actions_bottom" not in project:
+        raise SystemExit("Project-panel import buttons no longer use a non-overlapping narrow-screen layout.")
+    print("Verified the Project panel has separate Media and Project import buttons in a non-overlapping location.")
 
     frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_IMPORT_ONLY_V1" not in frontend:
-        raise SystemExit("The normal Import Media picker is not restricted to picture/video media.")
-    if "VIDEO_EXTENSIONS.iter()" not in frontend:
-        raise SystemExit("Video extensions were removed from the normal Import Media picker.")
+    if "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2" not in frontend:
+        raise SystemExit("The dedicated picture/video picker is missing.")
+    if "let import_extensions = if pictures_and_videos { footage(PICTURE_VIDEO) } else { footage(MEDIA) };" not in frontend:
+        raise SystemExit("Picture/video filtering is not scoped to the dedicated Project-panel button.")
+    if '"wav"' not in frontend or '"gltf"' not in frontend or "footage(MEDIA)" not in frontend:
+        raise SystemExit("The original generic File > Import media types were removed.")
+    print("Verified only the dedicated Media button filters to pictures/videos; generic File > Import retains other media types.")
 
     file_cmd = (root / "crates/engine/src/cmd/file.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V2" not in file_cmd or 'params["addToComp"] = json!(true);' not in file_cmd:
-        raise SystemExit("Import Media no longer automatically inserts selected assets into the active composition.")
+    if "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V3" not in file_cmd or "picturesAndVideos" not in file_cmd:
+        raise SystemExit("The picture/video shortcut is not scoped separately from generic File > Import.")
+    if 'new_comp(s, r, Some(10.0), true)' not in file_cmd or 'json!(still_duration)' not in file_cmd:
+        raise SystemExit("Still images imported through the dedicated button do not start with a 10-second adjustable duration.")
+    if "fitToComp" not in file_cmd:
+        raise SystemExit("Imported media no longer receives its optional comp-fit behavior.")
     layer_create = (root / "crates/engine/src/cmd/layer/create.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2" not in layer_create:
-        raise SystemExit("Imported picture/video layers no longer fit the active composition.")
-    print("Verified image/video imports are added to the composition and fitted to the frame.")
+        raise SystemExit("Imported picture/video layers no longer fit the composition when explicitly requested.")
+    file_more = (root / "crates/engine/src/cmd/file_more.rs").read_text(encoding="utf-8")
+    if 'b_p(p, "fitToComp").unwrap_or(false)' not in file_more:
+        raise SystemExit("Fit-to-comp is not an opt-in setting for New Comp from Selection.")
+    print("Verified media-only auto-add, 10-second still default and opt-in fit; generic imports and New Composition behavior are preserved.")
 
     menu = (root / "crates/engine/src/menus.rs").read_text(encoding="utf-8")
     import_start = menu.find("  Import\\n")
@@ -187,22 +199,26 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if import_start < 0 or import_end < 0:
         raise SystemExit("The original File > Import menu block is missing.")
     visible_import = menu[import_start:import_end]
-    original_entries = [
-        "    File... | file.import",
-        "    Multiple Files... | file.importMultiple",
-        "    Adobe Premiere Pro Project... | file.importTimeline",
-        "    EffectCraft Project... | file.importProject",
-        "    Placeholder... | file.importPlaceholder",
-        "    Solid... | file.importSolid",
-        "    After Effects Project... | file.importAep",
-        "    Lottie... | file.importLottie",
-        "    Vanishing Point (.vpe)... | file.importVanishingPoint",
-        "    Essential Graphics Template... | essential.importTemplate",
+    if "EffectCraft Project... | file.importProject" in visible_import:
+        raise SystemExit("The native Project import action is still in its old File > Import position.")
+    required_imports = [
+        "File... | file.import",
+        "Multiple Files... | file.importMultiple",
+        "更多工程格式",
+        "Adobe Premiere Pro Project... | file.importTimeline",
+        "After Effects Project... | file.importAep",
+        "Placeholder... | file.importPlaceholder",
+        "Solid... | file.importSolid",
+        "Lottie... | file.importLottie",
+        "Vanishing Point (.vpe)... | file.importVanishingPoint",
+        "Essential Graphics Template... | essential.importTemplate",
     ]
-    positions = [visible_import.find(entry) for entry in original_entries]
-    if any(position < 0 for position in positions) or positions != sorted(positions):
-        raise SystemExit("The original File > Import items were moved, renamed or removed.")
-    print("Verified the original File > Import menu position and all upstream import actions remain intact.")
+    if any(item not in visible_import for item in required_imports):
+        raise SystemExit("Moving the Project import action removed or hid another original Import command.")
+    import_project_command = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
+    if '"file.importProject"' not in import_project_command:
+        raise SystemExit("The native Project importer command was removed instead of relocated.")
+    print("Verified Project import moved out of File > Import while all original import commands remain available.")
 
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V3" not in timeline or "let keyframe_enabled = selected_layer.is_some();" not in timeline:
@@ -225,7 +241,9 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     timeline_source = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_LAYER_OUT_DRAG_EXTENDS_COMP_V1" not in timeline_source or '"extendComp": true' not in timeline_source:
         raise SystemExit("Timeline Out-edge drag is not requesting composition extension.")
-    print("Verified right-edge dragging extends the layer, composition and timeline range.")
+    if "EFFECTCRAFT_ANDROID_TOUCH_TRIM_HANDLES_V1" not in timeline_source or "TRIM_OUTSIDE: f32 = 18.0" not in timeline_source or "grip_height" not in timeline_source:
+        raise SystemExit("The layer Out edge is missing its larger touch target or visible trim handle.")
+    print("Verified Out-edge finger handle extends the layer, composition and timeline range.");
 
     if 'window_ui.label(format!("导出进度：{:.0}%"' not in header_source or "show_percentage()" not in header_source:
         raise SystemExit("The export progress popup is missing its numeric percentage.")
