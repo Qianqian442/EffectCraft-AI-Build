@@ -19,6 +19,7 @@ on:
       - '.github/native/**'
       - '.github/scripts/integrate_video_ai.py'
       - '.github/scripts/restore_android_plugins.py'
+      - '.github/scripts/add_open_source_craft_plugins.py'
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
       - '.github/scripts/add_desktop_plugin_package_support.py'
@@ -92,7 +93,8 @@ jobs:
             .github/scripts/configure_android_storage_fallback.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_curve_quick_access.py \
-            .github/scripts/add_effect_controls_crash_guard.py
+            .github/scripts/add_effect_controls_crash_guard.py \
+            .github/scripts/add_open_source_craft_plugins.py
 
   build:
     needs: validate-patches
@@ -135,6 +137,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: build-assets
+
+      - name: Check out pinned CraftPlugins prebuilt WASM effects
+        uses: actions/checkout@v4
+        with:
+          repository: qwertyonek/craft-plugins
+          ref: c50a4b51e58dbfac3aa0a9cfd945d023aeb011e6
+          path: craft-plugins-source
 
       - name: Check out llama.cpp Android inference runtime
         uses: actions/checkout@v4
@@ -387,6 +396,15 @@ jobs:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/restore_android_plugins.py
+
+      - name: Bundle pinned MIT CraftPlugins into the original Effects & Presets list
+        env:
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          CRAFT_PLUGINS_DIR: ${{ github.workspace }}/craft-plugins-source
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_open_source_craft_plugins.py
+          python3 build-assets/.github/scripts/add_open_source_craft_plugins.py
 
 
 
@@ -877,7 +895,16 @@ jobs:
           test -s "source/effectcraft/assets/rsmb-compat/ec_rsmb_motion_blur.wasm"
           test -s "source/effectcraft/assets/looks-compat/ec_looks_studio.wasm"
           grep -Fq '"ec_looks_studio.wasm"' "$LAUNCHER_SRC"
-          grep -Fq 'const BUILTIN_EFFECTS_VERSION: &str = "4.0.0";' "$LAUNCHER_SRC"
+          grep -Fq 'const BUILTIN_EFFECTS_VERSION: &str = "5.0.0";' "$LAUNCHER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_CRAFTPLUGINS_BUNDLE_V1" "$LAUNCHER_SRC"
+          test -s "source/effectcraft/assets/craft-plugins/LICENSE"
+          for MODULE in craft_glow craft_chromatic craft_camera_shake craft_displacer craft_halftone_dither craft_vhs_glitch craft_pixel_sort craft_anamorphic_flare craft_motion_blur_curves craft_reveal; do
+            test -s "source/effectcraft/assets/craft-plugins/${MODULE}.wasm"
+            grep -Fq "../../../assets/craft-plugins/${MODULE}.wasm" "$LAUNCHER_SRC" || {
+              echo "CraftPlugins module is not embedded in the Android launcher: ${MODULE}" >&2
+              exit 1
+            }
+          done
           echo "Verified Android startup scanning for the original WASM plug-in folder and built-in Sapphire-compatible pack."
           SAPPHIRE_STRINGS="$(mktemp)"
           while IFS= read -r ENTRY; do
@@ -899,6 +926,26 @@ jobs:
               exit 1
             }
           done
+          for EFFECT_ID in \
+            "org.craftplugins.glow" \
+            "org.craftplugins.chromatic" \
+            "org.craftplugins.shake" \
+            "org.craftplugins.displacer" \
+            "org.craftplugins.halftone" \
+            "org.craftplugins.vhs" \
+            "org.craftplugins.pixelsort" \
+            "org.craftplugins.anamorphic" \
+            "org.craftplugins.motionblurcurves" \
+            "org.craftplugins.reveal"; do
+            grep -Fq "$EFFECT_ID" "$SAPPHIRE_STRINGS" || {
+              echo "Open-source CraftPlugins effect missing from APK: $EFFECT_ID" >&2
+              exit 1
+            }
+          done
+          grep -Fq "MIT License" "$SAPPHIRE_STRINGS" || {
+            echo "CraftPlugins MIT license notice is missing from the APK." >&2
+            exit 1
+          }
           grep -Fq "org.effectcraft.compat.rsmb-motion-blur" "$SAPPHIRE_STRINGS" || {
             echo "Standalone RSMB-compatible WASM module is missing from APK." >&2
             exit 1
@@ -916,7 +963,7 @@ jobs:
             }
           done
           rm -f "$SAPPHIRE_STRINGS"
-          echo "Verified ten Sapphire-compatible modules, RSMB, and expanded Looks Studio 2.0 in the main APK."
+          echo "Verified the original EffectCraft effects, ten Sapphire-compatible effects, RSMB, Looks Studio, and ten MIT CraftPlugins modules in the main APK."
           HEADER_SRC="source/effectcraft/crates/ui-egui/src/header.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
