@@ -434,3 +434,33 @@ The termux-exec package uses Apache-2.0 for code (MIT for site documentation); l
 **Not yet demonstrated:** native Bionic Wine startup from EffectCraft's app UID, x86/x64 PE execution on an Android ARM64 device, Android Surface/audio/input, third-party AE plug-in loading/rendering, and an installable EffectCraft APK. Do not interpret the successful component builds as an Android runtime breakthrough.
 
 - The ARM64 CI attempt to run the Winlator Proton Wine host through glibc Box64 failed before launching the Windows worker: the Wine ELF requests `/system/bin/linker64`, while the Box64 host is a glibc Linux binary; Box64 reports unresolved `__libc_init` and SIGSEGV. This is a host-libc mismatch, not a PE/AEX failure. The old run is [43552783748](https://github.com/Qianqian442/EffectCraft-AI-Build/actions/runs/43552783748). The workflow has been converted to an audit-only negative control so the Bionic Wine host is no longer incorrectly wrapped in glibc Box64.
+
+
+## Native-Bionic Hangover launch profile (2026-11-15)
+
+The preferred integration direction is now **native-Bionic Wine/Hangover + FEX PE emulation**, not Bionic Wine nested inside Box64. Hangover's Wine host is a Bionic ARM64 ELF and must be entered through `/system/bin/linker64`; FEX's `libarm64ecfex.dll` handles x86_64 PE/ARM64EC and `libwow64fex.dll` handles 32-bit x86 PE through WoW64. The package also contains `wowbox64.dll` as a separate fallback.
+
+A host-side, unit-testable configuration helper was added:
+
+- `HangoverBionicLaunchProfile.java` constructs the linker64 command and Bionic-only `LD_LIBRARY_PATH`.
+- It sets `LD_PRELOAD` to the Termux `libtermux-exec-ld-preload.so` bridge for Wine child-process launches.
+- It explicitly sets `HODLL64=libarm64ecfex.dll` and `HODLL=libwow64fex.dll`, uses a 64-bit Wine prefix for both x86 and x86_64 PE guests, and requires both emulator DLLs to be installed.
+- It creates a separate prefix per guest architecture and maps private Android executable paths through Wine's `Z:` drive.
+- It rejects paths outside EffectCraft's private storage and never adds glibc guest libraries to the Bionic host loader path.
+
+Tests are wired into `WindowsCompatRuntimeTests`. These tests validate command/environment construction only; they do **not** run Wine, Windows PE code, an AEX plug-in, or an Android device. The helper is not yet connected to the production runtime manager. It must remain experimental until the Termux package set is complete and M1/M2 smoke tests pass under the EffectCraft application UID.
+
+### Expected package layout
+
+```
+<prefix>/bin/
+<prefix>/lib/libtermux-exec-ld-preload.so
+<prefix>/opt/hangover-wine/bin/wine64
+<prefix>/opt/hangover-wine/bin/wineserver
+<prefix>/opt/hangover-wine/lib/wine/aarch64-unix/
+<prefix>/opt/hangover-wine/lib/wine/aarch64-windows/libarm64ecfex.dll
+<prefix>/opt/hangover-wine/lib/wine/aarch64-windows/libwow64fex.dll
+<prefix>/opt/hangover-wine/lib/wine/aarch64-windows/wowbox64.dll
+```
+
+This expected layout is based on the pinned official Termux Hangover 11.16 recipe. Do not assume the APK can ship only these files: all declared Bionic runtime dependencies, notices, licenses, and any embedded absolute paths must be resolved before packaging.
