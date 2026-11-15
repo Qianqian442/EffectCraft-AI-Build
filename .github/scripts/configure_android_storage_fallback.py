@@ -48,7 +48,7 @@ def patch_activity(builder: Path) -> None:
     public void requestAllFilesAccessThen(Runnable continuation) {
         if (continuation == null) return;
         runOnUiThread(() -> {
-            if (hasOriginalStorageAccess()) {
+            if (hasOriginalStorageWriteAccess()) {
                 continuation.run();
                 return;
             }
