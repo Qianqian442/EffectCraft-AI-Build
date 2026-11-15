@@ -7,7 +7,6 @@ CREATE TABLE IF NOT EXISTS accounts (
   avatar_url TEXT NOT NULL DEFAULT '',
   created_at TEXT NOT NULL,
   banned_until TEXT,
-  permanently_banned INTEGER NOT NULL DEFAULT 0 CHECK (permanently_banned IN (0, 1)),
   ban_reason TEXT NOT NULL DEFAULT '',
   CHECK (qq IS NOT NULL OR wechat IS NOT NULL)
 );
