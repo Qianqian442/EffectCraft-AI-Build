@@ -222,7 +222,6 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                 self.permanently_banned = detail.get("permanent").and_then(Value::as_bool).unwrap_or(false)
                     || detail.get("permanently_banned").and_then(Value::as_bool).unwrap_or(false);
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
-                self.persist_ban(config);
                 self.mode = Mode::Banned;
                 self.status.clear();
             }''',
