@@ -74,6 +74,6 @@ jobs:
           set -euo pipefail
           RESPONSE="$(curl --fail --silent --show-error --retry 8 --retry-all-errors --retry-delay 3 "$GATEWAY_URL/health")"
           printf '%s\\n' "$RESPONSE"
-          printf '%s' "$RESPONSE" | node -e 'let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const health = JSON.parse(input); if (health.ok !== true || health.database !== true) process.exit(1); });'
+          printf '%s' "$RESPONSE" | node -e 'let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const health = JSON.parse(input); if (health.ok !== true || health.database !== true || health.password_service !== true) process.exit(1); });'
           echo "Pages Service binding successfully reached the existing account Worker and D1." >> "$GITHUB_STEP_SUMMARY"
           echo "Gateway health check: $RESPONSE" >> "$GITHUB_STEP_SUMMARY"
