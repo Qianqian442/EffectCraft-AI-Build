@@ -94,19 +94,15 @@ def main() -> None:
     if count != 1:
         raise SystemExit(f"AI assistant window builder: expected one draggable window block, found {count}")
 
-    # The integration script may change the status copy between builds. Match the
-    # stable status-label role rather than one exact Chinese sentence.
-    label_pattern = re.compile(r'(?m)^            ui\.label\("DeepSeek 本地推理[^"]*"\);\n')
-    label_replacement = """            ui.horizontal(|ui| {
-                ui.label("DeepSeek 本地推理 · 已集成在当前 APK");
-                if ui.button(if state.full_screen { "还原窗口" } else { "展开页面" }).clicked() {
-                    toggle_full_screen = true;
-                }
-            });
+    # Attach expand/restore to the persistent chat composer, not to a localized status label.
+    composer_anchor = """                .desired_rows(2),
+            );
 """
-    source, label_count = label_pattern.subn(lambda _match: label_replacement, source, count=1)
-    if label_count != 1:
-        raise SystemExit(f"AI assistant expanded-page control: expected one DeepSeek status label, found {label_count}")
+    composer_replacement = composer_anchor + """            if ui.button(if state.full_screen { "还原窗口" } else { "展开页面" }).clicked() {
+                toggle_full_screen = true;
+            }
+"""
+    source = replace_once(source, composer_anchor, composer_replacement, "AI assistant expanded-page control beside chat input")
     source = replace_once(
         source,
         "    state.open = window_open;\n",
