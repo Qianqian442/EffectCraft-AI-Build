@@ -69,6 +69,10 @@ for package_name in ("com.qianqian.effectcraftadmin", "com.tencent.mobileqq"):
     if not found:
         ET.SubElement(queries, "package", {f"{{{android_ns}}}name": package_name})
 
+admin_authority = "com.qianqian.effectcraftadmin.apkauth"
+if not any(item.get(f"{{{android_ns}}}authorities") == admin_authority for item in queries.findall("provider")):
+    ET.SubElement(queries, "provider", {f"{{{android_ns}}}authorities": admin_authority})
+
 application = root.find("application")
 if application is None:
     raise SystemExit("Generated Android manifest has no application element")
