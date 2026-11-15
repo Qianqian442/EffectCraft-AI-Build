@@ -464,3 +464,17 @@ Tests are wired into `WindowsCompatRuntimeTests`. These tests validate command/e
 ```
 
 This expected layout is based on the pinned official Termux Hangover 11.16 recipe. Do not assume the APK can ship only these files: all declared Bionic runtime dependencies, notices, licenses, and any embedded absolute paths must be resolved before packaging.
+
+
+## x86/x86_64 Windows PE smoke fixtures (2026-11-15)
+
+A minimal cross-compiled PE fixture suite is now in `windows-compat/pe-smoke/`. It builds both i386 and AMD64 EXE/DLL pairs and covers:
+
+- PE entry point, base relocations, static TLS in both EXE and dependent DLL;
+- LoadLibraryW/GetProcAddress and DLL unload;
+- CreateThread, dynamic TLS, thread-local isolation;
+- VirtualAlloc/VirtualProtect/VirtualFree;
+- vectored exception registration and RaiseException dispatch;
+- CreateFileW/WriteFile/SetFilePointerEx/ReadFile/DeleteFileW.
+
+Workflow: `.github/workflows/build-pe-smoke-fixtures.yml`. It cross-compiles on Linux with a pinned llvm-mingw toolchain and audits PE machine types/imports/TLS/relocations. It does not execute the Windows binaries. The generated artifact is intended for later Android ARM64 device tests under native-Bionic Hangover. M1/M2 remain unpassed until these fixtures run on Android and produce repeatable PASS output and exit code 0.
