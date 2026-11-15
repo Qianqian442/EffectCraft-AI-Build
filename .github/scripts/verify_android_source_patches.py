@@ -163,13 +163,15 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified the five requested independent project-export buttons and honest AE desktop status.")
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V6" not in project:
-        raise SystemExit("The Project panel is missing its separate Import Media and Import Project buttons.")
-    if "project.importProject" not in project or '"file.importProject"' not in project:
-        raise SystemExit("The Project-panel Import Project button is not connected to the unified project importer.")
-    if "compact_import_layout" not in project or "actions_bottom" not in project:
-        raise SystemExit("Project-panel import buttons no longer use a non-overlapping narrow-screen layout.")
-    print("Verified the Project panel has separate Media and Project import buttons in a non-overlapping location.")
+    if "EFFECTCRAFT_ANDROID_FIVE_PROJECT_IMPORT_BUTTONS_V1" not in project:
+        raise SystemExit("The Project panel is missing the five independent project import buttons.")
+    for label in ("导入电脑版AE工程", "导入手机版AE工程", "导入AM工程", "导入NV工程", "导入CapCut工程"):
+        if label not in project:
+            raise SystemExit(f"Missing independent project import button: {label}")
+    for command in ("file.importAepDesktop", "file.importAepMobilePackage", "file.importAlightMotionProject", "file.importNodeVideoProject", "file.importCapCutProject"):
+        if f'"{command}"' not in project:
+            raise SystemExit(f"Project import button is not connected to {command}.")
+    print("Verified five independent AE desktop, AE mobile package, AM, NV and CapCut import buttons.")
 
     frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2" not in frontend:
@@ -234,18 +236,31 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The original AE project picker was removed.")
     if '"file.importEffectCraftMobile" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"]))' not in aep_picker:
         raise SystemExit("The EffectCraft mobile picker must accept .ecproj/.ecprojx and ZIP packages.")
+    for mapping in (
+        '"file.importAepMobilePackage" => ("path", Ask::Open(&["zip"]))',
+        '"file.importAlightMotionProject" => ("path", Ask::Open(&["xml", "alight", "zip"]))',
+        '"file.importNodeVideoProject" => ("path", Ask::Open(&["nv", "json", "zip"]))',
+        '"file.importCapCutProject" => ("path", Ask::Open(&["json", "zip"]))',
+    ):
+        if mapping not in aep_picker:
+            raise SystemExit(f"Missing project-specific file picker mapping: {mapping}")
 
     mobile_importer = (root / "crates/engine/src/cmd/am_nv.rs").read_text(encoding="utf-8")
     if '"file.importEffectCraftMobile"' not in mobile_importer or "import_effectcraft_mobile_project" not in mobile_importer:
         raise SystemExit("The EffectCraft mobile-export project import command is missing.")
     if '"ecproj" | "ecprojx"' not in mobile_importer or '"zip" =>' not in mobile_importer:
-        raise SystemExit("The mobile importer does not recognize native EffectCraft project packages.")
+        raise SystemExit("The EffectCraft native mobile project importer no longer recognizes its project packages.")
     if 'super::import_project::import_project(s, &json!({"path": actual}))' not in mobile_importer:
-        raise SystemExit("The mobile project is not routed to the native EffectCraft project reader.")
+        raise SystemExit("The EffectCraft native mobile project is not routed to the native project reader.")
+    for command in ("file.importAepMobilePackage", "file.importAlightMotionProject", "file.importNodeVideoProject", "file.importCapCutProject"):
+        if f'"{command}"' not in mobile_importer:
+            raise SystemExit(f"Missing format-specific importer command: {command}")
+    if 'lower.ends_with(".aep") || lower.ends_with(".aepx")' not in mobile_importer:
+        raise SystemExit("The AE mobile ZIP extractor does not look for a real .aep/.aepx file.")
 
     aep_loss_guard = (root / "crates/ui-egui/src/panels/aep_losses.rs").read_text(encoding="utf-8")
-    if '"file.importAepDesktop"' not in aep_loss_guard:
-        raise SystemExit("The dedicated desktop AE import entry bypasses the original loss-confirmation guard.")
+    if '"file.importAepDesktop"' not in aep_loss_guard or '"file.importAepMobilePackage"' not in aep_loss_guard:
+        raise SystemExit("Desktop/mobile AE imports must share the original loss-confirmation guard.")
     print("Verified separate desktop AE and EffectCraft mobile-export import entries; mobile packages use the native .ecproj reader.")
     import_project_command = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in import_project_command:

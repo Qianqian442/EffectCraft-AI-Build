@@ -111,7 +111,9 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
             return Err(err(format!("ZIP entry {name} size does not match its archive metadata")));
         }
         let lower = name.to_ascii_lowercase();
-        if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
+        if lower.ends_with(".aep") || lower.ends_with(".aepx") {
+            project_file = Some(destination);
+        } else if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
             project_file = Some(destination);
         } else if project_file.is_none() && (lower.ends_with("draft_content.json") || lower.ends_with(".capcut.json")) {
             project_file = Some(destination);
@@ -1128,6 +1130,66 @@ fn export_capcut_command(s: &mut Session, p: &J) -> Result<J> {
     export_capcut(s,path)
 }
 
+fn selected_project_path(p: &J) -> Result<String> {
+    p.get("path").and_then(J::as_str).map(str::to_string)
+        .ok_or_else(|| err("缺少工程文件路径"))
+}
+
+fn import_aep_mobile_package(s: &mut Session, p: &J) -> Result<J> {
+    let path = selected_project_path(p)?;
+    if ext(&path) != "zip" {
+        return Err(err("手机版 AE 工程请先导出为 ZIP 工程包；包内必须包含真实 .aep 或 .aepx 工程文件和所需素材。"));
+    }
+    let (actual, _package_root) = extract_project_zip(s, &path)?;
+    if !matches!(ext(&actual).as_str(), "aep" | "aepx") {
+        return Err(err("这个 ZIP 中没有找到真实的 .aep/.aepx 工程文件。没有把其他格式改名冒充 AE 工程；请提供手机版 AE 原始导出样例以适配其实际格式。"));
+    }
+    let mut params = p.clone();
+    params["path"] = json!(actual);
+    super::aep::import_aep(s, &params)
+}
+
+fn import_alight_motion_project(s: &mut Session, p: &J) -> Result<J> {
+    let path = selected_project_path(p)?;
+    if !matches!(ext(&path).as_str(), "xml" | "alight" | "zip") {
+        return Err(err("AM 工程支持 .xml、.alight 或包含工程与素材的 ZIP 包。"));
+    }
+    import_path(s, &path)
+}
+
+fn import_nodevideo_project(s: &mut Session, p: &J) -> Result<J> {
+    let path = selected_project_path(p)?;
+    if !matches!(ext(&path).as_str(), "nv" | "json" | "zip") {
+        return Err(err("NodeVideo 工程支持 .nv、JSON 或包含工程与素材的 ZIP 包。"));
+    }
+    import_path(s, &path)
+}
+
+fn import_capcut_project(s: &mut Session, p: &J) -> Result<J> {
+    let path = selected_project_path(p)?;
+    if !matches!(ext(&path).as_str(), "json" | "zip") {
+        return Err(err("CapCut 工程支持 draft_content.json 或包含草稿与素材的 ZIP 包。"));
+    }
+    let (actual, _package_root) = if ext(&path) == "zip" {
+        extract_project_zip(s, &path)?
+    } else {
+        (path.clone(), String::new())
+    };
+    if ext(&actual) != "json" {
+        return Err(err("ZIP 中没有找到 CapCut draft_content.json。"));
+    }
+    let bytes = std::fs::read(&actual)
+        .or_else(|_| s.services.read_file(&actual))
+        .map_err(|e| err(format!("Cannot read CapCut project JSON: {e}")))?;
+    let draft: J = serde_json::from_slice(&bytes).map_err(|e| err(format!("Invalid CapCut draft_content.json: {e}")))?;
+    if draft.get("tracks").and_then(J::as_array).is_none()
+        || draft.get("materials").and_then(J::as_object).is_none()
+    {
+        return Err(err("这不是 CapCut draft_content.json；缺少 tracks[] 或 materials{}。"));
+    }
+    import_path(s, &path)
+}
+
 fn import_effectcraft_mobile_project(s: &mut Session, p: &J) -> Result<J> {
     let path = p.get("path").and_then(J::as_str)
         .ok_or_else(|| err("缺少 EffectCraft 手机版工程路径"))?.to_string();
@@ -1147,6 +1209,18 @@ fn import_effectcraft_mobile_project(s: &mut Session, p: &J) -> Result<J> {
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
+        cmd!("file.importAepMobilePackage", "AE Mobile Project Package...", ["File", "Import"], None,
+            "{path (.zip containing a genuine .aep/.aepx mobile project and media)} — imports an AE mobile project package without renaming unrelated formats",
+            always, import_aep_mobile_package),
+        cmd!("file.importAlightMotionProject", "Alight Motion Project...", ["File", "Import"], None,
+            "{path (.xml/.alight/.zip)} — imports Alight Motion scene XML or project package",
+            always, import_alight_motion_project),
+        cmd!("file.importNodeVideoProject", "NodeVideo Project...", ["File", "Import"], None,
+            "{path (.nv/.json/.zip)} — imports a NodeVideo project",
+            always, import_nodevideo_project),
+        cmd!("file.importCapCutProject", "CapCut Project...", ["File", "Import"], None,
+            "{path (draft_content.json/.zip)} — imports a CapCut draft project",
+            always, import_capcut_project),
         cmd!("file.importEffectCraftMobile", "EffectCraft Mobile Project...", ["File", "Import"], None,
             "{path (.ecproj/.ecprojx or .zip containing an EffectCraft mobile project and collected footage)} — imports a project exported by EffectCraft mobile",
             always, import_effectcraft_mobile_project),

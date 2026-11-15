@@ -566,6 +566,13 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_bottom_left_media_import.py
           python3 build-assets/.github/scripts/add_bottom_left_media_import.py
 
+      - name: Split Project import into five format-specific buttons
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_five_project_import_buttons.py
+          python3 build-assets/.github/scripts/add_five_project_import_buttons.py
+
       - name: Fix viewer click-drag layer selection for immediate keyframing
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
