@@ -40,9 +40,10 @@ def patch_activity(builder: Path) -> None:
     private boolean waitingForAllFilesAccessSettings = false;
 
     /**
-     * Request "Allow management of all files" only when a file import is requested.
-     * When the user returns from Settings, continue the exact import that opened it.
-     * A refusal or unavailable Settings screen still falls through to the SAF picker.
+     * Request "Allow management of all files" only when an import or shared-folder save is requested.
+     * When the user returns from Settings, continue the exact file operation that opened it.
+     * A refusal or unavailable Settings screen is reported to that operation instead of
+     * continuing with a raw filesystem path that Android scoped storage cannot write.
      */
     public void requestAllFilesAccessThen(Runnable continuation) {
         if (continuation == null) return;
@@ -68,7 +69,8 @@ def patch_activity(builder: Path) -> None:
                     finishPendingStorageContinuation();
                 }
             } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
-                    && checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+                    && (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED
+                        || checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED)) {
                 try {
                     requestPermissions(new String[] {
                         Manifest.permission.READ_EXTERNAL_STORAGE,
@@ -241,8 +243,8 @@ def patch_activity(builder: Path) -> None:
     }'''
     new_folder_method = '''    public void safRequestFolder(long id) {
         requestAllFilesAccessThen(() -> {
-            if (!hasOriginalStorageAccess()) {
-                enqueueError(id, "folder", "要把工程和素材保存到手机共享文件夹，需要先允许 EffectCraft 管理所有文件。");
+            if (!hasOriginalStorageWriteAccess()) {
+                enqueueError(id, "folder", "要把工程和素材保存到手机共享文件夹，需要先允许 EffectCraft 写入共享存储。");
                 return;
             }
             launchSafFolderPicker(id);
@@ -267,6 +269,13 @@ def patch_activity(builder: Path) -> None:
         });
     }'''
     source = replace_once(source, old_folder_method, new_folder_method, "permission-first SAF folder export")
+    folder_start = source.index("public void safRequestFolder(long id)")
+    folder_end = source.index("    private static String treeToPath", folder_start)
+    folder_method = source[folder_start:folder_end]
+    if "requestAllFilesAccessThen" not in folder_method or "hasOriginalStorageWriteAccess" not in folder_method:
+        raise SystemExit("Shared-folder export must verify write access before exposing a raw output path.")
+    if "DocumentsContract.buildTreeDocumentUri" not in folder_method:
+        raise SystemExit("Shared-folder picker is missing its Android document-tree initial URI.")
 
     old_stage = '        File dir = new File(appStorageDir(), "media");'
     new_stage = '        File dir = mediaStagingDirectory();'
@@ -333,6 +342,24 @@ def patch_activity(builder: Path) -> None:
                 || checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
         } catch (Throwable error) {
             Log.i(TAG, "Could not confirm original storage access; using SAF staging.", error);
+            return false;
+        }
+    }
+
+    /** Confirm write access before Rust uses std::fs on a user-selected shared folder. */
+    private boolean hasOriginalStorageWriteAccess() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                return Environment.isExternalStorageManager();
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && !Environment.isExternalStorageLegacy()) {
+                return false;
+            }
+            return Build.VERSION.SDK_INT < Build.VERSION_CODES.M
+                || (checkSelfPermission(Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED
+                    && checkSelfPermission(Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED);
+        } catch (Throwable error) {
+            Log.i(TAG, "Could not confirm shared-storage write access.", error);
             return false;
         }
     }
