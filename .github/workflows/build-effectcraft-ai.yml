@@ -44,6 +44,7 @@ on:
       - '.github/scripts/make_header_scrollable.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/fix_android_curve_playhead.py'
+      - '.github/scripts/fix_android_curve_playhead.py'
       - '.github/scripts/add_startup_attribution_notice.py'
       - '.github/scripts/add_chroma_key_effect.py'
       - '.github/scripts/add_bottom_left_media_import.py'
@@ -104,6 +105,7 @@ jobs:
             .github/scripts/add_ae_dual_project_import.py \
             .github/scripts/add_five_project_import_buttons.py \
             .github/scripts/add_curve_quick_access.py \
+            .github/scripts/fix_android_curve_playhead.py \
             .github/scripts/fix_android_curve_playhead.py \
             .github/scripts/add_ai_assistant_fullscreen_drag.py \
             .github/scripts/add_effect_controls_crash_guard.py \
@@ -543,6 +545,13 @@ jobs:
         run: python3 build-assets/.github/scripts/add_curve_quick_access.py
 
       - name: Resolve curve presets from the visible Timeline playhead
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/fix_android_curve_playhead.py
+          python3 build-assets/.github/scripts/fix_android_curve_playhead.py
+
+      - name: Resolve curve presets from visible Timeline playhead and selected keyframes
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: |
