@@ -235,6 +235,155 @@ def patch_activity(builder: Path) -> None:
                 requestIds.put(REQ_FOLDER, id);'''
     source = replace_once(source, folder_anchor, folder_replacement, "SAF folder picker start folder")
 
+    # The Rust folder API receives a normal filesystem path, not a content:// URI.
+    # On Android 11+ that path is only writable when all-files access is granted.
+    # Ask for that permission only when a folder export is requested; if the user
+    # declines, return a normal error instead of handing an unusable path to Rust.
+    old_folder_method = '''    public void safRequestFolder(long id) {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+                // ACTION_OPEN_DOCUMENT_TREE cannot grant Download/root on Android 11+.
+                // Start in the ordinary Documents folder, where directory grants are allowed.
+                intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                    DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:Documents"));
+                requestIds.put(REQ_FOLDER, id);
+                startActivityForResult(intent, REQ_FOLDER);
+            } catch (Exception e) {
+                enqueueError(id, "folder", e.toString());
+            }
+        });
+    }'''
+    new_folder_method = '''    // EFFECTCRAFT_ANDROID_FOLDER_PERMISSION_GUARD_V1
+    public void safRequestFolder(long id) {
+        requestAllFilesAccessThen(() -> {
+            if (!hasOriginalStorageAccess()) {
+                enqueueError(id, "folder",
+                    "需要允许 EffectCraft 管理手机文件，才能写入所选文件夹。请在应用权限中开启“所有文件访问权限”后重试。");
+                return;
+            }
+            launchSafFolderPicker(id);
+        });
+    }
+
+    private void launchSafFolderPicker(long id) {
+        runOnUiThread(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
+                // ACTION_OPEN_DOCUMENT_TREE cannot grant Download/root on Android 11+.
+                // Start in the ordinary Documents folder, where directory grants are allowed.
+                intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
+                    DocumentsContract.buildDocumentUri(
+                        "com.android.externalstorage.documents", "primary:Documents"));
+                requestIds.put(REQ_FOLDER, id);
+                startActivityForResult(intent, REQ_FOLDER);
+            } catch (Exception e) {
+                enqueueError(id, "folder", "无法打开文件夹选择器：" + e.toString());
+            }
+        });
+    }'''
+    source = replace_once(source, old_folder_method, new_folder_method,
+                          "on-demand folder path permission guard")
+
+    old_tree_to_path = '''    private static String treeToPath(Uri tree) {
+        try {
+            String documentId = DocumentsContract.getTreeDocumentId(tree);
+            if (documentId == null) return null;
+            int colon = documentId.indexOf(':');
+            if (colon < 0) return null;
+            if (!"primary".equalsIgnoreCase(documentId.substring(0, colon))) return null;
+            String relative = documentId.substring(colon + 1);
+            File base = Environment.getExternalStorageDirectory();
+            return relative.isEmpty() ? base.getAbsolutePath() : new File(base, relative).getAbsolutePath();
+        } catch (Exception e) {
+            return null;
+        }
+    }'''
+    new_tree_to_path = '''    // EFFECTCRAFT_ANDROID_FOLDER_PATH_VALIDATION_V1
+    private String treeToPath(Uri tree) {
+        try {
+            if (tree == null || !hasOriginalStorageAccess()) return null;
+            if (!"com.android.externalstorage.documents".equals(tree.getAuthority())) return null;
+            String documentId = DocumentsContract.getTreeDocumentId(tree);
+            if (documentId == null) return null;
+            int colon = documentId.indexOf(':');
+            if (colon < 0 || !"primary".equalsIgnoreCase(documentId.substring(0, colon))) return null;
+
+            String relative = documentId.substring(colon + 1);
+            File root = Environment.getExternalStorageDirectory().getCanonicalFile();
+            File selected = relative.isEmpty()
+                ? root
+                : new File(root, relative).getCanonicalFile();
+            String rootPath = root.getPath();
+            if (!selected.equals(root)
+                    && !selected.getPath().startsWith(rootPath + File.separator)) return null;
+            if (!selected.isDirectory() || !selected.canWrite()) return null;
+
+            // Verify an actual write, not just canWrite(), which is unreliable on some OEM builds.
+            File probe = File.createTempFile(".effectcraft-folder-check-", ".tmp", selected);
+            if (!probe.delete()) {
+                probe.deleteOnExit();
+                return null;
+            }
+            return selected.getAbsolutePath();
+        } catch (Exception e) {
+            Log.w(TAG, "The selected folder is not writable through shared-storage paths.", e);
+            return null;
+        }
+    }'''
+    source = replace_once(source, old_tree_to_path, new_tree_to_path,
+                          "validated Android document-tree path conversion")
+
+    old_folder_result = '''        if (requestCode == REQ_FOLDER) {
+            Uri tree = data.getData();
+            String path = tree == null ? null : treeToPath(tree);
+            if (path == null) {
+                enqueueError(id, kind, "Only folders on the device's main storage can be opened");
+                return;
+            }
+            persistPermission(tree, data);
+            try {
+                JSONArray paths = new JSONArray();
+                paths.put(path);
+                JSONObject result = base(id, kind, "ok");
+                result.put("paths", paths);
+                results.offer(result.toString());
+            } catch (Exception e) {
+                enqueueError(id, kind, e.toString());
+            }
+            return;
+        }'''
+    new_folder_result = '''        if (requestCode == REQ_FOLDER) {
+            try {
+                Uri tree = data.getData();
+                if (tree == null) {
+                    enqueueError(id, kind, "系统没有返回所选文件夹，请重新选择。");
+                    return;
+                }
+                persistPermission(tree, data);
+                String path = treeToPath(tree);
+                if (path == null) {
+                    enqueueError(id, kind,
+                        "所选文件夹无法通过当前存储权限写入。请授予“所有文件访问权限”，并选择手机内部存储中的可写文件夹。");
+                    return;
+                }
+                JSONArray paths = new JSONArray();
+                paths.put(path);
+                JSONObject result = base(id, kind, "ok");
+                result.put("paths", paths);
+                results.offer(result.toString());
+            } catch (Exception e) {
+                Log.e(TAG, "Could not process the selected Android folder.", e);
+                enqueueError(id, kind, "处理所选文件夹失败：" + e.toString());
+            }
+            return;
+        }'''
+    source = replace_once(source, old_folder_result, new_folder_result,
+                          "safe Android folder picker result handling")
+
     old_stage = '        File dir = new File(appStorageDir(), "media");'
     new_stage = '        File dir = mediaStagingDirectory();'
     source = replace_once(source, old_stage, new_stage, "media staging directory selection")
@@ -387,8 +536,20 @@ def patch_activity(builder: Path) -> None:
 '''
     source = source[:copy_start] + copy_method + source[copy_end:]
 
+    required_folder_guards = (
+        "EFFECTCRAFT_ANDROID_FOLDER_PERMISSION_GUARD_V1",
+        "EFFECTCRAFT_ANDROID_FOLDER_PATH_VALIDATION_V1",
+        "requestAllFilesAccessThen(() -> {",
+        'File.createTempFile(".effectcraft-folder-check-"',
+        "处理所选文件夹失败：",
+    )
+    missing_folder_guards = [item for item in required_folder_guards if item not in source]
+    if missing_folder_guards:
+        raise SystemExit("Android folder picker safety checks are missing: " + "; ".join(missing_folder_guards))
+
     path.write_text(source, encoding="utf-8")
     print("Configured SAF pickers to start in shared Download storage.")
+    print("Folder export now requests path permission on demand, validates the selected directory, and reports Chinese errors instead of returning an unusable path.")
     print("Added ordered writable staging fallback: app external files, private files, then cache.")
     print("Granted shared-storage files keep their original path; other providers use ContentResolver staged copies.")
 
