@@ -138,7 +138,7 @@ def main() -> None:
         'ui.label("正在安全验证账号，请稍候…");',
     )
     source = source.replace(
-        'self.status = format!("无法连接家中的账号服务器：{error}");',
+        'self.status = format!("云端账号服务器连接超时或失败：{error}");',
         'self.status = format!("连接云端账号服务器失败：{error}");',
     )
     source = source.replace(
