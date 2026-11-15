@@ -94,18 +94,19 @@ def main() -> None:
     if count != 1:
         raise SystemExit(f"AI assistant window builder: expected one draggable window block, found {count}")
 
-    source = replace_once(
-        source,
-        '            ui.label("DeepSeek 本地推理 · 已集成在当前 APK");\n',
-        """            ui.horizontal(|ui| {
+    # The integration script may change the status copy between builds. Match the
+    # stable status-label role rather than one exact Chinese sentence.
+    label_pattern = re.compile(r'(?m)^            ui\\.label\\("DeepSeek 本地推理[^"]*"\\);\\n')
+    label_replacement = """            ui.horizontal(|ui| {
                 ui.label("DeepSeek 本地推理 · 已集成在当前 APK");
                 if ui.button(if state.full_screen { "还原窗口" } else { "展开页面" }).clicked() {
                     toggle_full_screen = true;
                 }
             });
-""",
-        "AI assistant expanded-page control",
-    )
+"""
+    source, label_count = label_pattern.subn(lambda _match: label_replacement, source, count=1)
+    if label_count != 1:
+        raise SystemExit(f"AI assistant expanded-page control: expected one DeepSeek status label, found {label_count}")
     source = replace_once(
         source,
         "    state.open = window_open;\n",
