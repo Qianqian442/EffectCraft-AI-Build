@@ -23,6 +23,13 @@ def load_manifest(source: str) -> dict:
     if manifest.get("id") != EFFECT_ID or manifest.get("api") != 1:
         raise SystemExit("Looks plugin manifest id or API version is incorrect")
     params = manifest.get("params", [])
+    visible = [manifest.get("name"), manifest.get("category"), manifest.get("description"), manifest.get("author")]
+    for parameter in params:
+        visible.append(parameter.get("name"))
+        visible.extend(parameter.get("options", []))
+    for label in visible:
+        if not isinstance(label, str) or not label.strip() or re.search(r"[A-Za-z]", label):
+            raise SystemExit(f"调色效果界面包含空白或英文标签：{label!r}")
     ids = [item.get("id") for item in params]
     if len(ids) != len(set(ids)):
         raise SystemExit("Looks plugin manifest contains duplicate parameter ids")
@@ -66,7 +73,7 @@ def main() -> None:
     data = target.read_bytes()
     if len(data) < 1024 or data[:8] != b"\x00asm\x01\x00\x00\x00":
         raise SystemExit(f"Invalid or unexpectedly small Looks WASM module: {target}")
-    for token in (EFFECT_ID, "HSL", "曲线", "色彩分级", "胶片光晕", "高光泛光"):
+    for token in (EFFECT_ID, "色相饱和度明度", "曲线", "色彩分级", "胶片光晕", "高光泛光"):
         if token.encode("utf-8") not in data:
             raise SystemExit(f"Looks WASM is missing manifest feature token: {token}")
     for export in (b"ec_api_version", b"ec_manifest_ptr", b"ec_manifest_len", b"ec_alloc", b"ec_render"):
@@ -74,9 +81,9 @@ def main() -> None:
             raise SystemExit(f"WASM export missing: {export.decode()} in {target.name}")
 
     bundle = {
-        "name": "EffectCraft Looks Studio",
+        "name": "电影调色工作室兼容效果",
         "version": manifest["version"],
-        "format": "EffectCraft sandboxed WebAssembly effect module",
+        "format": "效果工坊安全隔离效果模块",
         "desktop_binary_support": False,
         "parameter_count": len(manifest["params"]),
         "flattened_value_count": sum(4 if item.get("type") == "color" else 1 for item in manifest["params"]),
