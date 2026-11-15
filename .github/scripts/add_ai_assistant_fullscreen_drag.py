@@ -73,7 +73,7 @@ def main() -> None:
         .resizable(true)
         .open(&mut window_open)
         .show(&ctx, |ui| {
-            ui.label("DeepSeek 本地推理 · 插件通过 ZIP 导入");
+            ui.label("DeepSeek 本地推理 · 已集成在当前 APK");
 """
     new_window = """    // Only the title bar moves the chat window. On touch screens this keeps buttons,
     // text input and scrolling inside the window from being interpreted as a window drag.
