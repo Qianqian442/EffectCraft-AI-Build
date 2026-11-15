@@ -7,9 +7,11 @@ import os
 from pathlib import Path
 
 
-PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V5"
-FINISH_MARKER = "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V2"
+PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V6"
+FINISH_MARKER = "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V3"
 FIT_MARKER = "EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2"
+PICKER_MARKER = "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2"
+TRIM_MARKER = "EFFECTCRAFT_ANDROID_TOUCH_TRIM_HANDLES_V1"
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -22,7 +24,7 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def patch_project_panel_import_button(root: Path) -> None:
-    """Keep a full-size Import Media button visible beside the Project-panel search field."""
+    """Put separate Import Media and Import Project buttons in the Project panel."""
     path = root / "crates/ui-egui/src/panels/project.rs"
     source = path.read_text(encoding="utf-8")
     if PROJECT_MARKER in source:
@@ -34,104 +36,188 @@ def patch_project_panel_import_button(root: Path) -> None:
     app.ui.project_search = q;
     app.auto.add("project.search", sr, "Search");
 '''
-    new = r'''    // EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V5
-    // Use a single row when there is enough width. On narrow phone panels,
-    // place Import Media on its own row and move the column header below it.
-    let compact_import_layout = rect.width() < 170.0;
-    let import_width = if compact_import_layout {
-        (rect.width() - 16.0).max(40.0)
-    } else {
-        (rect.width() - 80.0).clamp(56.0, 72.0)
-    };
-    let sr_width = if compact_import_layout {
-        (rect.width() - 16.0).max(40.0)
-    } else {
-        (rect.width() - 16.0 - import_width - 6.0).max(40.0)
-    };
+    new = r'''    // EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V6
+    // Keep Search on its own row. Put Media and Project import on the next row,
+    // side by side on normal phone panels and stacked on very narrow panels.
     let sr = Rect::from_min_size(
         pos2(rect.min.x + 8.0, head.max.y + 2.0),
-        vec2(sr_width, 22.0),
+        vec2((rect.width() - 16.0).max(40.0), 22.0),
     );
-    let import_y = if compact_import_layout { sr.max.y + 3.0 } else { sr.min.y };
-    let import_x = if compact_import_layout {
-        rect.min.x + 8.0
+    let compact_import_layout = rect.width() < 190.0;
+    let button_gap = 8.0;
+    let button_width = if compact_import_layout {
+        (rect.width() - 16.0).max(40.0)
     } else {
-        rect.max.x - 8.0 - import_width
+        ((rect.width() - 24.0) * 0.5).max(56.0)
     };
-    let import_rect = Rect::from_min_size(pos2(import_x, import_y), vec2(import_width, 22.0));
+    let button_y = sr.max.y + 3.0;
+    let media_rect = Rect::from_min_size(
+        pos2(rect.min.x + 8.0, button_y),
+        vec2(button_width, 22.0),
+    );
+    let project_rect = Rect::from_min_size(
+        pos2(
+            if compact_import_layout { rect.min.x + 8.0 } else { media_rect.max.x + button_gap },
+            if compact_import_layout { media_rect.max.y + 3.0 } else { button_y },
+        ),
+        vec2(button_width, 22.0),
+    );
     let mut q = app.ui.project_search.clone();
     widgets::search_field(ui, sr, &mut q, crate::i18n::tr("Search project"), &t);
     app.ui.project_search = q;
     app.auto.add("project.search", sr, "Search");
-    let import_response = ui
-        .put(import_rect, egui::Button::new("导入素材").min_size(import_rect.size()))
-        .on_hover_text(crate::i18n::tr("Import pictures and videos"));
-    app.auto.add_response("project.importMedia", &import_response, "导入素材");
-    if import_response.clicked()
-        && let Err(error) = crate::menus::invoke(app, &ctx, "file.import", json!({}))
+
+    let media_response = ui
+        .put(media_rect, egui::Button::new("导入素材").min_size(media_rect.size()))
+        .on_hover_text(crate::i18n::tr("Import pictures and videos only"));
+    app.auto.add_response("project.importMedia", &media_response, "导入素材");
+    if media_response.clicked()
+        && let Err(error) = crate::menus::invoke(app, &ctx, "file.import", json!({"picturesAndVideos": true}))
+    {
+        app.ui.status = error;
+    }
+
+    let project_response = ui
+        .put(project_rect, egui::Button::new("导入工程").min_size(project_rect.size()))
+        .on_hover_text("导入 EffectCraft、AE、AM、NodeVideo 和 CapCut 工程");
+    app.auto.add_response("project.importProject", &project_response, "导入工程");
+    if project_response.clicked()
+        && let Err(error) = crate::menus::invoke(app, &ctx, "file.importProject", json!({}))
     {
         app.ui.status = error;
     }
 '''
-    source = replace_once(source, old, new, "Visible Project-panel Import Media button")
+    source = replace_once(source, old, new, "Project-panel Media and Project import buttons")
     source = replace_once(
         source,
         "    let hdr = Rect::from_min_size(pos2(rect.min.x, sr.max.y + 6.0), vec2(rect.width(), 20.0));",
-        """    let header_top = if compact_import_layout { import_rect.max.y + 6.0 } else { sr.max.y + 6.0 };
-    let hdr = Rect::from_min_size(pos2(rect.min.x, header_top), vec2(rect.width(), 20.0));""",
-        "Move Project columns below the stacked mobile Import Media button",
+        """    let actions_bottom = if compact_import_layout { project_rect.max.y } else { media_rect.max.y };
+    let hdr = Rect::from_min_size(pos2(rect.min.x, actions_bottom + 6.0), vec2(rect.width(), 20.0));""",
+        "Move Project columns below both import buttons",
     )
-    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V5" not in source:
-        raise SystemExit("Project-panel header import marker was not installed")
+    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V6" not in source:
+        raise SystemExit("Project-panel dual import controls were not installed")
     path.write_text(source, encoding="utf-8")
 
 
 def patch_file_import_auto_add(root: Path) -> None:
+    """Auto-place only the dedicated picture/video import action; preserve generic File > Import."""
     path = root / "crates/engine/src/cmd/file.rs"
     source = path.read_text(encoding="utf-8")
     if FINISH_MARKER not in source:
         old = '''fn finish_import(s: &mut Session, r: &mut Value, target: Option<ItemId>, p: &Value) {
     let errors = if b_p(p, "newComp").unwrap_or(false) { new_comp(s, r) } else { add_to_comp(s, r, target, p) };'''
         new = '''fn finish_import(s: &mut Session, r: &mut Value, target: Option<ItemId>, p: &Value) {
-    // EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V2
-    // A normal import creates a layer in the open composition. Without an open composition,
-    // the imported pictures/videos become a new composition instead of staying invisible.
-    let errors = if b_p(p, "newComp").unwrap_or(false) || target.is_none() {
-        new_comp(s, r)
+    // EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V3
+    // The special Project-panel Media button inserts images/videos into the active comp.
+    // Generic File > Import retains its original behavior and its full media-type support.
+    let picture_video_import = b_p(p, "picturesAndVideos").unwrap_or(false);
+    let errors = if b_p(p, "newComp").unwrap_or(false) {
+        new_comp(s, r, picture_video_import.then_some(10.0), picture_video_import)
+    } else if picture_video_import && target.is_none() {
+        new_comp(s, r, Some(10.0), true)
+    } else if picture_video_import {
+        let mut media_params = p.clone();
+        media_params["addToComp"] = json!(true);
+        media_params["fitToComp"] = json!(true);
+        media_params["stillDuration"] = json!(10.0);
+        add_to_comp(s, r, target, &media_params)
     } else {
-        let mut params = p.clone();
-        // The user-facing Import Media action always inserts the selected image/video.
-        params["addToComp"] = json!(true);
-        if params.get("addToComp").and_then(Value::as_bool) == Some(true)
-            && params.get("fitToComp").is_none()
-        {
-            params["fitToComp"] = json!(true);
-        }
-        add_to_comp(s, r, target, &params)
+        add_to_comp(s, r, target, p)
     };'''
-        source = replace_once(source, old, new, "Default add imported media to active comp")
+        source = replace_once(source, old, new, "Scope automatic composition insertion to picture/video shortcut")
 
-        old_rest = '    let rest = ids("items").into_iter().filter(|i| !in_comps.contains(i) && !comps.contains(i) && !s.project.item(ItemId(*i)).is_some_and(|it| it.is_folder()));'
-        new_rest = '''    // Data footage and folders are project assets, not visual/audio composition layers.
-    let rest = ids("items").into_iter().filter(|i| {
-        !in_comps.contains(i)
-            && !comps.contains(i)
-            && s.project.item(ItemId(*i)).is_some_and(|it| {
-                !it.is_folder()
-                    && !matches!(&it.kind, ItemKind::Footage(f) if f.kind == FootageKind::Data)
-            })
-    });'''
-        source = replace_once(source, old_rest, new_rest, "Exclude data footage from automatic composition layers")
+        old_new_comp = '''fn new_comp(s: &mut Session, r: &Value) -> Vec<String> {'''
+        new_new_comp = '''fn new_comp(s: &mut Session, r: &Value, still_duration: Option<f64>, fit_to_comp: bool) -> Vec<String> {'''
+        source = replace_once(source, old_new_comp, new_new_comp, "Add optional still duration to imported-media composition")
 
-        old_params = '        let mut params = json!({"comp": cid.0, "item": item, "time": p.get("time"), "position": p.get("position")});'
-        new_params = '        let mut params = json!({"comp": cid.0, "item": item, "time": p.get("time"), "position": p.get("position"), "fitToComp": p.get("fitToComp").and_then(Value::as_bool).unwrap_or(false)});'
-        source = replace_once(source, old_params, new_params, "Pass fitToComp through to layer.addItem")
+        old_exec = '''    match s.execute("file.newCompFromSelection", json!({"single": true})) {
+        Ok(_) => vec![],
+        Err(e) => vec![e.to_string()],
+    }'''
+        new_exec = '''    let mut params = json!({"single": true});
+    if let Some(duration) = still_duration {
+        params["duration"] = json!(duration);
+    }
+    if fit_to_comp {
+        params["fitToComp"] = json!(true);
+    }
+    match s.execute("file.newCompFromSelection", params) {
+        Ok(_) => vec![],
+        Err(e) => vec![e.to_string()],
+    }'''
+        source = replace_once(source, old_exec, new_exec, "Pass explicit still duration only for the Media shortcut")
 
+        old_add_start = '''    let add = imported(s, r);
+    let mut errors = vec![];
+    for (k, item) in add.into_iter().enumerate() {
+        let mut params = json!({"comp": cid.0, "item": item, "time": p.get("time"), "position": p.get("position")});
+        if let Some(i) = p.get("index").and_then(Value::as_u64) {
+            params["index"] = json!(i.saturating_add(k as u64));
+        }
+        if let Err(e) = s.execute("layer.addItem", params) {
+            errors.push(e.to_string());
+        }
+    }'''
+        new_add_start = '''    let add = imported(s, r);
+    let picture_video_import = b_p(p, "picturesAndVideos").unwrap_or(false);
+    let still_duration = f_p(p, "stillDuration")
+        .filter(|duration| duration.is_finite() && *duration > 0.0)
+        .unwrap_or(10.0);
+    let mut errors = vec![];
+    let mut created_layers = Vec::new();
+    for (k, item) in add.into_iter().enumerate() {
+        let mut params = json!({"comp": cid.0, "item": item, "time": p.get("time"), "position": p.get("position")});
+        if let Some(i) = p.get("index").and_then(Value::as_u64) {
+            params["index"] = json!(i.saturating_add(k as u64));
+        }
+        if let Some(fit) = p.get("fitToComp") {
+            params["fitToComp"] = fit.clone();
+        }
+        if picture_video_import {
+            params["fitToComp"] = json!(true);
+            let still = s.project.item(ItemId(item)).is_some_and(|it| {
+                matches!(&it.kind, ItemKind::Footage(f) if f.kind == FootageKind::Still)
+            });
+            if still {
+                // Stills start at 10 seconds, not a hard-coded 4-second limit. The
+                // selected layer can be shortened or extended by dragging its Out edge.
+                params["duration"] = json!(still_duration);
+            }
+        }
+        match s.execute("layer.addItem", params) {
+            Ok(result) => {
+                if let Some(layer_id) = result.get("layer").and_then(Value::as_u64) {
+                    created_layers.push(layer_id);
+                }
+            }
+            Err(error) => errors.push(error.to_string()),
+        }
+    }
+    // A picture/video inserted by the Project-panel shortcut should be fully visible in
+    // the timeline and render range. Extend the comp only for the newly inserted layers.
+    if picture_video_import && !created_layers.is_empty() {
+        let current_duration = s.project.comp(cid).map(|comp| comp.duration.seconds()).unwrap_or(0.0);
+        let required_end = s.project.comp(cid).and_then(|comp| {
+            comp.layers.iter()
+                .filter(|layer| created_layers.contains(&layer.id.0))
+                .map(|layer| layer.out_point.seconds())
+                .reduce(f64::max)
+        });
+        if let Some(required_end) = required_end.filter(|end| *end > current_duration) {
+            if let Err(error) = s.execute("comp.settings", json!({"comp": cid.0, "duration": required_end})) {
+                errors.push(error.to_string());
+            }
+        }
+    }'''
+        source = replace_once(source, old_add_start, new_add_start, "Apply media-only duration and fit, then extend the comp")
         source = source.replace(
             'addToComp?: bool (also add them to the active comp, at time?, index?, position? as in layer.addItem)',
-            'addToComp?: bool (default true when a comp is active; also add them to the active comp), fitToComp?: bool (uniformly fit each new layer inside the comp frame)'
+            'addToComp?: bool (also add them to the active comp), picturesAndVideos?: bool (Project-panel shortcut only), stillDuration?: seconds (default 10)'
         )
         path.write_text(source, encoding="utf-8")
+
+
 
 
 def patch_layer_add_item_fit(root: Path) -> None:
@@ -225,56 +311,99 @@ def patch_project_panel_footer_responsive(root: Path) -> None:
 
 
 def patch_picture_video_only_media_picker(root: Path) -> None:
-    """Limit the normal Import Media command to still-image formats; video formats are appended upstream."""
+    """Apply an image/video-only picker only when the Project-panel shortcut requests it."""
     path = root / "crates/ui-egui/src/menus/frontend.rs"
     source = path.read_text(encoding="utf-8")
-    old = '''    const MEDIA: &[&str] = &[
+    marker = PICKER_MARKER
+    if marker in source:
+        return
+
+    media_anchor = '''    const MEDIA: &[&str] = &[
         "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp", "exr", "dpx", "cin", "wav", "aif", "aiff", "mp3", "flac", "ogg", "opus", "svg", "pdf", "ai",
         "eps", "psd", "psb", "tga", "hdr", "gltf", "glb", "obj", "stl", "fbx", "json", "csv", "tsv",
-    ];'''
-    new = '''    // EFFECTCRAFT_ANDROID_PICTURE_VIDEO_IMPORT_ONLY_V1
-    // The ordinary Android Import Media button is for pictures and videos only.
-    const MEDIA: &[&str] = &[
-        "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp", "exr", "svg",
-        "psd", "psb", "tga", "hdr", "dpx", "cin",
-    ];'''
-    replace_once(source, old, new, "Image-only import extension filter")
+    ];
+'''
+    picture_video = '''    // EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2
+    // The standard File > Import picker keeps the full original MEDIA list.
+    // Only the dedicated Project-panel button asks for this narrower image/video list.
+    const PICTURE_VIDEO: &[&str] = &[
+        "png", "jpg", "jpeg", "gif", "webp", "tif", "tiff", "bmp", "exr", "dpx", "cin",
+        "svg", "psd", "psb", "tga", "hdr",
+    ];
+'''
+    source = replace_once(source, media_anchor, media_anchor + picture_video, "Add a dedicated picture/video extension list")
+    footage_anchor = '''    let footage = |more: &[&'static str]| effectcraft_project::VIDEO_EXTENSIONS.iter().chain(more).copied().collect::<Vec<_>>();
+'''
+    footage_new = footage_anchor + '''    let pictures_and_videos = params.get("picturesAndVideos").and_then(Value::as_bool) == Some(true);
+    let import_extensions = if pictures_and_videos { footage(PICTURE_VIDEO) } else { footage(MEDIA) };
+'''
+    source = replace_once(source, footage_anchor, footage_new, "Select image/video extensions only for dedicated shortcut")
+    source = source.replace(
+        'Ask::Import => crate::FileDialog::Open { exts: footage(MEDIA).iter().map(|e| e.to_string()).collect(), many: key == "paths" },',
+        'Ask::Import => crate::FileDialog::Open { exts: import_extensions.iter().map(|e| e.to_string()).collect(), many: key == "paths" },',
+    )
+    source = source.replace(
+        'picked_value(key, f(&footage(MEDIA)))',
+        'picked_value(key, f(&import_extensions))',
+    )
+    if "Ask::Import => crate::FileDialog::Open { exts: import_extensions.iter()" not in source:
+        raise SystemExit("The async picture/video picker did not use the scoped extension list")
+    if "picked_value(key, f(&import_extensions))" not in source:
+        raise SystemExit("The synchronous picture/video picker did not use the scoped extension list")
     path.write_text(source, encoding="utf-8")
+
+
 
 
 def patch_project_new_comp_from_selected_media(root: Path) -> None:
-    """Make the Project panel's New Composition button turn selected picture/video items into layers."""
-    path = root / "crates/ui-egui/src/panels/project.rs"
-    source = path.read_text(encoding="utf-8")
-    old = '''                "newComp" => crate::panels::dialogs::open_new_comp(app),'''
-    new = r'''                "newComp" => {
-                    let selected_media = app.session.state.project_selection.iter().any(|id| {
-                        app.session.project.item(*id).is_some_and(|item| {
-                            matches!(&item.kind, ItemKind::Footage(f) if matches!(
-                                f.kind,
-                                effectcraft_engine::project::FootageKind::Still
-                                    | effectcraft_engine::project::FootageKind::Sequence
-                                    | effectcraft_engine::project::FootageKind::Video
-                            ))
-                        })
-                    });
-                    if selected_media {
-                        actions.push(("file.newCompFromSelection".into(), json!({"single": true})));
-                    } else {
-                        crate::panels::dialogs::open_new_comp(app);
-                    }
-                },'''
-    replace_once(source, old, new, "New Composition button selected-media routing")
-    path.write_text(source, encoding="utf-8")
+    """Intentionally preserve the original New Composition dialog; media import has its own action."""
+    return
+
+
 
 
 def patch_new_comp_layer_fit(root: Path) -> None:
-    """Fit every imported media layer when creating a comp from selected Project-panel items."""
+    """Make New Comp from Selection's optional fitToComp parameter opt-in."""
     path = root / "crates/engine/src/cmd/file_more.rs"
     source = path.read_text(encoding="utf-8")
     old = 'layers.push(s.execute("layer.addItem", json!({"comp": cid.0, "item": item.0, "duration": still}))?["layer"].clone());'
-    new = 'layers.push(s.execute("layer.addItem", json!({"comp": cid.0, "item": item.0, "duration": still, "fitToComp": true}))?["layer"].clone());'
-    replace_once(source, old, new, "Fit layers created from selected media")
+    new = 'layers.push(s.execute("layer.addItem", json!({"comp": cid.0, "item": item.0, "duration": still, "fitToComp": b_p(p, "fitToComp").unwrap_or(false)}))?["layer"].clone());'
+    replace_once(source, old, new, "Pass the explicit fitToComp option to new compositions")
+    old_spec = '{duration? (s, for stills), single?: bool, dimensionsFrom?: index, sequence?: bool, overlap?: bool, overlapDuration? (s), transition?: off|dissolveFront|crossDissolve, addToRenderQueue?: bool} → {comps}'
+    new_spec = '{duration? (s, for stills), single?: bool, dimensionsFrom?: index, sequence?: bool, overlap?: bool, overlapDuration? (s), transition?: off|dissolveFront|crossDissolve, addToRenderQueue?: bool, fitToComp?: bool} → {comps}'
+    replace_once(source, old_spec, new_spec, "Document optional fitToComp on New Comp from Selection")
+    path.write_text(source, encoding="utf-8")
+
+
+
+
+def patch_timeline_touch_trim_handles(root: Path) -> None:
+    """Provide a larger touch target and visible Out-edge handle on Android."""
+    path = root / "crates/ui-egui/src/panels/timeline.rs"
+    source = path.read_text(encoding="utf-8")
+    if TRIM_MARKER in source:
+        return
+    old_constants = '''const TRIM_OUTSIDE: f32 = 4.0;
+const TRIM_INSIDE: f32 = 5.0;'''
+    new_constants = '''// EFFECTCRAFT_ANDROID_TOUCH_TRIM_HANDLES_V1
+// Wider hit areas make the In/Out handles usable with a finger on a phone.
+const TRIM_OUTSIDE: f32 = 18.0;
+const TRIM_INSIDE: f32 = 12.0;'''
+    source = replace_once(source, old_constants, new_constants, "Increase finger-sized layer trim zones")
+    old_paint = '''    if is_sel {
+        gp.rect_stroke(bar, 0.0, Stroke::new(1.0, Color32::from_white_alpha(90)), StrokeKind::Inside);
+    }
+    (bar, lc)'''
+    new_paint = '''    if is_sel {
+        gp.rect_stroke(bar, 0.0, Stroke::new(1.0, Color32::from_white_alpha(90)), StrokeKind::Inside);
+        // A visible grip at the right edge is the Out-point handle; dragging it extends
+        // both the layer and, when needed, the composition's time range.
+        let grip_height = (bar.height() - 4.0).max(8.0).min(18.0);
+        let grip = Rect::from_center_size(bar.right_center(), vec2(4.0, grip_height));
+        gp.rect_filled(grip, 2.0, Color32::from_white_alpha(230));
+    }
+    (bar, lc)'''
+    source = replace_once(source, old_paint, new_paint, "Draw the selected layer Out-edge handle")
     path.write_text(source, encoding="utf-8")
 
 
@@ -368,14 +497,15 @@ def main() -> None:
     patch_layer_add_item_fit(root)
     patch_layer_add_item_fit_spec(root)
     patch_picture_video_only_media_picker(root)
-    patch_project_new_comp_from_selected_media(root)
+    # Keep the original New Composition menu/dialog unchanged; fitToComp is opt-in.
     patch_new_comp_layer_fit(root)
     patch_project_panel_footer_responsive(root)
+    patch_timeline_touch_trim_handles(root)
     patch_timeline_right_edge_extends_composition(root)
-    print("Kept the media import shortcut visible in the Project panel without overlapping other controls.")
-    print("Dragging a layer's right edge now extends the composition and its timeline/export range when needed.")
-    print("Regular imports now create a layer in the active composition and fit it to the comp frame.")
-    print("Imported files remain in the Project panel and their layers appear in the Timeline.")
+    print("Added separate Project-panel buttons for image/video import and project import.")
+    print("Only the dedicated Media button filters to pictures/videos and auto-adds them to the comp.")
+    print("Still images from the dedicated Media button start at 10 seconds; their Out edge remains adjustable.")
+    print("All generic File > Import and New Composition behavior remains unchanged.")
 
 
 if __name__ == "__main__":
