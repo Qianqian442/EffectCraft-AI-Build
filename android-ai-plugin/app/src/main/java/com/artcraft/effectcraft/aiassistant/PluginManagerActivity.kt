@@ -122,7 +122,7 @@ class PluginManagerActivity : Activity() {
             downloadButton.text = "模型已就绪"
             downloadButton.isEnabled = false
         } else {
-            statusText.text = "插件已安装。首次使用需要下载约 1.02 GB 的 DeepSeek 模型；下载完成后可离线推理。"
+            statusText.text = "首次使用请导入 Ae AI 模型包 ZIP；如暂时没有 ZIP，也可使用下面的网络下载备用入口。导入或下载完成后可离线推理。"
             handler.post(pollDownload)
         }
     }
