@@ -75,47 +75,47 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     if header.len() >= 6 && &header[..4] == b"PE\0\0" {
                         let machine = u16::from_le_bytes([header[4], header[5]]);
                         let arch = match machine {
-                            0x014c => "x86",
-                            0x8664 => "x86-64",
-                            0xaa64 => "ARM64",
-                            0x01c4 => "ARM",
-                            0x0200 => "IA-64",
-                            _ => "unknown PE architecture",
+                            0x014c => "32 位 x86",
+                            0x8664 => "64 位 x86",
+                            0xaa64 => "64 位 ARM",
+                            0x01c4 => "32 位 ARM",
+                            0x0200 => "英特尔安腾 64 位",
+                            _ => "未知可执行文件架构",
                         };
-                        return ("Windows PE", arch);
+                        return ("Windows 可执行文件", arch);
                     }
                 }
             }
-            return ("Windows MZ executable/DLL", "architecture not resolved");
+            return ("Windows 程序或动态库", "架构未识别");
         }
-        if bytes.len() >= 20 && &bytes[..4] == b"\x7fELF" {
+        if bytes.len() >= 20 && &bytes[..4] == b"\x7fLinux 可执行文件" {
             let machine = if bytes[5] == 2 {
                 u16::from_be_bytes([bytes[18], bytes[19]])
             } else {
                 u16::from_le_bytes([bytes[18], bytes[19]])
             };
             let arch = match machine {
-                3 => "x86",
-                40 => "ARM",
-                62 => "x86-64",
-                183 => "AArch64",
-                243 => "RISC-V",
-                _ => "unknown ELF architecture",
+                3 => "32 位 x86",
+                40 => "32 位 ARM",
+                62 => "64 位 x86",
+                183 => "64 位 ARM",
+                243 => "RISC-V 架构",
+                _ => "未知 Linux 可执行文件架构",
             };
-            return ("ELF", arch);
+            return ("Linux 可执行文件", arch);
         }
         if bytes.len() >= 4 {
             let magic = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
             return match magic {
-                0xfeedface => ("Mach-O", "32-bit big-endian"),
-                0xcefaedfe => ("Mach-O", "32-bit little-endian"),
-                0xfeedfacf => ("Mach-O", "64-bit big-endian"),
-                0xcffaedfe => ("Mach-O", "64-bit little-endian"),
-                0xcafebabe | 0xbebafeca | 0xcafebabf | 0xbfbafeca => ("Mach-O universal/fat", "multiple architectures"),
-                _ => ("unknown/native data", "architecture not resolved"),
+                0xfeedface => ("苹果系统原生文件", "32 位大端"),
+                0xcefaedfe => ("苹果系统原生文件", "32 位小端"),
+                0xfeedfacf => ("苹果系统原生文件", "64 位大端"),
+                0xcffaedfe => ("苹果系统原生文件", "64 位小端"),
+                0xcafebabe | 0xbebafeca | 0xcafebabf | 0xbfbafeca => ("苹果通用原生文件", "包含多种架构"),
+                _ => ("未知原生文件", "架构未识别"),
             };
         }
-        ("unknown/native data", "architecture not resolved")
+        ("未知原生文件", "架构未识别")
     }
 
     // Match only effects for which this APK actually ships an Android reimplementation.
@@ -127,8 +127,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             .replace(' ', "")
             .replace('.', "");
         let (effect_id, effect_name, note) = if token.contains("rsmb") {
-            ("org.effectcraft.compat.rsmb-motion-blur", "RSMB 风格方向模糊（非原版）",
-             "安卓方向模糊兼容效果；不是原厂 RSMB 运动矢量估算")
+            ("org.effectcraft.compat.rsmb-motion-blur", "方向运动模糊（兼容效果）",
+             "安卓方向运动模糊兼容效果；不包含电脑版原版运动矢量估算功能")
         } else if token.contains("sglowaura") || token.contains("sapphireglowaura") || token.contains("glowaura") {
             ("org.effectcraft.sapphire.compat.glow-aura", "蓝宝石光晕氛围",
              "效果工坊兼容重实现；并非电脑版原厂插件")
@@ -380,7 +380,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
 
     if wasm_count == 0 && wat_count == 0 && panel_count == 0
         && script_names.is_empty() && asset_names.is_empty() && native_names.is_empty() {
-        return Err(bad(CMD, "压缩包内没有找到可识别的 WASM、AE 脚本、素材或电脑版插件文件"));
+        return Err(bad(CMD, "压缩包内没有找到可识别的效果模块、特效软件脚本、素材或电脑插件文件"));
     }
 
     if !script_names.is_empty() {
@@ -452,7 +452,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                         Ok(_) => loaded_wat.push(result),
                         Err(error) => {
                             let _ = std::fs::remove_file(&target);
-                            compatibility_errors.push(json!({"file": file_name, "error": format!("WAT 已载入本次会话，但无法保存供下次启动使用：{error}")}));
+                            compatibility_errors.push(json!({"file": file_name, "error": format!("模块文本已载入本次会话，但无法保存供下次启动使用：{error}")}));
                         }
                     }
                 }
@@ -496,7 +496,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "EffectCraft 电脑版插件包分析报告\n时间戳：{stamp}\n\n已安装 WASM 效果插件：{wasm_count}\n已安装 JSX 面板：{panel_count}\n已导入 JS 脚本：{script_count}\n已归档素材/源码：{asset_count}\n已保存电脑版原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从原生插件提取的可读元数据/参数线索：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有 WASM/WAT 与 EffectCraft 兼容的 AE 脚本/面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在 Android 上执行。若文件名匹配已内置兼容效果，报告会列出替代效果；替代效果不是原厂插件。\n.cube 可通过内置 Apply Color LUT 效果选择加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 与 .ocio 配置保留给内置 OCIO 文件变换/配置流程读取。PiPL 的 .r/.rc/.rsrc、Info.plist 和 JSXBIN 编译脚本会归档并提取可读字符串用于后续移植分析，但不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\nWASM/JSX 与素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息和参数线索：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在安卓设备上执行。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并提取可读字符串用于后续移植分析，但不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
@@ -513,7 +513,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         object.insert("compatibility_report".into(), json!(report_path.to_string_lossy()));
     }
     let mut notice = format!(
-        "电脑插件包已分析：WASM {wasm_count} 个、JSX 面板 {panel_count} 个、JS 脚本 {script_count} 个、素材 {asset_count} 个"
+        "电脑插件包分析完成：效果模块 {wasm_count} 个、脚本交互面板 {panel_count} 个、脚本文件 {script_count} 个、素材 {asset_count} 个"
     );
     if native_count > 0 {
         notice.push_str(&format!("；另有 {native_count} 个电脑原生插件需要移植，未在安卓执行"));
@@ -576,15 +576,15 @@ def patch_toolbar(root: Path) -> None:
     else:
         raise SystemExit("Could not locate the WASM plug-in import state in the toolbar.")
 
-    wasm_button = '''                if popup.button("WASM / WAT / ZIP 效果插件 / 电脑插件文件").clicked() {
+    wasm_button = '''                if popup.button("导入电脑插件包或效果模块文件（.wasm、.wat、.zip）").clicked() {
                     import_wasm = true;
                 }
 '''
     script_buttons = '''                // EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1
-                if popup.button("AE 脚本 (.jsx/.js)").clicked() {
+                if popup.button("特效软件脚本（.jsx、.js）").clicked() {
                     import_script = true;
                 }
-                if popup.button("ScriptUI 面板 (.jsx)").clicked() {
+                if popup.button("脚本交互面板（.jsx）").clicked() {
                     import_panel = true;
                 }
 '''
@@ -601,13 +601,13 @@ def patch_toolbar(root: Path) -> None:
     route_anchor = "    x + 84.0\n"
     routes = '''    if import_script {
         match crate::menus::invoke(app, ui.ctx(), "file.installScript", json!({})) {
-            Ok(_) => app.ui.status = "AE 脚本已导入；可在 文件 → 脚本 中使用。".into(),
+            Ok(_) => app.ui.status = "脚本文件已导入；可在“文件 → 脚本”中使用。".into(),
             Err(error) => app.ui.status = error,
         }
     }
     if import_panel {
         match crate::menus::invoke(app, ui.ctx(), "file.installScriptUIPanel", json!({})) {
-            Ok(_) => app.ui.status = "ScriptUI 面板已导入；可在 窗口 菜单中打开。".into(),
+            Ok(_) => app.ui.status = "脚本交互面板已导入；可在“窗口”菜单中打开。".into(),
             Err(error) => app.ui.status = error,
         }
     }
