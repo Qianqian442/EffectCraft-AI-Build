@@ -81,7 +81,7 @@ jobs:
           expected = {"x86": 0x014c, "x86_64": 0x8664}
           for arch, machine in expected.items():
               for name in ("fixture_main.exe", "fixture_helper.dll"):
-                  report = json.loads(Path(f"artifacts/{arch}/{name.removesuffix(chr(46) + (chr(101)+chr(120)+chr(101) if name.endswith(chr(46)+chr(101)+chr(120)+chr(101)) else chr(100)+chr(108)+chr(108)))}.audit.json").read_text())
+                  report = json.loads(Path(f"artifacts/{arch}/{name.rsplit(chr(46), 1)[0]}.audit.json").read_text())
                   if report["machine_value"] != machine:
                       raise SystemExit(f"{arch}/{name}: machine 0x{report['machine_value']:04x}, expected 0x{machine:04x}")
                   if not report["has_relocations"]:
