@@ -51,17 +51,17 @@ def main() -> None:
     if "file.importEffectCraftMobile" not in am_nv_source:
         mobile_command = """fn import_effectcraft_mobile_project(s: &mut Session, p: &J) -> Result<J> {
     let path = p.get("path").and_then(J::as_str)
-        .ok_or_else(|| err("缺少 EffectCraft 手机版工程路径"))?.to_string();
+        .ok_or_else(|| err("缺少自有工程路径"))?.to_string();
     let actual = match ext(&path).as_str() {
         "ecproj" | "ecprojx" => path,
         "zip" => {
             let (actual, _package_root) = extract_project_zip(s, &path)?;
             if !matches!(ext(&actual).as_str(), "ecproj" | "ecprojx") {
-                return Err(err("ZIP 中没有找到 EffectCraft 手机版导出的 .ecproj/.ecprojx 工程文件"));
+                return Err(err("ZIP 中没有找到自有工程 .ecproj/.ecprojx 文件"));
             }
             actual
         }
-        _ => return Err(err("手机版工程仅支持 .ecproj、.ecprojx，或包含该工程及素材的 ZIP 包")),
+        _ => return Err(err("自有工程仅支持 .ecproj、.ecprojx，或包含工程文件及素材的 ZIP 包")),
     };
     super::import_project::import_project(s, &json!({"path": actual}))
 }
@@ -72,8 +72,8 @@ def main() -> None:
             "pub fn specs() -> Vec<CommandSpec> {\n    vec![",
             mobile_command + """pub fn specs() -> Vec<CommandSpec> {
     vec![
-        cmd!("file.importEffectCraftMobile", "EffectCraft Mobile Project...", ["File", "Import"], None,
-            "{path (.ecproj/.ecprojx or .zip containing an EffectCraft mobile project and collected footage)} — imports a project exported by EffectCraft mobile",
+        cmd!("file.importEffectCraftMobile", "自有工程包...", ["File", "Import"], None,
+            "{path (.ecproj/.ecprojx or .zip containing the project and collected footage)} — 导入 Ae 自有工程及其收集的素材",
             always, import_effectcraft_mobile_project),
 """,
             "register EffectCraft mobile-export project import",
@@ -102,7 +102,7 @@ def main() -> None:
         menu,
         "      After Effects Project... | file.importAep\n",
         """      AE 电脑版工程... | file.importAepDesktop
-      EffectCraft 手机版工程... | file.importEffectCraftMobile
+      自有工程包... | file.importEffectCraftMobile
       After Effects Project... | file.importAep
 """,
         "add distinct desktop AE and EffectCraft mobile import menu entries",
@@ -131,7 +131,7 @@ def main() -> None:
         raise SystemExit("The mobile picker must accept .ecproj/.ecprojx and ZIP packages")
     if "AE 电脑版工程... | file.importAepDesktop" not in menu_now:
         raise SystemExit("The desktop AE menu entry is missing")
-    if "EffectCraft 手机版工程... | file.importEffectCraftMobile" not in menu_now:
+    if "自有工程包... | file.importEffectCraftMobile" not in menu_now:
         raise SystemExit("The EffectCraft mobile menu entry is missing")
     if 'id == "file.importAep" || id == "file.importAepDesktop"' not in losses_now:
         raise SystemExit("The desktop AE loss confirmation guard is missing")
