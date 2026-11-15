@@ -523,9 +523,9 @@ async function adminBan(request, env, id) {
   // live node-network socket immediately; reconnects are rejected by the
   // active-account check in nodeNetworkEvents.
   let revokedNodeSessions = 0;
-  if (status === "banned") {
+  if (status === "banned" || status === "permanently_banned") {
     try {
-      revokedNodeSessions = await revokeNodeAccount(env, id, "account banned");
+      revokedNodeSessions = await revokeNodeAccount(env, id, status === "permanently_banned" ? "account permanently banned" : "account banned");
     } catch (error) {
       console.error("node-revocation-error", error && error.message ? error.message : String(error));
     }
