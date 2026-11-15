@@ -236,7 +236,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                     export_capcut_project = true;
                 }
             });
-            ui.small("手机版工程保存为 EffectCraft 手机端可重新打开的 .ecproj 文件。");
+            ui.small("手机版工程会打包 .ecproj 和全部已收集素材，可分享到 QQ 后由 EffectCraft 导入。");
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button("取消").clicked() {
@@ -253,9 +253,24 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     }
     let ctx = ui.ctx().clone();
     if export_mobile_project {
-        match crate::menus::invoke(app, &ctx, "file.saveCopy", json!({})) {
-            Ok(_) => open = false,
-            Err(error) => app.ui.status = error,
+        // A mobile project is a complete shareable package: .ecproj plus its collected
+        // footage. The unified Import Project picker recognizes this ZIP and restores
+        // the bundled footage paths on the receiving EffectCraft installation.
+        match crate::menus::invoke(app, &ctx, "file.collectFiles", json!({})) {
+            Ok(export) => {
+                if let Some(project_path) = export.get("project").and_then(|value| value.as_str()) {
+                    match crate::android_gallery::share_project_package(project_path) {
+                        Ok(()) => {
+                            app.ui.status = "手机版完整工程包已准备；请在系统分享面板选择 QQ 或其他应用。".into();
+                            open = false;
+                        }
+                        Err(error) => app.ui.status = format!("手机版工程打包分享失败：{error}"),
+                    }
+                } else {
+                    app.ui.status = "工程素材已收集，但没有取得工程文件路径，无法打包分享。".into();
+                }
+            }
+            Err(error) => app.ui.status = format!("收集手机版工程素材失败：{error}"),
         }
     }
     if export_am_project {
