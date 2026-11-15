@@ -837,11 +837,14 @@ jobs:
           "$ZIPALIGN" -c -p 4 "$ALIGNED_APK"
 
           echo "Signing final APK with V1 + V2 + V3 using the persistent project key..."
+          # Check the schemes across their respective API ranges. This signing floor
+          # emits legacy V1/V2 signatures too; the APK manifest minSdk remains 28.
           "$APK_SIGNER" sign \
             --ks "$KEYSTORE" \
             --ks-key-alias artcraftbuilder \
             --ks-pass "pass:$KEY_PASSWORD" \
             --key-pass "pass:$KEY_PASSWORD" \
+            --min-sdk-version 23 \
             --v1-signing-enabled true \
             --v2-signing-enabled true \
             --v3-signing-enabled true \
@@ -850,21 +853,36 @@ jobs:
           mv -f "$RESIGNED_APK" "$APK"
           rm -f "$ALIGNED_APK"
 
-          echo "Verifying the final signed APK..."
-          if ! "$APK_SIGNER" verify --verbose --print-certs "$APK" > "$VERIFY_REPORT" 2>&1; then
+          echo "Verifying V1 on API 23..."
+          V1_REPORT="$("$APK_SIGNER" verify --verbose --min-sdk-version 23 --max-sdk-version 23 "$APK")"
+          printf '%s\n' "$V1_REPORT"
+          grep -Fqx "Verified using v1 scheme (JAR signing): true" <<< "$V1_REPORT" || {
+            echo "Required APK V1 signature is missing or invalid for API 23." >&2
+            exit 1
+          }
+
+          echo "Verifying V2 on API 24-27..."
+          V2_REPORT="$("$APK_SIGNER" verify --verbose --min-sdk-version 24 --max-sdk-version 27 "$APK")"
+          printf '%s\n' "$V2_REPORT"
+          grep -Fqx "Verified using v2 scheme (APK Signature Scheme v2): true" <<< "$V2_REPORT" || {
+            echo "Required APK V2 signature is missing or invalid for API 24-27." >&2
+            exit 1
+          }
+
+          echo "Verifying V3 on API 28 and later..."
+          V3_REPORT="$("$APK_SIGNER" verify --verbose --min-sdk-version 28 "$APK")"
+          printf '%s\n' "$V3_REPORT"
+          grep -Fqx "Verified using v3 scheme (APK Signature Scheme v3): true" <<< "$V3_REPORT" || {
+            echo "Required APK V3 signature is missing or invalid for API 28+." >&2
+            exit 1
+          }
+
+          # Keep a certificate-only report for the persistent-key fingerprint check.
+          if ! "$APK_SIGNER" verify --print-certs "$APK" > "$VERIFY_REPORT" 2>&1; then
             cat "$VERIFY_REPORT" >&2
             exit 1
           fi
           cat "$VERIFY_REPORT"
-
-          # The packaged Android manifest has minSdk 28. Android 9 (API 28) and later,
-          # including the target Android 12 devices, verify APK Signature Scheme V3.
-          # V1 and V2 are compatibility schemes for older platform versions below this app's
-          # minSdk, so their absence must not block a valid V3-only APK.
-          grep -Fqx "Verified using v3 scheme (APK Signature Scheme v3): true" "$VERIFY_REPORT" || {
-            echo "Required APK V3 signature is missing or invalid." >&2
-            exit 1
-          }
 
           keytool -list -v -keystore "$KEYSTORE" -storepass "$KEY_PASSWORD" \
             -alias artcraftbuilder > "$KEY_REPORT"
@@ -1098,20 +1116,29 @@ jobs:
           test -x "$AAPT"
           test -x "$ZIPALIGN"
 
-          echo "Checking Android 12-compatible APK V3 signature and signer certificate..."
-          SIGNATURE_REPORT="$("$APK_SIGNER" verify --verbose --print-certs "$APK")"
-          printf '%s\n' "$SIGNATURE_REPORT"
-          # V3 is supported from Android 9 onward and is sufficient for the Android 12 target.
-          # V3 is the required scheme for this Android 12 (API 31) target.
-          # Android 9+ verifies V3; V1 is only needed for legacy Android and V2 is not
-          # a prerequisite when a valid V3 signing block is present.
-          for SCHEME in \
-            "Verified using v3 scheme (APK Signature Scheme v3): true"; do
-            printf '%s\n' "$SIGNATURE_REPORT" | grep -Fq "$SCHEME" || {
-              echo "Required APK signature scheme missing: $SCHEME" >&2
-              exit 1
+          echo "Checking APK V1, V2 and V3 signatures on their respective API ranges..."
+          verify_scheme() {
+            local label="$1"
+            local expected="$2"
+            shift 2
+            local report
+            report="$("$APK_SIGNER" verify --verbose "$@" "$APK")"
+            printf '%s\n' "$report"
+            grep -Fqx "$expected" <<< "$report" || {
+              echo "Required APK signature scheme failed: $label" >&2
+              return 1
             }
-          done
+          }
+          verify_scheme "V1 / API 23" \
+            "Verified using v1 scheme (JAR signing): true" \
+            --min-sdk-version 23 --max-sdk-version 23
+          verify_scheme "V2 / API 24-27" \
+            "Verified using v2 scheme (APK Signature Scheme v2): true" \
+            --min-sdk-version 24 --max-sdk-version 27
+          verify_scheme "V3 / API 28+" \
+            "Verified using v3 scheme (APK Signature Scheme v3): true" \
+            --min-sdk-version 28
+          SIGNATURE_REPORT="$("$APK_SIGNER" verify --print-certs "$APK")"
           EXPECTED_CERT="$(keytool -list -v -keystore keys/artcraft-builder.jks \
             -storepass "$(<keys/.keystore-password)" -alias artcraftbuilder \
             | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
