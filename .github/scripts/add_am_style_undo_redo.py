@@ -61,17 +61,29 @@ def patch_header(root: Path) -> None:
     if MARKER in source:
         return
 
-    # Earlier toolbar patches insert the plug-in and Puppet shortcuts between the
-    # brand/home buttons and tool slots. Anchor on the stable tool-slot call instead.
-    slot_call = "    let x = tool_slots(app, ui, &p, x, cy);\n"
-    if source.count(slot_call) != 1:
-        raise SystemExit("Could not uniquely locate the toolbar tool-slot call for Undo / Redo.")
-    source = source.replace(
-        slot_call,
-        "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\n"
-        "    let x = history_buttons(app, ui, &p, x, cy);\n" + slot_call,
-        1,
-    )
+    # make_header_scrollable.py wraps the toolbar in a ScrollArea and renders
+    # its controls with scroll_ui. Insert into that active toolbar first; retain
+    # the original-header fallback for non-scrolling desktop/source variants.
+    scroll_slot_call = "            let x = tool_slots(app, scroll_ui, &p, x, cy);\\n"
+    original_slot_call = "    let x = tool_slots(app, ui, &p, x, cy);\\n"
+    if source.count(scroll_slot_call) == 1:
+        source = source.replace(
+            scroll_slot_call,
+            "            // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
+            "            let x = history_buttons(app, scroll_ui, &p, x, cy);\\n"
+            + scroll_slot_call,
+            1,
+        )
+    elif source.count(original_slot_call) == 1:
+        source = source.replace(
+            original_slot_call,
+            "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
+            "    let x = history_buttons(app, ui, &p, x, cy);\\n"
+            + original_slot_call,
+            1,
+        )
+    else:
+        raise SystemExit("Could not locate the active scrollable or original toolbar slot for Undo / Redo.")
 
     helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them.\n"
     helper = r'''/// AM-style touch controls for the project's native edit history.
