@@ -165,10 +165,14 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_FIVE_PROJECT_IMPORT_BUTTONS_V1" in project:
         raise SystemExit("Duplicate five-format project buttons remain in the Project panel.")
+    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V7" not in project or '"project.importMedia"' not in project:
+        raise SystemExit("The Project panel must retain its media import shortcut.")
+    if '"project.importProject"' in project or "导入工程" in project:
+        raise SystemExit("Project import must stay in File > Import, not the Project panel.")
     for label in ("导入电脑版Ae工程", "导入手机版Ae工程", "导入am工程", "导入NV工程", "导入capcut工程"):
         if label in project:
             raise SystemExit(f"Project import label {label} must stay in File > Import.")
-    print("Verified project-format import controls are not duplicated in the Project panel.")
+    print("Verified the Project panel keeps media import only; project formats stay in File > Import.")
 
     frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2" not in frontend:
@@ -277,11 +281,15 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     import_project_command = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in import_project_command:
         raise SystemExit("The native Project importer command was removed instead of relocated.")
-    print("Verified Project import moved to the Project panel while all original import commands remain available.")
+    print("Verified the original EffectCraft Project importer remains in File > Import.")
 
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V3" not in timeline or "let keyframe_enabled = selected_layer.is_some();" not in timeline:
         raise SystemExit("The keyframe button still requires Project-panel footage selection.")
+    if "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_RESOLVE_V2" not in timeline or "android_collect_curve_segments" not in timeline:
+        raise SystemExit("The curve action does not resolve keyframe segments from the Timeline playhead.")
+    if "layer.comp_time(pair[0].time)" not in timeline or "layer.comp_time(pair[1].time)" not in timeline:
+        raise SystemExit("The curve resolver does not account for the layer's comp-time mapping.")
     viewer = (root / "crates/ui-egui/src/panels/viewer.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_PROJECT_FILE_VIEWER_SELECTION_V3" not in viewer:
         raise SystemExit("Composition viewer selection is not synchronized for direct keyframing.")
