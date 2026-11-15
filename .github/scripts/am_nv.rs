@@ -1152,7 +1152,7 @@ fn import_aep_mobile_package(s: &mut Session, p: &J) -> Result<J> {
     if bytes.len() as u64 > MAX_MOBILE_AE_ZIP_BYTES {
         return Err(err("手机版 AE ZIP 工程包超过 128 MB 安全读取上限；请先精简工程包再导入。"));
     }
-    let archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
         .map_err(|e| err(format!("手机版 AE 工程包不是有效 ZIP：{e}")))?;
     let mut names = Vec::new();
     for index in 0..archive.len().min(32) {
