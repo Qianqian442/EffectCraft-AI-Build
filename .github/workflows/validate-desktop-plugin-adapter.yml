@@ -160,9 +160,23 @@ jobs:
         run: |
           python3 .github/scripts/add_project_import_formats.py
           python3 .github/scripts/add_am_nv_project_import.py
-          grep -F '导入工程... | file.importProject' effectcraft/crates/engine/src/menus.rs
-          ! grep -F 'After Effects Project... | file.importAep' effectcraft/crates/engine/src/menus.rs
-          ! grep -F 'Adobe Premiere Pro Project... | file.importTimeline' effectcraft/crates/engine/src/menus.rs
+          grep -F 'EffectCraft Project... | file.importProject' effectcraft/crates/engine/src/menus.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path("effectcraft/crates/engine/src/menus.rs").read_text(encoding="utf-8").splitlines()
+          def indent(line):
+              return len(line) - len(line.lstrip(" "))
+          # Keep legacy AE/Premiere import commands available in the nested
+          # project-format submenu; they must not disappear from the app.
+          for label in (
+              "After Effects Project... | file.importAep",
+              "Adobe Premiere Pro Project... | file.importTimeline",
+          ):
+              matches = [line for line in lines if line.strip() == label]
+              if len(matches) != 1 or indent(matches[0]) != 6:
+                  raise SystemExit(f"{label} must remain once inside the nested project-format submenu.")
+          print("Verified original AE/Premiere import commands remain available in the nested project-format submenu.")
+          PY
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
 
