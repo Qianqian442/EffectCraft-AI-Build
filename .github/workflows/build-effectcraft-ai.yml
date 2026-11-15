@@ -2,7 +2,7 @@ name: Build Ae Android APK with importable AI model bundle
 
 on:
   push:
-    branches: [main]
+    branches: [main, ae-additive-build-2026-11-15]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/scripts/patch_export_dialog.py'
@@ -1191,6 +1191,7 @@ jobs:
 
   publish:
     name: Publish APK download (no device install test)
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     needs: build
     runs-on: ubuntu-latest
     permissions:
