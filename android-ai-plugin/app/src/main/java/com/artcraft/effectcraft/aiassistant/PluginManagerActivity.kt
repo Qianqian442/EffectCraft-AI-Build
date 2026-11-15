@@ -127,12 +127,12 @@ class PluginManagerActivity : Activity() {
             setPadding(dp(24), dp(34), dp(24), dp(24))
         }
         root.addView(TextView(this).apply {
-            text = "Ae DeepSeek AI 插件"
+            text = "Ae DeepSeek AI 模型管理"
             textSize = 22f
             gravity = Gravity.CENTER
         }, matchWidth())
         root.addView(TextView(this).apply {
-            text = "独立本地推理引擎 · ARM64 · 无云端 API"
+            text = "内置本地推理引擎 · ARM64 · 导入模型包后可离线运行"
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding(0, dp(12), 0, dp(18))
@@ -279,12 +279,19 @@ class PluginManagerActivity : Activity() {
                 if (manifest == null || !modelFound || !tempFile.isFile || tempFile.length() < MIN_MODEL_BYTES) {
                     throw IllegalArgumentException("AI 模型包不完整，未找到有效的 DeepSeek 模型文件。")
                 }
-                if (modelFile.exists() && !modelFile.delete()) {
-                    throw IllegalStateException("无法替换旧模型文件；旧模型仍保留。")
+                val backupFile = File(modelFile.parentFile ?: filesDir, MODEL_FILE + ".previous")
+                if (backupFile.exists() && !backupFile.delete()) {
+                    throw IllegalStateException("无法清理上次导入留下的临时备份；旧模型未改动。")
+                }
+                val hadPreviousModel = modelFile.exists()
+                if (hadPreviousModel && !modelFile.renameTo(backupFile)) {
+                    throw IllegalStateException("无法备份现有模型；原模型保持不变。")
                 }
                 if (!tempFile.renameTo(modelFile)) {
-                    throw IllegalStateException("模型已校验，但写入应用目录失败；请检查可用存储空间。")
+                    if (hadPreviousModel) backupFile.renameTo(modelFile)
+                    throw IllegalStateException("模型已校验，但写入应用目录失败；已尝试恢复原模型。请检查可用存储空间。")
                 }
+                if (hadPreviousModel) backupFile.delete()
                 runOnUiThread {
                     importingPackage = false
                     progressBar.progress = 100
