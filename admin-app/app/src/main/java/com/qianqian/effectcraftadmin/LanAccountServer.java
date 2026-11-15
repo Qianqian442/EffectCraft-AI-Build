@@ -381,6 +381,10 @@ final class LanAccountServer implements Runnable {
                 String id = tail.substring(0, tail.length() - 4);
                 return banUser(id, body);
             }
+            if (method.equals("POST") && tail.endsWith("/delete")) {
+                String id = tail.substring(0, tail.length() - 7);
+                return deleteUser(id);
+            }
         }
         return error(404, "未找到请求接口", "", "");
     }
@@ -419,6 +423,9 @@ final class LanAccountServer implements Runnable {
         String passHash = hashPassword(password, salt);
         SQLiteDatabase writable = db.getWritableDatabase();
         try {
+            if (hasIdentityBan(writable, "qq", qq) || hasIdentityBan(writable, "wechat", wechat)) {
+                return error(403, "该 QQ号/微信号关联账号已被永久封禁，不能重新注册", "", "");
+            }
             android.content.ContentValues values = new android.content.ContentValues();
             values.put("id", id);
             if (qq.isEmpty()) values.putNull("qq"); else values.put("qq", qq);
@@ -520,6 +527,61 @@ final class LanAccountServer implements Runnable {
         }
         db.getWritableDatabase().update("accounts", values, "id=?", new String[]{id});
         JSONObject out = new JSONObject(); out.put("user", findUser(id)); return out;
+    }
+
+    private static String identityBanHash(String kind, String value) throws Exception {
+        String normalized = "wechat".equals(kind) ? value.trim().toLowerCase(Locale.ROOT) : value.trim();
+        byte[] digest = MessageDigest.getInstance("SHA-256")
+            .digest((kind + ":" + normalized).getBytes(StandardCharsets.UTF_8));
+        StringBuilder hex = new StringBuilder(digest.length * 2);
+        for (byte part : digest) hex.append(String.format(Locale.ROOT, "%02x", part & 0xff));
+        return hex.toString();
+    }
+
+    private static boolean hasIdentityBan(SQLiteDatabase database, String kind, String value) throws Exception {
+        if (value == null || value.trim().isEmpty()) return false;
+        String hash = identityBanHash(kind, value);
+        try (Cursor c = database.query("account_identity_bans", new String[]{"identity_hash"},
+                "identity_hash=?", new String[]{hash}, null, null, null, "1")) {
+            return c.moveToFirst();
+        }
+    }
+
+    private static void addIdentityBan(SQLiteDatabase database, String kind, String value, String reason) throws Exception {
+        if (value == null || value.trim().isEmpty()) return;
+        android.content.ContentValues values = new android.content.ContentValues();
+        values.put("identity_hash", identityBanHash(kind, value));
+        values.put("kind", kind);
+        values.put("created_at", Instant.now().toString());
+        values.put("ban_reason", reason == null ? "永久封号" : reason);
+        database.insertWithOnConflict("account_identity_bans", null, values, SQLiteDatabase.CONFLICT_IGNORE);
+    }
+
+    private JSONObject deleteUser(String id) throws Exception {
+        JSONObject user = findUser(id);
+        if (!"9999-12-31T23:59:59.999Z".equals(user.optString("banned_until"))) {
+            return error(409, "请先执行永久封号；只有永久封号账号才能删除", "", "");
+        }
+        String qq = user.optString("qq", "");
+        String wechat = user.optString("wechat", "");
+        String reason = user.optString("ban_reason", "永久封号");
+        int blocked = (qq.isEmpty() ? 0 : 1) + (wechat.isEmpty() ? 0 : 1);
+        if (blocked == 0) return error(409, "账号缺少 QQ/微信标识，无法安全删除", "", "");
+
+        SQLiteDatabase writable = db.getWritableDatabase();
+        writable.beginTransaction();
+        try {
+            addIdentityBan(writable, "qq", qq, reason);
+            addIdentityBan(writable, "wechat", wechat, reason);
+            writable.delete("accounts", "id=?", new String[]{id});
+            writable.setTransactionSuccessful();
+        } finally {
+            writable.endTransaction();
+        }
+        JSONObject result = new JSONObject();
+        result.put("deleted", true);
+        result.put("blocked_identities", blocked);
+        return result;
     }
 
     private JSONObject findUser(String id) throws Exception {
@@ -682,10 +744,11 @@ final class LanAccountServer implements Runnable {
     }
 
     private static final class AccountDb extends SQLiteOpenHelper {
-        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 2); }
+        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 3); }
         @Override public void onCreate(SQLiteDatabase db) {
             db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT UNIQUE, wechat TEXT UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
             db.execSQL("CREATE INDEX idx_accounts_name ON accounts(name)");
+            db.execSQL("CREATE TABLE account_identity_bans (identity_hash TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('qq','wechat')), created_at TEXT NOT NULL, ban_reason TEXT NOT NULL DEFAULT '')");
         }
         @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
             if (oldVersion < 2) {
@@ -694,6 +757,9 @@ final class LanAccountServer implements Runnable {
                 db.execSQL("INSERT INTO accounts(id,qq,wechat,name,password_hash,password_salt,avatar_url,created_at,banned_until,ban_reason) SELECT id,NULLIF(qq,''),NULLIF(wechat,''),name,password_hash,password_salt,avatar_url,created_at,banned_until,ban_reason FROM accounts_v1");
                 db.execSQL("DROP TABLE accounts_v1");
                 db.execSQL("CREATE INDEX idx_accounts_name ON accounts(name)");
+            }
+            if (oldVersion < 3) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS account_identity_bans (identity_hash TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK (kind IN ('qq','wechat')), created_at TEXT NOT NULL, ban_reason TEXT NOT NULL DEFAULT '')");
             }
         }
     }
