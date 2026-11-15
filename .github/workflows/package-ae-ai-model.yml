@@ -1,0 +1,95 @@
+name: Package Ae offline DeepSeek model ZIP
+
+on:
+  push:
+    branches: [main, ae-additive-build-2026-11-15]
+    paths:
+      - '.github/workflows/package-ae-ai-model.yml'
+      - '.github/scripts/package_ae_ai_model.py'
+      - 'android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ae-deepseek-model-package-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  package-model:
+    name: Build data-only Ae DeepSeek model ZIP
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out model package manifest and packager
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Download DeepSeek IQ4_XS GGUF model
+        shell: bash
+        run: |
+          set -euo pipefail
+          MODEL_FILE="DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf"
+          MIRROR_URL="https://hf-mirror.com/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/\${MODEL_FILE}?download=true"
+          MODEL_URL="https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/\${MODEL_FILE}?download=true"
+          echo "Available disk space before download:"
+          df -h .
+          if ! curl --location --fail --show-error --retry 6 --retry-all-errors --retry-delay 5 \
+              --connect-timeout 30 --output "$MODEL_FILE" "$MIRROR_URL"; then
+            echo "Mirror download failed; retrying from the official Hugging Face endpoint."
+            rm -f "$MODEL_FILE"
+            curl --location --fail --show-error --retry 6 --retry-all-errors --retry-delay 5 \
+              --connect-timeout 30 --output "$MODEL_FILE" "$MODEL_URL"
+          fi
+          test -s "$MODEL_FILE"
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf")
+          size = path.stat().st_size
+          if not (500 * 1024 * 1024 <= size <= 2 * 1024 * 1024 * 1024):
+              raise SystemExit(f"Downloaded model has an unsupported size: {size} bytes")
+          with path.open("rb") as stream:
+              if stream.read(4) != b"GGUF":
+                  raise SystemExit("Downloaded file is not a GGUF model.")
+          print(f"Downloaded model: {size:,} bytes")
+          PY
+
+      - name: Create and verify importable model ZIP
+        run: |
+          python3 -m py_compile .github/scripts/package_ae_ai_model.py
+          python3 .github/scripts/package_ae_ai_model.py \
+            --model DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf \
+            --output Ae-DeepSeek-AI-Model-Package.zip
+          ls -lh Ae-DeepSeek-AI-Model-Package.zip
+
+      - name: Upload model ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ae-DeepSeek-AI-Model-Package
+          path: Ae-DeepSeek-AI-Model-Package.zip
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
+
+      - name: Publish direct release download
+        env:
+          GH_TOKEN: \${{ github.token }}
+          TAG_NAME: ae-deepseek-ai-model-1
+        run: |
+          set -euo pipefail
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" Ae-DeepSeek-AI-Model-Package.zip \
+              --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$TAG_NAME" Ae-DeepSeek-AI-Model-Package.zip \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "Ae DeepSeek Offline AI Model Package" \
+              --notes "Data-only DeepSeek GGUF model ZIP for import inside Ae. This is not an APK; import the ZIP from Ae's AI model manager."
+          fi
+          echo "Direct model package: https://github.com/\${GITHUB_REPOSITORY}/releases/download/\${TAG_NAME}/Ae-DeepSeek-AI-Model-Package.zip"
