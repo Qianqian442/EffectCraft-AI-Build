@@ -57,14 +57,14 @@ def main() -> None:
     # signing certificate matches and the incoming versionCode is not older.
     source = replace_once(
         source,
-        "import sys\\nimport tomllib\\n",
-        "import sys\\nimport os\\nimport tomllib\\n",
+        "import sys\nimport tomllib\n",
+        "import sys\nimport os\nimport tomllib\n",
         "Android build-number environment import",
     )
     source = replace_once(
         source,
-        "    code = version_code(version)\\n",
-        "    code = version_code(version)\\n"
+        "    code = version_code(version)\n",
+        "    code = version_code(version)\n"
         "    build_number = os.environ.get(\"GITHUB_RUN_NUMBER\", \"\")\n"
         "    if build_number.isdigit():\n"
         "        code = max(code, 50_000_000 + int(build_number))\n",
