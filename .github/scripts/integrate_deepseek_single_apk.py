@@ -295,6 +295,16 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     # remains as an in-app screen; the user never imports a ZIP or installs another APK.
     assistant = repo / ".github/scripts/ai_assistant_plugin.rs"
     a = assistant.read_text(encoding="utf-8")
+
+    # The inference runtime is integrated into the main APK, so remove the retired
+    # companion-plugin import branch before rewriting its UI messages.
+    a = a.replace('    let mut import_plugin = false;\n', '', 1)
+    import_start = a.find("    if import_plugin {")
+    if import_start >= 0:
+        manager_start = a.find("    if manage_model {", import_start)
+        if manager_start < 0:
+            raise SystemExit("Could not find the model-manager branch after the retired plugin-import branch")
+        a = a[:import_start] + a[manager_start:]
     text_replacements = (
         ("你好！我是 EffectCraft AI 助手。导入 DeepSeek AI 插件 ZIP 并准备本地模型后，即可在这里离线对话。",
          "你好！我是 EffectCraft 内置 DeepSeek AI 助手。首次使用时，在模型管理中下载本地模型后即可离线对话。"),
@@ -323,18 +333,7 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     for old, new in text_replacements:
         if old in a:
             a = a.replace(old, new, 1)
-    a = a.replace('    let mut import_plugin = false;\n', '', 1)
-    import_block = """    if import_plugin {
-        match open_ai_plugin_import() {
-            Ok(()) => {
-                state.notice = "请选择 DeepSeek AI 插件 ZIP。随后 Android 会显示一次系统安装确认。".into();
-            }
-            Err(error) => state.notice = error,
-        }
-    }
-"""
-    a = a.replace(import_block, "", 1)
-    if 'ui.button("导入 AI 插件")' in a or "请先点击“导入 AI 插件”" in a:
+    if 'ui.button("导入 AI 插件")' in a or "import_plugin" in a or "请先点击“导入 AI 插件”" in a:
         raise SystemExit("AI assistant still contains a companion-plugin import path; refusing to claim single-APK integration.")
     assistant.write_text(a, encoding="utf-8")
     # The APK build copied the helper before these user-visible strings were normalized.
