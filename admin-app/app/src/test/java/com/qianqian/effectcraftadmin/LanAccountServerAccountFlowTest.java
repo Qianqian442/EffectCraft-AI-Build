@@ -246,6 +246,60 @@ public final class LanAccountServerAccountFlowTest {
         assertEquals(401, status(badPassword));
     }
 
+    @Test
+    public void permanentBanPersistsUntilExplicitAdminUnban() throws Exception {
+        JSONObject registration = call("POST", "/v1/register", "", json(
+            "qq", "1777666555",
+            "wechat", "",
+            "name", "Permanent Ban Test",
+            "password", "permanent-test-pass",
+            "avatar_url", ""
+        ));
+        assertEquals(200, status(registration));
+        JSONObject registered = body(registration);
+        String userId = registered.getJSONObject("user").getString("id");
+        String userToken = registered.getString("token");
+
+        JSONObject permanentBan = call("POST", "/v1/admin/users/" + userId + "/ban", adminToken, json(
+            "banned_until", "PERMANENT",
+            "reason", "automated permanent-ban test"
+        ));
+        assertEquals(200, status(permanentBan));
+        assertEquals("PERMANENT", body(permanentBan).getJSONObject("user").getString("banned_until"));
+
+        JSONObject blockedLogin = call("POST", "/v1/login", "", json(
+            "identifier", "1777666555",
+            "password", "permanent-test-pass"
+        ));
+        assertEquals("permanent account ban rejects new login", 423, status(blockedLogin));
+
+        JSONObject blockedSession = call("GET", "/v1/me", userToken, new JSONObject());
+        assertEquals("permanent account ban rejects existing sessions", 423, status(blockedSession));
+
+        JSONObject blockedProfile = call("POST", "/v1/profile", userToken, json(
+            "qq", "1777666555",
+            "wechat", "",
+            "name", "Must Stay Blocked",
+            "avatar_url", "",
+            "current_password", "",
+            "new_password", ""
+        ));
+        assertEquals("permanently banned account cannot update its profile", 423, status(blockedProfile));
+
+        JSONObject unban = call("POST", "/v1/admin/users/" + userId + "/ban", adminToken, json(
+            "banned_until", JSONObject.NULL,
+            "reason", ""
+        ));
+        assertEquals(200, status(unban));
+        assertTrue(body(unban).getJSONObject("user").isNull("banned_until"));
+
+        JSONObject restoredLogin = call("POST", "/v1/login", "", json(
+            "identifier", "1777666555",
+            "password", "permanent-test-pass"
+        ));
+        assertEquals("only an explicit administrator unban restores access", 200, status(restoredLogin));
+    }
+
     private JSONObject call(String method, String path, String token, JSONObject requestBody) throws Exception {
         JSONObject packet = new JSONObject();
         packet.put("method", method);
