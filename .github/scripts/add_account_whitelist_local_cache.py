@@ -47,6 +47,8 @@ struct SavedBan {
     until: String,
     #[serde(default)]
     reason: String,
+    #[serde(default)]
+    permanent: bool,
 }
 fn identifier_digest(kind: &str, value: &str) -> String {
     let normalized = if kind == "wechat" {
@@ -92,6 +94,7 @@ fn identifier_digest(kind: &str, value: &str) -> String {
             if let Ok(saved_ban) = serde_json::from_str::<SavedBan>(&raw) {
                 self.banned_until = saved_ban.until;
                 self.ban_reason = saved_ban.reason;
+                self.permanently_banned = saved_ban.permanent;
                 self.mode = Mode::Banned;
                 self.status = "封禁信息已保存在本机；本次打开无需连接服务器。".to_string();
                 return;
@@ -122,7 +125,7 @@ fn identifier_digest(kind: &str, value: &str) -> String {
 
     fn persist_ban(&self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         if let Some(store) = config {
-            let saved = SavedBan { until: self.banned_until.clone(), reason: self.ban_reason.clone() };
+            let saved = SavedBan { until: self.banned_until.clone(), reason: self.ban_reason.clone(), permanent: self.permanently_banned };
             if let Ok(data) = serde_json::to_string(&saved) {
                 let _ = store.write("effectcraft-account-ban.json", &data);
             }
@@ -216,13 +219,18 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         '''            Ok(response) if response.status == 423 => {
                 let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
                 self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
+                self.permanently_banned = detail.get("permanent").and_then(Value::as_bool).unwrap_or(false)
+                    || detail.get("permanently_banned").and_then(Value::as_bool).unwrap_or(false);
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
+                self.persist_ban(config);
                 self.mode = Mode::Banned;
                 self.status.clear();
             }''',
         '''            Ok(response) if response.status == 423 => {
                 let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
                 self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
+                self.permanently_banned = detail.get("permanent").and_then(Value::as_bool).unwrap_or(false)
+                    || detail.get("permanently_banned").and_then(Value::as_bool).unwrap_or(false);
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
                 self.persist_ban(config);
                 self.mode = Mode::Banned;
@@ -363,7 +371,11 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                 }''',
         '''                ui.label(&app.account.ban_reason);
                 ui.add_space(8.0);
-                ui.label(app.account.ban_countdown_label());
+                if app.account.permanently_banned {
+                    ui.label("永久封号：此账号已被管理员永久封禁。");
+                } else {
+                    ui.label(app.account.ban_countdown_label());
+                }
                 ui.label("封禁资料已保存在本机。重新打开 EffectCraft 时会先显示本地封禁信息，不会自动连接服务器。");
                 ui.add_space(12.0);
                 if ui.button("联网核验是否已解封").clicked() {
