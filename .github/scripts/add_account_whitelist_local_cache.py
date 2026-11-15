@@ -136,6 +136,9 @@ fn identifier_digest(kind: &str, value: &str) -> String {
     }
 
     fn ban_countdown_label(&self) -> String {
+        if self.banned_until.eq_ignore_ascii_case("PERMANENT") {
+            return "永久封号；只有管理员手动解封后才能恢复。".to_string();
+        }
         match DateTime::parse_from_rfc3339(&self.banned_until) {
             Ok(until) => {
                 let now = std::time::SystemTime::now()
