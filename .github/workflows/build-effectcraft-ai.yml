@@ -31,6 +31,7 @@ on:
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/add_ae_dual_project_import.py'
+      - '.github/scripts/add_five_project_import_buttons.py'
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
@@ -98,6 +99,7 @@ jobs:
             .github/scripts/configure_android_storage_fallback.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_ae_dual_project_import.py \
+            .github/scripts/add_five_project_import_buttons.py \
             .github/scripts/add_curve_quick_access.py \
             .github/scripts/add_effect_controls_crash_guard.py \
             .github/scripts/add_open_source_craft_plugins.py
