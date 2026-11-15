@@ -374,8 +374,10 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
         raise SystemExit(f"Generated Ae AI assistant source is missing: {generated_assistant}")
     generated_assistant.write_text(a, encoding="utf-8")
     verified_assistant = generated_assistant.read_text(encoding="utf-8")
-    if 'ui.button("导入 AI 模型包")' not in verified_assistant:
+    if '导入 AI 模型包' not in verified_assistant:
         raise SystemExit("Generated AI assistant did not receive the model ZIP import entry.")
+    if 'egui::Button::new("模型管理")' in verified_assistant or '模型管理")' in verified_assistant:
+        raise SystemExit("Generated AI assistant still exposes the old model-manager label.")
     if 'ui.button("导入 AI 插件")' in verified_assistant:
         raise SystemExit("Generated AI assistant still exposes companion APK import.")
 
