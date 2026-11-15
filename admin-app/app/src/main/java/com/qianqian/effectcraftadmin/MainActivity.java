@@ -883,7 +883,7 @@ public final class MainActivity extends Activity {
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
 
-        Button banButton = button(permanent ? "删除账号" : "封禁");
+        Button banButton = button("封禁");
         Button unbanButton = button("解禁");
         unbanButton.setEnabled(banned);
 
@@ -894,15 +894,19 @@ public final class MainActivity extends Activity {
         actionParams.rightMargin = dp(3);
         actions.addView(banButton, actionParams);
         actions.addView(unbanButton, actionParams);
+        if (permanent) {
+            // Keep the original two independent actions unchanged; deletion is an
+            // additional action shown only after a permanent-ban state is confirmed.
+            Button deleteButton = button("删除账号");
+            actions.addView(deleteButton, actionParams);
+            deleteButton.setOnClickListener(v -> deleteUser(id));
+        }
         row.addView(actions, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
         ));
 
         row.setOnClickListener(v -> showUserDetails(user));
-        banButton.setOnClickListener(v -> {
-            if (permanent) deleteUser(id);
-            else chooseBan(id);
-        });
+        banButton.setOnClickListener(v -> chooseBan(id));
         unbanButton.setOnClickListener(v -> unban(id));
     }
 
