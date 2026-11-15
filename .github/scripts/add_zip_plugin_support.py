@@ -42,18 +42,18 @@ def patch_manifests(root: Path) -> None:
     # version so a version bump cannot break this dependency edit.
     import re
     package_match = re.search(
-        r'(?m)^\\[\\[package\\]\\]\\nname = "effectcraft-engine"\\nversion = "[^"]+"\\ndependencies = \\[\\n',
+        r'(?m)^\[\[package\]\]\nname = "effectcraft-engine"\nversion = "[^"]+"\ndependencies = \[\n',
         source,
     )
     if package_match is None:
         raise SystemExit("Could not locate effectcraft-engine package in Cargo.lock")
     package_start = package_match.start()
-    package_end = source.find("\\n]\\n", package_match.end())
+    package_end = source.find("\n]\n", package_match.end())
     if package_end < 0:
         raise SystemExit("Could not locate effectcraft-engine dependency list in Cargo.lock")
     block = source[package_match.end():package_end]
     if '"zip 9.1.3"' not in block:
-        block = replace_once(block, ' "web-time",', ' "web-time",\\n "zip 9.1.3",', "Cargo.lock engine ZIP dependency")
+        block = replace_once(block, ' "web-time",', ' "web-time",\n "zip 9.1.3",', "Cargo.lock engine ZIP dependency")
         source = source[:package_match.end()] + block + source[package_end:]
     # zip 9.1.3 and flate2 are already present in the upstream lockfile.
     lock.write_text(source, encoding="utf-8")
