@@ -35,6 +35,7 @@ pub(crate) struct State {
     notice: String,
     avatar: Option<egui::TextureHandle>,
     bubble_pos: Option<egui::Pos2>,
+    bubble_drag_origin: Option<egui::Pos2>,
     plugin_installed: Option<bool>,
     probe_frames: u16,
 }
@@ -52,6 +53,7 @@ impl Default for State {
             notice: String::new(),
             avatar: None,
             bubble_pos: None,
+            bubble_drag_origin: None,
             plugin_installed: None,
             probe_frames: 0,
         }
@@ -101,14 +103,21 @@ pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {
             if response.clicked() {
                 state.open = !state.open;
             }
+            if response.drag_started() {
+                state.bubble_drag_origin = Some(bubble_pos);
+            }
             if response.dragged() {
-                let delta = ctx.input(|input| input.pointer.delta());
+                let origin = state.bubble_drag_origin.unwrap_or(bubble_pos);
+                let delta = response.drag_delta();
                 let max_x = (screen.max.x - 48.0).max(screen.min.x);
                 let max_y = (screen.max.y - 48.0).max(screen.min.y);
                 dragged_bubble_to = Some(pos2(
-                    (bubble_pos.x + delta.x).clamp(screen.min.x, max_x),
-                    (bubble_pos.y + delta.y).clamp(screen.min.y, max_y),
+                    (origin.x + delta.x).clamp(screen.min.x, max_x),
+                    (origin.y + delta.y).clamp(screen.min.y, max_y),
                 ));
+            }
+            if response.drag_stopped() {
+                state.bubble_drag_origin = None;
             }
         });
     if let Some(position) = dragged_bubble_to {
