@@ -21,19 +21,11 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 def patch_shared_panel_scroll(root: Path) -> None:
     path = root / "crates/ui-egui/src/widgets.rs"
     source = path.read_text(encoding="utf-8")
+    # Never register the complete panel as a drag target: it can steal taps from
+    # child buttons, sliders, file controls and other interactive widgets.
     marker = "EFFECTCRAFT_ANDROID_PANEL_SCROLL_TOUCH_DRAG_V1"
     if marker in source:
-        return
-
-    old = '''        if ui.rect_contains_pointer(area) {
-            offset -= ui.input(|i| i.smooth_scroll_delta.y);
-        }
-        let gutter: Gutter = ui.data(|d| d.get_temp(id.with("gutter"))).unwrap_or_default();
-'''
-    new = '''        if ui.rect_contains_pointer(area) {
-            offset -= ui.input(|i| i.smooth_scroll_delta.y);
-        }
-        // EFFECTCRAFT_ANDROID_PANEL_SCROLL_TOUCH_DRAG_V1
+        old = '''        // EFFECTCRAFT_ANDROID_PANEL_SCROLL_TOUCH_DRAG_V1
         // On touch devices, a drag that begins on the panel background scrolls its rows.
         // Child controls are registered after begin() and keep their own tap/drag gestures;
         // the scrollbar remains available as a precise alternative.
@@ -44,11 +36,14 @@ def patch_shared_panel_scroll(root: Path) -> None:
                 ui.ctx().request_repaint();
             }
         }
-        let gutter: Gutter = ui.data(|d| d.get_temp(id.with("gutter"))).unwrap_or_default();
 '''
-    source = replace_once(source, old, new, "Shared panel touch scrolling")
-    path.write_text(source, encoding="utf-8")
-
+        if source.count(old) != 1:
+            raise SystemExit("The old full-panel touch drag block changed; refusing an unsafe partial edit")
+        source = source.replace(old, "", 1)
+        path.write_text(source, encoding="utf-8")
+    if 'id.with("touch-pan")' in source:
+        raise SystemExit("Full-panel touch drag still intercepts child controls")
+    print("Removed full-panel touch interception; kept dedicated blank-area Project/Timeline scrolling.")
 
 def patch_project_panel(root: Path) -> None:
     path = root / "crates/ui-egui/src/panels/project.rs"

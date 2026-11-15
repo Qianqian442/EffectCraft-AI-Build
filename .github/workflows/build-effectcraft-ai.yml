@@ -14,6 +14,7 @@ on:
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/upgrade_export_preflight.py'
       - '.github/scripts/verify_android_source_patches.py'
+      - '.github/scripts/add_ai_assistant_fullscreen_drag.py'
       - '.github/scripts/ai_assistant_local.rs'
       - 'assets/ae-avatar.png'
       - '.github/native/**'
@@ -101,6 +102,7 @@ jobs:
             .github/scripts/add_ae_dual_project_import.py \
             .github/scripts/add_five_project_import_buttons.py \
             .github/scripts/add_curve_quick_access.py \
+            .github/scripts/add_ai_assistant_fullscreen_drag.py \
             .github/scripts/add_effect_controls_crash_guard.py \
             .github/scripts/add_open_source_craft_plugins.py
 
@@ -369,6 +371,13 @@ jobs:
           p.write_text(s)
           print("Embedded the supplied Ae avatar in the draggable AI bubble.")
           PY
+
+      - name: Enable full-screen AI assistant and keep touch buttons responsive
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_ai_assistant_fullscreen_drag.py
+          python3 build-assets/.github/scripts/add_ai_assistant_fullscreen_drag.py
 
       - name: Integrate the standalone DeepSeek AI plugin bridge into the host APK
         env:

@@ -53,6 +53,11 @@ def main() -> None:
     File... | file.import
     Multiple Files... | file.importMultiple
     更多工程格式
+      导入电脑版AE工程... | file.importAepDesktop
+      导入手机版AE工程... | file.importAepMobilePackage
+      导入AM工程... | file.importAlightMotionProject
+      导入NV工程... | file.importNodeVideoProject
+      导入CapCut工程... | file.importCapCutProject
       Adobe Premiere Pro Project... | file.importTimeline
       After Effects Project... | file.importAep
     Placeholder... | file.importPlaceholder

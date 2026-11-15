@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 
-MARKER = "EFFECTCRAFT_ANDROID_CURVE_QUICK_ACCESS_V1"
+MARKER = "EFFECTCRAFT_ANDROID_CURVE_QUICK_ACCESS_V2"
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -160,28 +160,22 @@ fn android_curve_segment_id() -> egui::Id {
 
 /// Resolve the adjacent keyframe pair surrounding the current Timeline playhead
 /// on the one selected property. The user only needs to position the playhead between keys.
-fn android_playhead_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSegment> {
-    let mut selected = app.session.state.selected_props.iter();
-    let (layer_id, prop_uid) = *selected.next()?;
-    if selected.next().is_some() {
-        return None;
-    }
-    let comp_id = app.session.active_comp_id()?;
-    let comp = app.session.project.comp(comp_id)?;
-    let layer = comp.layer(layer_id)?;
-    let prop = layer.props.find(prop_uid)?;
-    let playhead = app.session.time_of(comp_id);
-
+// EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_RESOLVE_V2
+fn android_collect_curve_property(
+    prop: &Property,
+    layer: &Layer,
+    comp: u64,
+    playhead: Tick,
+    out: &mut Vec<AndroidCurveSegment>,
+) {
     for (pair_index, pair) in prop.keys.windows(2).enumerate() {
         let first_comp = layer.comp_time(pair[0].time);
         let second_comp = layer.comp_time(pair[1].time);
-        let lower = first_comp.min(second_comp);
-        let upper = first_comp.max(second_comp);
-        if playhead > lower && playhead < upper {
-            return Some(AndroidCurveSegment {
-                comp: comp_id.0,
-                layer: layer_id.0,
-                prop: prop_uid,
+        if playhead > first_comp.min(second_comp) && playhead < first_comp.max(second_comp) {
+            out.push(AndroidCurveSegment {
+                comp,
+                layer: layer.id.0,
+                prop: prop.uid,
                 first: pair[0].time.0,
                 second: pair[1].time.0,
                 first_index: pair_index + 1,
@@ -191,7 +185,69 @@ fn android_playhead_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSe
             });
         }
     }
-    None
+}
+
+/// Walk all nested property groups when the user selected a layer but not a property row.
+fn android_collect_curve_segments(
+    group: &PropGroup,
+    layer: &Layer,
+    comp: u64,
+    playhead: Tick,
+    out: &mut Vec<AndroidCurveSegment>,
+) {
+    for node in &group.children {
+        match node {
+            Node::Prop(prop) => android_collect_curve_property(prop, layer, comp, playhead, out),
+            Node::Group(child) => android_collect_curve_segments(child, layer, comp, playhead, out),
+        }
+    }
+}
+
+/// The playhead alone can resolve the curve when one adjacent keyframe segment is unique.
+/// A selected property is preferred; otherwise one selected layer and one matching segment suffice.
+fn android_playhead_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSegment> {
+    let comp_id = app.session.active_comp_id()?;
+    let comp = app.session.project.comp(comp_id)?;
+    let playhead = app.session.time_of(comp_id);
+
+    let mut layer_ids = app.session.state.selected_layers.clone();
+    for (layer_id, _) in &app.session.state.selected_props {
+        if !layer_ids.contains(layer_id) {
+            layer_ids.push(*layer_id);
+        }
+    }
+    if layer_ids.is_empty() {
+        if let [item] = app.session.state.project_selection.as_slice() {
+            for layer in &comp.layers {
+                if layer.source.item() == Some(*item) && !layer_ids.contains(&layer.id) {
+                    layer_ids.push(layer.id);
+                }
+            }
+        }
+    }
+    if layer_ids.is_empty() {
+        return None;
+    }
+
+    let mut selected_segments = Vec::new();
+    for (layer_id, prop_uid) in &app.session.state.selected_props {
+        let Some(layer) = comp.layer(*layer_id) else { continue };
+        let Some(prop) = layer.props.find(*prop_uid) else { continue };
+        android_collect_curve_property(prop, layer, comp_id.0, playhead, &mut selected_segments);
+    }
+    if selected_segments.len() == 1 {
+        return selected_segments.pop();
+    }
+    if selected_segments.len() > 1 {
+        return None;
+    }
+
+    let mut candidates = Vec::new();
+    for layer_id in layer_ids {
+        let Some(layer) = comp.layer(layer_id) else { continue };
+        android_collect_curve_segments(&layer.props, layer, comp_id.0, playhead, &mut candidates);
+    }
+    if candidates.len() == 1 { candidates.pop() } else { None }
 }
 
 fn android_curve_sample(kind: &str, x: f32) -> f32 {
@@ -337,7 +393,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
             state = Some(current);
             ctx.data_mut(|data| data.insert_temp(id, current));
         } else {
-            app.ui.status = "请先选中一个属性，并把蓝色播放指针移到两个相邻关键帧之间，再点左下角“曲线”。".into();
+            app.ui.status = "请先选中一个图层，并把蓝色播放指针移到两个相邻关键帧之间；若该时间段有多个属性，请先点选要调整的属性行。".into();
         }
     }
 

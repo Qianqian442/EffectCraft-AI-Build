@@ -225,6 +225,16 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The dedicated AE desktop project import option is missing.")
     if "EffectCraft 手机版工程... | file.importEffectCraftMobile" not in visible_import:
         raise SystemExit("The dedicated EffectCraft mobile-exported project import option is missing.")
+    for menu_entry in (
+        "导入电脑版AE工程... | file.importAepDesktop",
+        "导入手机版AE工程... | file.importAepMobilePackage",
+        "导入AM工程... | file.importAlightMotionProject",
+        "导入NV工程... | file.importNodeVideoProject",
+        "导入CapCut工程... | file.importCapCutProject",
+    ):
+        if menu_entry not in visible_import:
+            raise SystemExit(f"File > Import is missing a format-specific entry: {menu_entry}")
+    print("Verified five separate format choices appear in File > Import and in the Project panel.")
 
     aep_commands = (root / "crates/engine/src/cmd/aep.rs").read_text(encoding="utf-8")
     if '"file.importAepDesktop"' not in aep_commands or '"file.importAep"' not in aep_commands:
@@ -281,6 +291,21 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if "Sense::click_and_drag()" not in assistant or "bubble_drag_origin" not in assistant or "response.drag_delta()" not in assistant:
         raise SystemExit("The floating AI assistant is missing its tap-and-drag interaction.")
     print("Verified the floating AI assistant bubble supports tap and touch-drag.")
+
+    if "full_screen: bool" not in assistant or 'ui.button(if state.full_screen' not in assistant:
+        raise SystemExit("The AI assistant is missing its full-screen / restore control.")
+    if "egui::WindowDrag::TitleBar" not in assistant:
+        raise SystemExit("AI assistant drag handling may intercept inner controls; title-bar-only drag is required.")
+    print("Verified AI assistant fullscreen mode and title-bar-only window dragging.")
+
+    widgets = (root / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
+    if 'id.with("touch-pan")' in widgets:
+        raise SystemExit("A full-panel touch drag may intercept normal button taps.")
+    print("Verified shared touch scrolling does not capture entire panels or block child buttons.")
+
+    if "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_RESOLVE_V2" not in timeline or "android_collect_curve_segments" not in timeline:
+        raise SystemExit("Curve presets cannot resolve a unique keyframe interval under the playhead.")
+    print("Verified Curve can resolve a unique adjacent keyframe pair from the playhead position.")
 
     timing = (root / "crates/engine/src/cmd/layer/timing.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_EXTEND_COMP_ON_LAYER_OUT_DRAG_V1" not in timing or "if extend_comp" not in timing:
