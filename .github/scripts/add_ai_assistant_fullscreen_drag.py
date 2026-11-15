@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
-"""Add a fullscreen control and keep AI assistant content buttons tappable on touch screens."""
+"""Make the expanded Ae AI assistant nearly full-screen while keeping its title bar draggable."""
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
-MARKER = "EFFECTCRAFT_ANDROID_AI_FULLSCREEN_DRAG_V1"
+MARKER = "EFFECTCRAFT_ANDROID_AI_EXPANDED_DRAG_V2"
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
+    count = source.count(old)
     if new in source:
         return source
-    count = source.count(old)
     if count != 1:
         raise SystemExit(f"{label}: expected exactly one insertion point, found {count}")
     return source.replace(old, new, 1)
@@ -21,118 +22,105 @@ def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     path = root / "crates/ui-egui/src/ai_assistant.rs"
     if not path.is_file():
-        raise SystemExit("The generated AI assistant source is missing")
+        raise SystemExit("The generated Ae AI assistant source is missing")
     source = path.read_text(encoding="utf-8")
     if MARKER in source:
-        print("AI assistant fullscreen and touch-safe drag are already installed.")
+        print("Ae AI assistant expanded draggable window is already installed.")
         return
 
     source = replace_once(
         source,
         "    bubble_drag_origin: Option<egui::Pos2>,\n",
-        "    bubble_drag_origin: Option<egui::Pos2>,\n    full_screen: bool,\n    restore_rect: Option<egui::Rect>,\n",
-        "AI assistant fullscreen state",
+        "    bubble_drag_origin: Option<egui::Pos2>,\n    full_screen: bool,\n",
+        "AI assistant expanded-window state",
     )
     source = replace_once(
         source,
         "            bubble_drag_origin: None,\n",
-        "            bubble_drag_origin: None,\n            full_screen: false,\n            restore_rect: None,\n",
-        "AI assistant fullscreen defaults",
+        "            bubble_drag_origin: None,\n            full_screen: false,\n",
+        "AI assistant expanded-window default",
     )
     source = replace_once(
         source,
         "    let mut manage_model = false;\n    let mut window_open = state.open;\n",
-        """    let mut manage_model = false;
-    let mut toggle_full_screen = false;
-    let mut window_open = state.open;
-    let window_id = Id::new("effectcraft-ai-chat-window");
-    // Save the last normal window rectangle before changing to full-screen size.
-    let normal_rect_before = ctx.memory(|memory| memory.area_rect(window_id)).or_else(|| {
-        let size = vec2((screen.width() - 16.0).clamp(240.0, 520.0),
-                        (screen.height() - 24.0).clamp(280.0, 860.0));
-        Some(egui::Rect::from_min_size(
-            pos2(screen.center().x - size.x * 0.5, screen.center().y - size.y * 0.5),
-            size,
-        ))
-    });
-    let restore_for_frame = state.restore_rect;
-""",
-        "AI assistant fullscreen pre-window state",
+        "    let mut manage_model = false;\n    let mut toggle_full_screen = false;\n    let mut window_open = state.open;\n",
+        "AI assistant expanded-window toggle state",
     )
 
-    old_window = """    egui::Window::new("EffectCraft AI 助手")
-        .id(Id::new("effectcraft-ai-chat-window"))
+    pattern = re.compile(
+        r'    egui::Window::new\("Ae AI 助手"\).*?'
+        r'        \.show\(&ctx, \|ui\| \{\n',
+        re.S,
+    )
+    replacement = """    // Use separate egui IDs for the compact and expanded layouts so switching
+    // back restores the user's previous compact-window position and size.
+    let window_id = if state.full_screen {
+        Id::new("effectcraft-ai-chat-window-expanded")
+    } else {
+        Id::new("effectcraft-ai-chat-window")
+    };
+    let mut chat_window = egui::Window::new("Ae AI 助手")
+        .id(window_id)
         .order(Order::Foreground)
         .movable(true)
+        .constrain_to(screen)
         .default_pos(pos2(
             (screen.max.x - 350.0).max(screen.min.x + 8.0),
             (screen.max.y - 560.0).max(screen.min.y + 8.0),
         ))
         .default_size(vec2(330.0, 450.0))
         .min_size(vec2(280.0, 300.0))
-        .resizable(true)
-        .open(&mut window_open)
-        .show(&ctx, |ui| {
-            ui.label("DeepSeek 本地推理 · 插件通过 ZIP 导入");
-"""
-    new_window = """    // Only the title bar moves the chat window. On touch screens this keeps buttons,
-    // text input and scrolling inside the window from being interpreted as a window drag.
-    let mut chat_window = egui::Window::new("EffectCraft AI 助手")
-        .id(window_id)
-        .order(Order::Foreground)
-        .movable(true)
-        .drag_area(egui::WindowDrag::TitleBar)
-        .constrain_to(screen)
-        .default_pos(pos2(
-            (screen.max.x - 350.0).max(screen.min.x + 8.0),
-            (screen.max.y - 560.0).max(screen.min.y + 8.0),
-        ))
-        .default_size(vec2((screen.width() - 16.0).clamp(240.0, 520.0),
-                           (screen.height() - 24.0).clamp(280.0, 860.0)))
-        .min_size(vec2(220.0, 260.0))
         .max_size(screen.size())
         .resizable(true);
     if state.full_screen {
-        chat_window = chat_window.fixed_rect(screen).movable(false).resizable(false);
-    } else if let Some(rect) = restore_for_frame {
-        chat_window = chat_window.fixed_rect(rect).movable(true).resizable(true);
+        // Large, but not position-locked: the title bar remains a drag handle.
+        let expanded_size = vec2(
+            (screen.width() - 16.0).max(240.0),
+            (screen.height() - 16.0).max(300.0),
+        );
+        chat_window = chat_window
+            .default_pos(pos2(screen.min.x + 8.0, screen.min.y + 8.0))
+            .default_size(expanded_size)
+            .min_size(expanded_size)
+            .max_size(screen.size())
+            .movable(true)
+            .resizable(false);
     }
     chat_window
         .open(&mut window_open)
         .show(&ctx, |ui| {
-            ui.horizontal(|ui| {
-                ui.label("DeepSeek 本地推理 · 插件通过 ZIP 导入");
-                if ui.button(if state.full_screen { "还原窗口" } else { "全屏" }).clicked() {
-                    toggle_full_screen = true;
-                }
-            });
 """
-    source = replace_once(source, old_window, new_window, "AI assistant window builder")
+    source, count = pattern.subn(replacement, source, count=1)
+    if count != 1:
+        raise SystemExit(f"AI assistant window builder: expected one draggable window block, found {count}")
+
+    # Attach expand/restore to the persistent chat composer, not to a localized status label.
+    composer_anchor = """                .desired_rows(2),
+            );
+"""
+    composer_replacement = composer_anchor + """            if ui.button(if state.full_screen { "还原窗口" } else { "展开页面" }).clicked() {
+                toggle_full_screen = true;
+            }
+"""
+    source = replace_once(source, composer_anchor, composer_replacement, "AI assistant expanded-page control beside chat input")
     source = replace_once(
         source,
-        """    state.open = window_open;
-    if import_plugin {""",
-        """    state.open = window_open;
-    if toggle_full_screen {
-        if state.full_screen {
-            state.full_screen = false;
-        } else {
-            state.restore_rect = normal_rect_before;
-            state.full_screen = true;
-        }
-    } else if !state.full_screen && restore_for_frame.is_some() {
-        state.restore_rect = None;
-    }
-    if import_plugin {""",
-        "AI assistant fullscreen transition",
+        "    state.open = window_open;\n",
+        "    state.open = window_open;\n    if toggle_full_screen {\n        state.full_screen = !state.full_screen;\n    }\n",
+        "AI assistant expanded-page transition",
     )
+
     source = source.replace(
         "pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {",
-        "/// EFFECTCRAFT_ANDROID_AI_FULLSCREEN_DRAG_V1\npub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {",
+        "/// " + MARKER + "\npub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {",
         1,
     )
     path.write_text(source, encoding="utf-8")
-    print("Added full-screen/restore mode and title-bar-only chat-window dragging.")
+    final = path.read_text(encoding="utf-8")
+    if MARKER not in final or '.movable(true)' not in final or "展开页面" not in final:
+        raise SystemExit("Expanded draggable AI assistant verification failed.")
+    print("Ae AI assistant now opens as a large page that remains draggable from its title bar.")
+    print("The compact window's previous size and position are preserved when returning from the expanded page.")
 
 
 if __name__ == "__main__":

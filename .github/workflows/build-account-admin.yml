@@ -95,7 +95,8 @@ jobs:
       # Keep the Android debug certificate stable between builds so users can
       # install updates without uninstalling the app or losing local accounts.
       - name: Restore persistent Android debug signing key
-        uses: actions/cache@v4
+        id: admin_signing_key_cache
+        uses: actions/cache/restore@v4
         with:
           path: ~/.android/debug.keystore
           key: effectcraft-admin-debug-signing-v1-${{ github.repository_id }}
@@ -120,6 +121,13 @@ jobs:
           test -s "$HOME/.android/debug.keystore"
           keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null
           echo "Persistent admin APK signing key is ready."
+
+      - name: Save the first persistent admin signing key before compiling
+        if: steps.admin_signing_key_cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: effectcraft-admin-debug-signing-v1-${{ github.repository_id }}
 
       - name: Add public proxy bootstrap snapshot for Cloudflare admin mode
         env:
@@ -165,15 +173,6 @@ jobs:
             echo "APK is not signed with the persistent account-manager key." >&2
             exit 1
           }
-
-      # Explicitly save the debug signing identity after the first successful
-      # build so future admin APK updates use the same certificate.
-      - name: Save persistent Android debug signing key
-        if: success()
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.android/debug.keystore
-          key: effectcraft-admin-debug-signing-v1-${{ github.repository_id }}
 
       - name: Publish downloadable APK release asset
         if: github.event_name != 'pull_request'

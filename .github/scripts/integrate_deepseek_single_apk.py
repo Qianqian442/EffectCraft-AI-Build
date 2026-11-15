@@ -158,7 +158,7 @@ def main() -> None:
 
     app_end = '    lines.append("    </application>")\n'
     app_add = """    # Local DeepSeek manager and inference service are private components inside this APK.
-    lines.append('        <activity android:name="com.artcraft.effectcraft.aiassistant.PluginManagerActivity" android:exported="false" android:label="EffectCraft DeepSeek 模型管理" />')
+    lines.append('        <activity android:name="com.artcraft.effectcraft.aiassistant.PluginManagerActivity" android:exported="false" android:label="Ae DeepSeek 模型管理" />')
     lines.append('        <service android:name="com.artcraft.effectcraft.aiassistant.InferenceService" android:exported="false" />')
 """ + app_end
     if "com.artcraft.effectcraft.aiassistant.PluginManagerActivity" not in g:
@@ -323,6 +323,35 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     for old, new in text_replacements:
         if old in a:
             a = a.replace(old, new, 1)
+    a = a.replace(
+        "你好！我是 Ae AI 助手。导入 DeepSeek AI 插件 ZIP 并准备本地模型后，即可在这里离线对话。",
+        "你好！我是 Ae AI 助手。导入 Ae AI 模型包 ZIP 后即可在这里离线对话。",
+        1,
+    )
+    a = a.replace(
+        'ui.small("AI 插件已导入；首次使用请先准备模型。");',
+        'ui.small("内置 AI 引擎已就绪；首次使用请先导入 AI 模型包。");',
+        1,
+    )
+    a = a.replace(
+        'ui.colored_label(Color32::from_rgb(210, 145, 35), "尚未导入 DeepSeek AI 插件 ZIP。");',
+        'ui.colored_label(Color32::from_rgb(210, 145, 35), "尚未导入 Ae AI 模型包 ZIP。");',
+        1,
+    )
+    # In the integrated host APK, the model manager imports a data-only ZIP bundle.
+    # No companion APK is installed; keep the existing manager entry and label it clearly.
+    a = a.replace('ui.button("模型管理")', 'ui.button("导入 AI 模型包")', 1)
+    a = a.replace('egui::Button::new("模型管理")', 'egui::Button::new("导入 AI 模型包")', 1)
+    a = a.replace(
+        'state.notice = "请先打开“模型管理”下载约 1.02 GB 的本地 DeepSeek 模型。".into();',
+        'state.notice = "请先打开“导入 AI 模型包”选择已下载的 ZIP；校验导入后即可离线使用。".into();',
+        1,
+    )
+    a = a.replace(
+        'state.notice = "请先点击“导入 AI 插件”，选择 ZIP 并按 Android 系统提示完成安装后，即可使用本地 DeepSeek。".into();',
+        'state.notice = "请先打开“导入 AI 模型包”，选择已下载的 ZIP 模型包；校验导入后即可离线使用。".into();',
+        1,
+    )
     a = a.replace('    let mut import_plugin = false;\n', '', 1)
     import_block = """    if import_plugin {
         match open_ai_plugin_import() {
@@ -336,12 +365,26 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     a = a.replace(import_block, "", 1)
     if 'ui.button("导入 AI 插件")' in a or "请先点击“导入 AI 插件”" in a:
         raise SystemExit("AI assistant still contains a companion-plugin import path; refusing to claim single-APK integration.")
+    # The legacy bridge copies this helper into the generated crate before the
+    # single-APK integration runs. Re-write both copies after the model-package edits:
+    # later UI patches and the Rust compile must consume the same, updated source.
     assistant.write_text(a, encoding="utf-8")
+    generated_assistant = effectcraft / "crates/ui-egui/src/ai_assistant.rs"
+    if not generated_assistant.is_file():
+        raise SystemExit(f"Generated Ae AI assistant source is missing: {generated_assistant}")
+    generated_assistant.write_text(a, encoding="utf-8")
+    verified_assistant = generated_assistant.read_text(encoding="utf-8")
+    if '导入 AI 模型包' not in verified_assistant:
+        raise SystemExit("Generated AI assistant did not receive the model ZIP import entry.")
+    if 'egui::Button::new("模型管理")' in verified_assistant or '模型管理")' in verified_assistant:
+        raise SystemExit("Generated AI assistant still exposes the old model-manager label.")
+    if 'ui.button("导入 AI 插件")' in verified_assistant:
+        raise SystemExit("Generated AI assistant still exposes companion APK import.")
 
-    print("DeepSeek model manager and inference service are staged inside the main APK.")
-    print("The host binds to its own in-process Android service; no companion APK/ZIP is needed.")
-    print("The approximately 1.02 GB GGUF model remains a one-time download inside the APK's app-private storage.")
-    print("Inference remains local/offline after the model download.")
+    print("DeepSeek model manager and inference service are staged inside the Ae host APK.")
+    print("The host binds to its own in-process Android service; no companion APK is installed.")
+    print("The approximately 1.02 GB GGUF model is imported from a data-only ZIP package into app-private storage.")
+    print("The original in-app network-download fallback is retained; local inference works offline after import or download.")
 
 if __name__ == "__main__":
     main()

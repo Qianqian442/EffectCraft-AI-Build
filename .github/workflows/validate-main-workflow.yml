@@ -1,14 +1,49 @@
-name: Validate main APK workflow and P2P integration
-# Runs on changes to the Android build and its source integrator.
+name: Validate Ae APK workflows and additive source patches
 
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
+      - '.github/workflows/build-effectcraft-ai-plugin.yml'
       - '.github/workflows/validate-main-workflow.yml'
-      - '.github/scripts/integrate_p2p_bridge.py'
-      - 'p2p-bridge/**'
+      - '.github/scripts/integrate_deepseek_single_apk.py'
+      - '.github/scripts/configure_ae_android_identity.py'
+      - '.github/scripts/add_ai_assistant_fullscreen_drag.py'
+      - '.github/scripts/fix_android_curve_playhead.py'
+      - '.github/scripts/add_plugin_import_button.py'
+      - 'android-ai-plugin/**'
+      - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/add_android_gallery_export.py'
+      - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/add_account_avatar_picker.py'
+      - '.github/scripts/add_account_whitelist_local_cache.py'
+      - '.github/scripts/convert_account_gate_to_cloud.py'
+      - '.github/scripts/validate_account_system_contract.py'
+      - 'cloudflare-worker/**'
+      - 'admin-app/app/src/main/**'
+      - 'admin-app/app/src/test/**'
+  pull_request:
+    paths:
+      - '.github/workflows/build-effectcraft-ai.yml'
+      - '.github/workflows/build-effectcraft-ai-plugin.yml'
+      - '.github/workflows/validate-main-workflow.yml'
+      - '.github/scripts/integrate_deepseek_single_apk.py'
+      - '.github/scripts/configure_ae_android_identity.py'
+      - '.github/scripts/add_ai_assistant_fullscreen_drag.py'
+      - '.github/scripts/fix_android_curve_playhead.py'
+      - '.github/scripts/add_plugin_import_button.py'
+      - 'android-ai-plugin/**'
+      - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/add_android_gallery_export.py'
+      - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/add_account_avatar_picker.py'
+      - '.github/scripts/add_account_whitelist_local_cache.py'
+      - '.github/scripts/convert_account_gate_to_cloud.py'
+      - '.github/scripts/validate_account_system_contract.py'
+      - 'cloudflare-worker/**'
+      - 'admin-app/app/src/main/**'
+      - 'admin-app/app/src/test/**'
   workflow_dispatch:
 
 permissions:
@@ -22,19 +57,90 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Parse workflow and compile P2P integration script
+      - name: Parse workflows and compile additive patch scripts
         run: |
           python -m pip install --disable-pip-version-check PyYAML
           python - <<'PY'
           import pathlib
           import py_compile
           import yaml
-          workflow = pathlib.Path('.github/workflows/build-effectcraft-ai.yml')
-          try:
-              yaml.safe_load(workflow.read_text(encoding='utf-8'))
-          except yaml.YAMLError as error:
-              print(f'YAML parse failed: {error}')
-              raise
-          py_compile.compile('.github/scripts/integrate_p2p_bridge.py', doraise=True)
-          print('Main APK workflow YAML and P2P integration script are valid.')
+
+          workflows = [
+              '.github/workflows/build-effectcraft-ai.yml',
+              '.github/workflows/build-effectcraft-ai-plugin.yml',
+              '.github/workflows/validate-main-workflow.yml',
+          ]
+          for name in workflows:
+              yaml.safe_load(pathlib.Path(name).read_text(encoding='utf-8'))
+              print(f'Parsed {name}')
+
+          scripts = [
+              '.github/scripts/integrate_p2p_bridge.py',
+              '.github/scripts/integrate_deepseek_single_apk.py',
+              '.github/scripts/configure_ae_android_identity.py',
+              '.github/scripts/add_ai_assistant_fullscreen_drag.py',
+              '.github/scripts/fix_android_curve_playhead.py',
+              '.github/scripts/add_plugin_import_button.py',
+              '.github/scripts/patch_export_dialog.py',
+              '.github/scripts/add_android_gallery_export.py',
+              '.github/scripts/add_home_lan_account_gate.py',
+              '.github/scripts/add_account_avatar_picker.py',
+              '.github/scripts/add_account_whitelist_local_cache.py',
+              '.github/scripts/convert_account_gate_to_cloud.py',
+              '.github/scripts/validate_account_system_contract.py',
+              '.github/scripts/add_am_style_undo_redo.py',
+          ]
+          for name in scripts:
+              py_compile.compile(name, doraise=True)
+              print(f'Compiled {name}')
+
+          manager = pathlib.Path('android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt')
+          source = manager.read_text(encoding='utf-8')
+          required = [
+              'MODEL_PACKAGE_FORMAT = "ae-ai-model-package"',
+              'fun chooseModelPackage()',
+              'MessageDigest.getInstance("SHA-256")',
+              'ZipInputStream(raw)',
+              'MODEL_PACKAGE_ID',
+          ]
+          missing = [token for token in required if token not in source]
+          if missing:
+              raise SystemExit('AI model ZIP import checks missing: ' + ', '.join(missing))
+          print('Verified safe ZIP import, manifest identity, and checksum validation.')
+
+          package_workflow = pathlib.Path('.github/workflows/build-effectcraft-ai-plugin.yml').read_text(encoding='utf-8')
+          if 'assembleRelease' in package_workflow or 'plugin.apk' in package_workflow:
+              raise SystemExit('The model-package workflow must not build a companion APK.')
+          if 'Ae-DeepSeek-AI-Plugin.zip' not in package_workflow:
+              raise SystemExit('The data-only Ae AI model ZIP artifact is missing.')
+          print('Verified the AI delivery workflow publishes a ZIP data package, not a third APK.')
+
+          export_patch = pathlib.Path('.github/scripts/patch_export_dialog.py').read_text(encoding='utf-8')
+          if '正在准备导出并渲染首帧' not in export_patch or 'total_frames > 0 && done_frames > 0' not in export_patch:
+              raise SystemExit('Export preparation must be indeterminate instead of displaying a false 0 percent.')
+          print('Verified export waits for real frame progress before showing percentages.')
+
+          cloud = pathlib.Path('cloudflare-worker/src/index.js').read_text(encoding='utf-8')
+          required_cloud = [
+              'social_id_immutable',
+              'adminDeleteUser',
+              'permanently_banned = 1',
+              'DELETE FROM accounts WHERE id = ? AND permanently_banned = 1',
+              'whitelist_preserved: true',
+              '(ban|delete)',
+          ]
+          missing = [token for token in required_cloud if token not in cloud]
+          if missing:
+              raise SystemExit('Cloud account lifecycle implementation missing: ' + ', '.join(missing))
+          migration = pathlib.Path('cloudflare-worker/migrations/0003_permanent_ban.sql').read_text(encoding='utf-8')
+          if 'ADD COLUMN permanently_banned' not in migration:
+              raise SystemExit('D1 permanent-ban migration is missing.')
+          print('Verified permanent-ban-only deletion, identifier immutability and whitelist preservation.')
+
+          local_server = pathlib.Path('admin-app/app/src/main/java/com/qianqian/effectcraftadmin/LanAccountServer.java').read_text(encoding='utf-8')
+          required_local = ['permanently_banned INTEGER NOT NULL DEFAULT 0', 'private JSONObject deleteUser(String id)', 'currentQq.equals(requestedQq)']
+          missing_local = [token for token in required_local if token not in local_server]
+          if missing_local:
+              raise SystemExit('Local account server implementation missing: ' + ', '.join(missing_local))
+          print('Verified the standalone admin phone account database follows the same permanent-ban and immutable-ID rules.')
           PY

@@ -14,7 +14,8 @@ This service provides the cloud account features used by the two Ae APKs: regist
 - `POST /v1/admin/account-service` (admin-only global account service on/off)
 - `GET /v1/admin/users?q=`
 - `GET /v1/admin/users/{id}`
-- `POST /v1/admin/users/{id}/ban`
+- `POST /v1/admin/users/{id}/ban` (timed ban, unban, or `{ permanent: true, reason }` permanent ban)
+- `POST /v1/admin/users/{id}/delete` (permanent-ban-only account deletion; whitelist entries remain intact)
 
 ## Public-proxy account transport
 
@@ -37,6 +38,10 @@ The Android clients may reach this Worker directly over HTTPS or use a public HT
 6. A device that is offline, has lost network access, or whose Android process/socket has been suspended cannot receive a live push immediately. It verifies when it reconnects or next opens Ae.
 
 There is no 10-second or 5-minute account polling. A launch performs one verification. Normal editing and local AI/export do not make account API calls.
+
+QQ and WeChat identifiers are immutable after account creation. The profile endpoint rejects any request that attempts to change either identifier; users may still update their display name, avatar and password.
+
+Permanent bans have a separate `permanently_banned` D1 marker in migration `0003_permanent_ban.sql`. They do not expire automatically. The admin delete endpoint refuses to delete timed-banned or active accounts, deletes only a permanently banned account row, revokes connected node sessions, and leaves the independent `account_whitelist` table untouched. Therefore the same QQ/WeChat identifier may be registered again after deletion, provided it remains on the whitelist. Removing an identifier from the whitelist remains a separate administrator action; this feature does not remove, reset or bypass whitelist checks.
 
 The administrator's Cloudflare-mode switch is global and stored in the D1 `account_service_settings` singleton row. It defaults to enabled. Turning it off blocks every non-admin `/v1/*` account endpoint, including registration, login, profile changes, session verification and new user event connections. Admin login and admin APIs remain available so the administrator can turn the service back on. Existing online editor sessions receive one push over the already-open global node WebSocket and lock immediately; re-enabling sends one push that causes one normal `GET /v1/me` verification. Offline devices are blocked the next time they open or request account verification, and can retry after the service is enabled.
 

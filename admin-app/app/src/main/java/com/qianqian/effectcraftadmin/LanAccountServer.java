@@ -361,7 +361,12 @@ final class LanAccountServer implements Runnable {
         if (method.equals("POST") && path.equals("/v1/admin/login")) return adminLogin(body);
         if (method.equals("GET") && path.equals("/v1/me")) {
             JSONObject claims = authorize(headers, "user");
-            JSONObject user = findUser(claims.getString("sub"));
+            JSONObject user;
+            try {
+                user = findUser(claims.getString("sub"));
+            } catch (IllegalArgumentException missing) {
+                return error(401, "账号已删除或不存在；如需再次注册，请先确认白名单资格。", "", "");
+            }
             if (isBanned(user)) return error(423, "账号已被封禁", user.optString("banned_until"), user.optString("ban_reason"));
             JSONObject out = new JSONObject(); out.put("user", user); return out;
         }
@@ -380,6 +385,10 @@ final class LanAccountServer implements Runnable {
             if (method.equals("POST") && tail.endsWith("/ban")) {
                 String id = tail.substring(0, tail.length() - 4);
                 return banUser(id, body);
+            }
+            if (method.equals("POST") && tail.endsWith("/delete")) {
+                String id = tail.substring(0, tail.length() - 7);
+                return deleteUser(id);
             }
         }
         return error(404, "未找到请求接口", "", "");
@@ -465,17 +474,20 @@ final class LanAccountServer implements Runnable {
         String id = claims.getString("sub");
         JSONObject current = findUser(id);
         if (isBanned(current)) return error(423, "账号已被封禁", current.optString("banned_until"), current.optString("ban_reason"));
-        String qq = body.optString("qq", "").trim();
-        String wechatRaw = body.optString("wechat", "").trim();
-        String wechat = wechatRaw.toLowerCase(Locale.ROOT);
+        String currentQq = current.optString("qq", "");
+        String currentWechat = current.optString("wechat", "");
+        String requestedQq = body.has("qq") ? body.optString("qq", "").trim() : currentQq;
+        String requestedWechat = body.has("wechat") ? body.optString("wechat", "").trim() : currentWechat;
+        if (!currentQq.equals(requestedQq) ||
+            !currentWechat.equalsIgnoreCase(requestedWechat)) {
+            return error(403, "QQ号和微信号注册后不可修改", "", "");
+        }
         String name = body.optString("name", "").trim();
         String avatar = body.optString("avatar_url", "").trim();
         if (!isAllowedAvatar(avatar)) return error(422, "头像格式不正确。请从相册选择图片，或填写有效的 HTTP(S) 图片地址；相册头像会自动压缩。", "", "");
-        if ((qq.isEmpty() && wechatRaw.isEmpty()) || (!qq.isEmpty() && !QQ.matcher(qq).matches()) || (!wechatRaw.isEmpty() && !WECHAT.matcher(wechatRaw).matches()) || name.isEmpty()) return error(422, "QQ号和微信号至少填写一项，且已填写的账号格式必须正确", "", "");
+        if (name.isEmpty() || name.length() > 40) return error(422, "名字不能为空且不能超过40字", "", "");
         String newPassword = body.optString("new_password", "");
         android.content.ContentValues values = new android.content.ContentValues();
-        if (qq.isEmpty()) values.putNull("qq"); else values.put("qq", qq);
-        if (wechat.isEmpty()) values.putNull("wechat"); else values.put("wechat", wechat);
         values.put("name", name); values.put("avatar_url", avatar);
         if (!newPassword.isEmpty()) {
             Cursor c = db.getReadableDatabase().query("accounts", new String[]{"password_hash", "password_salt"}, "id=?", new String[]{id}, null, null, null);
@@ -506,20 +518,47 @@ final class LanAccountServer implements Runnable {
 
     private JSONObject banUser(String id, JSONObject body) throws Exception {
         JSONObject user = findUser(id);
+        boolean permanent = body.optBoolean("permanent", false);
         Object untilValue = body.opt("banned_until");
         android.content.ContentValues values = new android.content.ContentValues();
-        if (untilValue == null || untilValue == JSONObject.NULL) {
-            values.putNull("banned_until"); values.put("ban_reason", "");
+        if (permanent) {
+            String reason = body.optString("reason", "").trim();
+            if (reason.isEmpty()) return error(422, "永久封号必须填写原因", "", "");
+            values.put("banned_until", "9999-12-31T23:59:59.999Z");
+            values.put("permanently_banned", 1);
+            values.put("ban_reason", reason);
+        } else if (untilValue == null || untilValue == JSONObject.NULL) {
+            values.putNull("banned_until");
+            values.put("permanently_banned", 0);
+            values.put("ban_reason", "");
         } else {
             String until = String.valueOf(untilValue);
             try { if (!Instant.parse(until).isAfter(Instant.now())) return error(422, "封禁时间必须晚于当前时间", "", ""); }
             catch (Exception e) { return error(422, "封禁时间格式不正确", "", ""); }
             String reason = body.optString("reason", "").trim();
             if (reason.isEmpty()) return error(422, "请填写封禁原因", "", "");
-            values.put("banned_until", until); values.put("ban_reason", reason);
+            values.put("banned_until", until);
+            values.put("permanently_banned", 0);
+            values.put("ban_reason", reason);
         }
         db.getWritableDatabase().update("accounts", values, "id=?", new String[]{id});
         JSONObject out = new JSONObject(); out.put("user", findUser(id)); return out;
+    }
+
+    private JSONObject deleteUser(String id) throws Exception {
+        JSONObject user = findUser(id);
+        if (!user.optBoolean("permanently_banned", false)) {
+            return error(409, "只有已永久封号的账号才允许删除", "", "");
+        }
+        int removed = db.getWritableDatabase().delete(
+            "accounts", "id=? AND permanently_banned=1", new String[]{id});
+        if (removed != 1) return error(409, "账号状态已变化，请刷新后重试", "", "");
+        JSONObject out = new JSONObject();
+        out.put("deleted", true);
+        out.put("id", id);
+        out.put("identifiers_reusable", true);
+        out.put("whitelist_preserved", true);
+        return out;
     }
 
     private JSONObject findUser(String id) throws Exception {
@@ -541,11 +580,13 @@ final class LanAccountServer implements Runnable {
         u.put("avatar_url", c.getString(c.getColumnIndexOrThrow("avatar_url")));
         u.put("created_at", c.getString(c.getColumnIndexOrThrow("created_at")));
         u.put("banned_until", c.isNull(c.getColumnIndexOrThrow("banned_until")) ? JSONObject.NULL : c.getString(c.getColumnIndexOrThrow("banned_until")));
+        u.put("permanently_banned", c.getInt(c.getColumnIndexOrThrow("permanently_banned")) == 1);
         u.put("ban_reason", c.getString(c.getColumnIndexOrThrow("ban_reason")));
         return u;
     }
 
     private boolean isBanned(JSONObject user) {
+        if (user.optBoolean("permanently_banned", false)) return true;
         String until = user.optString("banned_until", "");
         if (until.isEmpty() || "null".equals(until)) return false;
         try { return Instant.parse(until).isAfter(Instant.now()); } catch (Exception e) { return true; }
@@ -660,7 +701,7 @@ final class LanAccountServer implements Runnable {
     private static JSONObject error(int status, String message, String until, String reason) throws Exception {
         JSONObject detail = new JSONObject();
         detail.put("message", message);
-        if (status == 423) { detail.put("until", until); detail.put("reason", reason); detail.put("code", "banned"); }
+        if (status == 423) { detail.put("until", until); detail.put("reason", reason); detail.put("permanent", "9999-12-31T23:59:59.999Z".equals(until)); detail.put("code", "banned"); }
         JSONObject out = new JSONObject(); out.put("detail", detail); out.put("_status", status); return out;
     }
 
@@ -682,18 +723,20 @@ final class LanAccountServer implements Runnable {
     }
 
     private static final class AccountDb extends SQLiteOpenHelper {
-        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 2); }
+        AccountDb(Context context) { super(context, "effectcraft-home-accounts.db", null, 3); }
         @Override public void onCreate(SQLiteDatabase db) {
-            db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT UNIQUE, wechat TEXT UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
+            db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT UNIQUE, wechat TEXT UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, permanently_banned INTEGER NOT NULL DEFAULT 0, ban_reason TEXT NOT NULL DEFAULT '')");
             db.execSQL("CREATE INDEX idx_accounts_name ON accounts(name)");
         }
         @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
             if (oldVersion < 2) {
                 db.execSQL("ALTER TABLE accounts RENAME TO accounts_v1");
-                db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT UNIQUE, wechat TEXT UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, ban_reason TEXT NOT NULL DEFAULT '')");
+                db.execSQL("CREATE TABLE accounts (id TEXT PRIMARY KEY, qq TEXT UNIQUE, wechat TEXT UNIQUE, name TEXT NOT NULL, password_hash TEXT NOT NULL, password_salt TEXT NOT NULL, avatar_url TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, banned_until TEXT, permanently_banned INTEGER NOT NULL DEFAULT 0, ban_reason TEXT NOT NULL DEFAULT '')");
                 db.execSQL("INSERT INTO accounts(id,qq,wechat,name,password_hash,password_salt,avatar_url,created_at,banned_until,ban_reason) SELECT id,NULLIF(qq,''),NULLIF(wechat,''),name,password_hash,password_salt,avatar_url,created_at,banned_until,ban_reason FROM accounts_v1");
                 db.execSQL("DROP TABLE accounts_v1");
                 db.execSQL("CREATE INDEX idx_accounts_name ON accounts(name)");
+            } else if (oldVersion < 3) {
+                db.execSQL("ALTER TABLE accounts ADD COLUMN permanently_banned INTEGER NOT NULL DEFAULT 0");
             }
         }
     }

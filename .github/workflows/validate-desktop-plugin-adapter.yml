@@ -9,15 +9,24 @@ on:
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
       - '.github/scripts/install_ai_plugin_bridge.py'
+      - '.github/scripts/integrate_deepseek_single_apk.py'
+      - '.github/scripts/add_ai_assistant_fullscreen_drag.py'
+      - 'android-ai-plugin/**'
+      - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
       - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/integrate_deepseek_single_apk.py'
+      - '.github/scripts/add_ai_assistant_fullscreen_drag.py'
+      - 'android-ai-plugin/**'
+      - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/add_chroma_key_effect.py'
+      - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   pull_request:
     branches: [main]
@@ -32,6 +41,7 @@ on:
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_qq_project_share.py'
+      - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
@@ -57,6 +67,14 @@ jobs:
           ref: v0.5.0
           path: artcraft
 
+      - name: Check out llama.cpp Android inference runtime
+        uses: actions/checkout@v4
+        with:
+          repository: ggml-org/llama.cpp
+          ref: master
+          path: llama.cpp
+          submodules: recursive
+
       - name: Check out EffectCraft v0.21.1
         uses: actions/checkout@v4
         with:
@@ -80,12 +98,15 @@ jobs:
             .github/scripts/add_desktop_plugin_package_support.py \
             .github/scripts/add_plugin_migration_progress.py \
             .github/scripts/install_ai_plugin_bridge.py \
+            .github/scripts/integrate_deepseek_single_apk.py \
+            .github/scripts/add_ai_assistant_fullscreen_drag.py \
             .github/scripts/add_curve_quick_access.py \
             .github/scripts/add_startup_attribution_notice.py \
             .github/scripts/patch_export_dialog.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_am_nv_project_import.py \
-            .github/scripts/add_chroma_key_effect.py
+            .github/scripts/add_chroma_key_effect.py \
+            .github/scripts/add_am_style_undo_redo.py
 
       - name: Apply the same plug-in patches used by the APK build
         env:
@@ -96,37 +117,20 @@ jobs:
           python3 .github/scripts/add_desktop_plugin_package_support.py
           python3 .github/scripts/add_plugin_migration_progress.py
 
-      - name: Apply the AI and export toolbar base patch used by the APK build
+      - name: Integrate the same in-app Ae AI runtime and model ZIP import used by the APK build
         env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+          LLAMA_CPP_DIR: ${{ github.workspace }}/llama.cpp
         run: |
-          mkdir -p artcraft/source
-          if [ ! -e artcraft/source/effectcraft ]; then
-            ln -s "$GITHUB_WORKSPACE/effectcraft" artcraft/source/effectcraft
-          fi
-          python3 - <<'PY'
-          import base64, re, zlib
-          from pathlib import Path
-          workflow = Path(".github/workflows/build-effectcraft-ai.yml").read_text(encoding="utf-8")
-          match = re.search(r'payload = "([A-Za-z0-9+/=]+)"', workflow)
-          if not match:
-              raise SystemExit("Could not find the shared AI/export source patch in the APK workflow.")
-          Path("/tmp/patch_effectcraft_ai.py").write_bytes(zlib.decompress(base64.b64decode(match.group(1))))
-          PY
           mkdir -p "$EFFECTCRAFT_DIR/assets"
           cp "$GITHUB_WORKSPACE/assets/ae-avatar.png" "$EFFECTCRAFT_DIR/assets/ae-avatar.png"
-          python3 /tmp/patch_effectcraft_ai.py
-          python3 - <<'PY'
-          import os
-          from pathlib import Path
-          p = Path(os.environ["EFFECTCRAFT_DIR"]) / "crates/ui-egui/src/ai_assistant.rs"
-          s = p.read_text()
-          old = 'const DEFAULT_CHAT_MODEL: &str = "Qwen/Qwen3-8B";'
-          new = 'const DEFAULT_CHAT_MODEL: &str = "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B";'
-          if old in s:
-              s = s.replace(old, new, 1)
-          p.write_text(s)
-          PY
+          python3 -m py_compile .github/scripts/integrate_deepseek_single_apk.py
+          python3 .github/scripts/integrate_deepseek_single_apk.py
+          python3 -m py_compile .github/scripts/add_ai_assistant_fullscreen_drag.py
+          python3 .github/scripts/add_ai_assistant_fullscreen_drag.py
+          grep -F '导入 AI 模型包' "$EFFECTCRAFT_DIR/crates/ui-egui/src/ai_assistant.rs"
+          grep -F 'EFFECTCRAFT_ANDROID_AI_EXPANDED_DRAG_V2' "$EFFECTCRAFT_DIR/crates/ui-egui/src/ai_assistant.rs"
 
       - name: Apply the Android export dialog patch and compile its UI
         env:
@@ -156,20 +160,33 @@ jobs:
         run: |
           python3 .github/scripts/add_project_import_formats.py
           python3 .github/scripts/add_am_nv_project_import.py
-          grep -F '导入工程... | file.importProject' effectcraft/crates/engine/src/menus.rs
-          ! grep -F 'After Effects Project... | file.importAep' effectcraft/crates/engine/src/menus.rs
-          ! grep -F 'Adobe Premiere Pro Project... | file.importTimeline' effectcraft/crates/engine/src/menus.rs
+          grep -F 'EffectCraft Project... | file.importProject' effectcraft/crates/engine/src/menus.rs
+          python3 - <<'PY'
+          from pathlib import Path
+          lines = Path("effectcraft/crates/engine/src/menus.rs").read_text(encoding="utf-8").splitlines()
+          def indent(line):
+              return len(line) - len(line.lstrip(" "))
+          # Keep legacy AE/Premiere import commands available in the nested
+          # project-format submenu; they must not disappear from the app.
+          for label in (
+              "After Effects Project... | file.importAep",
+              "Adobe Premiere Pro Project... | file.importTimeline",
+          ):
+              matches = [line for line in lines if line.strip() == label]
+              if len(matches) != 1 or indent(matches[0]) != 6:
+                  raise SystemExit(f"{label} must remain once inside the nested project-format submenu.")
+          print("Verified original AE/Premiere import commands remain available in the nested project-format submenu.")
+          PY
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
 
-      - name: Apply standalone DeepSeek AI plugin bridge
+      - name: Verify the built-in DeepSeek manager replaces the companion APK bridge
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
-          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: |
-          mkdir -p "$EFFECTCRAFT_DIR/assets"
-          cp "$GITHUB_WORKSPACE/assets/ae-avatar.png" "$EFFECTCRAFT_DIR/assets/ae-avatar.png"
-          python3 .github/scripts/install_ai_plugin_bridge.py
+          grep -F '导入 AI 模型包' "$EFFECTCRAFT_DIR/crates/ui-egui/src/ai_assistant.rs"
+          grep -F 'com.artcraft.effectcraft.aiassistant.InferenceService' "$GITHUB_WORKSPACE/artcraft/templates/android/SafActivity.java"
+          ! grep -F 'REQUEST_INSTALL_PACKAGES' "$GITHUB_WORKSPACE/artcraft/lib/android_project.py"
 
       - name: Apply Android curve presets and startup attribution notice
         env:
@@ -182,6 +199,11 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: python3 .github/scripts/add_chroma_key_effect.py
+
+      - name: Add AM-style touch Undo and Redo controls
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: python3 .github/scripts/add_am_style_undo_redo.py
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft

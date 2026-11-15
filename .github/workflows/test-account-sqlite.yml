@@ -10,6 +10,13 @@ on:
       - 'admin-app/app/src/test/**'
       - 'admin-app/app/build.gradle'
       - '.github/workflows/test-account-sqlite.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'admin-app/app/src/main/java/com/qianqian/effectcraftadmin/LanAccountServer.java'
+      - 'admin-app/app/src/test/**'
+      - 'admin-app/app/build.gradle'
+      - '.github/workflows/test-account-sqlite.yml'
   workflow_dispatch:
 
 permissions:

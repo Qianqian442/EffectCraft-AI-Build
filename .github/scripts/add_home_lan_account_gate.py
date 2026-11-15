@@ -57,6 +57,8 @@ struct User {
     #[serde(default)]
     banned_until: Option<String>,
     #[serde(default)]
+    permanently_banned: bool,
+    #[serde(default)]
     ban_reason: String,
 }
 
@@ -92,6 +94,7 @@ pub(crate) struct AccountState {
     current_password: String,
     new_password: String,
     banned_until: String,
+    permanently_banned: bool,
     ban_reason: String,
     status: String,
     pending: Option<Receiver<Result<HttpResult, String>>>,
@@ -121,6 +124,7 @@ impl Default for AccountState {
             current_password: String::new(),
             new_password: String::new(),
             banned_until: String::new(),
+            permanently_banned: false,
             ban_reason: String::new(),
             status: String::new(),
             pending: None,
@@ -226,8 +230,6 @@ impl AccountState {
             "POST",
             "/v1/profile",
             json!({
-                "qq": self.edit_qq.trim(),
-                "wechat": self.edit_wechat.trim(),
                 "name": self.edit_name.trim(),
                 "avatar_url": self.edit_avatar.trim(),
                 "current_password": self.current_password,
@@ -256,6 +258,8 @@ impl AccountState {
             Ok(response) if response.status == 423 => {
                 let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
                 self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
+                self.permanently_banned = detail.get("permanent").and_then(Value::as_bool).unwrap_or(false)
+                    || detail.get("permanently_banned").and_then(Value::as_bool).unwrap_or(false);
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
                 self.mode = Mode::Banned;
                 self.status.clear();
@@ -473,10 +477,10 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 .collapsible(false)
                 .resizable(false)
                 .show(ctx, |ui| {
-                    ui.label("QQ号");
-                    ui.text_edit_singleline(&mut app.account.edit_qq);
-                    ui.label("微信号");
-                    ui.text_edit_singleline(&mut app.account.edit_wechat);
+                    ui.label("QQ号（注册后不可修改）");
+                    ui.label(if app.account.edit_qq.is_empty() { "未绑定" } else { &app.account.edit_qq });
+                    ui.label("微信号（注册后不可修改）");
+                    ui.label(if app.account.edit_wechat.is_empty() { "未绑定" } else { &app.account.edit_wechat });
                     ui.label("名字");
                     ui.text_edit_singleline(&mut app.account.edit_name);
                     ui.label("头像图片地址（可填写 https 图片链接）");
@@ -598,9 +602,13 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         }),
         Mode::Banned => centered_window(ctx, "账号已被封禁", vec2(400.0, 320.0), |ui| {
             ui.vertical_centered(|ui| {
-                ui.heading("账号已被封禁");
+                ui.heading(if app.account.permanently_banned { "账号已被永久封号" } else { "账号已被封禁" });
                 ui.add_space(10.0);
-                ui.label(format!("封禁截止时间：{}", app.account.banned_until));
+                if app.account.permanently_banned {
+                    ui.label("此账号已被管理员永久封号，无法再次登录。");
+                } else {
+                    ui.label(format!("封禁截止时间：{}", app.account.banned_until));
+                }
                 ui.add_space(8.0);
                 ui.label("封禁原因：");
                 ui.label(&app.account.ban_reason);

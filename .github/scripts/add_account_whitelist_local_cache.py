@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -47,6 +48,8 @@ struct SavedBan {
     until: String,
     #[serde(default)]
     reason: String,
+    #[serde(default)]
+    permanent: bool,
 }
 fn identifier_digest(kind: &str, value: &str) -> String {
     let normalized = if kind == "wechat" {
@@ -92,6 +95,7 @@ fn identifier_digest(kind: &str, value: &str) -> String {
             if let Ok(saved_ban) = serde_json::from_str::<SavedBan>(&raw) {
                 self.banned_until = saved_ban.until;
                 self.ban_reason = saved_ban.reason;
+                self.permanently_banned = saved_ban.permanent;
                 self.mode = Mode::Banned;
                 self.status = "封禁信息已保存在本机；本次打开无需连接服务器。".to_string();
                 return;
@@ -122,7 +126,7 @@ fn identifier_digest(kind: &str, value: &str) -> String {
 
     fn persist_ban(&self, config: Option<&dyn effectcraft_engine::config::ConfigStore>) {
         if let Some(store) = config {
-            let saved = SavedBan { until: self.banned_until.clone(), reason: self.ban_reason.clone() };
+            let saved = SavedBan { until: self.banned_until.clone(), reason: self.ban_reason.clone(), permanent: self.permanently_banned };
             if let Ok(data) = serde_json::to_string(&saved) {
                 let _ = store.write("effectcraft-account-ban.json", &data);
             }
@@ -211,25 +215,27 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         "local whitelist check before registration",
     )
 
-    source = replace_once(
-        source,
-        '''            Ok(response) if response.status == 423 => {
-                let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
-                self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
-                self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
-                self.mode = Mode::Banned;
-                self.status.clear();
-            }''',
-        '''            Ok(response) if response.status == 423 => {
-                let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
-                self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
-                self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
-                self.persist_ban(config);
-                self.mode = Mode::Banned;
-                self.status = "封禁信息已保存到本机；下次打开无需连接服务器即可查看封禁状态。".to_string();
-            }''',
-        "persist server ban state locally",
+    # Match the ban response by its stable internal fields. The cloud-account
+    # conversion and avatar picker may reformat surrounding code, so avoid binding
+    # this change to the entire match-arm text.
+    ban_pattern = re.compile(
+        r'(?m)^(?P<indent>[ \t]*)self\.ban_reason = detail\.get\("reason"\)\.and_then\(Value::as_str\)\.unwrap_or\("未填写原因"\)\.to_string\(\);\n'
+        r'(?P=indent)self\.mode = Mode::Banned;\n'
+        r'(?P=indent)self\.status\.clear\(\);'
     )
+    def persist_local_ban(match: re.Match[str]) -> str:
+        indent = match.group("indent")
+        ban_line = match.group(0).split("\n", 1)[0]
+        return "\n".join((
+            ban_line,
+            f"{indent}self.persist_ban(config);",
+            f"{indent}self.mode = Mode::Banned;",
+            f'{indent}self.status = "封禁信息已保存到本机；下次打开无需连接服务器即可查看封禁状态。".to_string();',
+        ))
+    source, ban_matches = ban_pattern.subn(persist_local_ban, source, count=1)
+    if ban_matches != 1:
+        raise SystemExit(f"persist server ban state locally: expected one ban response, found {ban_matches}")
+
     source = replace_once(
         source,
         '''            Ok(response) if !(200..300).contains(&response.status) => {
@@ -258,6 +264,20 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                     } else {
                         self.mode = Mode::Unavailable;
                     }
+                } else if matches!(action, Action::Verify) && response.status == 401 {
+                    // A deleted account (or expired session) must not remain trapped
+                    // behind an old offline permanent-ban cache. The next screen allows
+                    // registration again; the server still enforces the whitelist.
+                    self.token = None;
+                    self.user = None;
+                    self.mode = Mode::Auth;
+                    self.remove_saved(config);
+                    self.clear_cached_ban(config);
+                    self.banned_until.clear();
+                    self.permanently_banned = false;
+                    self.ban_reason.clear();
+                    self.status = "账号已删除或登录已失效；正在更新白名单，完成后可以重新注册。".to_string();
+                    self.send(Action::Whitelist, "GET", "/v1/whitelist", Value::Null, config);
                 } else if matches!(action, Action::Verify) {
                     self.mode = Mode::Unavailable;
                 }
@@ -363,7 +383,11 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                 }''',
         '''                ui.label(&app.account.ban_reason);
                 ui.add_space(8.0);
-                ui.label(app.account.ban_countdown_label());
+                if app.account.permanently_banned {
+                    ui.label("永久封号：此账号已被管理员永久封禁。");
+                } else {
+                    ui.label(app.account.ban_countdown_label());
+                }
                 ui.label("封禁资料已保存在本机。重新打开 EffectCraft 时会先显示本地封禁信息，不会自动连接服务器。");
                 ui.add_space(12.0);
                 if ui.button("联网核验是否已解封").clicked() {
@@ -397,6 +421,28 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         insertion = ui.index(dependency_header) + len(dependency_header)
         ui = ui[:insertion] + 'sha2 = { workspace = true }\n' + ui[insertion:]
         ui_path.write_text(ui, encoding="utf-8")
+
+    # Cargo runs with --locked. sha2 0.10.9 already exists transitively in the
+    # upstream lockfile; add it to the UI crate's direct dependency list.
+    lock_path = root / "Cargo.lock"
+    lock_source = lock_path.read_text(encoding="utf-8")
+    package_match = re.search(
+        r'(?m)^\[\[package\]\]\nname = "effectcraft-ui-egui"\nversion = "[^"]+"\ndependencies = \[\n',
+        lock_source,
+    )
+    if package_match is None:
+        raise SystemExit("Cannot add sha2 to Cargo.lock: effectcraft-ui-egui package is missing")
+    package_end = lock_source.find("\n]\n", package_match.end())
+    if package_end < 0:
+        raise SystemExit("Cannot add sha2 to Cargo.lock: UI dependency list is incomplete")
+    dependency_block = lock_source[package_match.end():package_end]
+    if '"sha2"' not in dependency_block and '"sha2 0.10.9"' not in dependency_block:
+        marker = ' "serde_json",'
+        if dependency_block.count(marker) != 1:
+            raise SystemExit("Cannot add sha2 to Cargo.lock: serde_json dependency anchor is not unique")
+        dependency_block = dependency_block.replace(marker, marker + '\n "sha2",', 1)
+        lock_source = lock_source[:package_match.end()] + dependency_block + lock_source[package_end:]
+        lock_path.write_text(lock_source, encoding="utf-8")
 
     print("Added local hashed QQ/WeChat whitelist checks, local startup refresh and offline-persisted ban state.")
     print("Cloudflare remains authoritative and still checks registration, login, session and profile requests.")

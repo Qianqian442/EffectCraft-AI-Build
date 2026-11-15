@@ -61,12 +61,33 @@ def patch_header(root: Path) -> None:
     if MARKER in source:
         return
 
-    source = replace_once(
-        source,
-        "    let x = brand_and_home(app, ui, &p, x, cy);\n    let x = tool_slots(app, ui, &p, x, cy);\n",
-        "    let x = brand_and_home(app, ui, &p, x, cy);\n    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\n    let x = history_buttons(app, ui, &p, x, cy);\n    let x = tool_slots(app, ui, &p, x, cy);\n",
-        "place touch Undo / Redo controls in the top toolbar",
-    )
+    # The responsive toolbar patch may use a different child UI identifier.
+    # Find the actual call and reuse its identifier instead of assuming ui/scroll_ui.
+    call_prefix = "let x = tool_slots(app, "
+    call_suffix = ", &p, x, cy);"
+    matching_lines = [
+        line for line in source.splitlines()
+        if line.strip().startswith(call_prefix) and line.strip().endswith(call_suffix)
+    ]
+    if len(matching_lines) != 1:
+        raise SystemExit(
+            "place touch Undo / Redo controls before the remaining toolbar tools: "
+            f"expected one tool_slots() call, found {len(matching_lines)}"
+        )
+
+    original_line = matching_lines[0]
+    stripped_line = original_line.strip()
+    indent = original_line[:len(original_line) - len(original_line.lstrip())]
+    ui_name = stripped_line[len(call_prefix):-len(call_suffix)]
+    if not ui_name or not ui_name.replace("_", "").isalnum():
+        raise SystemExit(f"Unexpected toolbar UI variable for Undo/Redo: {ui_name!r}")
+
+    replacement = "\n".join((
+        f"{indent}// {MARKER}",
+        f"{indent}let x = history_buttons(app, {ui_name}, &p, x, cy);",
+        original_line,
+    ))
+    source = source.replace(original_line, replacement, 1)
 
     helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them.\n"
     helper = r'''/// AM-style touch controls for the project's native edit history.
