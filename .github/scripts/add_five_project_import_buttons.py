@@ -22,12 +22,12 @@ def patch_file_import_menu(root: Path) -> None:
     menu = """  Import
     File... | file.import
     Multiple Files... | file.importMultiple
+    导入电脑版Ae工程... | file.importAepDesktop
+    导入手机版Ae工程... | file.importAepMobilePackage
+    导入am工程... | file.importAlightMotionProject
+    导入NV工程... | file.importNodeVideoProject
+    导入capcut工程... | file.importCapCutProject
     更多工程格式
-      导入电脑版Ae工程... | file.importAepDesktop
-      导入手机版Ae工程... | file.importAepMobilePackage
-      导入am工程... | file.importAlightMotionProject
-      导入NV工程... | file.importNodeVideoProject
-      导入capcut工程... | file.importCapCutProject
       EffectCraft Project... | file.importProject
       EffectCraft 手机版工程包... | file.importEffectCraftMobile
       Adobe Premiere Pro Project... | file.importTimeline
