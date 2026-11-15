@@ -112,7 +112,7 @@ jobs:
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
           set -euo pipefail
-          RESPONSE="$(curl --fail --silent --show-error --retry 8 --retry-all-errors --retry-delay 3 -H "x-effectcraft-health-token: $JWT_SECRET" "$WORKER_URL/health/deep")"
+          RESPONSE="$(curl --silent --show-error --retry 8 --retry-all-errors --retry-delay 3 -H "x-effectcraft-health-token: $JWT_SECRET" "$WORKER_URL/health/deep")"
           printf '%s\n' "$RESPONSE"
           printf '%s' "$RESPONSE" | node -e 'let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const health = JSON.parse(input); if (health.ok !== true || health.database !== true || health.password_service !== true) process.exit(1); });'
           echo "Cloud Worker, D1, and password hashing/verification self-test passed." >> "$GITHUB_STEP_SUMMARY"
