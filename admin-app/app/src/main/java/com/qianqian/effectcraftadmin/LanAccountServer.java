@@ -512,11 +512,17 @@ final class LanAccountServer implements Runnable {
             values.putNull("banned_until"); values.put("ban_reason", "");
         } else {
             String until = String.valueOf(untilValue);
-            try { if (!Instant.parse(until).isAfter(Instant.now())) return error(422, "封禁时间必须晚于当前时间", "", ""); }
-            catch (Exception e) { return error(422, "封禁时间格式不正确", "", ""); }
             String reason = body.optString("reason", "").trim();
             if (reason.isEmpty()) return error(422, "请填写封禁原因", "", "");
-            values.put("banned_until", until); values.put("ban_reason", reason);
+            if ("PERMANENT".equalsIgnoreCase(until)) {
+                values.put("banned_until", "PERMANENT");
+                values.put("ban_reason", reason);
+            } else {
+                try { if (!Instant.parse(until).isAfter(Instant.now())) return error(422, "封禁时间必须晚于当前时间", "", ""); }
+                catch (Exception e) { return error(422, "封禁时间格式不正确", "", ""); }
+                values.put("banned_until", until);
+                values.put("ban_reason", reason);
+            }
         }
         db.getWritableDatabase().update("accounts", values, "id=?", new String[]{id});
         JSONObject out = new JSONObject(); out.put("user", findUser(id)); return out;
@@ -547,6 +553,7 @@ final class LanAccountServer implements Runnable {
 
     private boolean isBanned(JSONObject user) {
         String until = user.optString("banned_until", "");
+        if ("PERMANENT".equalsIgnoreCase(until)) return true;
         if (until.isEmpty() || "null".equals(until)) return false;
         try { return Instant.parse(until).isAfter(Instant.now()); } catch (Exception e) { return true; }
     }
