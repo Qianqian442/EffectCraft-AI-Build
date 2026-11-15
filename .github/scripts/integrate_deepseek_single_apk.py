@@ -327,6 +327,11 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     # No companion APK is installed; keep the existing manager entry and label it clearly.
     a = a.replace('ui.button("模型管理")', 'ui.button("导入 AI 模型包")', 1)
     a = a.replace(
+        'state.notice = "请先打开“模型管理”下载约 1.02 GB 的本地 DeepSeek 模型。".into();',
+        'state.notice = "请先打开“导入 AI 模型包”选择已下载的 ZIP；校验导入后即可离线使用。".into();',
+        1,
+    )
+    a = a.replace(
         'state.notice = "请先点击“导入 AI 插件”，选择 ZIP 并按 Android 系统提示完成安装后，即可使用本地 DeepSeek。".into();',
         'state.notice = "请先打开“导入 AI 模型包”，选择已下载的 ZIP 模型包；校验导入后即可离线使用。".into();',
         1,
