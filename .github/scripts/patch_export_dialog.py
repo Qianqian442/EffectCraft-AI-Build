@@ -135,12 +135,11 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     };
     let project_export_id = egui::Id::new("effectcraft-project-export-format");
     let project_export_formats = [
-        ("full", "EffectCraft 完整工程（含素材）"),
+        ("full", "EffectCraft 完整工程包（含素材，可分享）"),
         ("native", "EffectCraft 工程文件（.ecproj）"),
         ("am", "Alight Motion（.xml）"),
         ("nv", "NodeVideo（.zip）"),
         ("capcut", "CapCut（.zip）"),
-        ("qq", "完整打包并分享到 QQ"),
     ];
     let mut project_export_type = ui.ctx().data(|d| {
         d.get_temp::<String>(project_export_id).unwrap_or_else(|| "full".to_string())
@@ -257,8 +256,20 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
         let ctx = ui.ctx().clone();
         match project_export_type.as_str() {
             "full" => match crate::menus::invoke(app, &ctx, "file.collectFiles", json!({})) {
-                Ok(_) => open = false,
-                Err(error) => app.ui.status = error,
+                Ok(export) => {
+                    if let Some(project_path) = export.get("project").and_then(|value| value.as_str()) {
+                        match crate::android_gallery::share_project_package(project_path) {
+                            Ok(()) => {
+                                app.ui.status = "完整工程包已准备；请在系统分享面板选择 QQ 或其他应用。".into();
+                                open = false;
+                            }
+                            Err(error) => app.ui.status = format!("工程分享失败：{error}"),
+                        }
+                    } else {
+                        app.ui.status = "工程素材已收集，但没有取得工程文件路径，无法分享。".into();
+                    }
+                }
+                Err(error) => app.ui.status = format!("收集工程素材失败：{error}"),
             },
             "native" => match crate::menus::invoke(app, &ctx, "file.saveCopy", json!({})) {
                 Ok(_) => open = false,
@@ -275,22 +286,6 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
             "capcut" => match crate::menus::invoke(app, &ctx, "file.exportCapCut", json!({})) {
                 Ok(_) => open = false,
                 Err(error) => app.ui.status = error,
-            },
-            "qq" => match crate::menus::invoke(app, &ctx, "file.collectFiles", json!({})) {
-                Ok(export) => {
-                    if let Some(project_path) = export.get("project").and_then(|value| value.as_str()) {
-                        match crate::android_gallery::share_project_package(project_path) {
-                            Ok(()) => {
-                                app.ui.status = "工程正在打包；随后在系统分享面板选择 QQ。".into();
-                                open = false;
-                            }
-                            Err(error) => app.ui.status = format!("工程分享失败：{error}"),
-                        }
-                    } else {
-                        app.ui.status = "工程素材已收集，但没有取得工程文件路径，无法分享。".into();
-                    }
-                }
-                Err(error) => app.ui.status = format!("收集工程素材失败：{error}"),
             },
             _ => app.ui.status = "工程导出格式无效，请重新选择。".into(),
         }
