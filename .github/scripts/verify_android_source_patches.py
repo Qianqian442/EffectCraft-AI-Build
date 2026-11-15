@@ -136,11 +136,39 @@ def verify_chinese_default(root: Path) -> None:
     i18n = (root / "crates/ui-egui/src/i18n.rs").read_text(encoding="utf-8")
     if 'language: String = "zh-hans".into(),' not in prefs:
         raise SystemExit("Android default-language patch did not set General.language to zh-hans.")
-    android_fallback = '''#[cfg(target_os = "android")]
-            { "zh-hans" }'''
-    if android_fallback not in i18n:
-        raise SystemExit("Saved 'system' preference is not forced to Simplified Chinese on Android.")
-    print("Android default language is Simplified Chinese, including saved 'system' preferences.")
+    if "EFFECTCRAFT_ANDROID_FORCE_SIMPLIFIED_CHINESE_V1" not in i18n:
+        raise SystemExit("Android interface is not locked to Simplified Chinese.")
+    if '"zh-hans"' not in i18n or 'let _ = app;' not in i18n:
+        raise SystemExit("Android Simplified Chinese language override is incomplete.")
+
+    effects = (root / "crates/ui-egui/src/i18n/effects.rs").read_text(encoding="utf-8")
+    effects_start = effects.find("const SIMPLIFIED_CHINESE: &[Row] = &[")
+    effects_end = effects.find("\n];", effects_start)
+    ui = (root / "crates/ui-egui/src/i18n/ui.rs").read_text(encoding="utf-8")
+    ui_start = ui.find("const SIMPLIFIED_CHINESE:")
+    ui_end = ui.find("\n];", ui_start)
+    if min(effects_start, effects_end, ui_start, ui_end) < 0:
+        raise SystemExit("Could not locate the Simplified Chinese translation catalogs.")
+    effects_block = effects[effects_start:effects_end]
+    ui_block = ui[ui_start:ui_end]
+    effect_names = re.findall(
+        r'\(\s*"[^"]+"\s*,\s*"[^"]+"\s*,\s*"((?:\\.|[^"])*)"\s*\)',
+        effects_block,
+    )
+    ui_labels = re.findall(
+        r'\(\s*"(?:\\.|[^"]*)"\s*,\s*"((?:\\.|[^"])*)"\s*\)',
+        ui_block,
+    )
+    if len(effect_names) < 300 or len(ui_labels) < 1000:
+        raise SystemExit("Simplified Chinese translation catalogs are unexpectedly incomplete.")
+    for label in effect_names + ui_labels:
+        visible = re.sub(r"\\[nrt]", "", label)
+        if re.search(r"[A-Za-z]", visible):
+            raise SystemExit(f"Simplified Chinese interface still displays English: {label}")
+    print(
+        f"Verified Chinese-only Android UI: {len(effect_names)} effect names and "
+        f"{len(ui_labels)} panel, dialog and menu labels."
+    )
 
 
 def verify_android_project_interactions(root: Path, header: Path) -> None:
