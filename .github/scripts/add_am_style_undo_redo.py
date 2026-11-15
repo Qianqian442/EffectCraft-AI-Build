@@ -63,9 +63,11 @@ def patch_header(root: Path) -> None:
 
     source = replace_once(
         source,
-        "    let x = brand_and_home(app, ui, &p, x, cy);\n    let x = tool_slots(app, ui, &p, x, cy);\n",
-        "    let x = brand_and_home(app, ui, &p, x, cy);\n    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\n    let x = history_buttons(app, ui, &p, x, cy);\n    let x = tool_slots(app, ui, &p, x, cy);\n",
-        "place touch Undo / Redo controls in the top toolbar",
+        "    let x = tool_slots(app, ui, &p, x, cy);\\n",
+        "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
+        "    let x = history_buttons(app, ui, &p, x, cy);\\n"
+        "    let x = tool_slots(app, ui, &p, x, cy);\\n",
+        "place touch Undo / Redo controls before the remaining toolbar tools",
     )
 
     helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them.\n"
