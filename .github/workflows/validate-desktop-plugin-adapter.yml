@@ -26,6 +26,7 @@ on:
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/add_chroma_key_effect.py'
+      - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   pull_request:
     branches: [main]
@@ -40,6 +41,7 @@ on:
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_qq_project_share.py'
+      - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
   workflow_dispatch:
 
@@ -103,7 +105,8 @@ jobs:
             .github/scripts/patch_export_dialog.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_am_nv_project_import.py \
-            .github/scripts/add_chroma_key_effect.py
+            .github/scripts/add_chroma_key_effect.py \
+            .github/scripts/add_am_style_undo_redo.py
 
       - name: Apply the same plug-in patches used by the APK build
         env:
@@ -182,6 +185,11 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: python3 .github/scripts/add_chroma_key_effect.py
+
+      - name: Add AM-style touch Undo and Redo controls
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: python3 .github/scripts/add_am_style_undo_redo.py
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
