@@ -184,7 +184,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     menu = (root / "crates/engine/src/menus.rs").read_text(encoding="utf-8")
     if "导入素材... | file.import" not in menu or "导入工程... | file.importProject" not in menu:
         raise SystemExit("The Import menu must expose one media entry and one unified project entry.")
-    visible_import = menu[menu.find("  Import\\n"):menu.find("  Import Recent Footage\\n")]
+    visible_import = menu[menu.find("  Import\n"):menu.find("  Import Recent Footage\n")]
     if visible_import.count("导入工程... | file.importProject") != 1:
         raise SystemExit("Duplicate project-import entries are visible in the Import menu.")
     print("Verified the Import menu has one media entry and one unified project entry.")
@@ -201,6 +201,13 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if "Sense::click_and_drag()" not in assistant or "bubble_drag_origin" not in assistant or "response.drag_delta()" not in assistant:
         raise SystemExit("The floating AI assistant is missing its tap-and-drag interaction.")
     print("Verified the floating AI assistant bubble supports tap and touch-drag.")
+
+    import_frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_SHARE_COLLECTED_PROJECT_V1" not in import_frontend:
+        raise SystemExit("Mobile full-project export does not wait for Collect Files before sharing.")
+    if "shareAfterCollect" not in import_frontend or "share_project_package(project_path)" not in import_frontend:
+        raise SystemExit("The mobile project Sharesheet handoff is not connected to the completed collection.")
+    print("Verified mobile project ZIP sharing starts after the folder picker and footage collection finish.")
 
 
 def main() -> None:
