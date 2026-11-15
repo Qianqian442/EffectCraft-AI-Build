@@ -773,7 +773,7 @@ public final class MainActivity extends Activity {
                 send.setPackage("com.tencent.mobileqq");
                 send.setType("application/vnd.android.package-archive");
                 send.putExtra(Intent.EXTRA_STREAM, apkUri);
-                send.setClipData(ClipData.newUri(getContentResolver(), "EffectCraft.apk", apkUri));
+                send.setClipData(ClipData.newRawUri("EffectCraft.apk", apkUri));
                 send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 startActivity(send);
                 toast("已打开 QQ 文件发送流程，请选择聊天对象并确认发送");
