@@ -195,10 +195,10 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified media-only auto-add and optional fit; still duration follows existing user preferences.")
 
     menu = (root / "crates/engine/src/menus.rs").read_text(encoding="utf-8")
-    import_match = re.search(r"(?m)^  Import\\r?$", menu)
+    import_match = re.search(r"(?m)^  Import\r?$", menu)
     if not import_match:
         raise SystemExit("The original File > Import menu block is missing.")
-    end_match = re.search(r"(?m)^  Import Recent Footage\\r?$", menu[import_match.end():])
+    end_match = re.search(r"(?m)^  Import Recent Footage\r?$", menu[import_match.end():])
     if not end_match:
         raise SystemExit("The end of the File > Import menu block is missing.")
     visible_import = menu[import_match.start():import_match.end() + end_match.start()]
