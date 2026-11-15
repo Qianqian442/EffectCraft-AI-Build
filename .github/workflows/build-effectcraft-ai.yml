@@ -92,6 +92,7 @@ jobs:
             .github/scripts/add_bottom_left_media_import.py \
             .github/scripts/configure_android_storage_fallback.py \
             .github/scripts/add_project_import_formats.py \
+            .github/scripts/add_ae_dual_project_import.py \
             .github/scripts/add_curve_quick_access.py \
             .github/scripts/add_effect_controls_crash_guard.py \
             .github/scripts/add_open_source_craft_plugins.py
@@ -443,6 +444,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_am_nv_project_import.py
           python3 build-assets/.github/scripts/add_am_nv_project_import.py
+
+      - name: Split After Effects desktop and mobile project imports
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_ae_dual_project_import.py
+          python3 build-assets/.github/scripts/add_ae_dual_project_import.py
 
       - name: Add Simplified Chinese, Puppet shortcut, project grouping and single-item keyframes
         env:
