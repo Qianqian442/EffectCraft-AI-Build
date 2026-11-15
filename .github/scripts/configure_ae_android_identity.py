@@ -52,6 +52,24 @@ def main() -> None:
         lock.write_text(lock_text, encoding="utf-8")
 
     source = generator.read_text(encoding="utf-8")
+    # Use the same application ID and a monotonic versionCode for every APK built
+    # from this repository. Android accepts an in-place APK update only when the
+    # signing certificate matches and the incoming versionCode is not older.
+    source = replace_once(
+        source,
+        "import sys\\nimport tomllib\\n",
+        "import sys\\nimport os\\nimport tomllib\\n",
+        "Android build-number environment import",
+    )
+    source = replace_once(
+        source,
+        "    code = version_code(version)\\n",
+        "    code = version_code(version)\\n"
+        "    build_number = os.environ.get(\\"GITHUB_RUN_NUMBER\\", \\"\\")\\n"
+        "    if build_number.isdigit():\\n"
+        "        code = max(code, 50_000_000 + int(build_number))\\n",
+        "monotonic APK versionCode",
+    )
     old_app = '    application = android_meta.get("application") or {}'
     new_app = '''    application = dict(android_meta.get("application") or {})
     # Ae is the user-facing Android app label. Keep the applicationId and all
