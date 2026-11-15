@@ -189,7 +189,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified AM-style Undo/Redo buttons call the native edit history.")
     export_labels = [
         "导出 AE 电脑版工程",
-        "导出 AE 手机版工程",
+        "导出自有工程",
         "导出 AM 工程",
         "导出 NV 工程",
         "导出 CapCut 工程",
@@ -247,8 +247,8 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if not end_match:
         raise SystemExit("The end of the File > Import menu block is missing.")
     visible_import = menu[import_match.start():import_match.end() + end_match.start()]
-    if "Ae Project... | file.importProject" not in visible_import:
-        raise SystemExit("The original native EffectCraft Project import action is missing from File > Import.")
+    if "自有工程... | file.importProject" not in visible_import:
+        raise SystemExit("The original native self-owned project import action is missing from File > Import.")
     required_imports = [
         "File... | file.import",
         "Multiple Files... | file.importMultiple",
@@ -267,7 +267,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The dedicated desktop AE project import option is missing.")
     if "导入手机版Ae工程... | file.importAepMobilePackage" not in visible_import:
         raise SystemExit("The dedicated mobile AE project package import option is missing.")
-    if "Ae 手机版工程包... | file.importEffectCraftMobile" not in visible_import:
+    if "自有工程包... | file.importEffectCraftMobile" not in visible_import:
         raise SystemExit("The preserved EffectCraft mobile project package import option is missing.")
     for menu_entry in (
         "导入电脑版Ae工程... | file.importAepDesktop",
@@ -275,7 +275,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         "导入am工程... | file.importAlightMotionProject",
         "导入NV工程... | file.importNodeVideoProject",
         "导入capcut工程... | file.importCapCutProject",
-        "Ae Project... | file.importProject",
+        "自有工程... | file.importProject",
     ):
         if menu_entry not in visible_import:
             raise SystemExit(f"File > Import is missing a format-specific entry: {menu_entry}")
@@ -290,7 +290,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if '"file.importAep" => ("path", Ask::Open(&["aep", "aepx"]))' not in aep_picker:
         raise SystemExit("The original AE project picker was removed.")
     if '"file.importEffectCraftMobile" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"]))' not in aep_picker:
-        raise SystemExit("The EffectCraft mobile picker must accept .ecproj/.ecprojx and ZIP packages.")
+        raise SystemExit("The self-owned project picker must accept .ecproj/.ecprojx and ZIP packages.")
     for mapping in (
         '"file.importAepMobilePackage" => ("path", Ask::Open(&["zip"]))',
         '"file.importAlightMotionProject" => ("path", Ask::Open(&["xml", "alight", "zip"]))',
@@ -302,11 +302,11 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
 
     mobile_importer = (root / "crates/engine/src/cmd/am_nv.rs").read_text(encoding="utf-8")
     if '"file.importEffectCraftMobile"' not in mobile_importer or "import_effectcraft_mobile_project" not in mobile_importer:
-        raise SystemExit("The EffectCraft mobile-export project import command is missing.")
+        raise SystemExit("The self-owned project import command is missing.")
     if '"ecproj" | "ecprojx"' not in mobile_importer or '"zip" =>' not in mobile_importer:
-        raise SystemExit("The EffectCraft native mobile project importer no longer recognizes its project packages.")
+        raise SystemExit("The native self-owned project importer no longer recognizes its project packages.")
     if 'super::import_project::import_project(s, &json!({"path": actual}))' not in mobile_importer:
-        raise SystemExit("The EffectCraft native mobile project is not routed to the native project reader.")
+        raise SystemExit("The self-owned project is not routed to the native project reader.")
     for command in ("file.importAepMobilePackage", "file.importAlightMotionProject", "file.importNodeVideoProject", "file.importCapCutProject"):
         if f'"{command}"' not in mobile_importer:
             raise SystemExit(f"Missing format-specific importer command: {command}")
