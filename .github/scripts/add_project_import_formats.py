@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Preserve EffectCraft's original File > Import menu and its existing project-import position."""
+"""Relocate native Project import to the Project panel and group other project import formats."""
 from __future__ import annotations
 
 import os
