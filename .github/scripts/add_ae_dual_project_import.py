@@ -81,8 +81,8 @@ def main() -> None:
 
     replace_once(
         am_nv,
-        'let file = project_file.ok_or_else(|| err("This ZIP does not contain a NodeVideo .nv project or an Alight Motion XML project"))?;',
-        'let file = project_file.ok_or_else(|| err("This ZIP does not contain an EffectCraft .ecproj/.ecprojx, NodeVideo .nv, or Alight Motion XML project"))?;',
+        'let file = project_file.ok_or_else(|| err("该 ZIP 不包含自有工程 .ecproj/.ecprojx、NodeVideo .nv 或 Alight Motion XML 工程"))?;',
+        'let file = project_file.ok_or_else(|| err("该 ZIP 不包含自有工程 .ecproj/.ecprojx、NodeVideo .nv 或 Alight Motion XML 工程"))?;',
         "explain supported project types in ZIP errors",
     )
 
