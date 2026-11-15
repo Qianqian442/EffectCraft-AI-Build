@@ -64,14 +64,14 @@ def main() -> None:
 
     helper = '''/// EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1
 /// EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1
-/// 一个顶部入口用于导入效果插件及本地人工智能插件包。
+/// 一个顶部入口用于导入效果插件及 DeepSeek 本地模型包。
 fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy: f32) -> f32 {
     let rect = Rect::from_min_size(pos2(x, cy - 13.0), vec2(78.0, 26.0));
     let menu_id = egui::Id::new("effectcraft-plugin-import-menu");
     let mut menu_open = ui.ctx().data(|d| d.get_temp::<bool>(menu_id).unwrap_or(false));
     let response = ui
         .put(rect, egui::Button::new("导入插件"))
-        .on_hover_text("导入效果插件包、电脑插件文件或本地人工智能插件包");
+        .on_hover_text("导入效果插件包、电脑插件文件或 DeepSeek 本地模型包");
     app.auto.add_response("header.importPlugin", &response, "导入插件");
     widgets::focus_outline(ui, &response, &app.tokens);
     if response.clicked() {
@@ -97,7 +97,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                 if popup.button("导入效果插件包（支持 .wasm、.wat、.zip）").clicked() {
                     import_wasm = true;
                 }
-                if popup.button("导入本地人工智能插件包").clicked() {
+                if popup.button("导入 DeepSeek 本地模型包（ZIP）").clicked() {
                     import_ai = true;
                 }
                 popup.label("电脑版插件文件可直接选择；安卓端会分析文件并匹配可用的兼容效果");
@@ -118,7 +118,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     }
     if import_ai {
         match crate::open_ai_plugin_import_from_toolbar() {
-            Ok(()) => app.ui.status = "已打开本地人工智能插件包导入流程；安装后可在插件内下载离线模型。".into(),
+            Ok(()) => app.ui.status = "已打开本地 AI 模型包导入界面；不会安装第三个 APK。".into(),
             Err(error) => app.ui.status = error,
         }
     }
@@ -130,7 +130,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     header_path.write_text(source, encoding="utf-8")
     print("Added the top-left 导入插件 button.")
     print("The button calls effect.plugins.load, reusing the original WASM loader and Android file picker.")
-    print("The DeepSeek menu entry opens the signed standalone AI plugin ZIP importer.")
+    print("The DeepSeek menu entry opens the in-app model-only ZIP importer.")
 
 
 if __name__ == "__main__":
