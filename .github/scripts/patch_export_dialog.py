@@ -133,13 +133,25 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
         "2160" => "4K（2160P）",
         _ => "跟随工程",
     };
+    let project_export_id = egui::Id::new("effectcraft-project-export-format");
+    let project_export_formats = [
+        ("full", "EffectCraft 完整工程（含素材）"),
+        ("native", "EffectCraft 工程文件（.ecproj）"),
+        ("am", "Alight Motion（.xml）"),
+        ("nv", "NodeVideo（.zip）"),
+        ("capcut", "CapCut（.zip）"),
+        ("qq", "完整打包并分享到 QQ"),
+    ];
+    let mut project_export_type = ui.ctx().data(|d| {
+        d.get_temp::<String>(project_export_id).unwrap_or_else(|| "full".to_string())
+    });
+    let selected_project_export_format = project_export_formats.iter()
+        .find(|(key, _)| *key == project_export_type.as_str())
+        .map(|(_, label)| *label)
+        .unwrap_or("EffectCraft 完整工程（含素材）");
     let mut submit = false;
     let mut cancel = false;
-    let mut save_project_copy = false;
-    let mut collect_project_files = false;
-    let mut export_alight_motion = false;
-    let mut export_nodevideo = false;
-    let mut export_capcut = false;
+    let mut export_project = false;
 
     egui::Window::new("导出视频")
         .id(open_id.with("window"))
@@ -214,23 +226,19 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
             ui.small("编码使用 APK 内置软件编码器；不依赖手机是否具备硬件视频编码器。");
             ui.add_space(8.0);
             ui.separator();
-            ui.label("工程分享");
-            if ui.button("完整导出工程（包含素材）").clicked() {
-                collect_project_files = true;
+            ui.label("工程导出");
+            egui::ComboBox::from_id_salt("effectcraft-project-export-choice")
+                .selected_text(selected_project_export_format)
+                .width(230.0)
+                .show_ui(ui, |ui| {
+                    for &(key, label) in &project_export_formats {
+                        ui.selectable_value(&mut project_export_type, key.to_string(), label);
+                    }
+                });
+            if ui.button("导出工程").clicked() {
+                export_project = true;
             }
-            if ui.button("只导出工程文件（.ecproj）").clicked() {
-                save_project_copy = true;
-            }
-            if ui.button("导出 AM 工程（.xml）").clicked() {
-                export_alight_motion = true;
-            }
-            if ui.button("导出 NodeVideo 工程包（.zip）").clicked() {
-                export_nodevideo = true;
-            }
-            if ui.button("导出 CapCut 桌面工程包（.zip）").clicked() {
-                export_capcut = true;
-            }
-            ui.small("QQ 分享建议：完整导出后压缩整个文件夹；接收方解压后导入其中的 .ecproj。");
+            ui.small("所有工程格式统一从这里导出；完整工程会包含素材，QQ 选项会打开系统分享面板。");
             ui.add_space(8.0);
             ui.horizontal(|ui| {
                 if ui.button("取消").clicked() {
@@ -245,34 +253,46 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     if cancel {
         open = false;
     }
-    if collect_project_files {
-        match crate::menus::invoke(app, ui.ctx(), "file.collectFiles", json!({})) {
-            Ok(_) => open = false,
-            Err(error) => app.ui.status = error,
-        }
-    }
-    if save_project_copy {
-        match crate::menus::invoke(app, ui.ctx(), "file.saveCopy", json!({})) {
-            Ok(_) => open = false,
-            Err(error) => app.ui.status = error,
-        }
-    }
-    if export_alight_motion {
-        match crate::menus::invoke(app, ui.ctx(), "file.exportAlightMotion", json!({})) {
-            Ok(_) => open = false,
-            Err(error) => app.ui.status = error,
-        }
-    }
-    if export_nodevideo {
-        match crate::menus::invoke(app, ui.ctx(), "file.exportNodeVideo", json!({})) {
-            Ok(_) => open = false,
-            Err(error) => app.ui.status = error,
-        }
-    }
-    if export_capcut {
-        match crate::menus::invoke(app, ui.ctx(), "file.exportCapCut", json!({})) {
-            Ok(_) => open = false,
-            Err(error) => app.ui.status = error,
+    if export_project {
+        let ctx = ui.ctx().clone();
+        match project_export_type.as_str() {
+            "full" => match crate::menus::invoke(app, &ctx, "file.collectFiles", json!({})) {
+                Ok(_) => open = false,
+                Err(error) => app.ui.status = error,
+            },
+            "native" => match crate::menus::invoke(app, &ctx, "file.saveCopy", json!({})) {
+                Ok(_) => open = false,
+                Err(error) => app.ui.status = error,
+            },
+            "am" => match crate::menus::invoke(app, &ctx, "file.exportAlightMotion", json!({})) {
+                Ok(_) => open = false,
+                Err(error) => app.ui.status = error,
+            },
+            "nv" => match crate::menus::invoke(app, &ctx, "file.exportNodeVideo", json!({})) {
+                Ok(_) => open = false,
+                Err(error) => app.ui.status = error,
+            },
+            "capcut" => match crate::menus::invoke(app, &ctx, "file.exportCapCut", json!({})) {
+                Ok(_) => open = false,
+                Err(error) => app.ui.status = error,
+            },
+            "qq" => match crate::menus::invoke(app, &ctx, "file.collectFiles", json!({})) {
+                Ok(export) => {
+                    if let Some(project_path) = export.get("project").and_then(|value| value.as_str()) {
+                        match crate::android_gallery::share_project_package(project_path) {
+                            Ok(()) => {
+                                app.ui.status = "工程正在打包；随后在系统分享面板选择 QQ。".into();
+                                open = false;
+                            }
+                            Err(error) => app.ui.status = format!("工程分享失败：{error}"),
+                        }
+                    } else {
+                        app.ui.status = "工程素材已收集，但没有取得工程文件路径，无法分享。".into();
+                    }
+                }
+                Err(error) => app.ui.status = format!("收集工程素材失败：{error}"),
+            },
+            _ => app.ui.status = "工程导出格式无效，请重新选择。".into(),
         }
     }
     if submit {
@@ -408,6 +428,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
     ui.ctx().data_mut(|d| {
         d.insert_temp(open_id, open);
         d.insert_temp(draft_id, (format, fps, resolution, bitrate_mbps));
+        d.insert_temp(project_export_id, project_export_type);
     });
 }
 '''
