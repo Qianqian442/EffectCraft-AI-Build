@@ -1,0 +1,106 @@
+name: Build EffectCraft Windows PE smoke fixtures
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - experiment/windows-plugin-runtime
+    paths:
+      - '.github/workflows/build-pe-smoke-fixtures.yml'
+      - 'windows-compat/pe-smoke/**'
+      - 'windows-compat/tools/pe_audit.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: effectcraft-pe-smoke-fixtures-\${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pe-smoke-fixtures:
+    name: Cross-build x86 and x86_64 Windows PE API smoke fixtures
+    runs-on: ubuntu-22.04
+    timeout-minutes: 35
+    steps:
+      - name: Check out EffectCraft compatibility sources
+        uses: actions/checkout@v4
+
+      - name: Install PE audit dependency
+        run: |
+          python3 -m pip install --disable-pip-version-check lief
+          sudo apt-get update
+          sudo apt-get install -y xz-utils file
+
+      - name: Install pinned llvm-mingw 20250319
+        run: |
+          set -euo pipefail
+          url="https://github.com/mstorsjo/llvm-mingw/releases/download/20250319/llvm-mingw-20250319-ucrt-ubuntu-20.04-x86_64.tar.xz"
+          expected="ab2a1489416fa82b3e85e88cb877053ee8a591993408caf076737d8de5ae72ca"
+          archive="$RUNNER_TEMP/llvm-mingw.tar.xz"
+          curl -fL --retry 3 "$url" -o "$archive"
+          echo "$expected  $archive" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/llvm-mingw"
+          tar -xJf "$archive" --strip-components=1 -C "$RUNNER_TEMP/llvm-mingw"
+          echo "$RUNNER_TEMP/llvm-mingw/bin" >> "$GITHUB_PATH"
+          x86_64-w64-mingw32-clang --version
+          i686-w64-mingw32-clang --version
+
+      - name: Build x86 and x86_64 EXE and DLL fixtures
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts/x86 artifacts/x86_64
+          x86_64-w64-mingw32-clang -O2 -Wall -Wextra -Werror -shared \
+            -o artifacts/x86_64/fixture_helper.dll windows-compat/pe-smoke/fixture_helper.c
+          x86_64-w64-mingw32-clang -O2 -Wall -Wextra -Werror \
+            -o artifacts/x86_64/fixture_main.exe windows-compat/pe-smoke/fixture_main.c
+          i686-w64-mingw32-clang -O2 -Wall -Wextra -Werror -shared \
+            -o artifacts/x86/fixture_helper.dll windows-compat/pe-smoke/fixture_helper.c
+          i686-w64-mingw32-clang -O2 -Wall -Wextra -Werror \
+            -o artifacts/x86/fixture_main.exe windows-compat/pe-smoke/fixture_main.c
+          cp windows-compat/pe-smoke/README.md artifacts/README.md
+          cp windows-compat/pe-smoke/fixture_main.c artifacts/fixture_main.c
+          cp windows-compat/pe-smoke/fixture_helper.c artifacts/fixture_helper.c
+          file artifacts/x86/*
+          file artifacts/x86_64/*
+
+      - name: Audit PE machine, imports, TLS and relocation metadata
+        run: |
+          set -euo pipefail
+          python3 windows-compat/tools/pe_audit.py artifacts/x86/fixture_main.exe --output artifacts/x86/fixture_main.audit.json
+          python3 windows-compat/tools/pe_audit.py artifacts/x86/fixture_helper.dll --output artifacts/x86/fixture_helper.audit.json
+          python3 windows-compat/tools/pe_audit.py artifacts/x86_64/fixture_main.exe --output artifacts/x86_64/fixture_main.audit.json
+          python3 windows-compat/tools/pe_audit.py artifacts/x86_64/fixture_helper.dll --output artifacts/x86_64/fixture_helper.audit.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          expected = {"x86": 0x014c, "x86_64": 0x8664}
+          for arch, machine in expected.items():
+              for name in ("fixture_main.exe", "fixture_helper.dll"):
+                  report = json.loads(Path(f"artifacts/{arch}/{name}.audit.json").read_text())
+                  if report["machine_value"] != machine:
+                      raise SystemExit(f"{arch}/{name}: machine 0x{report['machine_value']:04x}, expected 0x{machine:04x}")
+                  if not report["has_relocations"]:
+                      raise SystemExit(f"{arch}/{name}: missing base relocation data")
+                  if name.endswith(".dll") and not report["is_dll"]:
+                      raise SystemExit(f"{arch}/{name}: expected a DLL image")
+              main = json.loads(Path(f"artifacts/{arch}/fixture_main.exe.audit.json").read_text())
+              helper = json.loads(Path(f"artifacts/{arch}/fixture_helper.dll.audit.json").read_text())
+              if not main["has_tls"] or not helper["has_tls"]:
+                  raise SystemExit(f"{arch}: expected static TLS directories in EXE and DLL")
+              print(f"{arch}: machine, DLL dependency fixture, TLS and relocations verified")
+          PY
+
+      - name: Record checksums and upload smoke fixtures
+        run: |
+          set -euo pipefail
+          find artifacts -type f ! -name SHA256SUMS.txt -print0 | sort -z | xargs -0 sha256sum > artifacts/SHA256SUMS.txt
+          cat artifacts/SHA256SUMS.txt
+
+      - name: Upload PE smoke fixtures for later Android device execution
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Windows-PE-Smoke-Fixtures
+          path: artifacts/*
+          retention-days: 30
