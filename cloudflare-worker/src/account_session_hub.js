@@ -1,4 +1,5 @@
 const encoder = new TextEncoder();
+const PASSWORD_ITERATIONS = 100000;
 
 function bytesToB64Url(bytes) {
   let binary = "";
@@ -22,17 +23,17 @@ function constantTimeEqual(a, b) {
 async function passwordHash(password, salt = crypto.getRandomValues(new Uint8Array(16))) {
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: 210000, hash: "SHA-256" },
+    { name: "PBKDF2", salt, iterations: PASSWORD_ITERATIONS, hash: "SHA-256" },
     key,
     256
   );
-  return "pbkdf2-sha256$210000$" + bytesToB64Url(salt) + "$" + bytesToB64Url(new Uint8Array(bits));
+  return "pbkdf2-sha256$" + PASSWORD_ITERATIONS + "$" + bytesToB64Url(salt) + "$" + bytesToB64Url(new Uint8Array(bits));
 }
 
 async function verifyPassword(password, stored) {
   try {
     const parts = String(stored || "").split("$");
-    if (parts.length !== 4 || parts[0] !== "pbkdf2-sha256" || Number(parts[1]) !== 210000) return false;
+    if (parts.length !== 4 || parts[0] !== "pbkdf2-sha256" || Number(parts[1]) !== PASSWORD_ITERATIONS) return false;
     const actual = await passwordHash(password, b64UrlToBytes(parts[2]));
     return constantTimeEqual(encoder.encode(actual), encoder.encode(stored));
   } catch (_) {
