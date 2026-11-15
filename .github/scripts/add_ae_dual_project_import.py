@@ -111,7 +111,7 @@ def main() -> None:
     # Keep the original AE dry-run/loss-consent path and apply it to the new desktop alias.
     replace_once(
         losses,
-        '    let command = if id == "file.importAep" || id == "file.importAepDesktop" {\n        Some(id)',
+        '    let command = if id == "file.importAep" {\n        Some("file.importAep")',
         '    let command = if id == "file.importAep" || id == "file.importAepDesktop" {\n        Some(id)',
         "protect the new desktop AE entry with the original loss confirmation",
     )
