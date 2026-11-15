@@ -41,7 +41,7 @@ def main() -> None:
 
     lock_text = lock.read_text(encoding="utf-8")
     package_pattern = re.compile(
-        r'(?m)(\[\[package\]\]\nname = "effectcraft[^"]*"\nversion = )"0\\.21\\.1"'
+        r'(?m)(\[\[package\]\]\nname = "effectcraft[^"]*"\nversion = )"0\.21\.1"'
     )
     lock_text, updated = package_pattern.subn(r'\g<1>"0.21.2"', lock_text)
     if updated == 0 and 'name = "effectcraft"\nversion = "0.21.2"' not in lock_text:
