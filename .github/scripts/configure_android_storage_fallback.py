@@ -229,8 +229,11 @@ def patch_activity(builder: Path) -> None:
     folder_replacement = '''                intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION | Intent.FLAG_GRANT_PREFIX_URI_PERMISSION);
                 // ACTION_OPEN_DOCUMENT_TREE cannot grant Download/root on Android 11+.
                 // Start in the ordinary Documents folder, where directory grants are allowed.
+                // ACTION_OPEN_DOCUMENT_TREE requires a tree URI (content://.../tree/...),
+                // not the ordinary document URI used by ACTION_OPEN_DOCUMENT. Some DocumentsUI
+                // providers crash or close immediately when the wrong URI shape is supplied.
                 intent.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
-                    DocumentsContract.buildDocumentUri(
+                    DocumentsContract.buildTreeDocumentUri(
                         "com.android.externalstorage.documents", "primary:Documents"));
                 requestIds.put(REQ_FOLDER, id);'''
     source = replace_once(source, folder_anchor, folder_replacement, "SAF folder picker start folder")
