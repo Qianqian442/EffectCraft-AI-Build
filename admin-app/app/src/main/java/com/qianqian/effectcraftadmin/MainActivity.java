@@ -882,8 +882,7 @@ public final class MainActivity extends Activity {
         identity.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
         LinearLayout actions = new LinearLayout(this);
-        actions.setOrientation(LinearLayout.HORIZONTAL);
-        actions.setGravity(Gravity.CENTER_VERTICAL);
+        actions.setOrientation(LinearLayout.VERTICAL);
         LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT);
         actionsParams.topMargin = dp(8);
         row.addView(actions, actionsParams);
@@ -895,11 +894,28 @@ public final class MainActivity extends Activity {
         unbanButton.setEnabled(banned);
         deleteButton.setEnabled(permanent);
 
-        for (Button action : new Button[]{banButton, permanentButton, unbanButton, deleteButton}) {
+        LinearLayout firstActionRow = new LinearLayout(this);
+        firstActionRow.setOrientation(LinearLayout.HORIZONTAL);
+        firstActionRow.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout secondActionRow = new LinearLayout(this);
+        secondActionRow.setOrientation(LinearLayout.HORIZONTAL);
+        secondActionRow.setGravity(Gravity.CENTER_VERTICAL);
+        actions.addView(firstActionRow, new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT));
+        LinearLayout.LayoutParams secondRowParams = new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT);
+        secondRowParams.topMargin = dp(4);
+        actions.addView(secondActionRow, secondRowParams);
+
+        for (Button action : new Button[]{banButton, permanentButton}) {
             LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(0, dp(42), 1.0f);
             actionParams.leftMargin = dp(2);
             actionParams.rightMargin = dp(2);
-            actions.addView(action, actionParams);
+            firstActionRow.addView(action, actionParams);
+        }
+        for (Button action : new Button[]{unbanButton, deleteButton}) {
+            LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(0, dp(42), 1.0f);
+            actionParams.leftMargin = dp(2);
+            actionParams.rightMargin = dp(2);
+            secondActionRow.addView(action, actionParams);
         }
 
         row.setOnClickListener(v -> showUserDetails(user));
