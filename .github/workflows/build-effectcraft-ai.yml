@@ -30,6 +30,7 @@ on:
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_account_avatar_picker.py'
+      - '.github/scripts/add_account_whitelist_local_cache.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/normalize_account_network_dependencies.py'
@@ -79,6 +80,7 @@ jobs:
             .github/scripts/add_android_gallery_export.py \
             .github/scripts/add_qq_project_share.py \
             .github/scripts/add_account_avatar_picker.py \
+            .github/scripts/add_account_whitelist_local_cache.py \
             .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/patch_gradle_maven_mirrors.py \
             .github/scripts/install_ai_plugin_bridge.py \
@@ -456,6 +458,17 @@ jobs:
           grep -Fq 'tungstenite::connect(request)' "$ACCOUNT_RS"
           ! grep -Fq 'EFFECTCRAFT_PUBLIC_PROXY_POOL_V1' "$ACCOUNT_RS"
           echo "Verified direct HTTPS and WebSocket account connections to Cloudflare; no public proxy pool is inserted."
+
+      - name: Add locally cached QQ/WeChat whitelist and offline ban state
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_account_whitelist_local_cache.py
+          python3 build-assets/.github/scripts/add_account_whitelist_local_cache.py
+          ACCOUNT_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          grep -Fq 'EFFECTCRAFT_LOCAL_WHITELIST_AND_OFFLINE_BAN_V1' "$ACCOUNT_RS"
+          grep -Fq 'effectcraft-account-whitelist.json' "$ACCOUNT_RS"
+          grep -Fq 'effectcraft-account-ban.json' "$ACCOUNT_RS"
 
       - name: Add independent connected Puppet pin rigs
         env:

@@ -42,6 +42,53 @@ function randomBytes(size) {
   return out;
 }
 
+async function sha256Hex(value) {
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", encoder.encode(value)));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function whitelistSnapshot(env) {
+  const result = await env.DB.prepare(
+    "SELECT kind, normalized_value, created_at FROM account_whitelist ORDER BY kind, normalized_value"
+  ).all();
+  const rows = result.results || [];
+  const qq_hashes = [];
+  const wechat_hashes = [];
+  let latest = "";
+  for (const row of rows) {
+    const digest = await sha256Hex(String(row.kind) + ":" + String(row.normalized_value));
+    if (row.kind === "qq") qq_hashes.push(digest);
+    else if (row.kind === "wechat") wechat_hashes.push(digest);
+    const created = String(row.created_at || "");
+    if (created > latest) latest = created;
+  }
+  return { revision: String(rows.length) + ":" + latest, qq_hashes, wechat_hashes };
+}
+async function isWhitelistAllowed(db, kind, value) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  const normalized = kind === "wechat" ? raw.toLowerCase() : raw;
+  const row = await db.prepare(
+    "SELECT id FROM account_whitelist WHERE kind = ? AND normalized_value = ? LIMIT 1"
+  ).bind(kind, normalized).first();
+  return !!row;
+}
+async function requireWhitelistedIdentifiers(db, qq, wechat) {
+  const normalizedQq = String(qq || "").trim();
+  const normalizedWechat = String(wechat || "").trim();
+  if (!normalizedQq && !normalizedWechat) {
+    throw new HttpError(422, "QQ号和微信号至少填写一项");
+  }
+  if (normalizedQq && !(await isWhitelistAllowed(db, "qq", normalizedQq))) {
+    throw new HttpError(403, "QQ号不在白名单中，无法注册或登录", { code: "not_whitelisted", kind: "qq" });
+  }
+  if (normalizedWechat && !(await isWhitelistAllowed(db, "wechat", normalizedWechat))) {
+    throw new HttpError(403, "微信号不在白名单中，无法注册或登录", { code: "not_whitelisted", kind: "wechat" });
+  }
+}
+async function publicWhitelist(request, env) {
+  return response(await whitelistSnapshot(env));
+}
+
 async function passwordCryptoRequest(env, path, body) {
   if (!env.ACCOUNT_SESSIONS) {
     console.error("password-crypto-binding-missing");
@@ -212,8 +259,51 @@ function validateRegistration(body) {
   if (!validAvatar(avatar)) throw new HttpError(422, "头像格式不正确或图片超过大小限制");
   return { qq: qq || null, wechat: wechat || null, name, password, avatar };
 }
+
+async function adminWhitelist(request, env) {
+  await readToken(env, request, "admin");
+  const result = await env.DB.prepare(
+    "SELECT id, kind, value, created_at FROM account_whitelist ORDER BY created_at DESC, kind, value"
+  ).all();
+  return response({ entries: result.results || [] });
+}
+async function adminAddWhitelist(request, env) {
+  const claims = await readToken(env, request, "admin");
+  const body = await readJson(request);
+  const qq = String(body.qq || "").trim();
+  const wechat = String(body.wechat || "").trim();
+  const validQQ = !qq || /^[1-9][0-9]{4,11}$/.test(qq);
+  const validWechat = !wechat || /^[A-Za-z][A-Za-z0-9_-]{5,31}$/.test(wechat);
+  if ((!qq && !wechat) || !validQQ || !validWechat) {
+    return fail(422, "请填写有效的 QQ号或微信号；两项可以分别添加");
+  }
+  const created = new Date().toISOString();
+  let added = 0;
+  for (const entry of [
+    ...(qq ? [{ kind: "qq", value: qq, normalized: qq }] : []),
+    ...(wechat ? [{ kind: "wechat", value: wechat, normalized: wechat.toLowerCase() }] : [])
+  ]) {
+    const result = await env.DB.prepare(
+      "INSERT OR IGNORE INTO account_whitelist (id, kind, value, normalized_value, created_at, changed_by) VALUES (?, ?, ?, ?, ?, ?)"
+    ).bind(crypto.randomUUID(), entry.kind, entry.value, entry.normalized, created, claims.sub).run();
+    added += Number(result.meta?.changes || 0);
+  }
+  const current = await env.DB.prepare(
+    "SELECT id, kind, value, created_at FROM account_whitelist ORDER BY created_at DESC, kind, value"
+  ).all();
+  return response({ added, entries: current.results || [] });
+}
+async function adminRemoveWhitelist(request, env) {
+  await readToken(env, request, "admin");
+  const body = await readJson(request);
+  const id = String(body.id || "").trim();
+  if (!id) return fail(422, "缺少白名单记录 ID");
+  const result = await env.DB.prepare("DELETE FROM account_whitelist WHERE id = ?").bind(id).run();
+  return response({ removed: Number(result.meta?.changes || 0) });
+}
 async function register(request, env) {
   const body = validateRegistration(await readJson(request));
+  await requireWhitelistedIdentifiers(env.DB, body.qq, body.wechat);
   const id = crypto.randomUUID();
   const hash = await passwordHash(env, body.password);
   const created = new Date().toISOString();
@@ -232,6 +322,12 @@ async function login(request, env) {
   const identifier = String(body.identifier || "").trim();
   const password = String(body.password || "");
   if (!identifier || !password) return fail(422, "请填写QQ号/微信号和密码");
+  const identifierKind = /^[1-9][0-9]{4,11}$/.test(identifier) ? "qq" : "wechat";
+  if (!(await isWhitelistAllowed(env.DB, identifierKind, identifier))) {
+    return fail(403, identifierKind === "qq" ? "QQ号不在白名单中，无法登录" : "微信号不在白名单中，无法登录", {
+      code: "not_whitelisted", kind: identifierKind
+    });
+  }
   const row = await env.DB.prepare(
     "SELECT * FROM accounts WHERE qq = ? OR lower(wechat) = lower(?) LIMIT 1"
   ).bind(identifier, identifier).first();
@@ -244,6 +340,7 @@ async function me(request, env) {
   const claims = await readToken(env, request, "user");
   const row = await env.DB.prepare("SELECT * FROM accounts WHERE id = ?").bind(claims.sub).first();
   if (!row) return fail(401, "账号不存在，请重新注册");
+  await requireWhitelistedIdentifiers(env.DB, row.qq, row.wechat);
   const banned = await ensureNotBanned(env.DB, row);
   if (banned) return fail(423, "账号已被封禁", banned);
   return response({ user: publicUser(row) });
@@ -264,6 +361,7 @@ async function updateProfile(request, env) {
   if ((!qq && !wechat) || !validQQ || !validWechat || !name || name.length > 40) {
     return fail(422, "QQ号和微信号至少填写一项；填写的项目必须符合格式");
   }
+  await requireWhitelistedIdentifiers(env.DB, qq, wechat);
   if (!validAvatar(avatar)) return fail(422, "头像格式不正确或图片超过大小限制");
   let newHash = row.password_hash;
   const newPassword = String(body.new_password || "");
@@ -624,6 +722,11 @@ async function route(request, env) {
     }
     if (request.method === "GET" && url.pathname === "/v1/events") return await accountEvents(request, env);
     if (request.method === "GET" && url.pathname === "/v1/nodes/network") return await nodeNetworkState(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/whitelist") return await publicWhitelist(request, env);
+    if (request.method === "GET" && url.pathname === "/v1/admin/whitelist") return await adminWhitelist(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/admin/whitelist") return await adminAddWhitelist(request, env);
+    if (request.method === "POST" && url.pathname === "/v1/admin/whitelist/remove") return await adminRemoveWhitelist(request, env);
+
     if (request.method === "GET" && url.pathname === "/v1/nodes/events") return await nodeNetworkEvents(request, env);
     if (request.method === "GET" && url.pathname === "/v1/admin/account-service") return await adminAccountServiceState(request, env);
     if (request.method === "POST" && url.pathname === "/v1/admin/account-service") return await adminSetAccountServiceState(request, env);

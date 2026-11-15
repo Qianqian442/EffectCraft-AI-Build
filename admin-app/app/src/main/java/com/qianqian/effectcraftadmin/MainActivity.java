@@ -669,6 +669,7 @@ public final class MainActivity extends Activity {
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
         addGlobalNodePanel(page);
+        addWhitelistPanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
         Button search = button("搜索账号");
@@ -696,6 +697,110 @@ public final class MainActivity extends Activity {
             addUserRow(user);
         }
         page.invalidate();
+    }
+
+    private void updateVisibleUser(JSONObject user) {
+    private void addWhitelistPanel(LinearLayout page) {
+        if (!isCloudflareMode()) return;
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(10), dp(12), dp(10));
+        panel.setBackground(rounded(Color.WHITE));
+        panel.addView(text("注册 / 登录白名单", 18, true));
+        panel.addView(text(
+            "只有加入白名单的 QQ号或微信号才可以注册和登录。已有账号在启用白名单时已自动迁入。",
+            12, false
+        ));
+        EditText qqInput = field("添加 QQ号（可留空）", false);
+        EditText wechatInput = field("添加微信号（可留空）", false);
+        panel.addView(qqInput);
+        panel.addView(wechatInput);
+        Button add = button("加入白名单");
+        panel.addView(add, new LinearLayout.LayoutParams(-1, dp(44)));
+        LinearLayout entries = new LinearLayout(this);
+        entries.setOrientation(LinearLayout.VERTICAL);
+        LinearLayout.LayoutParams entriesParams = new LinearLayout.LayoutParams(-1, -2);
+        entriesParams.topMargin = dp(8);
+        panel.addView(entries, entriesParams);
+        add.setOnClickListener(v -> {
+            String qq = qqInput.getText().toString().trim();
+            String wechat = wechatInput.getText().toString().trim();
+            if (qq.isEmpty() && wechat.isEmpty()) {
+                toast("请填写 QQ号或微信号");
+                return;
+            }
+            JSONObject body = new JSONObject();
+            try { body.put("qq", qq); body.put("wechat", wechat); }
+            catch (Exception error) { toast("无法生成白名单请求"); return; }
+            add.setEnabled(false);
+            requestAsync("POST", "/v1/admin/whitelist", body, true, result -> {
+                add.setEnabled(true);
+                if (result != null) {
+                    int added = result.optInt("added", 0);
+                    qqInput.setText("");
+                    wechatInput.setText("");
+                    toast(added > 0 ? "已加入 " + added + " 条白名单" : "这些号码已经在白名单中");
+                    renderWhitelistEntries(entries, result.optJSONArray("entries"));
+                }
+            });
+        });
+        page.addView(panel, new LinearLayout.LayoutParams(-1, -2));
+        LinearLayout.LayoutParams panelParams = (LinearLayout.LayoutParams) panel.getLayoutParams();
+        panelParams.bottomMargin = dp(10);
+        panel.setLayoutParams(panelParams);
+        loadWhitelistEntries(entries);
+    }
+
+    private void loadWhitelistEntries(LinearLayout container) {
+        requestAsync("GET", "/v1/admin/whitelist", null, true, result -> {
+            if (result != null) renderWhitelistEntries(container, result.optJSONArray("entries"));
+        });
+    }
+
+    private void renderWhitelistEntries(LinearLayout container, JSONArray entries) {
+        container.removeAllViews();
+        TextView heading = text("白名单号码 · 共 " + (entries == null ? 0 : entries.length()) + " 条", 14, true);
+        container.addView(heading);
+        if (entries == null || entries.length() == 0) {
+            container.addView(text("目前没有白名单号码；普通用户暂时不能注册或登录。", 12, false));
+            return;
+        }
+        for (int i = 0; i < entries.length(); i++) {
+            JSONObject entry = entries.optJSONObject(i);
+            if (entry == null) continue;
+            String id = entry.optString("id", "");
+            String kind = entry.optString("kind", "");
+            String value = entry.optString("value", "");
+            LinearLayout row = new LinearLayout(this);
+            row.setOrientation(LinearLayout.HORIZONTAL);
+            row.setGravity(Gravity.CENTER_VERTICAL);
+            row.setPadding(dp(8), dp(4), dp(4), dp(4));
+            row.setBackground(rounded(Color.rgb(246, 248, 251)));
+            TextView label = text(("qq".equals(kind) ? "QQ号：" : "微信号：") + value, 13, true);
+            row.addView(label, new LinearLayout.LayoutParams(0, dp(42), 1));
+            Button remove = button("移除");
+            row.addView(remove);
+            LinearLayout.LayoutParams rowParams = new LinearLayout.LayoutParams(-1, -2);
+            rowParams.topMargin = dp(5);
+            container.addView(row, rowParams);
+            remove.setOnClickListener(v -> new AlertDialog.Builder(this)
+                .setTitle("移除白名单")
+                .setMessage("确定从白名单移除 " + value + " 吗？移除后，该号码不能再注册或登录。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认移除", (dialog, which) -> {
+                    JSONObject body = new JSONObject();
+                    try { body.put("id", id); } catch (Exception ignored) {}
+                    remove.setEnabled(false);
+                    requestAsync("POST", "/v1/admin/whitelist/remove", body, true, result -> {
+                        if (result != null) {
+                            toast("已从白名单移除");
+                            loadWhitelistEntries(container);
+                        } else {
+                            remove.setEnabled(true);
+                        }
+                    });
+                }).show());
+        }
     }
 
     private void updateVisibleUser(JSONObject user) {

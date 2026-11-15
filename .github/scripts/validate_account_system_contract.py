@@ -198,7 +198,54 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
     ),
 
     (
-        "Cloudflare admin APK toggle controls all users and preserves admin recovery access",
+        "Cloudflare admin APK toggle controls all users and preserves admin recovery access",    (
+        "Cloudflare server enforces QQ/WeChat whitelist on registration, login and session/profile access",
+        "cloudflare-worker/src/index.js",
+        (
+            "account_whitelist",
+            "requireWhitelistedIdentifiers(env.DB, body.qq, body.wechat)",
+            "isWhitelistAllowed(env.DB, identifierKind, identifier)",
+            "adminAddWhitelist",
+            "adminRemoveWhitelist",
+            "/v1/whitelist",
+            "qq_hashes",
+            "wechat_hashes",
+            "not_whitelisted",
+        ),
+    ),
+    (
+        "Admin APK can add, list and remove QQ/WeChat whitelist entries",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
+        (
+            "addWhitelistPanel(page)",
+            "/v1/admin/whitelist",
+            "/v1/admin/whitelist/remove",
+            "加入白名单",
+            "移除白名单",
+        ),
+    ),
+    (
+        "Main APK downloads a hashed whitelist locally and prechecks account identifiers",
+        ".github/scripts/add_account_whitelist_local_cache.py",
+        (
+            "EFFECTCRAFT_LOCAL_WHITELIST_AND_OFFLINE_BAN_V1",
+            "identifier_digest",
+            "self.whitelist_has",
+            "effectcraft-account-whitelist.json",
+            "/v1/whitelist",
+        ),
+    ),
+    (
+        "Main APK persists ban information locally and displays it before server requests on reopening",
+        ".github/scripts/add_account_whitelist_local_cache.py",
+        (
+            "effectcraft-account-ban.json",
+            "封禁信息已保存在本机",
+            "联网核验是否已解封",
+            "self.persist_ban(config)",
+        ),
+    ),
+
         "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
         (
             "/v1/admin/account-service",

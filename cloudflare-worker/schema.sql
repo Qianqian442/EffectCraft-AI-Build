@@ -22,3 +22,14 @@ CREATE TABLE IF NOT EXISTS account_service_settings (
 );
 INSERT OR IGNORE INTO account_service_settings (setting_key, enabled, changed_by)
 VALUES ('global', 1, 'bootstrap');
+
+CREATE TABLE IF NOT EXISTS account_whitelist (
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('qq', 'wechat')),
+  value TEXT NOT NULL,
+  normalized_value TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  changed_by TEXT NOT NULL DEFAULT 'admin',
+  UNIQUE(kind, normalized_value)
+);
+CREATE INDEX IF NOT EXISTS idx_account_whitelist_kind_value ON account_whitelist(kind, normalized_value);

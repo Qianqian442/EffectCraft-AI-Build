@@ -10,12 +10,14 @@ from pathlib import Path
 CANONICAL = {
     "ureq": 'ureq = "3.5"',
     "tungstenite": 'tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }',
+    "sha2": 'sha2 = "0.10"',
     "roxmltree": 'roxmltree = "0.21.2"',
     "zip": 'zip = { version = "9.1.3", default-features = false, features = ["deflate-flate2-zlib-rs"] }',
 }
 ANCHORS = {
     "ureq": "serde_json = ",
     "tungstenite": "ureq = ",
+    "sha2": "tungstenite = ",
     "roxmltree": "rayon = ",
     "zip": "wasmi = ",
 }
@@ -121,7 +123,7 @@ def main() -> None:
 
     manifest.write_text(normalized, encoding="utf-8")
     print("Workspace Cargo.toml normalized and parsed successfully.")
-    print("Normalized direct Cloudflare HTTPS/WebSocket dependencies (ureq and tungstenite) plus project/plugin dependencies.")
+    print("Normalized direct Cloudflare HTTPS/WebSocket dependencies (ureq and tungstenite), local whitelist hashing (sha2), and project/plugin dependencies.")
 
     # The Android builder parses these manifests before creating the launcher.
     # Validate them here, with file/line diagnostics instead of a late build failure.

@@ -11,6 +11,9 @@ on:
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/validate_account_system_contract.py'
+      - '.github/scripts/add_account_whitelist_local_cache.py'
+      - 'cloudflare-worker/**'
+      - 'admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java'
       - '.github/workflows/validate-account-system-contract.yml'
   workflow_dispatch:
 
