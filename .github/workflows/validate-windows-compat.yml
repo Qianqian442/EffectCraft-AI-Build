@@ -163,6 +163,8 @@ jobs:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: |
           set -euo pipefail
+          mkdir -p "$EFFECTCRAFT_DIR/assets"
+          cp assets/ae-avatar.png "$EFFECTCRAFT_DIR/assets/ae-avatar.png"
           python3 -m py_compile .github/scripts/install_ai_plugin_bridge.py
           python3 .github/scripts/install_ai_plugin_bridge.py
           grep -Fq 'pub(crate) fn open_ai_plugin_import_from_toolbar' effectcraft/crates/ui-egui/src/lib.rs
