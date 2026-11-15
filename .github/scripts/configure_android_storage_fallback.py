@@ -422,14 +422,21 @@ def patch_builder(builder: Path) -> None:
             .and_then(|value| value.to_str())
             .unwrap_or_default()
             .to_ascii_lowercase();
-        if matches!(extension.as_str(), "aep" | "aepx") {
+        let import_command = if matches!(extension.as_str(), "aep" | "aepx") {
+            Some("file.importAep")
+        } else if matches!(extension.as_str(), "zip" | "nv" | "xml" | "alight" | "json") {
+            Some("file.importProject")
+        } else {
+            None
+        };
+        if let Some(command) = import_command {
             if let Err(error) = effectcraft_ui_egui::menus::invoke(
                 &mut self.inner,
                 ctx,
-                "file.importAep",
+                command,
                 serde_json::json!({ "path": path }),
             ) {
-                log::error!("Could not import the incoming After Effects project {path}: {error}");
+                log::error!("Could not import the incoming EffectCraft project file {path}: {error}");
             }
         } else if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {
             log::error!("Could not open the incoming file {path}: {error}");
@@ -439,8 +446,8 @@ def patch_builder(builder: Path) -> None:
         if source.count(incoming_old) != 1:
             raise SystemExit("Could not uniquely locate EffectCraft's incoming-file handler")
         source = source.replace(incoming_old, incoming_new, 1)
-    if 'matches!(extension.as_str(), "aep" | "aepx")' not in source:
-        raise SystemExit("AEP incoming-file routing was not applied")
+    if 'matches!(extension.as_str(), "zip" | "nv" | "xml" | "alight" | "json")' not in source:
+        raise SystemExit("EffectCraft project-package incoming-file routing was not applied")
 
     # Preserve the normal AEP loss report and user confirmation for external file opens.
     generated_route_edits = [
@@ -481,7 +488,7 @@ def patch_builder(builder: Path) -> None:
     associations_path = builder / "lib/file_associations.py"
     associations = associations_path.read_text(encoding="utf-8")
     old_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate"],'
-    new_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate", "aep", "aepx"],'
+    new_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate", "aep", "aepx", "zip", "nv", "xml", "alight"],'
     if new_association not in associations:
         count = associations.count(old_association)
         if count != 1:
@@ -489,8 +496,14 @@ def patch_builder(builder: Path) -> None:
         associations = associations.replace(old_association, new_association, 1)
     associations_path.write_text(associations, encoding="utf-8")
 
+    if new_association not in associations:
+        raise SystemExit("EffectCraft .zip/.nv/.xml project file associations were not installed")
+    if 'Some("file.importProject")' not in source:
+        raise SystemExit("Incoming EffectCraft project packages are not routed to the unified importer")
+
     print("Kept MANAGE_EXTERNAL_STORAGE in the Android manifest.")
     print("Moved the storage permission prompt from app startup to plug-in/project import.")
+    print("EffectCraft incoming ZIP/NodeVideo/AM documents now route to Import Project.")
     print("Denied or unavailable access continues through the SAF picker and app-owned staging.")
 
 
