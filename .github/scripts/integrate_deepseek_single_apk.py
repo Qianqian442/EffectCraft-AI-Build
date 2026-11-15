@@ -158,7 +158,7 @@ def main() -> None:
 
     app_end = '    lines.append("    </application>")\n'
     app_add = """    # Local DeepSeek manager and inference service are private components inside this APK.
-    lines.append('        <activity android:name="com.artcraft.effectcraft.aiassistant.PluginManagerActivity" android:exported="false" android:label="EffectCraft DeepSeek 模型管理" />')
+    lines.append('        <activity android:name="com.artcraft.effectcraft.aiassistant.PluginManagerActivity" android:exported="false" android:label="Ae DeepSeek 模型管理" />')
     lines.append('        <service android:name="com.artcraft.effectcraft.aiassistant.InferenceService" android:exported="false" />')
 """ + app_end
     if "com.artcraft.effectcraft.aiassistant.PluginManagerActivity" not in g:
