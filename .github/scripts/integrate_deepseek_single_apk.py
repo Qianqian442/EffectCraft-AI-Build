@@ -364,7 +364,19 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     a = a.replace(import_block, "", 1)
     if 'ui.button("导入 AI 插件")' in a or "请先点击“导入 AI 插件”" in a:
         raise SystemExit("AI assistant still contains a companion-plugin import path; refusing to claim single-APK integration.")
+    # The legacy bridge copies this helper into the generated crate before the
+    # single-APK integration runs. Re-write both copies after the model-package edits:
+    # later UI patches and the Rust compile must consume the same, updated source.
     assistant.write_text(a, encoding="utf-8")
+    generated_assistant = effectcraft / "crates/ui-egui/src/ai_assistant.rs"
+    if not generated_assistant.is_file():
+        raise SystemExit(f"Generated Ae AI assistant source is missing: {generated_assistant}")
+    generated_assistant.write_text(a, encoding="utf-8")
+    verified_assistant = generated_assistant.read_text(encoding="utf-8")
+    if 'ui.button("导入 AI 模型包")' not in verified_assistant:
+        raise SystemExit("Generated AI assistant did not receive the model ZIP import entry.")
+    if 'ui.button("导入 AI 插件")' in verified_assistant:
+        raise SystemExit("Generated AI assistant still exposes companion APK import.")
 
     print("DeepSeek model manager and inference service are staged inside the Ae host APK.")
     print("The host binds to its own in-process Android service; no companion APK is installed.")
