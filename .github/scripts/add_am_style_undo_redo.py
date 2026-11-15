@@ -61,9 +61,8 @@ def patch_header(root: Path) -> None:
     if MARKER in source:
         return
 
-    # Find the actual tool_slots call after all earlier header patches. The UI
-    # variable may be ui or the responsive scroll-area child; preserve whichever
-    # identifier the source currently uses.
+    # The responsive toolbar patch may use a different child UI identifier.
+    # Find the actual call and reuse its identifier instead of assuming ui/scroll_ui.
     call_prefix = "let x = tool_slots(app, "
     call_suffix = ", &p, x, cy);"
     matching_lines = [
@@ -75,106 +74,20 @@ def patch_header(root: Path) -> None:
             "place touch Undo / Redo controls before the remaining toolbar tools: "
             f"expected one tool_slots() call, found {len(matching_lines)}"
         )
+
     original_line = matching_lines[0]
     stripped_line = original_line.strip()
     indent = original_line[:len(original_line) - len(original_line.lstrip())]
     ui_name = stripped_line[len(call_prefix):-len(call_suffix)]
     if not ui_name or not ui_name.replace("_", "").isalnum():
         raise SystemExit(f"Unexpected toolbar UI variable for Undo/Redo: {ui_name!r}")
+
     replacement = "\n".join((
         f"{indent}// {MARKER}",
         f"{indent}let x = history_buttons(app, {ui_name}, &p, x, cy);",
         original_line,
     ))
     source = source.replace(original_line, replacement, 1)
-
-    helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them.\n"
-    helper = r'''/// AM-style touch controls for the project's native edit history.
-/// Continuous timeline gestures are already coalesced by the engine into one history step.
-fn history_buttons(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Painter, mut x: f32, cy: f32) -> f32 {
-    let t = app.tokens;
-    let undo_enabled = !app.session.history.undo.is_empty();
-    let undo_rect = Rect::from_min_size(pos2(x, cy - 12.0), vec2(24.0, 24.0));
-    let undo = ui
-        .add_enabled_ui(undo_enabled, |ui| {
-            widgets::icon_button(ui, undo_rect, Icon::Undo, false, &t, egui::Id::unique("header-undo"))
-        })
-        .inner
-        .on_hover_text(tr("Undo"));
-    app.auto.add_response("header.undo", &undo, "撤回上一步剪辑操作");
-    if undo.clicked()
-        && let Err(error) = crate::menus::invoke(app, ui.ctx(), "edit.undo", json!({}))
-    {
-        app.ui.status = error;
-    }
-    x += 25.0;
-
-    let redo_enabled = !app.session.history.redo.is_empty();
-    let redo_rect = Rect::from_min_size(pos2(x, cy - 12.0), vec2(24.0, 24.0));
-    let redo = ui
-        .add_enabled_ui(redo_enabled, |ui| {
-            widgets::icon_button(ui, redo_rect, Icon::Redo, false, &t, egui::Id::unique("header-redo"))
-        })
-        .inner
-        .on_hover_text(tr("Redo"));
-    app.auto.add_response("header.redo", &redo, "重做上一步剪辑操作");
-    if redo.clicked()
-        && let Err(error) = crate::menus::invoke(app, ui.ctx(), "edit.redo", json!({}))
-    {
-        app.ui.status = error;
-    }
-    x += 29.0;
-    p.line_segment([pos2(x, cy - 9.0), pos2(x, cy + 9.0)], Stroke::new(1.0, t.separator));
-    x + 6.0
-}
-
-'''
-    source = replace_once(source, helper_anchor, helper + helper_anchor, "insert the Undo / Redo toolbar handler")
-    path.write_text(source, encoding="utf-8")
-
-
-def main() -> None:
-    root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
-    if not root.is_dir():
-        raise SystemExit("EFFECTCRAFT_DIR must point to the checked-out EffectCraft source.")
-    patch_icons(root)
-    patch_header(root)
-
-    icons = (root / "crates/ui-egui/src/icons.rs").read_text(encoding="utf-8")
-    header = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
-    required = (
-        "Icon::Undo", "Icon::Redo", '"edit.undo"', '"edit.redo"',
-        "!app.session.history.undo.is_empty()", "!app.session.history.redo.is_empty()",
-        "EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1",
-    )
-    if not all(token in header for token in required) or "Undo =>" not in icons or "Redo =>" not in icons:
-        raise SystemExit("AM-style Undo / Redo controls failed their source verification.")
-    print("Installed AM-style touch Undo / Redo controls backed by the native project history.")
-    print("Undo and Redo are disabled when their respective history queues are empty.")
-
-
-if __name__ == "__main__":
-    main()
-
-    )
-    matches = list(insertion_pattern.finditer(source))
-    if MARKER in source:
-        pass
-    elif len(matches) != 1:
-        raise SystemExit(
-            "place touch Undo / Redo controls before the remaining toolbar tools: "
-            f"expected one tool_slots() call, found {len(matches)}"
-        )
-    else:
-        match = matches[0]
-        indent = match.group("indent")
-        ui_name = match.group("ui")
-        replacement = (
-            f"{indent}// {MARKER}\n"
-            f"{indent}let x = history_buttons(app, {ui_name}, &p, x, cy);\n"
-            f"{indent}let x = tool_slots(app, {ui_name}, &p, x, cy);"
-        )
-        source = source[:match.start()] + replacement + source[match.end():]
 
     helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them.\n"
     helper = r'''/// AM-style touch controls for the project's native edit history.
