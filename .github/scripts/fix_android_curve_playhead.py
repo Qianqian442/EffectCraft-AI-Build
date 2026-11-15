@@ -102,7 +102,7 @@ def main() -> None:
     source = replace_once(
         source,
         "    android_curve_quick_access(app, ui, rect);\n",
-        "    android_curve_quick_access(app, ui, rect, g.time);\n",
+        "    android_curve_quick_access(app, ui, rect, g.tl.time);\n",
         "use the Timeline's displayed current-time indicator",
     )
 
@@ -119,7 +119,7 @@ def main() -> None:
     required = (
         MARKER,
         "android_playhead_curve_segment(app, playhead)",
-        "android_curve_quick_access(app, ui, rect, g.time)",
+        "android_curve_quick_access(app, ui, rect, g.tl.time)",
         "app.session.state.selected_keys",
         "layer_ids.push(key.layer)",
     )
