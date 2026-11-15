@@ -14,7 +14,7 @@ EFFECT_ID = "org.effectcraft.compat.rsmb-motion-blur"
 
 
 def validate_chinese_manifest(source: str) -> dict:
-    match = re.search(r'#\\[cfg\\(sapphire_motion\\)\\]\\s*\\{\\s*r#"(.*?)"#\\s*\\}', source, re.S)
+    match = re.search(r'#\[cfg\(sapphire_motion\)\]\s*\{\s*r#"(.*?)"#\s*\}', source, re.S)
     if not match:
         raise SystemExit("RSMB 兼容效果清单不存在")
     try:
@@ -39,8 +39,6 @@ def main() -> None:
     if not source.is_file():
         raise SystemExit(f"缺少方向运动模糊效果源码：{source}")
     manifest = validate_chinese_manifest(source.read_text(encoding="utf-8"))
-    if not source.is_file():
-        raise SystemExit(f"Missing RSMB compatibility renderer source: {source}")
 
     output = root / "assets" / "rsmb-compat"
     output.mkdir(parents=True, exist_ok=True)
