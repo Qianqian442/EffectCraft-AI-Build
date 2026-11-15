@@ -38,6 +38,27 @@ def main() -> None:
         "remove the independently sampled composition time",
     )
 
+    # Keyframe selection itself can identify the owning layer even if the layer row
+    # is not selected. Include those layer IDs before the resolver's empty-target check.
+    layer_anchor = """    for (layer_id, _) in &app.session.state.selected_props {
+        if !layer_ids.contains(layer_id) {
+            layer_ids.push(*layer_id);
+        }
+    }
+    if layer_ids.is_empty() {"""
+    layer_replacement = """    for (layer_id, _) in &app.session.state.selected_props {
+        if !layer_ids.contains(layer_id) {
+            layer_ids.push(*layer_id);
+        }
+    }
+    for key in &app.session.state.selected_keys {
+        if !layer_ids.contains(&key.layer) {
+            layer_ids.push(key.layer);
+        }
+    }
+    if layer_ids.is_empty() {"""
+    source = replace_once(source, layer_anchor, layer_replacement, "selected keyframe owning-layer resolution")
+
     # If the user selected keyframes rather than the property row, use those keyframes
     # to identify the property before searching all properties on the selected layer.
     old_selected = """    let mut selected_segments = Vec::new();
@@ -100,6 +121,7 @@ def main() -> None:
         "android_playhead_curve_segment(app, playhead)",
         "android_curve_quick_access(app, ui, rect, g.time)",
         "app.session.state.selected_keys",
+        "layer_ids.push(key.layer)",
     )
     missing = [item for item in required if item not in final]
     if missing:
