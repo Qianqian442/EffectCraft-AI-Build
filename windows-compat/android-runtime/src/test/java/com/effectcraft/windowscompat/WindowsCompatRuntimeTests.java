@@ -15,6 +15,11 @@ public final class WindowsCompatRuntimeTests {
     }
 
     @Test
+    public void buildsNativeBionicHangoverProfilesWithoutMixingGuestLibc() throws Exception {
+        HangoverBionicLaunchProfileSelfTest.main(new String[0]);
+    }
+
+    @Test
     public void rejectsUnpinnedOrCorruptEmbeddedBox32Archives() throws Exception {
         java.nio.file.Path root = java.nio.file.Files.createTempDirectory("effectcraft-box32-test");
         java.nio.file.Path archive = root.resolve("bad.tar.zst");
