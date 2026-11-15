@@ -743,7 +743,9 @@ direct_helper = """    private boolean hasDirectSharedStorageAccess() {
 
 """
 if "private File directSharedProject(Uri uri)" not in saf_text:
-    helper_marker = "    private static String treeToPath(Uri tree) {"
+    // configure_android_storage_fallback.py changes treeToPath to an instance method
+    // because it validates permissions and actually writes a probe file in the selected folder.
+    helper_marker = "    private String treeToPath(Uri tree) {"
     if helper_marker not in saf_text:
         raise SystemExit("Could not find Android SAF helper insertion point.")
     saf_text = saf_text.replace(helper_marker, direct_helper + helper_marker, 1)
