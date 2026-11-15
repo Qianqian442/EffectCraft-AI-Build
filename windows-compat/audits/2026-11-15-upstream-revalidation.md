@@ -65,6 +65,8 @@ The upstream Termux recipe has an interactive `make ... -k || bash` fallback. Ef
 
 The current Termux `libandroid-spawn` source was also rechecked at the same Termux repository revision. Its `posix_spawn()` implementation uses fork/vfork and calls an injected `exec_fn`; `posix_spawn` passes `execve`, while `posix_spawnp` passes `execvpe`. Those are both symbols intercepted by EffectCraft's linker bridge, so the bridge is aligned with this Termux child-process path at source level. The package is BSD-2-Clause. This is not yet a Bionic device spawn test; raw syscalls or alternate Wine child paths still require audit.
 
+The Termux-exec 2.5.0 source (tag commit `2cd0ba6b907565484130851f9617523c98df8615`) was compared as a reference implementation. Its linker preload exports `execl`, `execlp`, `execle`, `execv`, `execvp`, `execvpe`, `fexecve` and `execve`, and ultimately calls raw `SYS_execve` after its path/ELF handling. It does not expose an `execveat` wrapper in that entry point. EffectCraft now covers the same common exec family plus a symbol-level `execveat` wrapper. It still cannot intercept a program that issues the raw `SYS_execveat` syscall itself. Termux-exec package metadata is Apache-2.0; the source also carries per-file notices that must be preserved if reused.
+
 This package is not an Android Surface integration. X11/PulseAudio/SDL/OpenGL/Vulkan are reference plumbing; EffectCraft still needs explicit Android Surface/input/audio bridging and verified GPU feature mapping.
 
 ## Build/test evidence updated in this run
