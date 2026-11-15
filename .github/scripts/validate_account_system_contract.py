@@ -271,6 +271,42 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
 ]
 
 
+checks.extend([
+    (
+        "Cloud API requires permanent ban before account deletion and keeps HMAC identity tombstones",
+        "cloudflare-worker/src/index.js",
+        (
+            "async function accountIdentityHash(env, kind, value)",
+            "async function rejectPermanentlyBannedIdentity",
+            "async function adminDelete",
+            'row.banned_until !== "9999-12-31T23:59:59.999Z"',
+            'match[2] === "delete"',
+            "account_identity_bans",
+        ),
+    ),
+    (
+        "Cloud D1 schema and migration preserve only keyed identity hashes after account profile deletion",
+        "cloudflare-worker/schema.sql",
+        ("CREATE TABLE IF NOT EXISTS account_identity_bans", "identity_hash TEXT PRIMARY KEY"),
+    ),
+    (
+        "Local account server upgrades SQLite safely and keeps hashed tombstones after account deletion",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/LanAccountServer.java",
+        ("account_identity_bans", "identityBanHash", "hasIdentityBan", "addIdentityBan", "deleteUser"),
+    ),
+    (
+        "Admin UI exposes separate permanent-ban and delete actions; deletion stays disabled until permanent ban",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
+        ("永久封号", "删除账号", "permanentBan(id)", "deleteAccount(id)", "deleteButton.setEnabled(permanent)"),
+    ),
+    (
+        "Local account lifecycle tests require permanent ban before delete and deny re-registration afterwards",
+        "admin-app/app/src/test/java/com/qianqian/effectcraftadmin/LanAccountServerAccountFlowTest.java",
+        ("permanentBanMustPrecedeDeletionAndDeletedIdentifiersStayBlocked", "hash tombstone", "account deletion requires a prior permanent ban"),
+    ),
+])
+
+
 for label, relative, needles in checks:
     source = read(relative)
     missing = [needle for needle in needles if needle not in source]

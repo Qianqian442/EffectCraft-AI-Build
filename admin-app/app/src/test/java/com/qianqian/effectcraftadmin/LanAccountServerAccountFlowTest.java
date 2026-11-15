@@ -246,6 +246,57 @@ public final class LanAccountServerAccountFlowTest {
         assertEquals(401, status(badPassword));
     }
 
+    @Test
+    public void permanentBanMustPrecedeDeletionAndDeletedIdentifiersStayBlocked() throws Exception {
+        JSONObject registration = call("POST", "/v1/register", "", json(
+            "qq", "1199999999",
+            "wechat", "wechat_del123",
+            "name", "Permanent Ban Delete",
+            "password", "permanent-delete-pass",
+            "avatar_url", ""
+        ));
+        assertEquals(200, status(registration));
+        String userId = body(registration).getJSONObject("user").getString("id");
+
+        JSONObject prematureDelete = call("POST", "/v1/admin/users/" + userId + "/delete",
+            adminToken, new JSONObject());
+        assertEquals("account deletion requires a prior permanent ban", 409, status(prematureDelete));
+
+        JSONObject permanentBan = call("POST", "/v1/admin/users/" + userId + "/ban", adminToken, json(
+            "banned_until", "9999-12-31T23:59:59.999Z",
+            "reason", "permanent-ban-delete regression"
+        ));
+        assertEquals(200, status(permanentBan));
+        assertEquals("9999-12-31T23:59:59.999Z",
+            body(permanentBan).getJSONObject("user").getString("banned_until"));
+
+        JSONObject deleted = call("POST", "/v1/admin/users/" + userId + "/delete",
+            adminToken, new JSONObject());
+        assertEquals(200, status(deleted));
+        assertTrue(body(deleted).getBoolean("deleted"));
+
+        JSONObject reRegisterQQ = call("POST", "/v1/register", "", json(
+            "qq", "1199999999",
+            "wechat", "",
+            "name", "Attempt Re-register QQ",
+            "password", "another-password",
+            "avatar_url", ""
+        ));
+        assertEquals("deleted QQ identity remains blocked by hash tombstone", 403, status(reRegisterQQ));
+
+        JSONObject reRegisterWechat = call("POST", "/v1/register", "", json(
+            "qq", "",
+            "wechat", "wechat_del123",
+            "name", "Attempt Re-register WeChat",
+            "password", "another-password",
+            "avatar_url", ""
+        ));
+        assertEquals("deleted WeChat identity remains blocked by hash tombstone", 403, status(reRegisterWechat));
+
+        JSONObject listed = call("GET", "/v1/admin/users", adminToken, new JSONObject());
+        assertEquals(0, body(listed).getJSONArray("users").length());
+    }
+
     private JSONObject call(String method, String path, String token, JSONObject requestBody) throws Exception {
         JSONObject packet = new JSONObject();
         packet.put("method", method);

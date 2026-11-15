@@ -196,8 +196,33 @@ function publicUser(row) {
     avatar_url: row.avatar_url || "",
     created_at: row.created_at,
     banned_until: row.banned_until || null,
+    permanent_ban: row.banned_until === "9999-12-31T23:59:59.999Z",
     ban_reason: row.ban_reason || "",
   };
+}
+
+async function accountIdentityHash(env, kind, value) {
+  const normalized = kind === "wechat"
+    ? String(value || "").trim().toLowerCase()
+    : String(value || "").trim();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(env.JWT_SECRET),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const digest = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(kind + ":" + normalized));
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function rejectPermanentlyBannedIdentity(db, env, kind, value) {
+  if (!value) return null;
+  const hash = await accountIdentityHash(env, kind, value);
+  const row = await db.prepare(
+    "SELECT identity_hash FROM account_identity_bans WHERE identity_hash = ?"
+  ).bind(hash).first();
+  return row ? fail(403, "该 QQ号/微信号关联账号已被永久封禁，不能重新注册") : null;
 }
 async function ensureNotBanned(db, row) {
   if (!row.banned_until) return null;
@@ -303,6 +328,10 @@ async function adminRemoveWhitelist(request, env) {
 }
 async function register(request, env) {
   const body = validateRegistration(await readJson(request));
+  const qqBan = await rejectPermanentlyBannedIdentity(env.DB, env, "qq", body.qq);
+  if (qqBan) return qqBan;
+  const wechatBan = await rejectPermanentlyBannedIdentity(env.DB, env, "wechat", body.wechat);
+  if (wechatBan) return wechatBan;
   await requireWhitelistedIdentifiers(env.DB, body.qq, body.wechat);
   const id = crypto.randomUUID();
   const hash = await passwordHash(env, body.password);
@@ -500,6 +529,52 @@ async function adminBan(request, env, id) {
     "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE id = ?"
   ).bind(id).first();
   return response({ user: row, notification_delivered: notified, revoked_node_sessions: revokedNodeSessions });
+}
+
+async function adminDelete(request, env, id) {
+  await readToken(env, request, "admin");
+  const row = await env.DB.prepare(
+    "SELECT id, qq, wechat, banned_until, ban_reason FROM accounts WHERE id = ?"
+  ).bind(id).first();
+  if (!row) return fail(404, "账号不存在");
+  if (row.banned_until !== "9999-12-31T23:59:59.999Z") {
+    return fail(409, "请先执行永久封号；只有永久封号账号才能删除");
+  }
+
+  const identities = [];
+  if (row.qq) identities.push({ kind: "qq", value: String(row.qq).trim() });
+  if (row.wechat) identities.push({ kind: "wechat", value: String(row.wechat).trim().toLowerCase() });
+  if (!identities.length) return fail(409, "账号缺少 QQ/微信标识，无法安全删除");
+
+  const createdAt = new Date().toISOString();
+  const reason = String(row.ban_reason || "永久封号").slice(0, 200);
+  const statements = [];
+  for (const identity of identities) {
+    const hash = await accountIdentityHash(env, identity.kind, identity.value);
+    statements.push(env.DB.prepare(
+      "INSERT OR IGNORE INTO account_identity_bans (identity_hash, kind, created_at, ban_reason) VALUES (?, ?, ?, ?)"
+    ).bind(hash, identity.kind, createdAt, reason));
+    statements.push(env.DB.prepare(
+      "DELETE FROM account_whitelist WHERE kind = ? AND normalized_value = ?"
+    ).bind(identity.kind, identity.value));
+  }
+  // D1 batch keeps the one-way identifiers and profile deletion atomic.
+  statements.push(env.DB.prepare("DELETE FROM accounts WHERE id = ?").bind(id));
+  await env.DB.batch(statements);
+
+  let revokedNodeSessions = 0;
+  try {
+    revokedNodeSessions = await revokeNodeAccount(env, id, "permanently banned account deleted");
+  } catch (error) {
+    console.error("node-revocation-after-delete-error", error && error.message ? error.message : String(error));
+  }
+  let notified = 0;
+  try {
+    notified = await notifyAccountStatus(env, id, "deleted", null);
+  } catch (error) {
+    console.error("account-delete-notification-error", error && error.message ? error.message : String(error));
+  }
+  return response({ deleted: true, blocked_identities: identities.length, revoked_node_sessions: revokedNodeSessions, notification_delivered: notified });
 }
 async function nodeNetworkStub(env) {
   if (!env.NODE_NETWORK) throw new HttpError(503, "节点网络服务尚未部署");
@@ -739,9 +814,10 @@ async function route(request, env) {
     if (request.method === "GET" && url.pathname === "/v1/me") return await me(request, env);
     if (request.method === "POST" && url.pathname === "/v1/profile") return await updateProfile(request, env);
     if (request.method === "GET" && url.pathname === "/v1/admin/users") return await adminUsers(request, env, url);
-    const match = url.pathname.match(/^\/v1\/admin\/users\/([^/]+)(?:\/(ban))?$/);
+    const match = url.pathname.match(/^\/v1\/admin\/users\/([^/]+)(?:\/(ban|delete))?$/);
     if (match && request.method === "GET" && !match[2]) return await adminUser(request, env, decodeURIComponent(match[1]));
     if (match && request.method === "POST" && match[2] === "ban") return await adminBan(request, env, decodeURIComponent(match[1]));
+    if (match && request.method === "POST" && match[2] === "delete") return await adminDelete(request, env, decodeURIComponent(match[1]));
     return fail(404, "未找到请求接口");
   } catch (error) {
     if (error instanceof AuthError) return fail(401, error.message);

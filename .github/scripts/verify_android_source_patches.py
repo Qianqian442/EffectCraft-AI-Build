@@ -163,15 +163,11 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified the five requested independent project-export buttons and honest AE desktop status.")
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_FIVE_PROJECT_IMPORT_BUTTONS_V1" not in project:
-        raise SystemExit("The Project panel is missing the five independent project import buttons.")
-    for label in ("导入电脑版AE工程", "导入手机版AE工程", "导入AM工程", "导入NV工程", "导入CapCut工程"):
-        if label not in project:
-            raise SystemExit(f"Missing independent project import button: {label}")
-    for command in ("file.importAepDesktop", "file.importAepMobilePackage", "file.importAlightMotionProject", "file.importNodeVideoProject", "file.importCapCutProject"):
-        if f'"{command}"' not in project:
-            raise SystemExit(f"Project import button is not connected to {command}.")
-    print("Verified five independent AE desktop, AE mobile package, AM, NV and CapCut import buttons.")
+    if "EFFECTCRAFT_ANDROID_FIVE_PROJECT_IMPORT_BUTTONS_V1" in project:
+        raise SystemExit("The five project-format actions must not replace the Project panel's original import control.")
+    if '"file.importProject"' not in project:
+        raise SystemExit("The original Project-panel EffectCraft import control was removed.")
+    print("Verified the original Project-panel import control remains in place.")
 
     frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2" not in frontend:
@@ -206,13 +202,16 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The end of the File > Import menu block is missing.")
     visible_import = menu[import_match.start():import_match.end() + end_match.start()]
     if "EffectCraft Project... | file.importProject" in visible_import:
-        raise SystemExit("The native Project import action is still in its old File > Import position.")
+        raise SystemExit("The original EffectCraft project import must remain in the Project panel, not become a sixth File-menu action.")
     required_imports = [
         "File... | file.import",
         "Multiple Files... | file.importMultiple",
-        "更多工程格式",
+        "导入电脑版AE工程... | file.importAepDesktop",
+        "导入手机版AE工程... | file.importAepMobilePackage",
+        "导入AM工程... | file.importAlightMotionProject",
+        "导入NV工程... | file.importNodeVideoProject",
+        "导入CapCut工程... | file.importCapCutProject",
         "Adobe Premiere Pro Project... | file.importTimeline",
-        "After Effects Project... | file.importAep",
         "Placeholder... | file.importPlaceholder",
         "Solid... | file.importSolid",
         "Lottie... | file.importLottie",
@@ -221,10 +220,8 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     ]
     if any(item not in visible_import for item in required_imports):
         raise SystemExit("Moving the Project import action removed or hid another original Import command.")
-    if "AE 电脑版工程... | file.importAepDesktop" not in visible_import:
-        raise SystemExit("The dedicated AE desktop project import option is missing.")
-    if "EffectCraft 手机版工程... | file.importEffectCraftMobile" not in visible_import:
-        raise SystemExit("The dedicated EffectCraft mobile-exported project import option is missing.")
+    if "导入电脑版AE工程... | file.importAepDesktop" not in visible_import:
+        raise SystemExit("The dedicated desktop AE import option is missing from File > Import.")
 
     aep_commands = (root / "crates/engine/src/cmd/aep.rs").read_text(encoding="utf-8")
     if '"file.importAepDesktop"' not in aep_commands or '"file.importAep"' not in aep_commands:
@@ -263,11 +260,11 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     aep_loss_guard = (root / "crates/ui-egui/src/panels/aep_losses.rs").read_text(encoding="utf-8")
     if '"file.importAepDesktop"' not in aep_loss_guard:
         raise SystemExit("The dedicated desktop AE import entry bypasses the original loss-confirmation guard.")
-    print("Verified separate desktop AE and EffectCraft mobile-export import entries; mobile packages use the native .ecproj reader.")
+    print("Verified separate desktop AE and mobile AE-format import commands; native EffectCraft project import remains available.")
     import_project_command = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in import_project_command:
         raise SystemExit("The native Project importer command was removed instead of relocated.")
-    print("Verified Project import moved to the Project panel while all original import commands remain available.")
+    print("Verified native EffectCraft project import and the five format-specific project actions remain available.")
 
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V3" not in timeline or "let keyframe_enabled = selected_layer.is_some();" not in timeline:
@@ -281,6 +278,13 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if "Sense::click_and_drag()" not in assistant or "bubble_drag_origin" not in assistant or "response.drag_delta()" not in assistant:
         raise SystemExit("The floating AI assistant is missing its tap-and-drag interaction.")
     print("Verified the floating AI assistant bubble supports tap and touch-drag.")
+
+    if "EFFECTCRAFT_ANDROID_AI_FULLSCREEN_DRAG_V1" not in assistant:
+        raise SystemExit("The AI assistant chat window is missing the full-screen/drag patch.")
+    for required in (".current_size(chat_window_size)", "按住这里拖动 AI 助手", "还原窗口", "chat_drag_origin"):
+        if required not in assistant:
+            raise SystemExit(f"Missing AI assistant interaction: {required}")
+    print("Verified AI chat full-screen mode and touch-friendly window dragging.")
 
     timing = (root / "crates/engine/src/cmd/layer/timing.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_EXTEND_COMP_ON_LAYER_OUT_DRAG_V1" not in timing or "if extend_comp" not in timing:
@@ -303,6 +307,9 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified export progress displays a real numeric percentage.")
 
     import_frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_IMPORT_PANIC_ISOLATION_V1" not in import_frontend or "catch_unwind" not in import_frontend:
+        raise SystemExit("File import commands are missing their recoverable panic boundary.")
+    print("Verified malformed file import errors are isolated from the Android UI loop.")
     if "EFFECTCRAFT_ANDROID_SHARE_COLLECTED_PROJECT_V1" not in import_frontend:
         raise SystemExit("Mobile full-project export does not wait for Collect Files before sharing.")
     if "shareAfterCollect" not in import_frontend or "share_project_package(project_path)" not in import_frontend:
