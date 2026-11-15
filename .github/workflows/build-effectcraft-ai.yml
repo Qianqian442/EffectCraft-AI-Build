@@ -35,7 +35,6 @@ on:
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/normalize_account_network_dependencies.py'
       - '.github/scripts/make_header_scrollable.py'
-      - '.github/scripts/add_nova_effects_browser_shortcut.py'
       - '.github/scripts/add_curve_quick_access.py'
       - '.github/scripts/add_startup_attribution_notice.py'
       - '.github/scripts/add_chroma_key_effect.py'
@@ -92,7 +91,6 @@ jobs:
             .github/scripts/configure_android_storage_fallback.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_curve_quick_access.py \
-            .github/scripts/add_nova_effects_browser_shortcut.py
 
   build:
     needs: validate-patches
@@ -486,13 +484,6 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/make_header_scrollable.py
-
-      - name: Add top-left Nova-style Effects browser and safe WASM checks
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/add_nova_effects_browser_shortcut.py
-          python3 build-assets/.github/scripts/add_nova_effects_browser_shortcut.py
 
       - name: Enable touch scrolling across Android panels and timelines
         env:
