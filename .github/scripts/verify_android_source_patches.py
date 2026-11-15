@@ -141,6 +141,68 @@ def verify_chinese_default(root: Path) -> None:
     print("Android default language is Simplified Chinese, including saved 'system' preferences.")
 
 
+def verify_android_project_interactions(root: Path, header: Path) -> None:
+    """Fail the APK build if the five export actions, import control or touch fixes regress."""
+    header_source = header.read_text(encoding="utf-8")
+    export_labels = [
+        "导出 AE 电脑版工程",
+        "导出 AE 手机版工程",
+        "导出 AM 工程",
+        "导出 NV 工程",
+        "导出 CapCut 工程",
+    ]
+    for label in export_labels:
+        if label not in header_source:
+            raise SystemExit(f"Missing required independent project-export button: {label}")
+    if 'ComboBox::from_id_salt("effectcraft-project-export-choice")' in header_source:
+        raise SystemExit("Project export regressed to a dropdown instead of five independent buttons.")
+    if "尚未实现" not in header_source or "AEP/AEPX" not in header_source:
+        raise SystemExit("The unavailable desktop AE exporter must be clearly disclosed in the UI.")
+    print("Verified the five requested independent project-export buttons and honest AE desktop status.")
+
+    project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V5" not in project:
+        raise SystemExit("The visible Project-panel Import Media control is missing.")
+    if "compact_import_layout" not in project or "import_rect.max.y + 6.0" not in project:
+        raise SystemExit("The narrow-screen Import Media layout no longer moves the header below the button.")
+    print("Verified the image/video Import Media button uses a non-overlapping narrow-screen layout.")
+
+    frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_IMPORT_ONLY_V1" not in frontend:
+        raise SystemExit("The normal Import Media picker is not restricted to picture/video media.")
+    if "VIDEO_EXTENSIONS.iter()" not in frontend:
+        raise SystemExit("Video extensions were removed from the normal Import Media picker.")
+
+    file_cmd = (root / "crates/engine/src/cmd/file.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V2" not in file_cmd or 'params["addToComp"] = json!(true);' not in file_cmd:
+        raise SystemExit("Import Media no longer automatically inserts selected assets into the active composition.")
+    layer_create = (root / "crates/engine/src/cmd/layer/create.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2" not in layer_create:
+        raise SystemExit("Imported picture/video layers no longer fit the active composition.")
+    print("Verified image/video imports are added to the composition and fitted to the frame.")
+
+    menu = (root / "crates/engine/src/menus.rs").read_text(encoding="utf-8")
+    if "导入素材... | file.import" not in menu or "导入工程... | file.importProject" not in menu:
+        raise SystemExit("The Import menu must expose one media entry and one unified project entry.")
+    visible_import = menu[menu.find("  Import\\n"):menu.find("  Import Recent Footage\\n")]
+    if visible_import.count("导入工程... | file.importProject") != 1:
+        raise SystemExit("Duplicate project-import entries are visible in the Import menu.")
+    print("Verified the Import menu has one media entry and one unified project entry.")
+
+    timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V3" not in timeline or "let keyframe_enabled = selected_layer.is_some();" not in timeline:
+        raise SystemExit("The keyframe button still requires Project-panel footage selection.")
+    viewer = (root / "crates/ui-egui/src/panels/viewer.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_PROJECT_FILE_VIEWER_SELECTION_V3" not in viewer:
+        raise SystemExit("Composition viewer selection is not synchronized for direct keyframing.")
+    print("Verified viewer-selected layers can be keyed without Project-panel selection.")
+
+    assistant = (root / "crates/ui-egui/src/ai_assistant.rs").read_text(encoding="utf-8")
+    if "Sense::click_and_drag()" not in assistant or "bubble_drag_origin" not in assistant or "response.drag_delta()" not in assistant:
+        raise SystemExit("The floating AI assistant is missing its tap-and-drag interaction.")
+    print("Verified the floating AI assistant bubble supports tap and touch-drag.")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -149,6 +211,7 @@ def main() -> None:
     if not header.is_file():
         raise SystemExit(f"Generated EffectCraft header source is missing: {header}")
     ensure_dimensions_helper(header)
+    verify_android_project_interactions(root, header)
     memory_helper_count = top_level_function_count(header.read_text(encoding="utf-8"), "effectcraft_export_memory_ok")
     if memory_helper_count != 1:
         raise SystemExit(f"Expected one module-level effectcraft_export_memory_ok helper; found {memory_helper_count}.")
