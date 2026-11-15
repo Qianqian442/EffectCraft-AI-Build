@@ -61,28 +61,31 @@ def patch_header(root: Path) -> None:
     if MARKER in source:
         return
 
-    # The responsive Android header is installed earlier in the workflow and
-    # rebuilds show() around scroll_ui. Prefer that live insertion point so Undo/Redo
-    # remains inside the same horizontally scrollable toolbar; retain compatibility
-    # with the original upstream header for non-responsive builds.
-    if "    let x = tool_slots(app, scroll_ui, &p, x, cy);\\n" in source:
-        source = replace_once(
-            source,
-            "    let x = tool_slots(app, scroll_ui, &p, x, cy);\\n",
-            "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
-            "    let x = history_buttons(app, scroll_ui, &p, x, cy);\\n"
-            "    let x = tool_slots(app, scroll_ui, &p, x, cy);\\n",
-            "place touch Undo / Redo controls in the responsive toolbar",
+    # Locate the active UI variable from the actual header source. Other additive
+    # patches may wrap or rename the scroll-area child, so do not assume it is ui or
+    # scroll_ui. Insert directly before the existing tool-slot renderer.
+    import re
+    insertion_pattern = re.compile(
+        r'(?m)^(?P<indent>\\s*)let x = tool_slots\\(app, (?P<ui>[A-Za-z_][A-Za-z0-9_]*), &p, x, cy\\);$'
+    )
+    matches = list(insertion_pattern.finditer(source))
+    if MARKER in source:
+        pass
+    elif len(matches) != 1:
+        raise SystemExit(
+            "place touch Undo / Redo controls before the remaining toolbar tools: "
+            f"expected one tool_slots() call, found {len(matches)}"
         )
     else:
-        source = replace_once(
-            source,
-            "    let x = tool_slots(app, ui, &p, x, cy);\\n",
-            "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
-            "    let x = history_buttons(app, ui, &p, x, cy);\\n"
-            "    let x = tool_slots(app, ui, &p, x, cy);\\n",
-            "place touch Undo / Redo controls before the remaining toolbar tools",
+        match = matches[0]
+        indent = match.group("indent")
+        ui_name = match.group("ui")
+        replacement = (
+            f"{indent}// {MARKER}\\n"
+            f"{indent}let x = history_buttons(app, {ui_name}, &p, x, cy);\\n"
+            f"{indent}let x = tool_slots(app, {ui_name}, &p, x, cy);"
         )
+        source = source[:match.start()] + replacement + source[match.end():]
 
     helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them.\n"
     helper = r'''/// AM-style touch controls for the project's native edit history.
