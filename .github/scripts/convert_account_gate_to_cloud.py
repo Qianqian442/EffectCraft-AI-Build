@@ -490,21 +490,14 @@ fn safe_account_status(account: &AccountState) -> String {
 
     workspace_manifest = root / "Cargo.toml"
     workspace = workspace_manifest.read_text(encoding="utf-8")
-    if 'ureq = { version = "3.5", features = ["socks-proxy"] }' not in workspace:
-        if 'ureq = "3.5"' in workspace:
-            workspace = workspace.replace(
-                'ureq = "3.5"',
-                'ureq = { version = "3.5", features = ["socks-proxy"] }',
-                1,
-            )
-        else:
-            workspace = replace_once(
-                workspace,
-                'serde_json = { version = "1", features = ["float_roundtrip"] }\n',
-                'serde_json = { version = "1", features = ["float_roundtrip"] }\n'
-                'ureq = { version = "3.5", features = ["socks-proxy"] }\n',
-                "workspace ureq SOCKS5 dependency",
-            )
+    if 'ureq = "3.5"' not in workspace and 'ureq = { version = "3.5"' not in workspace:
+        workspace = replace_once(
+            workspace,
+            'serde_json = { version = "1", features = ["float_roundtrip"] }\n',
+            'serde_json = { version = "1", features = ["float_roundtrip"] }\n'
+            'ureq = "3.5"\n',
+            "direct workspace HTTPS dependency",
+        )
     if 'tungstenite = { version = "0.30"' not in workspace:
         workspace = replace_once(
             workspace,
