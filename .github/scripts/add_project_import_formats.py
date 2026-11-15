@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Relocate native Project import to the Project panel and group other project import formats."""
+"""Keep project formats in File > Import and preserve the native EffectCraft importer."""
 from __future__ import annotations
 
 import os
@@ -28,8 +28,8 @@ def main() -> None:
     end = start_match.end() + end_match.start()
     block = menu_source[start:end]
 
-    # Move the native EffectCraft Project entry to the Project panel's dedicated
-    # Import Project button. Keep the original command and all other import commands.
+    # Keep the native EffectCraft Project command in File > Import and expose
+    # the five requested format-specific import actions in the same menu.
     required_entries = [
         "    File... | file.import",
         "    Multiple Files... | file.importMultiple",
@@ -53,11 +53,13 @@ def main() -> None:
     File... | file.import
     Multiple Files... | file.importMultiple
     更多工程格式
-      导入电脑版AE工程... | file.importAepDesktop
-      导入手机版AE工程... | file.importAepMobilePackage
-      导入AM工程... | file.importAlightMotionProject
+      导入电脑版Ae工程... | file.importAepDesktop
+      导入手机版Ae工程... | file.importAepMobilePackage
+      导入am工程... | file.importAlightMotionProject
       导入NV工程... | file.importNodeVideoProject
-      导入CapCut工程... | file.importCapCutProject
+      导入capcut工程... | file.importCapCutProject
+      EffectCraft Project... | file.importProject
+      EffectCraft 手机版工程包... | file.importEffectCraftMobile
       Adobe Premiere Pro Project... | file.importTimeline
       After Effects Project... | file.importAep
     Placeholder... | file.importPlaceholder
@@ -76,16 +78,16 @@ def main() -> None:
     if "file_dialog_async" not in frontend_source:
         raise SystemExit("The original asynchronous file-picker pathway is missing")
 
-    # file.importProject remains registered and will be surfaced as a Project-panel button.
+    # The original native EffectCraft project action remains visible in File > Import.
     command_registry = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in command_registry:
         raise SystemExit("The native EffectCraft Project import command is not registered")
-    if "EffectCraft Project... | file.importProject" in menu_source:
-        raise SystemExit("The duplicate native Project menu entry is still visible")
+    if "EffectCraft Project... | file.importProject" not in menu_source:
+        raise SystemExit("The original native EffectCraft Project import entry is missing")
     if "更多工程格式" not in menu_source or "file.importAep" not in menu_source or "file.importTimeline" not in menu_source:
         raise SystemExit("The secondary project-format submenu is missing an original import command")
-    print("Moved the native Project import action to the Project panel; AE/Premiere imports remain available under More Project Formats.")
-    print("All original import commands remain registered; only the duplicate visible entry was relocated.")
+    print("Kept the native EffectCraft importer and five separate project-format imports in File > Import.")
+    print("All original non-project import commands remain available.")
 
 
 if __name__ == "__main__":
