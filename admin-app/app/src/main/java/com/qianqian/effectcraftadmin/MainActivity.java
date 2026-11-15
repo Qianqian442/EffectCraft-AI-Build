@@ -699,6 +699,7 @@ public final class MainActivity extends Activity {
         page.addView(logout, new LinearLayout.LayoutParams(-1, dp(46)));
         logout.setOnClickListener(v -> {
             adminToken = "";
+            setApkShareSessionVerified(false);
             getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
             showLogin();
         });
