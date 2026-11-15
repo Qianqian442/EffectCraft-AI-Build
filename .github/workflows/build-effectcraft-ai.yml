@@ -376,13 +376,6 @@ jobs:
           print("Embedded the supplied Ae avatar in the draggable AI bubble.")
           PY
 
-      - name: Enable full-screen AI assistant and keep touch buttons responsive
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/add_ai_assistant_fullscreen_drag.py
-          python3 build-assets/.github/scripts/add_ai_assistant_fullscreen_drag.py
-
       - name: Integrate the standalone DeepSeek AI plugin bridge into the host APK
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
