@@ -27,8 +27,12 @@ class PluginManagerActivity : Activity() {
     private lateinit var importButton: Button
     private val handler = Handler(Looper.getMainLooper())
     private val preferences by lazy { getSharedPreferences("deepseek_plugin", Context.MODE_PRIVATE) }
+    private val modelDirectory: File
+        get() = getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: filesDir
     private val modelFile: File
-        get() = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), MODEL_FILE)
+        get() = File(modelDirectory, MODEL_FILE)
+    private val previousModelFile: File
+        get() = File(modelDirectory, MODEL_FILE + ".previous")
     private val downloadManager by lazy { getSystemService(DownloadManager::class.java) }
     private val importExecutor = Executors.newSingleThreadExecutor()
     private var importingPackage = false
@@ -108,6 +112,9 @@ class PluginManagerActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Recover a previously verified model if Android stopped the app during replacement.
+        if (!modelFile.exists() && previousModelFile.isFile) previousModelFile.renameTo(modelFile)
+        else if (modelFile.exists() && previousModelFile.exists()) previousModelFile.delete()
         buildScreen()
         if (modelFile.isFile && modelFile.length() > MIN_MODEL_BYTES) {
             progressBar.progress = 100
@@ -199,7 +206,7 @@ class PluginManagerActivity : Activity() {
         progressBar.progress = 0
         statusText.text = "正在校验并导入 AI 模型包…"
         importExecutor.execute {
-            val tempFile = File(modelFile.parentFile ?: filesDir, MODEL_FILE + ".importing")
+            val tempFile = File(modelDirectory, MODEL_FILE + ".importing")
             try {
                 tempFile.parentFile?.mkdirs()
                 val digest = MessageDigest.getInstance("SHA-256")
@@ -279,7 +286,7 @@ class PluginManagerActivity : Activity() {
                 if (manifest == null || !modelFound || !tempFile.isFile || tempFile.length() < MIN_MODEL_BYTES) {
                     throw IllegalArgumentException("AI 模型包不完整，未找到有效的 DeepSeek 模型文件。")
                 }
-                val backupFile = File(modelFile.parentFile ?: filesDir, MODEL_FILE + ".previous")
+                val backupFile = previousModelFile
                 if (backupFile.exists() && !backupFile.delete()) {
                     throw IllegalStateException("无法清理上次导入留下的临时备份；旧模型未改动。")
                 }
