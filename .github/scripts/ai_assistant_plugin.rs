@@ -78,9 +78,13 @@ pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {
     poll_result(state, &ctx);
 
     let screen = ctx.content_rect();
+    // Keep the bubble as a pure tap target. Making the whole Area movable
+    // competes with egui's child click response on Android touch screens and can
+    // consume a tap as a drag start, leaving the avatar apparently unresponsive.
+    // The chat window itself remains movable below.
     egui::Area::new(Id::new("effectcraft-ai-bubble"))
         .order(Order::Foreground)
-        .movable(true)
+        .movable(false)
         .default_pos(pos2(
             (screen.max.x - 64.0).max(screen.min.x + 8.0),
             (screen.max.y - 92.0).max(screen.min.y + 8.0),
