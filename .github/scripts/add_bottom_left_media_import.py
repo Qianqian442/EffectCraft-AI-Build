@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 
-PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_FOOTER_IMPORT_V3"
+PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V4"
 FINISH_MARKER = "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V2"
 FIT_MARKER = "EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2"
 
@@ -22,31 +22,49 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def patch_project_panel_import_button(root: Path) -> None:
+    """Keep a full-size Import Media button visible beside the Project-panel search field."""
     path = root / "crates/ui-egui/src/panels/project.rs"
     source = path.read_text(encoding="utf-8")
-    if PROJECT_MARKER not in source:
-        anchor = "    let depth = app.session.project.settings.bit_depth.label();\n"
-        button = r'''    // EFFECTCRAFT_ANDROID_PROJECT_FOOTER_IMPORT_V3
-    // Use a clearly labelled, touch-sized control. On narrow panels keep a visible plus target
-    // rather than letting the import control overlap the Delete button or disappear off-screen.
-    let import_width = (foot.max.x - 30.0 - x - 4.0).clamp(22.0, 64.0);
-    let import_label = if import_width >= 52.0 { "导入素材" } else { "＋" };
-    let import_rect = Rect::from_min_size(pos2(x, foot.min.y + 3.0), vec2(import_width, 22.0));
+    if PROJECT_MARKER in source:
+        return
+    old = '''    // Search.
+    let sr = Rect::from_min_size(pos2(rect.min.x + 8.0, head.max.y + 2.0), vec2(rect.width() - 16.0, 22.0));
+    let mut q = app.ui.project_search.clone();
+    widgets::search_field(ui, sr, &mut q, crate::i18n::tr("Search project"), &t);
+    app.ui.project_search = q;
+    app.auto.add("project.search", sr, "Search");
+'''
+    new = r'''    // EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V4
+    // Keep Import Media visible even when the Project panel is narrow. A labeled
+    // touch target beside Search is easier to find than a tiny plus in the footer.
+    let import_width = (rect.width() - 80.0).clamp(56.0, 72.0);
+    let import_rect = Rect::from_min_size(
+        pos2(rect.max.x - 8.0 - import_width, head.max.y + 2.0),
+        vec2(import_width, 22.0),
+    );
+    let search_width = (rect.width() - 16.0 - import_width - 6.0).max(40.0);
+    let sr = Rect::from_min_size(
+        pos2(rect.min.x + 8.0, head.max.y + 2.0),
+        vec2(search_width, 22.0),
+    );
+    let mut q = app.ui.project_search.clone();
+    widgets::search_field(ui, sr, &mut q, crate::i18n::tr("Search project"), &t);
+    app.ui.project_search = q;
+    app.auto.add("project.search", sr, "Search");
     let import_response = ui
-        .put(import_rect, egui::Button::new(import_label).min_size(vec2(import_width, 22.0)))
+        .put(import_rect, egui::Button::new("导入素材").min_size(import_rect.size()))
         .on_hover_text(crate::i18n::tr("Import pictures and videos"));
-    app.auto.add_response("project.importMedia", &import_response, "导入图片和视频");
+    app.auto.add_response("project.importMedia", &import_response, "导入素材");
     if import_response.clicked()
         && let Err(error) = crate::menus::invoke(app, &ctx, "file.import", json!({}))
     {
         app.ui.status = error;
     }
-    x += import_width + 4.0;
 '''
-        source = replace_once(source, anchor, button + anchor, "Project panel media import button")
-        if PROJECT_MARKER not in source:
-            raise SystemExit("Project panel media import marker was not installed")
-        path.write_text(source, encoding="utf-8")
+    source = replace_once(source, old, new, "Visible Project-panel Import Media button")
+    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V4" not in source:
+        raise SystemExit("Project-panel header import marker was not installed")
+    path.write_text(source, encoding="utf-8")
 
 
 def patch_file_import_auto_add(root: Path) -> None:
