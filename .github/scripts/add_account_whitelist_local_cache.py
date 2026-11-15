@@ -384,10 +384,14 @@ fn identifier_digest(kind: &str, value: &str) -> String {
     ui_path = root / "crates/ui-egui/Cargo.toml"
     ui = ui_path.read_text(encoding="utf-8")
     if 'sha2 = { workspace = true }' not in ui:
-        anchor = 'serde_json = { workspace = true }\\n'
-        if ui.count(anchor) != 1:
-            raise SystemExit("Cannot add sha2 UI dependency: serde_json anchor not unique")
-        ui_path.write_text(ui.replace(anchor, anchor + 'sha2 = { workspace = true }\\n', 1), encoding="utf-8")
+        # serde_json also appears under [build-dependencies] in this crate.
+        # Add sha2 specifically to the normal [dependencies] table.
+        dependency_header = "[dependencies]\\n"
+        if ui.count(dependency_header) != 1:
+            raise SystemExit("Cannot add sha2 UI dependency: [dependencies] table is not unique")
+        insertion = ui.index(dependency_header) + len(dependency_header)
+        ui = ui[:insertion] + 'sha2 = { workspace = true }\\n' + ui[insertion:]
+        ui_path.write_text(ui, encoding="utf-8")
 
     print("Added local hashed QQ/WeChat whitelist checks, local startup refresh and offline-persisted ban state.")
     print("Cloudflare remains authoritative and still checks registration, login, session and profile requests.")
