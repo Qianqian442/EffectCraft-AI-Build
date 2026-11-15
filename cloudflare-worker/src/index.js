@@ -469,11 +469,15 @@ async function adminBan(request, env, id) {
     await env.DB.prepare("UPDATE accounts SET banned_until = NULL, ban_reason = '' WHERE id = ?").bind(id).run();
     status = "unbanned";
   } else {
-    const timestamp = Date.parse(String(until));
     const reason = String(body.reason || "").trim();
-    if (!Number.isFinite(timestamp) || timestamp <= Date.now()) return fail(422, "封禁时间必须晚于当前时间");
     if (!reason || reason.length > 200) return fail(422, "请填写封禁原因（最多200字）");
-    bannedUntil = new Date(timestamp).toISOString();
+    if (String(until).toUpperCase() === "PERMANENT") {
+      bannedUntil = "PERMANENT";
+    } else {
+      const timestamp = Date.parse(String(until));
+      if (!Number.isFinite(timestamp) || timestamp <= Date.now()) return fail(422, "封禁时间必须晚于当前时间");
+      bannedUntil = new Date(timestamp).toISOString();
+    }
     await env.DB.prepare("UPDATE accounts SET banned_until = ?, ban_reason = ? WHERE id = ?")
       .bind(bannedUntil, reason, id).run();
     status = "banned";
