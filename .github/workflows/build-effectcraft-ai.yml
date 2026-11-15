@@ -881,9 +881,21 @@ jobs:
           # Confirm the builder generated the Android startup auto-loader into the APK's Rust launcher.
           LAUNCHER_SRC="source/effectcraft/apps/effectcraft-android/src/lib.rs"
           test -s "$LAUNCHER_SRC"
-          P2P_ACTIVITY="source/effectcraft/apps/effectcraft-android/java/com/artcraft/effectcraft/EffectCraftActivity.java"
-          test -s "$P2P_ACTIVITY"
-          grep -Fq "NativeP2P.start(this)" "$P2P_ACTIVITY"
+          P2P_ACTIVITY_DIR="source/effectcraft/apps/effectcraft-android/java/com/artcraft/effectcraft"
+          test -s "$P2P_ACTIVITY_DIR/NativeP2P.java"
+          P2P_ACTIVITY_FOUND=false
+          for ACTIVITY in "$P2P_ACTIVITY_DIR"/*Activity.java; do
+            [[ -f "$ACTIVITY" ]] || continue
+            if grep -Fq "extends NativeActivity" "$ACTIVITY" && grep -Fq "NativeP2P.start(this)" "$ACTIVITY"; then
+              P2P_ACTIVITY_FOUND=true
+              echo "Verified P2P startup in generated Activity: $ACTIVITY"
+              break
+            fi
+          done
+          if [[ "$P2P_ACTIVITY_FOUND" != true ]]; then
+            echo "NativeP2P startup call is missing from every generated NativeActivity." >&2
+            exit 1
+          fi
           # The builder stores jniLibs in its generated Android template directory,
           # not under apps/effectcraft-android. Verify the actual packaged .so below.
           echo "Verified the main EffectCraft Android launcher starts the native P2P transport."
