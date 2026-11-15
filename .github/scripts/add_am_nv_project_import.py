@@ -170,7 +170,7 @@ def main() -> None:
         raise SystemExit("The unified AEP import is not guarded against silent loss")
     print("Unified Import Project AEP/AEPX picks now use the same dry-run and user loss-confirmation dialog.")
     print("Installed Alight Motion XML, NodeVideo .nv, CapCut draft_content.json and ZIP project import.")
-    print("The existing EffectCraft Project import control now routes .aep/.aepx, .nv/.zip, AM XML and CapCut JSON; the dedicated AE menu stays available.")
+    print("The single Import Project control now routes .ecproj/.ecprojx, .aep/.aepx, .nv/.zip, AM XML and CapCut JSON.")
     print("Unsupported effects, 3D conversions and missing media are reported to the user.")
 
 
