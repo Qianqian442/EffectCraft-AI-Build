@@ -326,11 +326,9 @@ fn identifier_digest(kind: &str, value: &str) -> String {
 
     source = replace_once(
         source,
-        '''            ui.separator();
-            ui.horizontal(|ui| {
+        '''            ui.horizontal(|ui| {
                 if ui.selectable_label(!app.account.login_mode_register, "登录").clicked() {''',
-        '''            ui.separator();
-            if app.account.whitelist_ready {
+        '''            if app.account.whitelist_ready {
                 ui.label(format!(
                     "本机白名单已下载：QQ {} 条，微信 {} 条",
                     app.account.whitelist.qq_hashes.len(),
@@ -345,8 +343,10 @@ fn identifier_digest(kind: &str, value: &str) -> String {
     )
     source = replace_once(
         source,
-        "            let busy = app.account.pending.is_some();",
-        "            let busy = app.account.pending.is_some() || !app.account.whitelist_ready;",
+        '''            ui.add_space(8.0);
+            let busy = app.account.pending.is_some();''',
+        '''            ui.add_space(8.0);
+            let busy = app.account.pending.is_some() || !app.account.whitelist_ready;''',
         "disable submit until whitelist is ready",
     )
     source = replace_once(
