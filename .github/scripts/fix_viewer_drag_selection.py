@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 
-MARKER = "EFFECTCRAFT_ANDROID_PROJECT_FILE_VIEWER_SELECTION_V2"
+MARKER = "EFFECTCRAFT_ANDROID_PROJECT_FILE_VIEWER_SELECTION_V3"
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -105,7 +105,18 @@ fn sync_project_selection_from_viewer(app: &mut EffectcraftApp) {
     } else {
         Vec::new()
     };
+    let selected_props = if let Some(comp) = app.session.active_comp() {
+        selected_layers.iter().filter_map(|layer_id| {
+            comp.layer(*layer_id)
+                .and_then(|layer| layer.props.group("transform"))
+                .and_then(|transform| transform.get("position"))
+                .map(|position| (*layer_id, position.uid))
+        }).collect()
+    } else {
+        Vec::new()
+    };
     app.session.state.project_selection = items;
+    app.session.state.selected_props = selected_props;
 }
 
 /// A completed click selects the topmost visible layer and its source file.
