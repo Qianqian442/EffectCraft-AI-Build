@@ -182,7 +182,7 @@ def patch_build_common(builder: Path) -> None:
     block = replace_once(
         block,
         "            rfd::artcraft_saf::Kind::Open { multiple } => { launcher_bridge.request_open(id, multiple).ok(); }\n",
-        "            rfd::artcraft_saf::Kind::Open { multiple } => { launcher_bridge.request_open(id, multiple).ok(); }\n            // EFFECTCRAFT_RFD_IMAGE_PICKER_V1\n            rfd::artcraft_saf::Kind::Image => { launcher_bridge.request_image(id).ok(); }\n",
+        "            rfd::artcraft_saf::Kind::Open { multiple } => { launcher_bridge.request_open(id, multiple).ok(); }\n            // EFFECTCRAFT_RFD_IMAGE_PICKER_V1\n            rfd::artcraft_saf::Kind::Image => {\n                if let Err(error) = launcher_bridge.request_image(id) {\n                    log::error!(\"Could not start the Android image picker: {error}\");\n                    // Wake the waiting account UI instead of leaving its button disabled forever.\n                    rfd::artcraft_saf::deliver(id, None);\n                }\n            }\n",
         "async RFD image picker route",
     )
     block = replace_once(
@@ -344,17 +344,17 @@ fn encode_avatar_file(path: &std::path::Path) -> Result<(String, String), String
                     ui.text_edit_singleline(&mut app.account.edit_avatar);
 '''
     profile_new = r'''                    ui.label("头像（可选）");
-                    ui.horizontal(|ui| {
-                        let busy = app.account.avatar_picker_pending.is_some();
-                        if ui.add_enabled(!busy, egui::Button::new(if app.account.edit_avatar.is_empty() { "从相册选择头像" } else { "从相册更换头像" })).clicked() {
-                            app.account.start_avatar_picker(AvatarTarget::Profile);
-                        }
-                        if !app.account.edit_avatar.is_empty() && ui.button("移除头像").clicked() {
-                            app.account.edit_avatar.clear();
-                            app.account.avatar_picker_status = "已移除头像".to_string();
-                        }
-                    });
-                    if !app.account.avatar_picker_status.is_empty() {
+                    let busy = app.account.avatar_picker_pending.is_some();
+                    if ui.add_enabled(!busy, egui::Button::new(if app.account.edit_avatar.is_empty() { "从相册选择头像" } else { "从相册更换头像" }).min_size(vec2(ui.available_width(), 44.0))).clicked() {
+                        app.account.start_avatar_picker(AvatarTarget::Profile);
+                    }
+                    if !app.account.edit_avatar.is_empty() && ui.button("移除头像").clicked() {
+                        app.account.edit_avatar.clear();
+                        app.account.avatar_picker_status = "已移除头像".to_string();
+                    }
+                    if busy {
+                        ui.horizontal(|ui| { ui.spinner(); ui.small("正在打开手机相册…"); });
+                    } else if !app.account.avatar_picker_status.is_empty() {
                         ui.small(&app.account.avatar_picker_status);
                     }
 '''
@@ -364,17 +364,17 @@ fn encode_avatar_file(path: &std::path::Path) -> Result<(String, String), String
                 ui.text_edit_singleline(&mut app.account.avatar_url);
 '''
     register_new = r'''                ui.label("头像（可选）");
-                ui.horizontal(|ui| {
-                    let busy = app.account.avatar_picker_pending.is_some();
-                    if ui.add_enabled(!busy, egui::Button::new(if app.account.avatar_url.is_empty() { "从相册选择头像" } else { "从相册更换头像" })).clicked() {
-                        app.account.start_avatar_picker(AvatarTarget::Register);
-                    }
-                    if !app.account.avatar_url.is_empty() && ui.button("移除头像").clicked() {
-                        app.account.avatar_url.clear();
-                        app.account.avatar_picker_status = "已移除头像".to_string();
-                    }
-                });
-                if !app.account.avatar_picker_status.is_empty() {
+                let busy = app.account.avatar_picker_pending.is_some();
+                if ui.add_enabled(!busy, egui::Button::new(if app.account.avatar_url.is_empty() { "从相册选择头像" } else { "从相册更换头像" }).min_size(vec2(ui.available_width(), 44.0))).clicked() {
+                    app.account.start_avatar_picker(AvatarTarget::Register);
+                }
+                if !app.account.avatar_url.is_empty() && ui.button("移除头像").clicked() {
+                    app.account.avatar_url.clear();
+                    app.account.avatar_picker_status = "已移除头像".to_string();
+                }
+                if busy {
+                    ui.horizontal(|ui| { ui.spinner(); ui.small("正在打开手机相册…"); });
+                } else if !app.account.avatar_picker_status.is_empty() {
                     ui.small(&app.account.avatar_picker_status);
                 }
 '''
