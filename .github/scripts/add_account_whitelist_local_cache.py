@@ -25,7 +25,7 @@ def main() -> None:
     source = replace_once(
         source,
         "use serde_json::{Value, json};",
-        "use serde_json::{Value, json};\nuse sha2::{Digest, Sha256};\nuse chrono::{DateTime, Utc};",
+        "use serde_json::{Value, json};\nuse sha2::{Digest, Sha256};\nuse chrono::DateTime;",
         "whitelist hashing and ban countdown imports",
     )
     source = replace_once(source, "    Profile,\n}", "    Profile,\n    Whitelist,\n}", "add whitelist fetch action")
@@ -138,7 +138,12 @@ fn identifier_digest(kind: &str, value: &str) -> String {
     fn ban_countdown_label(&self) -> String {
         match DateTime::parse_from_rfc3339(&self.banned_until) {
             Ok(until) => {
-                let seconds = (until.with_timezone(&Utc) - Utc::now()).num_seconds().max(0);
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs()
+                    .min(i64::MAX as u64) as i64;
+                let seconds = (until.timestamp() - now).max(0);
                 if seconds == 0 {
                     "封禁截止时间已到；需要联网核验管理员是否已解封。".to_string()
                 } else {
