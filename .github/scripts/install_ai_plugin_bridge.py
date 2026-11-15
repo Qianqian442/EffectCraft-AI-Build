@@ -55,21 +55,27 @@ pub fn init_android_ai_bridge(vm_ptr: *mut std::ffi::c_void) {
 }
 """
         c += init_bridge
-    # Keep toolbar routing independent from the VM-init marker. Older patch revisions
-    # could leave the VM initializer present while omitting this function, which breaks UI compilation.
-    if "pub(crate) fn open_ai_plugin_import_from_toolbar" not in c:
-        toolbar_bridge = """
+    # Keep Android routing and the desktop validation stub independent. A prior
+    # Android-only definition must not suppress the non-Android function: the
+    # toolbar references the crate-root symbol on every target.
+    android_toolbar = """#[cfg(target_os = "android")]
+pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {"""
+    desktop_toolbar = """#[cfg(not(target_os = "android"))]
+pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {"""
+    if android_toolbar not in c:
+        c += """
 #[cfg(target_os = "android")]
 pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {
     ai_assistant::open_ai_plugin_import()
 }
-
+"""
+    if desktop_toolbar not in c:
+        c += """
 #[cfg(not(target_os = "android"))]
 pub(crate) fn open_ai_plugin_import_from_toolbar() -> Result<(), String> {
     Err("请在 Android 版 EffectCraft 中导入 AI 插件。".into())
 }
 """
-        c += toolbar_bridge
     lib.write_text(c, encoding="utf-8")
 
     app_source = ui / "src/app.rs"
