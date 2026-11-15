@@ -12,10 +12,12 @@ CFLAGS="-O2 -g -Wall -Wextra -Werror -fPIE"
 "$CC" -shared -fPIC -O2 -g -Wall -Wextra -Werror -DEFFECTCRAFT_HOST_TEST \
   "$ROOT/../src/effectcraft_exec_bridge.c" -o "$WORK/libeffectcraft-exec.so"
 
-OUT="$(EFFECTCRAFT_RUNTIME_ROOT="$WORK/runtime" EFFECTCRAFT_TEST_LINKER="$WORK/linker-stub" \
-  LD_PRELOAD="$WORK/libeffectcraft-exec.so" "$WORK/exec-parent" "$WORK/runtime/exec-child")"
-grep -Fq "EFFECTCRAFT_EXEC_BRIDGE_CHILD_OK" <<<"$OUT"
-echo "EffectCraft exec bridge host test passed: private native ELF routed through linker shim; argv preserved."
+for mode in execve execveat fexecve; do
+  OUT="$(EFFECTCRAFT_RUNTIME_ROOT="$WORK/runtime" EFFECTCRAFT_TEST_LINKER="$WORK/linker-stub" \
+    LD_PRELOAD="$WORK/libeffectcraft-exec.so" "$WORK/exec-parent" "$WORK/runtime/exec-child" "$mode")"
+  grep -Fq "EFFECTCRAFT_EXEC_BRIDGE_CHILD_OK" <<<"$OUT"
+  echo "EffectCraft exec bridge $mode host test passed: private native ELF routed through linker shim; argv preserved."
+done
 
-env -u LD_PRELOAD "$WORK/exec-parent" /bin/true >/dev/null 2>&1
+env -u LD_PRELOAD "$WORK/exec-parent" /bin/true execve >/dev/null 2>&1
 echo "EffectCraft exec bridge host tests completed."
