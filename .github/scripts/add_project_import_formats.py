@@ -16,28 +16,33 @@ def main() -> None:
     menu_source = menu.read_text(encoding="utf-8")
     frontend_source = frontend.read_text(encoding="utf-8")
 
-    # One visible project-import command handles EffectCraft, AE, AM, NodeVideo and CapCut.
-    # The separate AE and Premiere-specific menu entries caused a crowded, duplicate-looking
-    # import menu. The underlying commands remain registered for internal/compatibility use.
-    project_item = "EffectCraft Project... | file.importProject"
-    unified_item = "导入工程... | file.importProject"
-    if project_item not in menu_source and unified_item not in menu_source:
+    # Keep the two everyday actions visible and group less-used import commands.
+    # AE, AM, NodeVideo and CapCut formats are handled by the one unified Project picker.
+    import_start = menu_source.find("  Import\\n")
+    import_end = menu_source.find("  Import Recent Footage\\n", import_start)
+    if import_start < 0 or import_end < 0:
+        raise SystemExit("Could not locate the original File > Import menu block")
+    import_block = menu_source[import_start:import_end]
+    if "EffectCraft Project... | file.importProject" not in import_block and "导入工程... | file.importProject" not in import_block:
         raise SystemExit("The original EffectCraft Project import command was not found")
-    if project_item in menu_source:
-        menu_source = menu_source.replace(project_item, unified_item)
 
-    menu_source = menu_source.replace("    After Effects Project... | file.importAep\n", "")
-    menu_source = menu_source.replace("    Adobe Premiere Pro Project... | file.importTimeline\n", "")
-
-    # There must be exactly one visible project import entry, regardless of platform menu block.
-    visible_project_entries = [
-        line for line in menu_source.splitlines()
-        if "file.importProject" in line or "file.importAep" in line or "file.importTimeline" in line
-    ]
-    if sum("file.importProject" in line for line in visible_project_entries) < 1:
-        raise SystemExit("Unified Import Project menu item was lost")
-    if any("file.importAep" in line or "file.importTimeline" in line for line in visible_project_entries):
-        raise SystemExit("A duplicate AE/Premiere project import menu item remains")
+    unified_block = """  Import
+    导入素材... | file.import
+    导入工程... | file.importProject
+    更多导入类型
+      Multiple Files... | file.importMultiple
+      Placeholder... | file.importPlaceholder
+      Solid... | file.importSolid
+      Lottie... | file.importLottie
+      Vanishing Point (.vpe)... | file.importVanishingPoint
+      Essential Graphics Template... | essential.importTemplate
+"""
+    menu_source = menu_source[:import_start] + unified_block + menu_source[import_end:]
+    import_block = menu_source[import_start:import_start + len(unified_block)]
+    if import_block.count("导入工程... | file.importProject") != 1:
+        raise SystemExit("The unified project importer must appear exactly once in the Import menu")
+    if "file.importAep" in import_block or "file.importTimeline" in import_block:
+        raise SystemExit("A duplicate AE/Premiere project import entry remains in the visible Import menu")
 
     required_picker = '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx"])),'
     if required_picker not in frontend_source:
