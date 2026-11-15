@@ -60,6 +60,13 @@ def main() -> None:
     source = replace_once(source, old_app, new_app, "Android application display label")
     generator.write_text(source, encoding="utf-8")
 
+    # Update visible About text only; keep internal crate names and package identifiers intact.
+    header_path = effectcraft / "crates/ui-egui/src/header.rs"
+    if header_path.is_file():
+        header_source = header_path.read_text(encoding="utf-8")
+        header_source = header_source.replace('"About EffectCraft"', '"About Ae"')
+        header_path.write_text(header_source, encoding="utf-8")
+
     if PACKAGE_ID not in generator.read_text(encoding="utf-8") and PACKAGE_ID not in manifest:
         # The package ID is verified again against the built APK; do not rewrite it here.
         print(f"Note: applicationId is configured by the builder; it will be verified as {PACKAGE_ID}.")
