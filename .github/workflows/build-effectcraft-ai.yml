@@ -26,8 +26,6 @@ on:
       - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/integrate_p2p_bridge.py'
-      - '.github/scripts/integrate_apk_share_bridge.py'
-      - 'apk-share-bridge/**'
       - 'admin-app/app/src/main/**'
       - 'p2p-bridge/**'
       - '.github/scripts/add_project_import_formats.py'
@@ -90,7 +88,6 @@ jobs:
             .github/scripts/add_account_avatar_picker.py \
             .github/scripts/add_account_whitelist_local_cache.py \
             .github/scripts/integrate_p2p_bridge.py \
-            .github/scripts/integrate_apk_share_bridge.py \
             .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/patch_gradle_maven_mirrors.py \
             .github/scripts/install_ai_plugin_bridge.py \
@@ -245,18 +242,6 @@ jobs:
           grep -Fq 'EFFECTCRAFT_PUBLIC_P2P_NATIVE_AFTER_LAUNCHER_V1' "$ARTCRAFT_DIR/lib/build-common.sh"
           test -s "$EFFECTCRAFT_DIR/p2p-bridge/android/NativeP2P.java"
           echo "Verified P2P bridge is wired into the generated EffectCraft Activity and native build."
-
-      - name: Integrate administrator-authorized QQ APK sharing
-        env:
-          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
-          BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
-        run: |
-          set -euo pipefail
-          python3 -m py_compile build-assets/.github/scripts/integrate_apk_share_bridge.py
-          python3 build-assets/.github/scripts/integrate_apk_share_bridge.py
-          grep -Fq 'EFFECTCRAFT_APK_SHARE_BRIDGE_V1' "$ARTCRAFT_DIR/lib/build-common.sh"
-          test -s "$ARTCRAFT_DIR/templates/android/ApkShareProvider.java"
-          echo "Verified the QQ-only, admin-authorized APK provider is wired into Android generation."
 
       - name: Apply the AI assistant and export changes
         env:
