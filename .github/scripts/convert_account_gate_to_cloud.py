@@ -403,21 +403,38 @@ fn safe_account_status(account: &AccountState) -> String {
         .timeout_global(Some(Duration::from_secs(15)))
         .build()
         .into();
-    let mut request = if method == "GET" {
-        agent.get(&endpoint)
-    } else {
-        agent.post(&endpoint)
-    };
-    request = request.header("Accept", "application/json");
-    if let Some(token) = token {
-        request = request.header("Authorization", &format!("Bearer {token}"));
-    }
-    let mut response = if body.is_null() {
-        request.call()
+    let authorization = token.map(|value| format!("Bearer {value}"));
+    let response_result = if body.is_null() {
+        if method == "GET" {
+            let mut request = agent.get(&endpoint).header("Accept", "application/json");
+            if let Some(value) = authorization.as_deref() {
+                request = request.header("Authorization", value);
+            }
+            request.call()
+        } else {
+            let mut request = agent.post(&endpoint).header("Accept", "application/json");
+            if let Some(value) = authorization.as_deref() {
+                request = request.header("Authorization", value);
+            }
+            request.send_empty()
+        }
     } else {
         let bytes = serde_json::to_vec(&body).map_err(|error| error.to_string())?;
-        request.header("Content-Type", "application/json").send(bytes.as_slice())
-    }.map_err(|error| {
+        if method == "GET" {
+            let mut request = agent.get(&endpoint).force_send_body().header("Accept", "application/json");
+            if let Some(value) = authorization.as_deref() {
+                request = request.header("Authorization", value);
+            }
+            request.header("Content-Type", "application/json").send(bytes.as_slice())
+        } else {
+            let mut request = agent.post(&endpoint).header("Accept", "application/json");
+            if let Some(value) = authorization.as_deref() {
+                request = request.header("Authorization", value);
+            }
+            request.header("Content-Type", "application/json").send(bytes.as_slice())
+        }
+    };
+    let mut response = response_result.map_err(|error| {
         let detail = error.to_string().to_ascii_lowercase();
         if detail.contains("timeout") || detail.contains("timed out") {
             "连接云端账号服务器超时，请检查网络后重试".to_string()
