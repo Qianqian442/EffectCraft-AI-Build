@@ -834,9 +834,10 @@ public final class MainActivity extends Activity {
         String wechat = user.optString("wechat", "");
         String until = user.optString("banned_until", "");
         boolean banned = !until.isEmpty() && !until.equals("null");
+        boolean permanent = "9999-12-31T23:59:59.999Z".equals(until);
+
         LinearLayout row = new LinearLayout(this);
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setOrientation(LinearLayout.VERTICAL);
         row.setPadding(dp(10), dp(9), dp(8), dp(9));
         row.setBackground(rounded(Color.WHITE));
         row.setTag(id);
@@ -844,20 +845,25 @@ public final class MainActivity extends Activity {
         rp.bottomMargin = dp(8);
         rows.addView(row, rp);
 
+        LinearLayout identity = new LinearLayout(this);
+        identity.setOrientation(LinearLayout.HORIZONTAL);
+        identity.setGravity(Gravity.CENTER_VERTICAL);
+        row.addView(identity, new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT));
+
         String avatarUrl = user.optString("avatar_url", "");
         if (!avatarUrl.isEmpty()) {
             ImageView avatar = new ImageView(this);
             avatar.setScaleType(ImageView.ScaleType.CENTER_CROP);
             avatar.setBackground(rounded(Color.rgb(66, 105, 180)));
             avatar.setClipToOutline(true);
-            row.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+            identity.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
             loadAvatar(avatar, avatarUrl);
         } else {
             TextView avatar = text(name.isEmpty() ? "?" : name.substring(0, 1), 20, true);
             avatar.setGravity(Gravity.CENTER);
             avatar.setTextColor(Color.WHITE);
             avatar.setBackground(rounded(Color.rgb(66, 105, 180)));
-            row.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
+            identity.addView(avatar, new LinearLayout.LayoutParams(dp(46), dp(46)));
         }
 
         LinearLayout info = new LinearLayout(this);
@@ -869,37 +875,38 @@ public final class MainActivity extends Activity {
         info.addView(label);
         info.addView(ids);
         if (banned) {
-            TextView ban = text("封禁至 " + until, 10, true);
+            TextView ban = text(permanent ? "永久封禁" : "封禁至 " + until, 10, true);
             ban.setTextColor(Color.rgb(180, 58, 58));
             info.addView(ban);
         }
-        row.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
+        identity.addView(info, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
-        // Keep both actions visible for every account. Reapplying a ban is allowed
-        // so the administrator can extend or change its expiry; unban is disabled
-        // only when the account is not currently banned.
         LinearLayout actions = new LinearLayout(this);
         actions.setOrientation(LinearLayout.HORIZONTAL);
         actions.setGravity(Gravity.CENTER_VERTICAL);
+        LinearLayout.LayoutParams actionsParams = new LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT);
+        actionsParams.topMargin = dp(8);
+        row.addView(actions, actionsParams);
 
         Button banButton = button("封禁");
+        Button permanentButton = button("永久封号");
         Button unbanButton = button("解禁");
+        Button deleteButton = button("删除账号");
         unbanButton.setEnabled(banned);
+        deleteButton.setEnabled(permanent);
 
-        LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, dp(42)
-        );
-        actionParams.leftMargin = dp(3);
-        actionParams.rightMargin = dp(3);
-        actions.addView(banButton, actionParams);
-        actions.addView(unbanButton, actionParams);
-        row.addView(actions, new LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-        ));
+        for (Button action : new Button[]{banButton, permanentButton, unbanButton, deleteButton}) {
+            LinearLayout.LayoutParams actionParams = new LinearLayout.LayoutParams(0, dp(42), 1.0f);
+            actionParams.leftMargin = dp(2);
+            actionParams.rightMargin = dp(2);
+            actions.addView(action, actionParams);
+        }
 
         row.setOnClickListener(v -> showUserDetails(user));
         banButton.setOnClickListener(v -> chooseBan(id));
+        permanentButton.setOnClickListener(v -> permanentBan(id));
         unbanButton.setOnClickListener(v -> unban(id));
+        deleteButton.setOnClickListener(v -> deleteAccount(id));
     }
 
     private void loadAvatar(ImageView view, String uri) {
@@ -991,6 +998,57 @@ public final class MainActivity extends Activity {
                         }
                     });
                 }).show();
+    }
+
+    private void permanentBan(String id) {
+        EditText reason = new EditText(this);
+        reason.setHint("填写永久封号原因（必填）");
+        reason.setMinLines(2);
+        reason.setGravity(Gravity.TOP);
+        new AlertDialog.Builder(this).setTitle("永久封号")
+                .setMessage("该账号将永久无法登录。只有执行永久封号后，才允许继续删除账号资料。")
+                .setView(reason)
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认永久封号", (dialog, which) -> {
+                    String why = reason.getText().toString().trim();
+                    if (why.isEmpty()) { toast("请填写永久封号原因"); return; }
+                    JSONObject body = new JSONObject();
+                    try {
+                        body.put("banned_until", "9999-12-31T23:59:59.999Z");
+                        body.put("reason", why);
+                    } catch (Exception ignored) {}
+                    requestAsync("POST", "/v1/admin/users/" + id + "/ban", body, true, result -> {
+                        if (result != null) {
+                            toast("已永久封号；如需删除资料，请再点击“删除账号”");
+                            updateVisibleUser(result.optJSONObject("user"));
+                        }
+                    });
+                }).show();
+    }
+
+    private void deleteAccount(String id) {
+        new AlertDialog.Builder(this).setTitle("删除永久封禁账号")
+                .setMessage("将删除姓名、头像、密码和账号资料。系统只保留 QQ/微信标识的不可逆封禁哈希，防止再次注册。此操作不能撤销。")
+                .setNegativeButton("取消", null)
+                .setPositiveButton("确认删除账号", (dialog, which) -> {
+                    requestAsync("POST", "/v1/admin/users/" + id + "/delete", new JSONObject(), true, result -> {
+                        if (result != null && result.optBoolean("deleted")) {
+                            removeVisibleUser(id);
+                            toast("账号资料已删除，原 QQ/微信标识仍被永久禁止注册");
+                        }
+                    });
+                }).show();
+    }
+
+    private void removeVisibleUser(String id) {
+        if (rows == null) return;
+        for (int i = 0; i < rows.getChildCount(); i++) {
+            View child = rows.getChildAt(i);
+            if (id.equals(child.getTag())) {
+                rows.removeViewAt(i);
+                return;
+            }
+        }
     }
 
     private void unban(String id) {
