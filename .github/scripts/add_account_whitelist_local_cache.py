@@ -278,7 +278,8 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                     self.banned_until.clear();
                     self.permanently_banned = false;
                     self.ban_reason.clear();
-                    self.status = "账号已删除或登录已失效；可以重新登录，或在白名单允许时重新注册。".to_string();
+                    self.status = "账号已删除或登录已失效；正在更新白名单，完成后可以重新注册。".to_string();
+                    self.send(Action::Whitelist, "GET", "/v1/whitelist", Value::Null, config);
                 } else if matches!(action, Action::Verify) {
                     self.mode = Mode::Unavailable;
                 }
