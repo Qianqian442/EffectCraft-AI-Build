@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -20,23 +21,235 @@ def patch_default_language(root: Path) -> None:
     source = path.read_text(encoding="utf-8")
     old = '    language: String = "system".into(),'
     new = '    language: String = "zh-hans".into(),'
-    path.write_text(replace_once(source, old, new, "Simplified Chinese default"), encoding="utf-8")
+    if new not in source:
+        source = replace_once(source, old, new, "Simplified Chinese default")
+        path.write_text(source, encoding="utf-8")
 
-    # Existing installations may retain a saved "system" preference. On Android, that
-    # fallback resolves to Simplified Chinese; explicit language choices remain untouched.
+    # Android builds always use the Simplified Chinese catalog, including existing
+    # installations whose saved preference was English or "Match System".
     language_path = root / "crates/ui-egui/src/i18n.rs"
     language_source = language_path.read_text(encoding="utf-8")
-    old_system = '        "system" => system_language(),'
-    new_system = '''        "system" => {
-            #[cfg(target_os = "android")]
-            { "zh-hans" }
-            #[cfg(not(target_os = "android"))]
-            { system_language() }
-        },'''
-    language_path.write_text(
-        replace_once(language_source, old_system, new_system, "Android Simplified Chinese runtime default"),
-        encoding="utf-8",
+    marker = "EFFECTCRAFT_ANDROID_FORCE_SIMPLIFIED_CHINESE_V1"
+    if marker not in language_source:
+        old_function = '''pub(crate) fn language(app: &EffectcraftApp) -> &'static str {
+    match app.session.prefs.general.language.as_str() {
+        "system" => system_language(),
+        stored => code(stored),
+    }
+}'''
+        new_function = '''// EFFECTCRAFT_ANDROID_FORCE_SIMPLIFIED_CHINESE_V1
+pub(crate) fn language(app: &EffectcraftApp) -> &'static str {
+    #[cfg(target_os = "android")]
+    {
+        let _ = app;
+        "zh-hans"
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        match app.session.prefs.general.language.as_str() {
+            "system" => system_language(),
+            stored => code(stored),
+        }
+    }
+}'''
+        language_source = replace_once(
+            language_source, old_function, new_function,
+            "Android Simplified Chinese-only interface",
+        )
+        language_path.write_text(language_source, encoding="utf-8")
+
+
+def translate_effect_label(value: str) -> str:
+    exact = {
+        "Cryptomatte": "加密遮罩",
+        "EXtractoR": "多通道提取器",
+        "IDentifier": "通道标识器",
+        "Unmult": "取消预乘",
+        "Key Light": "色键抠像",
+        "Lumetri 颜色": "电影调色",
+        "Cineon 转换器": "电影胶片转换器",
+        "Mocha 形状": "跟踪形状",
+    }
+    if value in exact:
+        return exact[value]
+    value = re.sub(r"^CC\s*", "", value)
+    value = re.sub(r"^VR\s*", "全景", value)
+    for old, new in (
+        ("3D", "三维"),
+        ("HLS", "色相、亮度和饱和度"),
+        ("RGB", "红绿蓝"),
+        ("HDR", "高动态范围"),
+        ("OCIO", "色彩管理"),
+        ("CDL", "色彩决策列表"),
+        ("Alpha", "透明度"),
+        ("LUT", "颜色查找表"),
+        ("Roto", "智能抠像"),
+        ("PS ", "像素"),
+    ):
+        value = value.replace(old, new)
+    value = re.sub(r"\bII\b", "第二代", value)
+    value = re.sub(r"\bID\s*", "编号", value)
+    value = re.sub(r"\bCC\b", "", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def translate_ui_label(value: str) -> str:
+    exact = {
+        "MIT 或 Apache-2.0 • 字体：Inter、JetBrains Mono（OFL）":
+            "采用开放源代码许可证 · 字体：无衬线字体、等宽字体（开放字体许可证）",
+        "将绘画颜色设为黑白（D）": "将绘画颜色设为黑色和白色",
+        "交换绘画颜色（X）": "交换绘画颜色",
+        "{} x {}，每 8bpc 帧 {}MB": "{} × {}，每帧 {} 兆字节（8 位通道色深）",
+        "Adobe 风格内置": "桌面特效软件风格内置",
+        "导入 PDF / Illustrator 文件": "导入便携文档或矢量图形文件",
+        "导入 Photoshop 文件": "导入图像编辑文件",
+        "Mercury GPU 加速（{}）": "显卡加速（{}）",
+        "sRGB IEC61966-2.1（默认）": "标准红绿蓝色彩空间（默认）",
+        "缓动 (F9)": "缓动",
+        "缓入 (Shift+F9)": "缓入",
+        "缓出 (Ctrl+Shift+F9)": "缓出",
+        "getartcraft.com 上的 效果工坊": "效果工坊官方网站",
+        "在 macOS 上使用窗口内菜单栏": "在苹果电脑系统上使用窗口内菜单栏",
+        "GitHub 上的 效果工坊": "效果工坊代码仓库",
+        "Lottie 动画": "矢量动画",
+        "面板始终由 图形处理器（wgpu）绘制。": "面板始终由图形处理器绘制。",
+        "视频开始 (标准 日期时间、hh:mm:ss、时间码；为空: 文件日期)":
+            "视频开始时间（标准日期时间、时分秒、时间码；留空则使用文件日期）",
+        "颜色 (#rrggbb)": "颜色（十六进制色值）",
+        "已合并 PR": "已合并的代码请求",
+        "GitHub 上的源代码": "效果工坊项目源代码",
+    }
+    if value in exact:
+        return exact[value]
+    replacements = (
+        ("EffectCraft", "效果工坊"),
+        ("ArtCraft", "效果工坊"),
+        ("Discord", "社群"),
+        ("After Effects", "桌面特效软件"),
+        ("ScriptUI", "脚本交互面板"),
+        ("Illustrator", "矢量绘图软件"),
+        ("Photoshop", "图像编辑软件"),
+        ("OpenEXR", "高动态范围图像"),
+        ("Lumetri", "电影色彩"),
+        ("JavaScript", "脚本语言"),
+        ("OpenGL", "图形接口"),
+        ("sRGB IEC61966-2.1", "标准红绿蓝色彩空间"),
+        ("Rec. 2020", "2020 广色域标准"),
+        ("Feet + Frames", "英尺与帧"),
+        ("35mm", "35 毫米"),
+        ("16mm", "16 毫米"),
+        ("Opus", "音频编码"),
+        ("Mercury", "显卡渲染"),
+        ("GPU", "图形处理器"),
+        ("CPU", "处理器"),
+        ("OCIO", "色彩管理"),
+        ("ACES", "色彩标准"),
+        ("Alpha", "透明度"),
+        ("3D", "三维"),
+        ("VR", "全景"),
+        ("RGB", "红绿蓝"),
+        ("LUT", "颜色查找表"),
+        ("HLS", "色相、亮度和饱和度"),
+        ("Roto", "智能抠像"),
+        ("URL", "网址"),
+        ("Ctrl", "控制键"),
+        ("Shift", "上档键"),
+        ("Alt", "替换键"),
+        ("ISO", "标准"),
+        ("8bpc", "8 位通道色深"),
+        ("bpc", "位通道"),
+        ("MB", "兆字节"),
+        ("kbps", "千比特/秒"),
+        ("fps", "帧/秒"),
+        ("A–Z", "升序"),
+        ("A-Z", "升序"),
+        ("PRs", "代码请求"),
+        ("X and Y", "横向和纵向"),
+        ("X only", "仅横向"),
+        ("Y only", "仅纵向"),
+        ("X", "横向"),
+        ("Y", "纵向"),
+        ("Enter", "回车"),
     )
+    for old, new in replacements:
+        value = value.replace(old, new)
+    value = value.replace("⌘/控制键+Enter", "组合键+回车")
+    value = value.replace("⌘/控制键+回车", "组合键+回车")
+    value = value.replace(" • ", " · ")
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def patch_simplified_chinese_catalogs(root: Path) -> None:
+    effects_path = root / "crates/ui-egui/src/i18n/effects.rs"
+    effects_source = effects_path.read_text(encoding="utf-8")
+    effects_start = effects_source.find("const SIMPLIFIED_CHINESE: &[Row] = &[")
+    effects_end = effects_source.find("\n];", effects_start)
+    if effects_start < 0 or effects_end < 0:
+        raise SystemExit("Could not locate the Simplified Chinese effect-name catalog.")
+    effects_block = effects_source[effects_start:effects_end]
+    effect_row = re.compile(r'(\(\s*"[^"]+"\s*,\s*"[^"]+"\s*,\s*")([^"]*)("\s*\),)')
+
+    def patch_effect(match: re.Match[str]) -> str:
+        translated = translate_effect_label(match.group(2))
+        if re.search(r"[A-Za-z]", translated):
+            raise SystemExit(f"Effect name still contains English: {translated}")
+        return match.group(1) + translated + match.group(3)
+
+    effects_block, effect_count = effect_row.subn(patch_effect, effects_block)
+    if effect_count < 300:
+        raise SystemExit(f"Only {effect_count} Simplified Chinese effect names were found.")
+    effects_source = effects_source[:effects_start] + effects_block + effects_source[effects_end:]
+    effects_path.write_text(effects_source, encoding="utf-8")
+
+    ui_path = root / "crates/ui-egui/src/i18n/ui.rs"
+    ui_source = ui_path.read_text(encoding="utf-8")
+    ui_start = ui_source.find("const SIMPLIFIED_CHINESE:")
+    ui_end = ui_source.find("\n];", ui_start)
+    if ui_start < 0 or ui_end < 0:
+        raise SystemExit("Could not locate the Simplified Chinese interface catalog.")
+    ui_block = ui_source[ui_start:ui_end]
+    ui_row = re.compile(r'(\(\s*"(?:\\.|[^"]*)"\s*,\s*")((?:\\.|[^"])*)("\s*\),)')
+
+    def patch_ui(match: re.Match[str]) -> str:
+        translated = translate_ui_label(match.group(2))
+        visible = re.sub(r"\\[nrt]", "", translated)
+        if re.search(r"[A-Za-z]", visible):
+            raise SystemExit(f"Interface label still contains English: {translated}")
+        return match.group(1) + translated + match.group(3)
+
+    ui_block, ui_count = ui_row.subn(patch_ui, ui_block)
+    if ui_count < 1000:
+        raise SystemExit(f"Only {ui_count} Simplified Chinese interface labels were found.")
+    ui_source = ui_source[:ui_start] + ui_block + ui_source[ui_end:]
+    ui_path.write_text(ui_source, encoding="utf-8")
+    print(f"Translated {effect_count} effect names and {ui_count} interface labels into Chinese.")
+
+
+def verify_simplified_chinese_catalogs(root: Path) -> None:
+    effects = (root / "crates/ui-egui/src/i18n/effects.rs").read_text(encoding="utf-8")
+    effects_start = effects.find("const SIMPLIFIED_CHINESE: &[Row] = &[")
+    effects_end = effects.find("\n];", effects_start)
+    ui = (root / "crates/ui-egui/src/i18n/ui.rs").read_text(encoding="utf-8")
+    ui_start = ui.find("const SIMPLIFIED_CHINESE:")
+    ui_end = ui.find("\n];", ui_start)
+    if min(effects_start, effects_end, ui_start, ui_end) < 0:
+        raise SystemExit("Simplified Chinese catalog verification could not locate a table.")
+    effects_block = effects[effects_start:effects_end]
+    ui_block = ui[ui_start:ui_end]
+    effect_names = re.findall(r'\(\s*"[^"]+"\s*,\s*"[^"]+"\s*,\s*"((?:\\.|[^"])*)"\s*\)', effects_block)
+    ui_labels = re.findall(r'\(\s*"(?:\\.|[^"]*)"\s*,\s*"((?:\\.|[^"])*)"\s*\)', ui_block)
+    for label in effect_names + ui_labels:
+        visible = re.sub(r"\\[nrt]", "", label)
+        if re.search(r"[A-Za-z]", visible):
+            raise SystemExit(f"Simplified Chinese catalog still displays English: {label}")
+    if len(effect_names) < 300 or len(ui_labels) < 1000:
+        raise SystemExit("Simplified Chinese catalog is unexpectedly incomplete.")
+
+
+def verify_android_chinese_language(root: Path) -> None:
+    source = (root / "crates/ui-egui/src/i18n.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_FORCE_SIMPLIFIED_CHINESE_V1" not in source:
+        raise SystemExit("Android is not locked to the Simplified Chinese interface catalog.")
 
 
 def patch_project_commands(root: Path) -> None:
@@ -644,6 +857,9 @@ def main() -> None:
     if not root.is_dir():
         raise SystemExit("EFFECTCRAFT_DIR must point to the checked-out EffectCraft source")
     patch_default_language(root)
+    patch_simplified_chinese_catalogs(root)
+    verify_simplified_chinese_catalogs(root)
+    verify_android_chinese_language(root)
     patch_project_commands(root)
     patch_puppet_quick_button(root)
     patch_project_panel(root)
