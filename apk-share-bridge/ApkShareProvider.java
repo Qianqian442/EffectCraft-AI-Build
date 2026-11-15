@@ -148,6 +148,10 @@ public final class ApkShareProvider extends ContentProvider {
         Context context = getContext();
         if (context == null || uri == null) return false;
         if (!uidOwnsPackage(context, Binder.getCallingUid(), QQ_PACKAGE)) return false;
+        // Re-check the management app on every metadata/read request so uninstalling it
+        // or logging out revokes an already-issued URI immediately.
+        if (!packageHasCertificate(context, ADMIN_PACKAGE, ADMIN_CERT_SHA256)
+                || !isAdminSessionVerified(context)) return false;
         if (uri.getPathSegments().size() != 2 || !"apk".equals(uri.getPathSegments().get(0))) return false;
         String token = uri.getPathSegments().get(1);
         Long expires = grants.get(token);
