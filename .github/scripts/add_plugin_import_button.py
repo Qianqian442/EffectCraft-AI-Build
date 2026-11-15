@@ -13,14 +13,14 @@ MENU_MARKER = "EFFECTCRAFT_ANDROID_SINGLE_PLUGIN_IMPORT_ENTRY_V1"
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
-        raise SystemExit("EFFECTCRAFT_DIR must point to the checked-out EffectCraft source")
+        raise SystemExit("EFFECTCRAFT_DIR must point to the checked-out Ae source")
 
     # Keep the requested top-left button as the sole manual import entry.
     # Remove only the duplicate Effect-menu row; the original command, picker, runtime,
     # plug-in list API, and startup folder scan remain intact.
     menu_path = root / "crates/engine/src/menus.rs"
     if not menu_path.is_file():
-        raise SystemExit(f"EffectCraft menu source was not found: {menu_path}")
+        raise SystemExit(f"Ae menu source was not found: {menu_path}")
     menu_source = menu_path.read_text(encoding="utf-8")
     if MENU_MARKER not in menu_source:
         duplicate_entry = "  Load Effect Plug-in... | effect.plugins.load\n"
@@ -38,7 +38,7 @@ def main() -> None:
 
     header_path = root / "crates/ui-egui/src/header.rs"
     if not header_path.is_file():
-        raise SystemExit(f"EffectCraft toolbar source was not found: {header_path}")
+        raise SystemExit(f"Ae toolbar source was not found: {header_path}")
     source = header_path.read_text(encoding="utf-8")
     if MARKER in source:
         print("Top-left WASM plug-in import button is already present.")
@@ -49,7 +49,7 @@ def main() -> None:
         "    let x = tool_slots(app, ui, &p, x, cy);"
     )
     if source.count(call_anchor) != 1:
-        raise SystemExit("Could not uniquely locate the EffectCraft toolbar layout; refusing to patch.")
+        raise SystemExit("Could not uniquely locate the Ae toolbar layout; refusing to patch.")
 
     call_replacement = (
         "    let x = brand_and_home(app, ui, &p, x, cy);\n"
@@ -71,7 +71,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     let mut menu_open = ui.ctx().data(|d| d.get_temp::<bool>(menu_id).unwrap_or(false));
     let response = ui
         .put(rect, egui::Button::new("导入插件"))
-        .on_hover_text("导入 WASM/WAT/ZIP 效果插件、电脑插件文件，或导入独立 DeepSeek AI 插件 ZIP");
+        .on_hover_text("导入 WASM/WAT/ZIP 效果插件、电脑插件文件，或导入独立 Ae AI 模型包 ZIP");
     app.auto.add_response("header.importPlugin", &response, "Import Plug-in");
     widgets::focus_outline(ui, &response, &app.tokens);
     if response.clicked() {
@@ -97,7 +97,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                 if popup.button("WASM / WAT / ZIP 效果插件 / 电脑插件文件").clicked() {
                     import_wasm = true;
                 }
-                if popup.button("导入 DeepSeek AI 插件 ZIP").clicked() {
+                if popup.button("导入 Ae AI 模型包 ZIP").clicked() {
                     import_ai = true;
                 }
                 popup.label("电脑版 .aex/.dll/.ofx 单文件和插件 ZIP 可直接选择；安卓端会分析并匹配兼容效果");
@@ -118,7 +118,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     }
     if import_ai {
         match crate::open_ai_plugin_import_from_toolbar() {
-            Ok(()) => app.ui.status = "已打开 DeepSeek AI 插件 ZIP 导入流程；安装后可在插件内下载本地模型。".into(),
+            Ok(()) => app.ui.status = "已打开 Ae AI 模型包管理；导入约 1.02 GB 的 ZIP 后即可离线使用。".into(),
             Err(error) => app.ui.status = error,
         }
     }
