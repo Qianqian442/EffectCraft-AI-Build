@@ -323,6 +323,21 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     for old, new in text_replacements:
         if old in a:
             a = a.replace(old, new, 1)
+    a = a.replace(
+        "你好！我是 Ae AI 助手。导入 DeepSeek AI 插件 ZIP 并准备本地模型后，即可在这里离线对话。",
+        "你好！我是 Ae AI 助手。导入 Ae AI 模型包 ZIP 后即可在这里离线对话。",
+        1,
+    )
+    a = a.replace(
+        'ui.small("AI 插件已导入；首次使用请先准备模型。");',
+        'ui.small("内置 AI 引擎已就绪；首次使用请先导入 AI 模型包。");',
+        1,
+    )
+    a = a.replace(
+        'ui.colored_label(Color32::from_rgb(210, 145, 35), "尚未导入 DeepSeek AI 插件 ZIP。");',
+        'ui.colored_label(Color32::from_rgb(210, 145, 35), "尚未导入 Ae AI 模型包 ZIP。");',
+        1,
+    )
     # In the integrated host APK, the model manager imports a data-only ZIP bundle.
     # No companion APK is installed; keep the existing manager entry and label it clearly.
     a = a.replace('ui.button("模型管理")', 'ui.button("导入 AI 模型包")', 1)
