@@ -346,9 +346,9 @@ fn safe_account_status(account: &AccountState) -> String {
             match event.get("type").and_then(Value::as_str) {
                 Some("account_status_changed") => {
                     let status = event.get("status").and_then(Value::as_str).unwrap_or("");
-                    let already_matches = (status == "banned" && self.mode == Mode::Banned)
+                    let already_matches = ((status == "banned" || status == "permanently_banned") && self.mode == Mode::Banned)
                         || (status == "unbanned" && self.mode == Mode::Editor);
-                    if !already_matches && (status == "banned" || status == "unbanned") {
+                    if !already_matches && (status == "banned" || status == "permanently_banned" || status == "unbanned" || status == "deleted") {
                         self.notification_pending = Some(status.to_string());
                     }
                 }
@@ -370,8 +370,18 @@ fn safe_account_status(account: &AccountState) -> String {
                 if status == "service_disabled" {
                     self.mode = Mode::Unavailable;
                     self.status = "云端账号服务器已由管理员关闭，Ae 当前不可使用。请等待管理员重新开启服务器，再关闭并重新打开 Ae；系统会按原规则自动验证账号。".to_string();
+                } else if status == "deleted" {
+                    self.token = None;
+                    self.user = None;
+                    self.mode = Mode::Auth;
+                    self.remove_saved(config);
+                    self.clear_cached_ban(config);
+                    self.banned_until.clear();
+                    self.permanently_banned = false;
+                    self.ban_reason.clear();
+                    self.status = "账号已被管理员删除，原 QQ号/微信号现已释放；如仍在白名单中，可以重新注册。".to_string();
                 } else {
-                    let already_matches = (status == "banned" && self.mode == Mode::Banned)
+                    let already_matches = ((status == "banned" || status == "permanently_banned") && self.mode == Mode::Banned)
                         || (status == "unbanned" && self.mode == Mode::Editor);
                     if !already_matches {
                         self.mode = Mode::Checking;
