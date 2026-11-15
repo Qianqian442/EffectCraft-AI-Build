@@ -47,7 +47,8 @@ static DWORD WINAPI worker_thread(LPVOID parameter) {
 int main(void) {
     SYSTEM_INFO system_info;
     HMODULE helper_module;
-    fixture_helper_fn helper;
+    fixture_helper_fn helper = NULL;
+    FARPROC helper_proc = NULL;
     HANDLE thread;
     HANDLE file;
     PVOID memory;
@@ -72,9 +73,11 @@ int main(void) {
 
     helper_module = LoadLibraryW(L"fixture_helper.dll");
     CHECK("LoadLibraryW resolves dependent DLL", helper_module != NULL);
-    helper = helper_module
-        ? (fixture_helper_fn)GetProcAddress(helper_module, "fixture_helper_value")
-        : NULL;
+    helper_proc = helper_module ? GetProcAddress(helper_module, "fixture_helper_value") : NULL;
+    _Static_assert(sizeof(helper) == sizeof(helper_proc), "Windows function pointers must have equal size");
+    if (helper_proc) {
+        memcpy(&helper, &helper_proc, sizeof(helper));
+    }
     CHECK("GetProcAddress resolves exported function", helper != NULL);
     if (helper) {
         CHECK("DLL static TLS and exported call execute", helper() == 0x123b);
