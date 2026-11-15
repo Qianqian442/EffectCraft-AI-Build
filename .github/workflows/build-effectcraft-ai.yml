@@ -390,6 +390,13 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/install_ai_plugin_bridge.py
           python3 build-assets/.github/scripts/install_ai_plugin_bridge.py
 
+      - name: Reapply full-screen AI assistant controls after the plugin bridge
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_ai_assistant_fullscreen_drag.py
+          python3 build-assets/.github/scripts/add_ai_assistant_fullscreen_drag.py
+
       - name: Preserve project import and configure centered export dialog
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
