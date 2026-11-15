@@ -199,6 +199,58 @@ pub(crate) fn share_project_package(_project_path: &str) -> Result<(), String> {
     path.write_text(once(source, anchor, anchor + addition, "Rust JNI QQ share bridge"), encoding="utf-8")
 
 
+def patch_frontend(effectcraft: Path) -> None:
+    """Share only after the asynchronous Collect Files folder picker has completed."""
+    path = effectcraft / "crates/ui-egui/src/menus/frontend.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_SHARE_COLLECTED_PROJECT_V1"
+    if marker in source:
+        return
+    old = """    let r = app.session.execute(id, Value::Object(p)).map_err(|e| e.to_string());
+    if let Err(e) = &r {
+        app.ui.status = e.clone();
+    }
+    r
+}"""
+    new = """    // EFFECTCRAFT_ANDROID_SHARE_COLLECTED_PROJECT_V1
+    // The caller requests sharing by setting shareAfterCollect. Remove that UI-only flag
+    // before sending parameters to the engine, then wait until the folder picker has returned
+    // and file.collectFiles has actually copied the .ecproj and all footage.
+    let share_after_collect = id == "file.collectFiles"
+        && params.get("shareAfterCollect").and_then(Value::as_bool) == Some(true);
+    p.remove("shareAfterCollect");
+    let r = app.session.execute(id, Value::Object(p)).map_err(|e| e.to_string());
+    if let Err(e) = &r {
+        app.ui.status = e.clone();
+    } else if share_after_collect {
+        match &r {
+            Ok(result) => {
+                let collection_errors = result.get("errors").and_then(Value::as_array);
+                if collection_errors.is_some_and(|errors| !errors.is_empty()) {
+                    app.ui.status = "部分素材未能收集，已取消工程分享；请检查素材文件后重试。".into();
+                } else if let Some(project_path) = result.get("project").and_then(Value::as_str) {
+                    if let Err(error) = crate::android_gallery::share_project_package(project_path) {
+                        app.ui.status = format!("工程分享失败：{error}");
+                    } else {
+                        app.ui.status = "完整工程包已准备，请在系统分享面板选择 QQ 或其他应用。".into();
+                    }
+                } else {
+                    app.ui.status = "工程已收集，但没有取得工程文件路径，无法分享。".into();
+                }
+            }
+            Err(_) => {}
+        }
+    }
+    r
+}"""
+    if source.count(old) != 1:
+        raise SystemExit(f"Collected-project sharing hook: expected one run_with_picked tail, found {source.count(old)}")
+    source = source.replace(old, new, 1)
+    if marker not in source:
+        raise SystemExit("Collected-project sharing hook was not installed")
+    path.write_text(source, encoding="utf-8")
+
+
 def main() -> None:
     effectcraft = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     builder = Path(os.environ["ARTCRAFT_DIR"]).resolve()
@@ -207,7 +259,8 @@ def main() -> None:
     patch_manifest_generator(builder)
     patch_activity(builder)
     patch_rust_bridge(effectcraft)
-    # The QQ destination is now one choice in the unified Project Export selector.
+    patch_frontend(effectcraft)
+    # The QQ destination is now the system Sharesheet opened after Collect Files completes.
     # Do not add another standalone button to the export dialog.
     print("Added the Android ZIP share bridge used by the unified Project Export selector.")
     print("The archive includes the .ecproj and collected footage; QQ and other targets receive a read-granted content URI.")
