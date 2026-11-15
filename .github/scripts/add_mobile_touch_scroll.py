@@ -269,7 +269,7 @@ def patch_viewer_drag_auto_keyframe(root: Path) -> None:
     path = root / "crates/ui-egui/src/panels/viewer.rs"
     source = path.read_text(encoding="utf-8")
     old = """                for (lid, p0, ax, ay) in layers {
-                    let v = json!([p0[0] + ax[0] * d[0] + ay[0] * d[1], p0[1] + ax[1] * d[0] + ay[1], p0[2] + ax[2] * d[0] + ay[2] * d[1]]);
+                    let v = json!([p0[0] + ax[0] * d[0] + ay[0] * d[1], p0[1] + ax[1] * d[0] + ay[1] * d[1], p0[2] + ax[2] * d[0] + ay[2] * d[1]]);
 """
     new = """                for (lid, p0, ax, ay) in layers {
                     // Create Position keys on the first real movement in this drag. Further
