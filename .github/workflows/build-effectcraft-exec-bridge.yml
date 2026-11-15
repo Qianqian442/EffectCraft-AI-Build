@@ -68,7 +68,7 @@ jobs:
             windows-compat/android-runtime/exec-bridge/tests/exec_child.c \
             -o stage/exec-bridge/exec-child
           "$CLANG" -O2 -Wall -Wextra -Werror -fPIE -pie \
-            windows-compat/android-runtime/exec-bridge/tests/exec_parent.c \
+            windows-compat/android-runtime/exec-bridge/tests/exec_parent.c -ldl \
             -o stage/exec-bridge/exec-parent
           install -m 0644 build/exec-bridge-arm64/libeffectcraft-exec.so stage/exec-bridge/
           readelf -l stage/exec-bridge/exec-child | grep -F '/system/bin/linker64'
