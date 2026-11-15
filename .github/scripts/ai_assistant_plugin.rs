@@ -34,6 +34,7 @@ pub(crate) struct State {
     pending: Option<String>,
     notice: String,
     avatar: Option<egui::TextureHandle>,
+    bubble_pos: Option<egui::Pos2>,
     plugin_installed: Option<bool>,
     probe_frames: u16,
 }
@@ -50,6 +51,7 @@ impl Default for State {
             pending: None,
             notice: String::new(),
             avatar: None,
+            bubble_pos: None,
             plugin_installed: None,
             probe_frames: 0,
         }
@@ -78,26 +80,40 @@ pub(crate) fn show(app: &mut EffectcraftApp, root: &mut egui::Ui) {
     poll_result(state, &ctx);
 
     let screen = ctx.content_rect();
-    // Keep the bubble as a pure tap target. Making the whole Area movable
-    // competes with egui's child click response on Android touch screens and can
-    // consume a tap as a drag start, leaving the avatar apparently unresponsive.
-    // The chat window itself remains movable below.
+    // Keep the floating assistant avatar both tappable and draggable. The Area itself
+    // is fixed for this frame; a child click-and-drag response moves its saved position.
+    // This avoids the old parent-Area drag gesture swallowing taps on Android.
+    let default_bubble_pos = pos2(
+        (screen.max.x - 64.0).max(screen.min.x + 8.0),
+        (screen.max.y - 92.0).max(screen.min.y + 8.0),
+    );
+    let bubble_pos = state.bubble_pos.unwrap_or(default_bubble_pos);
+    let mut dragged_bubble_to = None;
     egui::Area::new(Id::new("effectcraft-ai-bubble"))
         .order(Order::Foreground)
-        .movable(false)
-        .default_pos(pos2(
-            (screen.max.x - 64.0).max(screen.min.x + 8.0),
-            (screen.max.y - 92.0).max(screen.min.y + 8.0),
-        ))
+        .fixed_pos(bubble_pos)
         .show(&ctx, |ui| {
             let button = egui::Image::new(&avatar)
                 .fit_to_exact_size(vec2(48.0, 48.0))
                 .corner_radius(24)
-                .sense(Sense::click());
-            if ui.add(button).clicked() {
+                .sense(Sense::click_and_drag());
+            let response = ui.add(button);
+            if response.clicked() {
                 state.open = !state.open;
             }
+            if response.dragged() {
+                let delta = ctx.input(|input| input.pointer.delta());
+                let max_x = (screen.max.x - 48.0).max(screen.min.x);
+                let max_y = (screen.max.y - 48.0).max(screen.min.y);
+                dragged_bubble_to = Some(pos2(
+                    (bubble_pos.x + delta.x).clamp(screen.min.x, max_x),
+                    (bubble_pos.y + delta.y).clamp(screen.min.y, max_y),
+                ));
+            }
         });
+    if let Some(position) = dragged_bubble_to {
+        state.bubble_pos = Some(position);
+    }
 
     if !state.open {
         return;
