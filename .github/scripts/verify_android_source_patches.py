@@ -221,25 +221,32 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("Moving the Project import action removed or hid another original Import command.")
     if "AE 电脑版工程... | file.importAepDesktop" not in visible_import:
         raise SystemExit("The dedicated AE desktop project import option is missing.")
-    if "AE 手机版工程包... | file.importAepMobile" not in visible_import:
-        raise SystemExit("The dedicated AE mobile project package import option is missing.")
+    if "EffectCraft 手机版工程... | file.importEffectCraftMobile" not in visible_import:
+        raise SystemExit("The dedicated EffectCraft mobile-exported project import option is missing.")
+
     aep_commands = (root / "crates/engine/src/cmd/aep.rs").read_text(encoding="utf-8")
-    if '"file.importAepDesktop"' not in aep_commands or '"file.importAepMobile"' not in aep_commands:
-        raise SystemExit("The AE desktop/mobile import commands are not registered.")
-    if "import_aep_mobile" not in aep_commands:
-        raise SystemExit("The dedicated mobile AE package handler is missing.")
+    if '"file.importAepDesktop"' not in aep_commands or '"file.importAep"' not in aep_commands:
+        raise SystemExit("The desktop AE alias or original AE import command is missing.")
     aep_picker = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if '"file.importAepDesktop" => ("path", Ask::Open(&["aep", "aepx"]))' not in aep_picker:
         raise SystemExit("The AE desktop picker is not scoped to .aep/.aepx.")
-    if '"file.importAepMobile" => ("path", Ask::Open(&["aep", "aepx", "zip"]))' not in aep_picker:
-        raise SystemExit("The AE mobile picker is missing the supported package formats.")
-    ae_package = (root / "crates/engine/src/cmd/am_nv.rs").read_text(encoding="utf-8")
-    if "pub fn import_aep_mobile_package" not in ae_package or 'lower.ends_with(".aep")' not in ae_package:
-        raise SystemExit("The mobile AE ZIP package does not extract and route its AE project.")
+    if '"file.importAep" => ("path", Ask::Open(&["aep", "aepx"]))' not in aep_picker:
+        raise SystemExit("The original AE project picker was removed.")
+    if '"file.importEffectCraftMobile" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"]))' not in aep_picker:
+        raise SystemExit("The EffectCraft mobile picker must accept .ecproj/.ecprojx and ZIP packages.")
+
+    mobile_importer = (root / "crates/engine/src/cmd/am_nv.rs").read_text(encoding="utf-8")
+    if '"file.importEffectCraftMobile"' not in mobile_importer or "import_effectcraft_mobile_project" not in mobile_importer:
+        raise SystemExit("The EffectCraft mobile-export project import command is missing.")
+    if '"ecproj" | "ecprojx"' not in mobile_importer or '"zip" =>' not in mobile_importer:
+        raise SystemExit("The mobile importer does not recognize native EffectCraft project packages.")
+    if 'super::import_project::import_project(s, &json!({"path": actual}))' not in mobile_importer:
+        raise SystemExit("The mobile project is not routed to the native EffectCraft project reader.")
+
     aep_loss_guard = (root / "crates/ui-egui/src/panels/aep_losses.rs").read_text(encoding="utf-8")
-    if '"file.importAepMobile"' not in aep_loss_guard or '"file.importAepDesktop"' not in aep_loss_guard:
-        raise SystemExit("The AE desktop/mobile import entries bypass the original loss-confirmation guard.")
-    print("Verified separate AE desktop and mobile project import entries with the shared loss-confirmation guard.")
+    if '"file.importAepDesktop"' not in aep_loss_guard:
+        raise SystemExit("The dedicated desktop AE import entry bypasses the original loss-confirmation guard.")
+    print("Verified separate desktop AE and EffectCraft mobile-export import entries; mobile packages use the native .ecproj reader.")
     import_project_command = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in import_project_command:
         raise SystemExit("The native Project importer command was removed instead of relocated.")
