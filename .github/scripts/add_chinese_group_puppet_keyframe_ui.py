@@ -447,27 +447,27 @@ def patch_timeline_keyframe_button(root: Path) -> None:
         "Single-item keyframe footer mutability",
     )
     anchor = '    let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));\n'
-    keyframe_code = r'''    // The keyframe control is active only for one Project-panel asset and its one matching
-    // selected layer. Selected properties on that layer are keyed; with none selected, Position
-    // receives the key at the current composition time. No other layer can be modified.
-    let project_item = (app.session.state.project_selection.len() == 1).then(|| app.session.state.project_selection[0]);
-    let selected_layer = project_item.and_then(|item| {
-        // A layer that is explicitly selected wins, but it must belong to this project item
-        // and be unlocked. With only a Project-panel selection, target the sole unlocked
-        // matching layer automatically so the user does not have to tap the timeline row.
-        let selected_match = match app.session.state.selected_layers.as_slice() {
-            [layer] => g.tl.comp.layer(*layer)
-                .filter(|layer| layer.source.item() == Some(item) && !layer.switches.locked)
-                .map(|layer| layer.id),
-            _ => None,
-        };
-        selected_match.or_else(|| {
+    keyframe_code = r'''    // A layer clicked directly in the Composition viewer is already the user's explicit
+    // target. Prefer that one selected, unlocked layer even when Project-panel selection is
+    // not synchronized; otherwise use the sole matching layer for one selected Project item.
+    // Multiple selected layers stay disabled so a key cannot be written to the wrong target.
+    let selected_project_item = (app.session.state.project_selection.len() == 1)
+        .then(|| app.session.state.project_selection[0]);
+    let selected_layer = match app.session.state.selected_layers.as_slice() {
+        [layer] => g.tl.comp.layer(*layer)
+            .filter(|layer| !layer.switches.locked)
+            .map(|layer| layer.id),
+        [] => selected_project_item.and_then(|item| {
             let movable: Vec<_> = g.tl.comp.layers.iter()
                 .filter(|layer| layer.source.item() == Some(item) && !layer.switches.locked)
                 .collect();
             if let [layer] = movable.as_slice() { Some(layer.id) } else { None }
-        })
-    });
+        }),
+        _ => None,
+    };
+    let project_item = selected_layer
+        .and_then(|layer_id| g.tl.comp.layer(layer_id).and_then(|layer| layer.source.item()))
+        .or(selected_project_item);
     // EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V2
     let keyframe_enabled = project_item.is_some() && selected_layer.is_some();
     let keyframe_height = (footer.height() - 2.0).max(18.0);
@@ -477,9 +477,9 @@ def patch_timeline_keyframe_button(root: Path) -> None:
         vec2(keyframe_width, keyframe_height),
     );
     let keyframe_hint = if keyframe_enabled {
-        "添加关键帧（左侧已选素材对应的可移动图层）"
+        "添加关键帧（画面或时间轴中已选图层）"
     } else {
-        "先在左侧选中一个素材，并确保合成中有唯一对应的未锁定图层；多个实例时请点选目标图层"
+        "请先点选一个未锁定图层；一次只能给一个图层添加关键帧"
     };
     // A high-contrast, wide touch target is always visible in the timeline footer.
     // It remains tappable when disabled so the required single-item selection is explained.
