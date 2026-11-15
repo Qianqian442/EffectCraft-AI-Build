@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -16,10 +17,15 @@ def main() -> None:
     menu_source = menu.read_text(encoding="utf-8")
     frontend_source = frontend.read_text(encoding="utf-8")
 
-    start = menu_source.find("  Import\\n")
-    end = menu_source.find("  Import Recent Footage\\n", start)
-    if start < 0 or end < 0:
-        raise SystemExit("Could not locate the original File > Import menu block")
+    # Find exact top-level menu lines while tolerating LF and CRLF source files.
+    start_match = re.search(r"(?m)^  Import\\r?$", menu_source)
+    if not start_match:
+        raise SystemExit("Could not locate the original File > Import menu heading")
+    end_match = re.search(r"(?m)^  Import Recent Footage\\r?$", menu_source[start_match.end():])
+    if not end_match:
+        raise SystemExit("Could not locate the end of the original File > Import menu block")
+    start = start_match.start()
+    end = start_match.end() + end_match.start()
     block = menu_source[start:end]
 
     # Move the native EffectCraft Project entry to the Project panel's dedicated
