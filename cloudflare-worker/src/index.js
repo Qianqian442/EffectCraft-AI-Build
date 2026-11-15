@@ -506,22 +506,44 @@ async function route(request, env) {
     if (!expected || !constantTimeEqual(encoder.encode(supplied), encoder.encode(expected))) {
       return new Response(null, { status: 404 });
     }
+    let stage = "database";
+    let connected = false;
+    let passwordHashed = false;
+    let passwordVerified = false;
     try {
       const probe = await env.DB.prepare("SELECT 1 AS connected").first();
-      const connected = Number(probe && probe.connected) === 1;
+      connected = Number(probe && probe.connected) === 1;
+      if (!connected) {
+        return fail(503, "数据库自检失败", { code: "database_unavailable", stage });
+      }
       const challenge = "EffectCraft-Health-" + crypto.randomUUID() + "-A1!";
+      stage = "password_hash";
       const hash = await passwordHash(env, challenge);
-      const passwordOk = await verifyPassword(env, challenge, hash);
-      const ok = connected && passwordOk;
+      passwordHashed = typeof hash === "string" && hash.length > 20;
+      if (!passwordHashed) {
+        return fail(503, "密码哈希自检失败", { code: "password_hash_failed", stage });
+      }
+      stage = "password_verify";
+      passwordVerified = await verifyPassword(env, challenge, hash);
+      if (!passwordVerified) {
+        return fail(503, "密码验证自检失败", { code: "password_verify_failed", stage });
+      }
       return response({
-        ok,
+        ok: true,
         service: "Ae Cloud Account API",
         database: connected,
-        password_service: passwordOk
-      }, ok ? 200 : 503);
+        password_service: true,
+        password_hash: passwordHashed,
+        password_verify: passwordVerified
+      }, 200);
     } catch (error) {
-      console.error("deep-health-error", error && error.message ? error.message : String(error));
-      return fail(503, "密码计算服务自检失败", { code: "password_service_unavailable" });
+      const detail = error && error.message ? error.message : String(error);
+      console.error("deep-health-error", stage, detail);
+      return fail(503, "密码计算服务自检失败", {
+        code: "password_service_unavailable",
+        stage,
+        reason: error instanceof HttpError ? error.message : "internal_error"
+      });
     }
   }
   if (request.method === "GET" && url.pathname === "/health") {
