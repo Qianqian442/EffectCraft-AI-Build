@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-__declspec(thread) static volatile LONG g_static_tls = 11;
+static __thread volatile LONG g_static_tls = 11;
 static volatile LONG g_thread_result = 0;
 static volatile LONG g_vectored_hits = 0;
 static DWORD g_tls_index = TLS_OUT_OF_INDEXES;
