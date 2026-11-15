@@ -48,12 +48,13 @@ def add_state_fields(source: str) -> str:
 
 def patch_avatar_fallback(source: str) -> str:
     # The embedded PNG is expected to be valid, but a decode failure should not panic the app.
-    patterns = (
-        r'(image::load_from_memory\(AVATAR_PNG\))\s*\.expect\("embedded Ae avatar PNG must decode"\)',
-        r'(image::load_from_memory\(AVATAR_PNG\))\s*\.expect\("embedded AI avatar must decode"\)',
-    )
-    fallback = r'\1.unwrap_or_else(|_| image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(48, 48, image::Rgba([42, 105, 210, 255]))))'
-    for pattern in patterns:
+    for variable, message in (
+        ("AVATAR_PNG", "embedded Ae avatar PNG must decode"),
+        ("AVATAR_PNG", "embedded AI avatar must decode"),
+        ("AVATAR", "embedded AI avatar must decode"),
+    ):
+        pattern = r'(image::load_from_memory\(' + variable + r'\))\s*\.expect\("' + re.escape(message) + r'"\)'
+        fallback = r'\1.unwrap_or_else(|_| image::DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(48, 48, image::Rgba([42, 105, 210, 255]))))'
         source, count = re.subn(pattern, fallback, source, count=1)
         if count:
             break
