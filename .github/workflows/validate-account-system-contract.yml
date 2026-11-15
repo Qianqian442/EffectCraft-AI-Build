@@ -15,6 +15,18 @@ on:
       - 'cloudflare-worker/**'
       - 'admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java'
       - '.github/workflows/validate-account-system-contract.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'admin-app/**'
+      - 'cloudflare-worker/**'
+      - '.github/scripts/convert_account_gate_to_cloud.py'
+      - 'p2p-bridge/**'
+      - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/add_account_avatar_picker.py'
+      - '.github/scripts/add_account_whitelist_local_cache.py'
+      - '.github/scripts/validate_account_system_contract.py'
+      - '.github/workflows/validate-account-system-contract.yml'
   workflow_dispatch:
 
 permissions:
