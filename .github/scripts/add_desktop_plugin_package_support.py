@@ -88,7 +88,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             }
             return ("Windows 程序或动态库", "架构未识别");
         }
-        if bytes.len() >= 20 && &bytes[..4] == b"\x7fLinux 可执行文件" {
+        if bytes.len() >= 20 && &bytes[..4] == b"\x7fELF" {
             let machine = if bytes[5] == 2 {
                 u16::from_be_bytes([bytes[18], bytes[19]])
             } else {
