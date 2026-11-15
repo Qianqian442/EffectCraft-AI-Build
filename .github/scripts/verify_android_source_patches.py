@@ -245,7 +245,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if not end_match:
         raise SystemExit("The end of the File > Import menu block is missing.")
     visible_import = menu[import_match.start():import_match.end() + end_match.start()]
-    if "EffectCraft Project... | file.importProject" not in visible_import:
+    if "Ae Project... | file.importProject" not in visible_import:
         raise SystemExit("The original native EffectCraft Project import action is missing from File > Import.")
     required_imports = [
         "File... | file.import",
@@ -265,7 +265,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The dedicated desktop AE project import option is missing.")
     if "导入手机版Ae工程... | file.importAepMobilePackage" not in visible_import:
         raise SystemExit("The dedicated mobile AE project package import option is missing.")
-    if "EffectCraft 手机版工程包... | file.importEffectCraftMobile" not in visible_import:
+    if "Ae 手机版工程包... | file.importEffectCraftMobile" not in visible_import:
         raise SystemExit("The preserved EffectCraft mobile project package import option is missing.")
     for menu_entry in (
         "导入电脑版Ae工程... | file.importAepDesktop",
@@ -273,7 +273,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         "导入am工程... | file.importAlightMotionProject",
         "导入NV工程... | file.importNodeVideoProject",
         "导入capcut工程... | file.importCapCutProject",
-        "EffectCraft Project... | file.importProject",
+        "Ae Project... | file.importProject",
     ):
         if menu_entry not in visible_import:
             raise SystemExit(f"File > Import is missing a format-specific entry: {menu_entry}")

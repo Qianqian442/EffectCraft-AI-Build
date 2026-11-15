@@ -278,7 +278,7 @@ public final class MainActivity extends Activity {
         if (isCloudflareMode()) {
             panel.addView(text("Cloudflare 云端账号服务器", 16, true));
             panel.addView(text(
-                "此开关控制整个云端账号服务，不是手机本机 P2P 开关。关闭后，所有 EffectCraft 用户都不能注册、登录或验证；管理员仍可进入管理版重新开启。",
+                "此开关控制整个云端账号服务，不是手机本机 P2P 开关。关闭后，所有 Ae 用户都不能注册、登录或验证；管理员仍可进入管理版重新开启。",
                 12, false
             ));
             addAccountServiceToggle(panel);
@@ -299,7 +299,7 @@ public final class MainActivity extends Activity {
                     String peerId = node.optString("peerId", "");
                     if (peerId.isEmpty()) { toast("管理员节点 ID 尚未生成，请稍后再试"); return; }
                     ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                    clipboard.setPrimaryClip(ClipData.newPlainText("EffectCraft 管理员节点地址", "p2p://" + peerId));
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Ae 管理员节点地址", "p2p://" + peerId));
                     toast("管理员节点连接地址已复制，可分享给用户首次配对");
                 } catch (Exception error) { toast("复制节点 ID 失败：" + error.getMessage()); }
             });
@@ -394,7 +394,7 @@ public final class MainActivity extends Activity {
 
     private void showLogin() {
         LinearLayout page = column();
-        TextView title = text("EffectCraft 账号管理", 24, true);
+        TextView title = text("Ae 账号管理", 24, true);
         page.addView(title, new LinearLayout.LayoutParams(-1, dp(56)));
         page.addView(text(isCloudflareMode()
             ? "管理端连接统一 Cloudflare 账号服务；网络不通时自动检测可用的公开 HTTPS 隧道。"

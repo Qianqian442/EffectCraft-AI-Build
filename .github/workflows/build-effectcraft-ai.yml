@@ -14,6 +14,7 @@ on:
       - '.github/scripts/ai_assistant_plugin.rs'
       - '.github/scripts/upgrade_export_preflight.py'
       - '.github/scripts/verify_android_source_patches.py'
+      - '.github/scripts/brand_ae_visible_names.py'
       - '.github/scripts/add_ai_assistant_fullscreen_drag.py'
       - '.github/scripts/ai_assistant_local.rs'
       - 'assets/ae-avatar.png'
@@ -86,6 +87,7 @@ jobs:
           python3 -m py_compile \
             .github/scripts/patch_export_dialog.py \
             .github/scripts/verify_android_source_patches.py \
+            .github/scripts/brand_ae_visible_names.py \
             .github/scripts/upgrade_export_preflight.py \
             .github/scripts/integrate_video_ai.py \
             .github/scripts/add_android_gallery_export.py \
@@ -633,6 +635,14 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_am_style_undo_redo.py
           python3 build-assets/.github/scripts/add_am_style_undo_redo.py
+
+      - name: Rename all visible application branding to Ae
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/brand_ae_visible_names.py
+          python3 build-assets/.github/scripts/brand_ae_visible_names.py
 
       - name: Verify final Android source patches and repair missing export helper
         env:

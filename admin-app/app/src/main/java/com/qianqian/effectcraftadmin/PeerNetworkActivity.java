@@ -69,9 +69,9 @@ public final class PeerNetworkActivity extends Activity {
         content.setPadding(dp(18), dp(16), dp(18), dp(16));
         content.setBackgroundColor(Color.rgb(245, 247, 250));
 
-        content.addView(label("EffectCraft 手机节点网络", 22, true),
+        content.addView(label("Ae 手机节点网络", 22, true),
             new LinearLayout.LayoutParams(-1, dp(52)));
-        content.addView(label("让这部手机成为一个可被附近 EffectCraft 节点发现的账号节点。", 14, false));
+        content.addView(label("让这部手机成为一个可被附近 Ae 节点发现的账号节点。", 14, false));
 
         localStatus = label("", 13, false);
         localStatus.setPadding(dp(12), dp(10), dp(12), dp(10));
@@ -149,7 +149,7 @@ public final class PeerNetworkActivity extends Activity {
         peerRows.removeAllViews();
         JSONArray peers = LanPeerDiscovery.getSavedPeers(this);
         if (peers.length() == 0) {
-            TextView empty = label("暂未发现其他节点。请让另一部手机连接同一个 Wi-Fi，并启动它的 EffectCraft 手机节点。", 13, false);
+            TextView empty = label("暂未发现其他节点。请让另一部手机连接同一个 Wi-Fi，并启动它的 Ae 手机节点。", 13, false);
             empty.setPadding(dp(8), dp(12), dp(8), dp(12));
             peerRows.addView(empty);
             return;
@@ -158,7 +158,7 @@ public final class PeerNetworkActivity extends Activity {
             JSONObject peer = peers.optJSONObject(i);
             if (peer == null) continue;
             String peerId = peer.optString("node_id", "未知节点");
-            String peerName = peer.optString("service", "EffectCraft 节点");
+            String peerName = peer.optString("service", "Ae 节点");
             String peerAddress = peer.optString("address", "") + ":" + peer.optInt("port", LanPeerDiscovery.PORT);
             LinearLayout card = new LinearLayout(this);
             card.setOrientation(LinearLayout.VERTICAL);
@@ -175,7 +175,7 @@ public final class PeerNetworkActivity extends Activity {
             copy.setOnClickListener(v -> {
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 if (clipboard != null) {
-                    clipboard.setPrimaryClip(ClipData.newPlainText("EffectCraft peer", peerAddress));
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Ae peer", peerAddress));
                     Toast.makeText(this, "节点地址已复制", Toast.LENGTH_SHORT).show();
                 }
             });

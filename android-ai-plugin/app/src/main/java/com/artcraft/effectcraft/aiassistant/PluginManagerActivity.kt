@@ -63,7 +63,7 @@ class PluginManagerActivity : Activity() {
                         preferences.edit().remove(KEY_DOWNLOAD_ID).apply()
                         if (modelFile.isFile && modelFile.length() > MIN_MODEL_BYTES) {
                             progressBar.progress = 100
-                            statusText.text = "DeepSeek 模型已准备完成。现在可以断网，在 EffectCraft 中使用本地 AI 助手。"
+                            statusText.text = "DeepSeek 模型已准备完成。现在可以断网，在 Ae 中使用本地 AI 助手。"
                             downloadButton.text = "模型已就绪"
                             downloadButton.isEnabled = false
                         } else {
@@ -99,7 +99,7 @@ class PluginManagerActivity : Activity() {
         buildScreen()
         if (modelFile.isFile && modelFile.length() > MIN_MODEL_BYTES) {
             progressBar.progress = 100
-            statusText.text = "DeepSeek 模型已准备完成。现在可以断网，在 EffectCraft 中使用本地 AI 助手。"
+            statusText.text = "DeepSeek 模型已准备完成。现在可以断网，在 Ae 中使用本地 AI 助手。"
             downloadButton.text = "模型已就绪"
             downloadButton.isEnabled = false
         } else {
@@ -115,12 +115,12 @@ class PluginManagerActivity : Activity() {
             setPadding(dp(24), dp(34), dp(24), dp(24))
         }
         root.addView(TextView(this).apply {
-            text = "EffectCraft DeepSeek AI 插件"
+            text = "Ae DeepSeek AI 插件"
             textSize = 22f
             gravity = Gravity.CENTER
         }, matchWidth())
         root.addView(TextView(this).apply {
-            text = "集成在 EffectCraft 主程序内 · 本地推理 · 无云端 API"
+            text = "集成在 Ae 主程序内 · 本地推理 · 无云端 API"
             textSize = 14f
             gravity = Gravity.CENTER
             setPadding(0, dp(12), 0, dp(18))
@@ -162,7 +162,7 @@ class PluginManagerActivity : Activity() {
             addCategory(Intent.CATEGORY_OPENABLE)
             type = "*/*"
             putExtra(Intent.EXTRA_MIME_TYPES, arrayOf("application/zip", "application/x-zip-compressed"))
-            putExtra(Intent.EXTRA_TITLE, "选择 EffectCraft DeepSeek AI 插件包")
+            putExtra(Intent.EXTRA_TITLE, "选择 Ae DeepSeek AI 插件包")
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
         }
         startActivityForResult(picker, IMPORT_MODEL_REQUEST)
@@ -230,7 +230,7 @@ class PluginManagerActivity : Activity() {
                                     parsed.optInt("format_version", 0) != 1 ||
                                     parsed.optString("id") != MODEL_PACKAGE_ID ||
                                     parsed.optString("model_file") != MODEL_FILE) {
-                                    throw IllegalStateException("这不是 EffectCraft DeepSeek AI 模型插件包。")
+                                    throw IllegalStateException("这不是 Ae DeepSeek AI 模型插件包。")
                                 }
                                 expectedSize = parsed.optLong("model_size_bytes", 0L)
                                 expectedSha256 = parsed.optString("model_sha256", "")
@@ -333,7 +333,7 @@ class PluginManagerActivity : Activity() {
         try {
             val request = DownloadManager.Request(Uri.parse(source))
                 .setTitle("DeepSeek 本地模型")
-                .setDescription(if (useMirror) "国内镜像优先 · EffectCraft 离线模型（约 1.02 GB）" else "官方源备用 · EffectCraft 离线模型（约 1.02 GB）")
+                .setDescription(if (useMirror) "国内镜像优先 · Ae 离线模型（约 1.02 GB）" else "官方源备用 · Ae 离线模型（约 1.02 GB）")
                 .setMimeType("application/octet-stream")
                 .setAllowedOverMetered(true)
                 .setAllowedOverRoaming(false)

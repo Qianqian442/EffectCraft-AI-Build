@@ -353,7 +353,7 @@ final class LanAccountServer implements Runnable {
             ok.put("ok", true);
             ok.put("ready", true);
             ok.put("database", "ready");
-            ok.put("service", "EffectCraft Android Home Account Server");
+            ok.put("service", "Ae Android Home Account Server");
             return ok;
         }
         if (method.equals("POST") && path.equals("/v1/register")) return register(body);
