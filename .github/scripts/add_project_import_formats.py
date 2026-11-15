@@ -18,8 +18,8 @@ def main() -> None:
 
     # Keep the two everyday actions visible and group less-used import commands.
     # AE, AM, NodeVideo and CapCut formats are handled by the one unified Project picker.
-    import_start = menu_source.find("  Import\\n")
-    import_end = menu_source.find("  Import Recent Footage\\n", import_start)
+    import_start = menu_source.find("  Import\n")
+    import_end = menu_source.find("  Import Recent Footage\n", import_start)
     if import_start < 0 or import_end < 0:
         raise SystemExit("Could not locate the original File > Import menu block")
     import_block = menu_source[import_start:import_end]
