@@ -111,7 +111,7 @@ def main() -> None:
     source = replace_once(
         source,
         """    state.open = window_open;
-    if import_plugin {""",
+    if manage_model {""",
         """    state.open = window_open;
     if toggle_full_screen {
         if state.full_screen {
@@ -123,7 +123,7 @@ def main() -> None:
     } else if !state.full_screen && restore_for_frame.is_some() {
         state.restore_rect = None;
     }
-    if import_plugin {""",
+    if manage_model {""",
         "AI assistant fullscreen transition",
     )
     source = source.replace(
