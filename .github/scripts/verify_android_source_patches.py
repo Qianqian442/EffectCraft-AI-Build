@@ -163,15 +163,12 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified the five requested independent project-export buttons and honest AE desktop status.")
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_FIVE_PROJECT_IMPORT_BUTTONS_V1" not in project:
-        raise SystemExit("The Project panel is missing the five independent project import buttons.")
-    for label in ("导入电脑版AE工程", "导入手机版AE工程", "导入AM工程", "导入NV工程", "导入CapCut工程"):
-        if label not in project:
-            raise SystemExit(f"Missing independent project import button: {label}")
-    for command in ("file.importAepDesktop", "file.importAepMobilePackage", "file.importAlightMotionProject", "file.importNodeVideoProject", "file.importCapCutProject"):
-        if f'"{command}"' not in project:
-            raise SystemExit(f"Project import button is not connected to {command}.")
-    print("Verified five independent AE desktop, AE mobile package, AM, NV and CapCut import buttons.")
+    if "EFFECTCRAFT_ANDROID_FIVE_PROJECT_IMPORT_BUTTONS_V1" in project:
+        raise SystemExit("Duplicate five-format project buttons remain in the Project panel.")
+    for label in ("导入电脑版Ae工程", "导入手机版Ae工程", "导入am工程", "导入NV工程", "导入capcut工程"):
+        if label in project:
+            raise SystemExit(f"Project import label {label} must stay in File > Import.")
+    print("Verified project-format import controls are not duplicated in the Project panel.")
 
     frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2" not in frontend:
@@ -205,8 +202,8 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if not end_match:
         raise SystemExit("The end of the File > Import menu block is missing.")
     visible_import = menu[import_match.start():import_match.end() + end_match.start()]
-    if "EffectCraft Project... | file.importProject" in visible_import:
-        raise SystemExit("The native Project import action is still in its old File > Import position.")
+    if "EffectCraft Project... | file.importProject" not in visible_import:
+        raise SystemExit("The original native EffectCraft Project import action is missing from File > Import.")
     required_imports = [
         "File... | file.import",
         "Multiple Files... | file.importMultiple",
@@ -221,20 +218,23 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     ]
     if any(item not in visible_import for item in required_imports):
         raise SystemExit("Moving the Project import action removed or hid another original Import command.")
-    if "AE 电脑版工程... | file.importAepDesktop" not in visible_import:
-        raise SystemExit("The dedicated AE desktop project import option is missing.")
-    if "EffectCraft 手机版工程... | file.importEffectCraftMobile" not in visible_import:
-        raise SystemExit("The dedicated EffectCraft mobile-exported project import option is missing.")
+    if "导入电脑版Ae工程... | file.importAepDesktop" not in visible_import:
+        raise SystemExit("The dedicated desktop AE project import option is missing.")
+    if "导入手机版Ae工程... | file.importAepMobilePackage" not in visible_import:
+        raise SystemExit("The dedicated mobile AE project package import option is missing.")
+    if "EffectCraft 手机版工程包... | file.importEffectCraftMobile" not in visible_import:
+        raise SystemExit("The preserved EffectCraft mobile project package import option is missing.")
     for menu_entry in (
-        "导入电脑版AE工程... | file.importAepDesktop",
-        "导入手机版AE工程... | file.importAepMobilePackage",
-        "导入AM工程... | file.importAlightMotionProject",
+        "导入电脑版Ae工程... | file.importAepDesktop",
+        "导入手机版Ae工程... | file.importAepMobilePackage",
+        "导入am工程... | file.importAlightMotionProject",
         "导入NV工程... | file.importNodeVideoProject",
-        "导入CapCut工程... | file.importCapCutProject",
+        "导入capcut工程... | file.importCapCutProject",
+        "EffectCraft Project... | file.importProject",
     ):
         if menu_entry not in visible_import:
             raise SystemExit(f"File > Import is missing a format-specific entry: {menu_entry}")
-    print("Verified five separate format choices appear in File > Import and in the Project panel.")
+    print("Verified five separate project formats and original EffectCraft import in File > Import.")
 
     aep_commands = (root / "crates/engine/src/cmd/aep.rs").read_text(encoding="utf-8")
     if '"file.importAepDesktop"' not in aep_commands or '"file.importAep"' not in aep_commands:
