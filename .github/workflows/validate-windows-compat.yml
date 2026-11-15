@@ -156,6 +156,17 @@ jobs:
           stable="https://github.com/The412Banner/Nightlies/releases/download/FEXCore-2611.1/FEXCore-2611.1.wcp"
           inspect_wcp "fexcore-2611.1" "$stable" "60ef9fefd5a01e353d9266ddb2ad50317ff6f526bc0f42a96408651e373fa8b4" "1288148"
 
+      - name: Install the same AI toolbar bridge used by the APK build
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/install_ai_plugin_bridge.py
+          python3 .github/scripts/install_ai_plugin_bridge.py
+          grep -Fq 'pub(crate) fn open_ai_plugin_import_from_toolbar' effectcraft/crates/ui-egui/src/lib.rs
+          grep -Fq '#[cfg(not(target_os = "android"))]' effectcraft/crates/ui-egui/src/lib.rs
+
       - name: Apply original plug-in import and ZIP patches before desktop migration patch
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
