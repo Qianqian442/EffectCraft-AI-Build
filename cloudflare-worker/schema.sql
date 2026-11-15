@@ -33,3 +33,11 @@ CREATE TABLE IF NOT EXISTS account_whitelist (
   UNIQUE(kind, normalized_value)
 );
 CREATE INDEX IF NOT EXISTS idx_account_whitelist_kind_value ON account_whitelist(kind, normalized_value);
+
+
+CREATE TABLE IF NOT EXISTS account_identity_bans (
+  identity_hash TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('qq', 'wechat')),
+  created_at TEXT NOT NULL,
+  ban_reason TEXT NOT NULL DEFAULT ''
+);
