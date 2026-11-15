@@ -61,13 +61,25 @@ async function passwordCryptoRequest(env, path, body) {
       let upstreamBody = "";
       try { upstreamBody = (await res.text()).slice(0, 500); } catch (_) {}
       let upstreamCode = "";
-      try { upstreamCode = JSON.parse(upstreamBody).code || ""; } catch (_) {}
-      console.error("password-crypto-do-response", res.status, path, upstreamCode, upstreamBody);
-      throw new HttpError(503, "密码计算服务暂时不可用，请稍后重试", {
-        code: "password_service_unavailable",
-        upstream_status: res.status,
-        upstream_code: upstreamCode || "unspecified"
+      let upstreamErrorName = "";
+      let upstreamErrorMessage = "";
+      try {
+        const upstream = JSON.parse(upstreamBody);
+        upstreamCode = String(upstream.code || "");
+        upstreamErrorName = String(upstream.error_name || "").slice(0, 80);
+        upstreamErrorMessage = String(upstream.error_message || "").slice(0, 180);
+      } catch (_) {}
+      console.error("password-crypto-do-response", res.status, path, upstreamCode, upstreamErrorName, upstreamErrorMessage);
+      const failure = new HttpError(503, "密码计算服务暂时不可用，请稍后重试", {
+        code: "password_service_unavailable"
       });
+      failure.diagnostic = {
+        upstream_status: res.status,
+        upstream_code: upstreamCode || "unspecified",
+        upstream_error_name: upstreamErrorName,
+        upstream_error_message: upstreamErrorMessage
+      };
+      throw failure;
     }
     return await res.json();
   } catch (error) {
@@ -75,12 +87,15 @@ async function passwordCryptoRequest(env, path, body) {
     const errorName = error && error.name ? String(error.name).slice(0, 80) : "Error";
     const errorMessage = error && error.message ? String(error.message).slice(0, 240) : String(error).slice(0, 240);
     console.error("password-crypto-do-error", errorName, errorMessage, path);
-    throw new HttpError(503, "密码计算服务暂时不可用，请稍后重试", {
-      code: "password_service_unavailable",
+    const failure = new HttpError(503, "密码计算服务暂时不可用，请稍后重试", {
+      code: "password_service_unavailable"
+    });
+    failure.diagnostic = {
       upstream_code: "fetch_exception",
       upstream_error_name: errorName,
       upstream_error_message: errorMessage
-    });
+    };
+    throw failure;
   }
 }
 async function passwordHash(env, password) {
@@ -550,15 +565,15 @@ async function route(request, env) {
     } catch (error) {
       const detail = error && error.message ? error.message : String(error);
       console.error("deep-health-error", stage, detail);
-      const extra = error instanceof HttpError && error.extra ? error.extra : {};
+      const diagnostic = error instanceof HttpError && error.diagnostic ? error.diagnostic : {};
       return fail(503, "密码计算服务自检失败", {
         code: "password_service_unavailable",
         stage,
         reason: error instanceof HttpError ? error.message : "internal_error",
-        upstream_status: Number(extra.upstream_status || 0),
-        upstream_code: String(extra.upstream_code || "unspecified"),
-        upstream_error_name: String(extra.upstream_error_name || ""),
-        upstream_error_message: String(extra.upstream_error_message || "")
+        upstream_status: Number(diagnostic.upstream_status || 0),
+        upstream_code: String(diagnostic.upstream_code || "unspecified"),
+        upstream_error_name: String(diagnostic.upstream_error_name || ""),
+        upstream_error_message: String(diagnostic.upstream_error_message || "")
       });
     }
   }
