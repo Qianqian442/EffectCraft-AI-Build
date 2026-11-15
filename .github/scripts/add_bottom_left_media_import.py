@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 
-PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V4"
+PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V5"
 FINISH_MARKER = "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V2"
 FIT_MARKER = "EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2"
 
@@ -34,19 +34,31 @@ def patch_project_panel_import_button(root: Path) -> None:
     app.ui.project_search = q;
     app.auto.add("project.search", sr, "Search");
 '''
-    new = r'''    // EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V4
-    // Keep Import Media visible even when the Project panel is narrow. A labeled
-    // touch target beside Search is easier to find than a tiny plus in the footer.
-    let import_width = (rect.width() - 80.0).clamp(56.0, 72.0);
-    let import_rect = Rect::from_min_size(
-        pos2(rect.max.x - 8.0 - import_width, head.max.y + 2.0),
-        vec2(import_width, 22.0),
-    );
-    let search_width = (rect.width() - 16.0 - import_width - 6.0).max(40.0);
+    new = r'''    // EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V5
+    // Use a single row when there is enough width. On narrow phone panels,
+    // place Import Media on its own row and move the column header below it.
+    let compact_import_layout = rect.width() < 170.0;
+    let import_width = if compact_import_layout {
+        (rect.width() - 16.0).max(40.0)
+    } else {
+        (rect.width() - 80.0).clamp(56.0, 72.0)
+    };
+    let sr_width = if compact_import_layout {
+        (rect.width() - 16.0).max(40.0)
+    } else {
+        (rect.width() - 16.0 - import_width - 6.0).max(40.0)
+    };
     let sr = Rect::from_min_size(
         pos2(rect.min.x + 8.0, head.max.y + 2.0),
-        vec2(search_width, 22.0),
+        vec2(sr_width, 22.0),
     );
+    let import_y = if compact_import_layout { sr.max.y + 3.0 } else { sr.min.y };
+    let import_x = if compact_import_layout {
+        rect.min.x + 8.0
+    } else {
+        rect.max.x - 8.0 - import_width
+    };
+    let import_rect = Rect::from_min_size(pos2(import_x, import_y), vec2(import_width, 22.0));
     let mut q = app.ui.project_search.clone();
     widgets::search_field(ui, sr, &mut q, crate::i18n::tr("Search project"), &t);
     app.ui.project_search = q;
@@ -62,7 +74,14 @@ def patch_project_panel_import_button(root: Path) -> None:
     }
 '''
     source = replace_once(source, old, new, "Visible Project-panel Import Media button")
-    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V4" not in source:
+    source = replace_once(
+        source,
+        "    let hdr = Rect::from_min_size(pos2(rect.min.x, sr.max.y + 6.0), vec2(rect.width(), 20.0));",
+        """    let header_top = if compact_import_layout { import_rect.max.y + 6.0 } else { sr.max.y + 6.0 };
+    let hdr = Rect::from_min_size(pos2(rect.min.x, header_top), vec2(rect.width(), 20.0));""",
+        "Move Project columns below the stacked mobile Import Media button",
+    )
+    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V5" not in source:
         raise SystemExit("Project-panel header import marker was not installed")
     path.write_text(source, encoding="utf-8")
 
