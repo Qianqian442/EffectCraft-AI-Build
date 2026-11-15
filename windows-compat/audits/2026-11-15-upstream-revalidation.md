@@ -87,10 +87,13 @@ https://github.com/Qianqian442/EffectCraft-AI-Build/actions/runs/43671001896
 
 The first Android NDK test exposed that Bionic headers do not declare an `execveat()` libc prototype. The test now resolves the bridge's exported symbol with `dlsym` rather than directly linking to a non-public libc symbol. `-ldl` was added to both host and NDK fixture link commands.
 
-The latest bridge build after that fix is:
+The first bridge build completed successfully:
 https://github.com/Qianqian442/EffectCraft-AI-Build/actions/runs/43671001896
 
-Host test job passed; ARM64 NDK shared-library/fixture build was still running at the time of this audit. No Android-device execution is claimed.
+A second build including explicit `-ldl` linkage also completed successfully:
+https://github.com/Qianqian442/EffectCraft-AI-Build/actions/runs/43671169573
+
+Both host-test and Android ARM64 NDK jobs passed. The artifact contains an AArch64 ELF64 shared library and ARM64 ELF fixtures whose PT_INTERP is `/system/bin/linker64`; it is a reproducible build artifact, not an Android-device execution result. No Android-device execution is claimed.
 
 ### Termux Hangover package reproduction
 
