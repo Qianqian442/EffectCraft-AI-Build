@@ -388,7 +388,7 @@ fn select_http_route(base_url: &str) -> Result<(Agent, Option<Candidate>), Strin
         }
     }
 
-    Err("Cloudflare 云端服务器连接失败：直连和备用安全线路均未建立连接。请检查网络后重新检测。".to_string())
+    Err("Cloudflare 直连连接超时或失败；备用安全线路连接失败。请检查网络后重新检测。".to_string())
 }
 
 /// Selects a real Cloudflare route first, then sends one account request.
