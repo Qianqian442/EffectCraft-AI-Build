@@ -18,10 +18,10 @@ def main() -> None:
     frontend_source = frontend.read_text(encoding="utf-8")
 
     # Find exact top-level menu lines while tolerating LF and CRLF source files.
-    start_match = re.search(r"(?m)^  Import\\r?$", menu_source)
+    start_match = re.search(r"(?m)^  Import\r?$", menu_source)
     if not start_match:
         raise SystemExit("Could not locate the original File > Import menu heading")
-    end_match = re.search(r"(?m)^  Import Recent Footage\\r?$", menu_source[start_match.end():])
+    end_match = re.search(r"(?m)^  Import Recent Footage\r?$", menu_source[start_match.end():])
     if not end_match:
         raise SystemExit("Could not locate the end of the original File > Import menu block")
     start = start_match.start()
