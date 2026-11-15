@@ -51,6 +51,10 @@ export class AccountSessionHub {
   async fetch(request) {
     const url = new URL(request.url);
 
+    if (request.method === "GET" && url.pathname === "/health") {
+      return Response.json({ ok: true, service: "password-crypto" });
+    }
+
     // PBKDF2 is intentionally executed in a Durable Object rather than the
     // 10ms Workers Free request CPU budget. Durable Objects have a longer
     // per-request CPU allowance and this object keeps no password material.
