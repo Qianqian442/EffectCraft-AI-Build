@@ -68,7 +68,7 @@ class InferenceService : Service() {
     }
 
     private suspend fun infer(prompt: String): String {
-        val model = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), MODEL_FILE)
+        val model = File(getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: filesDir, MODEL_FILE)
         if (!model.isFile || model.length() < MIN_MODEL_BYTES) {
             throw IllegalStateException("请先打开“Ae DeepSeek AI 插件”，下载约 1.02 GB 的本地模型。")
         }
