@@ -27,11 +27,13 @@ def patch_project_panel_import_button(root: Path) -> None:
     if PROJECT_MARKER not in source:
         anchor = "    let depth = app.session.project.settings.bit_depth.label();\n"
         button = r'''    // EFFECTCRAFT_ANDROID_PROJECT_FOOTER_IMPORT_V3
-    // Use a clearly labelled, touch-sized control: the old 22px plus icon was easy to miss
-    // or mistake for decoration on a narrow Android Project panel.
-    let import_rect = Rect::from_min_size(pos2(x, foot.min.y + 3.0), vec2(64.0, 22.0));
+    // Use a clearly labelled, touch-sized control. On narrow panels keep a visible plus target
+    // rather than letting the import control overlap the Delete button or disappear off-screen.
+    let import_width = (foot.max.x - 30.0 - x - 4.0).clamp(22.0, 64.0);
+    let import_label = if import_width >= 52.0 { "导入素材" } else { "＋" };
+    let import_rect = Rect::from_min_size(pos2(x, foot.min.y + 3.0), vec2(import_width, 22.0));
     let import_response = ui
-        .put(import_rect, egui::Button::new("导入素材").min_size(vec2(64.0, 22.0)))
+        .put(import_rect, egui::Button::new(import_label).min_size(vec2(import_width, 22.0)))
         .on_hover_text(crate::i18n::tr("Import pictures and videos"));
     app.auto.add_response("project.importMedia", &import_response, "导入图片和视频");
     if import_response.clicked()
@@ -39,7 +41,7 @@ def patch_project_panel_import_button(root: Path) -> None:
     {
         app.ui.status = error;
     }
-    x += 68.0;
+    x += import_width + 4.0;
 '''
         source = replace_once(source, anchor, button + anchor, "Project panel media import button")
         if PROJECT_MARKER not in source:
