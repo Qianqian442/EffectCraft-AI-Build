@@ -341,6 +341,7 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     # In the integrated host APK, the model manager imports a data-only ZIP bundle.
     # No companion APK is installed; keep the existing manager entry and label it clearly.
     a = a.replace('ui.button("模型管理")', 'ui.button("导入 AI 模型包")', 1)
+    a = a.replace('egui::Button::new("模型管理")', 'egui::Button::new("导入 AI 模型包")', 1)
     a = a.replace(
         'state.notice = "请先打开“模型管理”下载约 1.02 GB 的本地 DeepSeek 模型。".into();',
         'state.notice = "请先打开“导入 AI 模型包”选择已下载的 ZIP；校验导入后即可离线使用。".into();',
