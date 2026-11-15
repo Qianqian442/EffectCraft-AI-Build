@@ -323,6 +323,14 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
     for old, new in text_replacements:
         if old in a:
             a = a.replace(old, new, 1)
+    # In the integrated host APK, the model manager imports a data-only ZIP bundle.
+    # No companion APK is installed; keep the existing manager entry and label it clearly.
+    a = a.replace('ui.button("模型管理")', 'ui.button("导入 AI 模型包")', 1)
+    a = a.replace(
+        'state.notice = "请先点击“导入 AI 插件”，选择 ZIP 并按 Android 系统提示完成安装后，即可使用本地 DeepSeek。".into();',
+        'state.notice = "请先打开“导入 AI 模型包”，选择已下载的 ZIP 模型包；校验导入后即可离线使用。".into();',
+        1,
+    )
     a = a.replace('    let mut import_plugin = false;\n', '', 1)
     import_block = """    if import_plugin {
         match open_ai_plugin_import() {
@@ -338,10 +346,10 @@ project(':ai-runtime').projectDir = file('{ai_runtime_project_dir}')
         raise SystemExit("AI assistant still contains a companion-plugin import path; refusing to claim single-APK integration.")
     assistant.write_text(a, encoding="utf-8")
 
-    print("DeepSeek model manager and inference service are staged inside the main APK.")
-    print("The host binds to its own in-process Android service; no companion APK/ZIP is needed.")
-    print("The approximately 1.02 GB GGUF model remains a one-time download inside the APK's app-private storage.")
-    print("Inference remains local/offline after the model download.")
+    print("DeepSeek model manager and inference service are staged inside the Ae host APK.")
+    print("The host binds to its own in-process Android service; no companion APK is installed.")
+    print("The approximately 1.02 GB GGUF model is imported from a data-only ZIP package into app-private storage.")
+    print("The original in-app network-download fallback is retained; local inference works offline after import or download.")
 
 if __name__ == "__main__":
     main()
