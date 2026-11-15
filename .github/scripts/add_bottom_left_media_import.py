@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 
 
-PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V6"
+PROJECT_MARKER = "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V7"
 FINISH_MARKER = "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V4"
 FIT_MARKER = "EFFECTCRAFT_ANDROID_FIT_IMPORTED_MEDIA_TO_COMP_V2"
 PICKER_MARKER = "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2"
@@ -24,10 +24,11 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 
 
 def patch_project_panel_import_button(root: Path) -> None:
-    """Put separate Import Media and Import Project buttons in the Project panel."""
+    """Keep the media shortcut in Project; project formats stay in File > Import."""
     path = root / "crates/ui-egui/src/panels/project.rs"
     source = path.read_text(encoding="utf-8")
-    if PROJECT_MARKER in source:
+    marker = "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V7"
+    if marker in source:
         return
     old = '''    // Search.
     let sr = Rect::from_min_size(pos2(rect.min.x + 8.0, head.max.y + 2.0), vec2(rect.width() - 16.0, 22.0));
@@ -36,31 +37,15 @@ def patch_project_panel_import_button(root: Path) -> None:
     app.ui.project_search = q;
     app.auto.add("project.search", sr, "Search");
 '''
-    new = r'''    // EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V6
-    // Keep Search on its own row. Put Media and Project import on the next row,
-    // side by side on normal phone panels and stacked on very narrow panels.
+    new = r'''    // EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V7
+    // The Project panel offers media import only. Project formats live in File > Import.
     let sr = Rect::from_min_size(
         pos2(rect.min.x + 8.0, head.max.y + 2.0),
         vec2((rect.width() - 16.0).max(40.0), 22.0),
     );
-    let compact_import_layout = rect.width() < 190.0;
-    let button_gap = 8.0;
-    let button_width = if compact_import_layout {
-        (rect.width() - 16.0).max(40.0)
-    } else {
-        ((rect.width() - 24.0) * 0.5).max(56.0)
-    };
-    let button_y = sr.max.y + 3.0;
     let media_rect = Rect::from_min_size(
-        pos2(rect.min.x + 8.0, button_y),
-        vec2(button_width, 22.0),
-    );
-    let project_rect = Rect::from_min_size(
-        pos2(
-            if compact_import_layout { rect.min.x + 8.0 } else { media_rect.max.x + button_gap },
-            if compact_import_layout { media_rect.max.y + 3.0 } else { button_y },
-        ),
-        vec2(button_width, 22.0),
+        pos2(rect.min.x + 8.0, sr.max.y + 3.0),
+        vec2((rect.width() - 16.0).max(40.0), 24.0),
     );
     let mut q = app.ui.project_search.clone();
     widgets::search_field(ui, sr, &mut q, crate::i18n::tr("Search project"), &t);
@@ -76,29 +61,16 @@ def patch_project_panel_import_button(root: Path) -> None:
     {
         app.ui.status = error;
     }
-
-    let project_response = ui
-        .put(project_rect, egui::Button::new("导入工程").min_size(project_rect.size()))
-        .on_hover_text("导入 EffectCraft、AE、AM、NodeVideo 和 CapCut 工程");
-    app.auto.add_response("project.importProject", &project_response, "导入工程");
-    if project_response.clicked()
-        && let Err(error) = crate::menus::invoke(app, &ctx, "file.importProject", json!({}))
-    {
-        app.ui.status = error;
-    }
 '''
-    source = replace_once(source, old, new, "Project-panel Media and Project import buttons")
-    source = replace_once(
-        source,
-        "    let hdr = Rect::from_min_size(pos2(rect.min.x, sr.max.y + 6.0), vec2(rect.width(), 20.0));",
-        """    let actions_bottom = if compact_import_layout { project_rect.max.y } else { media_rect.max.y };
-    let hdr = Rect::from_min_size(pos2(rect.min.x, actions_bottom + 6.0), vec2(rect.width(), 20.0));""",
-        "Move Project columns below both import buttons",
-    )
-    if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V6" not in source:
-        raise SystemExit("Project-panel dual import controls were not installed")
+    if old not in source:
+        raise SystemExit("Could not find original Project search row")
+    source = source.replace(old, new, 1)
+    old_header = '    let hdr = Rect::from_min_size(pos2(rect.min.x, sr.max.y + 6.0), vec2(rect.width(), 20.0));'
+    new_header = '    let hdr = Rect::from_min_size(pos2(rect.min.x, media_rect.max.y + 6.0), vec2(rect.width(), 20.0));'
+    if old_header not in source:
+        raise SystemExit("Could not find Project content header anchor")
+    source = source.replace(old_header, new_header, 1)
     path.write_text(source, encoding="utf-8")
-
 
 def patch_file_import_auto_add(root: Path) -> None:
     """Auto-place only the dedicated picture/video import action; preserve generic File > Import."""
