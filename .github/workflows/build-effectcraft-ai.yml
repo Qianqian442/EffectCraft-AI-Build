@@ -1001,12 +1001,15 @@ jobs:
           echo "Verified the Chroma Key effect, selectable screen-color presets and custom color picker are in the APK source."
           test -s "source/effectcraft/crates/ui-egui/src/android_gallery.rs"
           grep -Fq "EFFECTCRAFT_DEEPSEEK_SINGLE_APK_V1" "lib/build-common.sh"
+          grep -Fq "EFFECTCRAFT_ANDROID_AI_EXPANDED_DRAG_V2" "source/effectcraft/crates/ui-egui/src/ai_assistant.rs"
+          grep -Fq "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_SOURCE_V3" "source/effectcraft/crates/ui-egui/src/panels/timeline.rs"
+          grep -Fq "application[\"label\"] = \"Ae\"" "lib/android_project.py"
           grep -Fq "com.artcraft.effectcraft.aiassistant.InferenceService" "templates/android/SafActivity.java"
           grep -Fq "com.artcraft.effectcraft.aiassistant.PluginManagerActivity" "templates/android/SafActivity.java"
-          grep -Fq "导入 Ae AI 模型包 ZIP" "source/effectcraft/crates/ui-egui/src/ai_assistant.rs"
+          grep -Fq "导入 AI 模型包" "source/effectcraft/crates/ui-egui/src/ai_assistant.rs"
           grep -Fq "ZipInputStream" "$GITHUB_WORKSPACE/build-assets/android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt"
           grep -Fq "MODEL_PACKAGE_FORMAT" "$GITHUB_WORKSPACE/build-assets/android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt"
-          if grep -Fq "REQUEST_INSTALL_PACKAGES" "$GITHUB_WORKSPACE/artcraft/templates/android/SafActivity.java"; then
+          if grep -Fq "REQUEST_INSTALL_PACKAGES" "$GITHUB_WORKSPACE/artcraft/lib/android_project.py"; then
             echo "Companion APK installation permissions must not be required by Ae." >&2
             exit 1
           fi
@@ -1126,6 +1129,8 @@ jobs:
 
           BADGING="$("$AAPT" dump badging "$APK")"
           printf '%s\n' "$BADGING" | grep -Fq "package: name='com.artcraft.effectcraft'"
+          printf '%s\n' "$BADGING" | grep -Fq "application-label:'Ae'"
+          printf '%s\n' "$BADGING" | grep -Fq "versionName='0.21.2'"
           printf '%s\n' "$BADGING" | grep -Fq "sdkVersion:'28'"
           printf '%s\n' "$BADGING" | grep -Fq "native-code: 'arm64-v8a'"
           echo "$BADGING" | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:|launchable-activity:)"
