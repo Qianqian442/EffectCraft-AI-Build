@@ -164,7 +164,7 @@ def verify_chinese_default(root: Path) -> None:
     for label in effect_names + ui_labels:
         visible = re.sub(r"\\[nrt]", "", label)
         # "Ae" is the required product name, not untranslated English UI copy.
-        visible = re.sub(r"\\bAe\\b", "", visible)
+        visible = re.sub(r"\bAe\b", "", visible)
         if re.search(r"[A-Za-z]", visible):
             raise SystemExit(f"Simplified Chinese interface still displays English: {label}")
     print(
