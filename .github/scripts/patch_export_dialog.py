@@ -54,6 +54,26 @@ if new_collect not in frontend:
 
 header = header_path.read_text()
 
+# v0.21.1's upstream header does not contain a toolbar Export action. Create one
+# before converting its handler into the centered export dialog. Keep the action
+# in right_side() so the responsive horizontal header later scrolls the same button
+# instead of creating a duplicate overlay.
+if "if export_response.clicked()" not in header:
+    export_anchor = '    let rx = community_buttons(app, ui, p, rect.max.x - 10.0, cy);'
+    export_button = """    // EFFECTCRAFT_ANDROID_EXPORT_TOOLBAR_BUTTON_V1
+    let export_rect = Rect::from_min_size(pos2(rect.max.x - 48.0, cy - 13.0), vec2(38.0, 26.0));
+    let export_response = ui.put(export_rect, egui::Button::new("导出"));
+    app.auto.add("header.export", export_rect, "Export video");
+    if export_response.clicked() {
+        app.show_panel(crate::dock::PanelKind::RenderQueue);
+    }
+    let rx = community_buttons(app, ui, p, rect.max.x - 56.0, cy);"""
+    if header.count(export_anchor) != 1:
+        raise SystemExit("Could not uniquely locate right_side() to add the missing toolbar Export button.")
+    header = header.replace(export_anchor, export_button, 1)
+elif "EFFECTCRAFT_ANDROID_EXPORT_TOOLBAR_BUTTON_V1" not in header:
+    raise SystemExit("An Export click handler exists without the expected toolbar placement; refusing to add a duplicate.")
+
 # The Export toolbar button opens a centered setup dialog instead of jumping straight to the queue.
 old_click = 'if export_response.clicked() {\n        app.show_panel(crate::dock::PanelKind::RenderQueue);\n    }'
 new_click = 'if export_response.clicked() {\n        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("effectcraft-export-dialog-open"), true));\n    }'
