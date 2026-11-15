@@ -61,14 +61,28 @@ def patch_header(root: Path) -> None:
     if MARKER in source:
         return
 
-    source = replace_once(
-        source,
-        "    let x = tool_slots(app, ui, &p, x, cy);\n",
-        "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\n"
-        "    let x = history_buttons(app, ui, &p, x, cy);\n"
-        "    let x = tool_slots(app, ui, &p, x, cy);\n",
-        "place touch Undo / Redo controls before the remaining toolbar tools",
-    )
+    # The responsive Android header is installed earlier in the workflow and
+    # rebuilds show() around scroll_ui. Prefer that live insertion point so Undo/Redo
+    # remains inside the same horizontally scrollable toolbar; retain compatibility
+    # with the original upstream header for non-responsive builds.
+    if "    let x = tool_slots(app, scroll_ui, &p, x, cy);\\n" in source:
+        source = replace_once(
+            source,
+            "    let x = tool_slots(app, scroll_ui, &p, x, cy);\\n",
+            "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
+            "    let x = history_buttons(app, scroll_ui, &p, x, cy);\\n"
+            "    let x = tool_slots(app, scroll_ui, &p, x, cy);\\n",
+            "place touch Undo / Redo controls in the responsive toolbar",
+        )
+    else:
+        source = replace_once(
+            source,
+            "    let x = tool_slots(app, ui, &p, x, cy);\\n",
+            "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
+            "    let x = history_buttons(app, ui, &p, x, cy);\\n"
+            "    let x = tool_slots(app, ui, &p, x, cy);\\n",
+            "place touch Undo / Redo controls before the remaining toolbar tools",
+        )
 
     helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them.\n"
     helper = r'''/// AM-style touch controls for the project's native edit history.
