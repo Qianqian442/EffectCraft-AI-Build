@@ -5,8 +5,6 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
-      - 'p2p-bridge/**'
-      - '.github/scripts/integrate_p2p_bridge.py'
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/add_qq_project_share.py'
@@ -32,6 +30,7 @@ on:
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_account_avatar_picker.py'
+      - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/normalize_account_network_dependencies.py'
       - '.github/scripts/make_header_scrollable.py'
@@ -80,6 +79,7 @@ jobs:
             .github/scripts/add_android_gallery_export.py \
             .github/scripts/add_qq_project_share.py \
             .github/scripts/add_account_avatar_picker.py \
+            .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/patch_gradle_maven_mirrors.py \
             .github/scripts/install_ai_plugin_bridge.py \
             .github/scripts/add_plugin_import_button.py \
@@ -92,7 +92,7 @@ jobs:
 
   build:
     needs: validate-patches
-    # Keep the main APK's account client connected to the administrator-hosted server over its existing P2P transport. Do not rewrite it to Cloudflare HTTPS or a public proxy pool.
+    # Keep the main APK account client on direct HTTPS to the configured Cloudflare account server; do not route account traffic through P2P or public proxies.
     name: Build EffectCraft 0.21.1 with AI helper
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -209,13 +209,6 @@ jobs:
         env:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: python3 ${{ github.workspace }}/build-assets/.github/scripts/configure_android_storage_fallback.py
-
-      - name: Integrate public P2P transport into the main Android launcher
-        env:
-          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-          BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
-        run: python3 ${{ github.workspace }}/build-assets/.github/scripts/integrate_p2p_bridge.py
 
       - name: Apply the AI assistant and export changes
         env:
@@ -448,6 +441,21 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_account_avatar_picker.py
           python3 build-assets/.github/scripts/add_account_avatar_picker.py
+
+
+      - name: Keep main APK account connection direct to Cloudflare HTTPS
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          AE_ACCOUNT_API_URL: https://ae-account-api-gateway.pages.dev
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/convert_account_gate_to_cloud.py
+          python3 build-assets/.github/scripts/convert_account_gate_to_cloud.py
+          ACCOUNT_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          grep -Fq 'const DEFAULT_SERVER: &str = "https://ae-account-api-gateway.pages.dev";' "$ACCOUNT_RS"
+          grep -Fq 'ureq::Agent::config_builder()' "$ACCOUNT_RS"
+          grep -Fq 'tungstenite::connect(request)' "$ACCOUNT_RS"
+          ! grep -Fq 'EFFECTCRAFT_PUBLIC_PROXY_POOL_V1' "$ACCOUNT_RS"
+          echo "Verified direct HTTPS and WebSocket account connections to Cloudflare; no public proxy pool is inserted."
 
       - name: Add independent connected Puppet pin rigs
         env:
