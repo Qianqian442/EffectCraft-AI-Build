@@ -101,7 +101,7 @@ def main() -> None:
         .open(&mut window_open)
         .show(&ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.label("DeepSeek 本地推理 · 插件通过 ZIP 导入");
+                ui.label("DeepSeek 本地推理 · 已集成在当前 APK");
                 if ui.button(if state.full_screen { "还原窗口" } else { "全屏" }).clicked() {
                     toggle_full_screen = true;
                 }
