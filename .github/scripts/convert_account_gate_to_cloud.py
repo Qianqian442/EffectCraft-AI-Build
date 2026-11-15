@@ -127,11 +127,19 @@ def main() -> None:
     )
     source = source.replace(
         'ui.label("管理员节点地址");',
-        'ui.label("Cloudflare HTTPS 服务地址");',
+        'ui.label("云端账号服务");',
     )
     source = source.replace(
         'ui.text_edit_singleline(&mut app.account.server_url);',
-        'ui.add_enabled(false, egui::TextEdit::singleline(&mut app.account.server_url));',
+        'ui.label("服务器连接地址已隐藏，系统会自动选择连接线路");',
+    )
+    source = source.replace(
+        'ui.label(&app.account.server_url);',
+        'ui.label("正在安全验证账号，请稍候…");',
+    )
+    source = source.replace(
+        'self.status = format!("无法连接家中的账号服务器：{error}");',
+        'self.status = format!("连接云端账号服务器失败：{error}");',
     )
     source = source.replace(
         'ui.button("保存节点地址并重新连接")',
@@ -364,7 +372,14 @@ def main() -> None:
     } else {
         let bytes = serde_json::to_vec(&body).map_err(|error| error.to_string())?;
         request.header("Content-Type", "application/json").send(bytes.as_slice())
-    }.map_err(|error| format!("云端请求失败：{error}"))?;
+    }.map_err(|error| {
+        let detail = error.to_string().to_ascii_lowercase();
+        if detail.contains("timeout") || detail.contains("timed out") {
+            "连接云端账号服务器超时，请检查网络后重试".to_string()
+        } else {
+            "云端账号服务器连接失败，请检查网络后重试".to_string()
+        }
+    })?;
     let status = response.status().as_u16();
     let body_text = response.body_mut().read_to_string().map_err(|error| error.to_string())?;
     let value = serde_json::from_str::<Value>(&body_text)
