@@ -266,6 +266,19 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                     } else {
                         self.mode = Mode::Unavailable;
                     }
+                } else if matches!(action, Action::Verify) && response.status == 401 {
+                    // A deleted account (or expired session) must not remain trapped
+                    // behind an old offline permanent-ban cache. The next screen allows
+                    // registration again; the server still enforces the whitelist.
+                    self.token = None;
+                    self.user = None;
+                    self.mode = Mode::Auth;
+                    self.remove_saved(config);
+                    self.clear_cached_ban(config);
+                    self.banned_until.clear();
+                    self.permanently_banned = false;
+                    self.ban_reason.clear();
+                    self.status = "账号已删除或登录已失效；可以重新登录，或在白名单允许时重新注册。".to_string();
                 } else if matches!(action, Action::Verify) {
                     self.mode = Mode::Unavailable;
                 }
