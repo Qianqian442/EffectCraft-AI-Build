@@ -26,8 +26,8 @@ def main() -> None:
     if project_item in menu_source:
         menu_source = menu_source.replace(project_item, unified_item)
 
-    menu_source = menu_source.replace("    After Effects Project... | file.importAep\\n", "")
-    menu_source = menu_source.replace("    Adobe Premiere Pro Project... | file.importTimeline\\n", "")
+    menu_source = menu_source.replace("    After Effects Project... | file.importAep\n", "")
+    menu_source = menu_source.replace("    Adobe Premiere Pro Project... | file.importTimeline\n", "")
 
     # There must be exactly one visible project import entry, regardless of platform menu block.
     visible_project_entries = [
