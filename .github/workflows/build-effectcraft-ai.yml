@@ -96,6 +96,7 @@ jobs:
             .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/patch_gradle_maven_mirrors.py \
             .github/scripts/install_ai_plugin_bridge.py \
+            .github/scripts/integrate_deepseek_single_apk.py \
             .github/scripts/add_plugin_import_button.py \
             .github/scripts/fix_viewer_drag_selection.py \
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
@@ -378,14 +379,15 @@ jobs:
           print("Embedded the supplied Ae avatar in the draggable AI bubble.")
           PY
 
-      - name: Integrate the standalone DeepSeek AI plugin bridge into the host APK
+      - name: Integrate DeepSeek inference into the main APK and import model-only ZIP packages
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+          LLAMA_CPP_DIR: ${{ github.workspace }}/llama.cpp
         run: |
           set -euo pipefail
-          python3 -m py_compile build-assets/.github/scripts/install_ai_plugin_bridge.py
-          python3 build-assets/.github/scripts/install_ai_plugin_bridge.py
+          python3 -m py_compile build-assets/.github/scripts/integrate_deepseek_single_apk.py
+          python3 build-assets/.github/scripts/integrate_deepseek_single_apk.py
 
       - name: Reapply full-screen AI assistant controls after the plugin bridge
         env:
@@ -1102,13 +1104,21 @@ jobs:
           grep -Fq '("ec.key.chromakey", "Chroma Key", "色度键")' "source/effectcraft/crates/ui-egui/src/i18n/effects.rs"
           echo "Verified the Chroma Key effect, selectable screen-color presets and custom color picker are in the APK source."
           test -s "source/effectcraft/crates/ui-egui/src/android_gallery.rs"
-          grep -Fq "EFFECTCRAFT_ANDROID_AI_PLUGIN_BRIDGE_V1" "templates/android/SafActivity.java"
-          grep -Fq "new ZipInputStream(raw)" "templates/android/SafActivity.java"
-          grep -Fq 'plugin.apk' "templates/android/SafActivity.java"
-          grep -Fq "hasMatchingAiPluginSigner" "templates/android/SafActivity.java"
+          grep -Fq "EFFECTCRAFT_DEEPSEEK_SINGLE_APK_V1" "lib/build-common.sh"
           grep -Fq "init_android_ai_bridge" "lib/build-common.sh"
+          grep -Fq "com.artcraft.effectcraft.aiassistant.PluginManagerActivity" "lib/android_project.py"
+          grep -Fq "com.artcraft.effectcraft.aiassistant.InferenceService" "lib/android_project.py"
+          if grep -Fq "android.permission.REQUEST_INSTALL_PACKAGES" "lib/android_project.py"; then
+            echo "The main APK must not request permission to install a third-party AI APK." >&2
+            exit 1
+          fi
+          PLUGIN_MANAGER_SRC="$(find source/effectcraft -type f -name 'PluginManagerActivity.kt' -print -quit)"
+          test -n "$PLUGIN_MANAGER_SRC" && test -s "$PLUGIN_MANAGER_SRC"
+          grep -Fq "effectcraft-ai-model-plugin" "$PLUGIN_MANAGER_SRC"
+          grep -Fq "ZipInputStream(BufferedInputStream(input))" "$PLUGIN_MANAGER_SRC"
+          grep -Fq "模型校验失败" "$PLUGIN_MANAGER_SRC"
           if grep -Eq "llama-cpp-(2|sys-2)" "source/effectcraft/crates/ui-egui/Cargo.toml"; then
-            echo "DeepSeek inference dependency must live in the standalone plugin, not the host APK." >&2
+            echo "DeepSeek inference must be linked as an Android library in the main APK, not as a Rust Cargo package." >&2
             exit 1
           fi
           echo "Verified comprehensive Android export resource preflight is present in the APK source."
