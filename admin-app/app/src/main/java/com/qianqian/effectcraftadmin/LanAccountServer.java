@@ -361,7 +361,12 @@ final class LanAccountServer implements Runnable {
         if (method.equals("POST") && path.equals("/v1/admin/login")) return adminLogin(body);
         if (method.equals("GET") && path.equals("/v1/me")) {
             JSONObject claims = authorize(headers, "user");
-            JSONObject user = findUser(claims.getString("sub"));
+            JSONObject user;
+            try {
+                user = findUser(claims.getString("sub"));
+            } catch (IllegalArgumentException missing) {
+                return error(401, "账号已删除或不存在；如需再次注册，请先确认白名单资格。", "", "");
+            }
             if (isBanned(user)) return error(423, "账号已被封禁", user.optString("banned_until"), user.optString("ban_reason"));
             JSONObject out = new JSONObject(); out.put("user", user); return out;
         }
