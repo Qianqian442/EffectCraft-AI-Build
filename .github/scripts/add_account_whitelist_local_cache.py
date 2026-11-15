@@ -219,14 +219,14 @@ fn identifier_digest(kind: &str, value: &str) -> String {
     # conversion and avatar picker may reformat surrounding code, so avoid binding
     # this change to the entire match-arm text.
     ban_pattern = re.compile(
-        r'(?m)^(?P<indent>[ \\t]*)self\\.ban_reason = detail\\.get\\("reason"\\)\\.and_then\\(Value::as_str\\)\\.unwrap_or\\("未填写原因"\\)\\.to_string\\(\\);\\n'
-        r'(?P=indent)self\\.mode = Mode::Banned;\\n'
-        r'(?P=indent)self\\.status\\.clear\\(\\);'
+        r'(?m)^(?P<indent>[ \t]*)self\.ban_reason = detail\.get\("reason"\)\.and_then\(Value::as_str\)\.unwrap_or\("未填写原因"\)\.to_string\(\);\n'
+        r'(?P=indent)self\.mode = Mode::Banned;\n'
+        r'(?P=indent)self\.status\.clear\(\);'
     )
     def persist_local_ban(match: re.Match[str]) -> str:
         indent = match.group("indent")
-        ban_line = match.group(0).split("\\n", 1)[0]
-        return "\\n".join((
+        ban_line = match.group(0).split("\n", 1)[0]
+        return "\n".join((
             ban_line,
             f"{indent}self.persist_ban(config);",
             f"{indent}self.mode = Mode::Banned;",
@@ -427,12 +427,12 @@ fn identifier_digest(kind: &str, value: &str) -> String {
     lock_path = root / "Cargo.lock"
     lock_source = lock_path.read_text(encoding="utf-8")
     package_match = re.search(
-        r'(?m)^\\[\\[package\\]\\]\\nname = "effectcraft-ui-egui"\\nversion = "[^"]+"\\ndependencies = \\[\\n',
+        r'(?m)^\[\[package\]\]\nname = "effectcraft-ui-egui"\nversion = "[^"]+"\ndependencies = \[\n',
         lock_source,
     )
     if package_match is None:
         raise SystemExit("Cannot add sha2 to Cargo.lock: effectcraft-ui-egui package is missing")
-    package_end = lock_source.find("\\n]\\n", package_match.end())
+    package_end = lock_source.find("\n]\n", package_match.end())
     if package_end < 0:
         raise SystemExit("Cannot add sha2 to Cargo.lock: UI dependency list is incomplete")
     dependency_block = lock_source[package_match.end():package_end]
@@ -440,7 +440,7 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         marker = ' "serde_json",'
         if dependency_block.count(marker) != 1:
             raise SystemExit("Cannot add sha2 to Cargo.lock: serde_json dependency anchor is not unique")
-        dependency_block = dependency_block.replace(marker, marker + '\\n "sha2",', 1)
+        dependency_block = dependency_block.replace(marker, marker + '\n "sha2",', 1)
         lock_source = lock_source[:package_match.end()] + dependency_block + lock_source[package_end:]
         lock_path.write_text(lock_source, encoding="utf-8")
 
