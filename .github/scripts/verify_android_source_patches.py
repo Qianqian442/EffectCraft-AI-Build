@@ -146,6 +146,17 @@ def verify_chinese_default(root: Path) -> None:
 def verify_android_project_interactions(root: Path, header: Path) -> None:
     """Fail the APK build if the five export actions, import control or touch fixes regress."""
     header_source = header.read_text(encoding="utf-8")
+    # AM-style Undo/Redo must use the engine's native project history, not a visual-only button.
+    undo_required = (
+        "EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1",
+        "Icon::Undo", "Icon::Redo", '"edit.undo"', '"edit.redo"',
+        "!app.session.history.undo.is_empty()", "!app.session.history.redo.is_empty()",
+    )
+    missing_undo = [token for token in undo_required if token not in header_source]
+    icons = (root / "crates/ui-egui/src/icons.rs").read_text(encoding="utf-8")
+    if missing_undo or "Undo =>" not in icons or "Redo =>" not in icons:
+        raise SystemExit("AM-style Undo/Redo is missing or disconnected from native edit history: " + "; ".join(missing_undo))
+    print("Verified AM-style Undo/Redo buttons call the native edit history.")
     export_labels = [
         "导出 AE 电脑版工程",
         "导出 AE 手机版工程",
@@ -288,6 +299,15 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The keyframe button still requires Project-panel footage selection.")
     if "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_RESOLVE_V2" not in timeline or "android_collect_curve_segments" not in timeline:
         raise SystemExit("The curve action does not resolve keyframe segments from the Timeline playhead.")
+    curve_playhead_required = (
+        "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_SOURCE_V3",
+        "fn android_playhead_curve_segment(app: &EffectcraftApp, playhead: Tick)",
+        "android_curve_quick_access(app, ui, rect, g.time)",
+        "app.session.state.selected_keys",
+    )
+    missing_curve = [token for token in curve_playhead_required if token not in timeline]
+    if missing_curve:
+        raise SystemExit("Curve presets are not bound to the visible Timeline playhead/selected keys: " + "; ".join(missing_curve))
     if "layer.comp_time(pair[0].time)" not in timeline or "layer.comp_time(pair[1].time)" not in timeline:
         raise SystemExit("The curve resolver does not account for the layer's comp-time mapping.")
     if "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_SOURCE_V3" not in timeline:
