@@ -210,7 +210,7 @@ fn android_playhead_curve_segment(app: &EffectcraftApp) -> Option<AndroidCurveSe
     let comp = app.session.project.comp(comp_id)?;
     let playhead = app.session.time_of(comp_id);
 
-    let mut layer_ids = app.session.state.selected_layers.clone();
+    let mut layer_ids: Vec<LayerId> = app.session.state.selected_layers.iter().copied().collect();
     for (layer_id, _) in &app.session.state.selected_props {
         if !layer_ids.contains(layer_id) {
             layer_ids.push(*layer_id);
