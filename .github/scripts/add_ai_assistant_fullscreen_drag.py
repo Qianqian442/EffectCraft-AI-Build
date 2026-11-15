@@ -96,7 +96,7 @@ def main() -> None:
 
     # The integration script may change the status copy between builds. Match the
     # stable status-label role rather than one exact Chinese sentence.
-    label_pattern = re.compile(r'(?m)^            ui\\.label\\("DeepSeek 本地推理[^"]*"\\);\\n')
+    label_pattern = re.compile(r'(?m)^            ui\.label\("DeepSeek 本地推理[^"]*"\);\n')
     label_replacement = """            ui.horizontal(|ui| {
                 ui.label("DeepSeek 本地推理 · 已集成在当前 APK");
                 if ui.button(if state.full_screen { "还原窗口" } else { "展开页面" }).clicked() {
