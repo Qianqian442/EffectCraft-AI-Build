@@ -43,6 +43,7 @@ on:
       - '.github/scripts/add_puppet_pin_links.py'
       - '.github/scripts/add_mobile_touch_scroll.py'
       - '.github/scripts/add_mobile_rsmb_controls.py'
+      - '.github/scripts/add_effect_controls_crash_guard.py'
       - '.github/scripts/ai_video_export.rs'
       - '.github/scripts/sapphire_compat_pack.rs'
       - '.github/scripts/build_sapphire_compat_pack.py'
@@ -91,6 +92,7 @@ jobs:
             .github/scripts/configure_android_storage_fallback.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_curve_quick_access.py \
+            .github/scripts/add_effect_controls_crash_guard.py
 
   build:
     needs: validate-patches
@@ -532,6 +534,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/normalize_account_network_dependencies.py
           python3 build-assets/.github/scripts/normalize_account_network_dependencies.py
+
+      - name: Guard Android Effect Controls from panel crashes
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_effect_controls_crash_guard.py
+          python3 build-assets/.github/scripts/add_effect_controls_crash_guard.py
 
       - name: Verify final Android source patches and repair missing export helper
         env:
