@@ -256,8 +256,9 @@ def main() -> None:
     patch_manifest_generator(builder)
     patch_activity(builder)
     patch_rust_bridge(effectcraft)
-    patch_ui(effectcraft)
-    print("Added one-tap complete project ZIP sharing through Android Sharesheet.")
+    # The QQ destination is now one choice in the unified Project Export selector.
+    # Do not add another standalone button to the export dialog.
+    print("Added the Android ZIP share bridge used by the unified Project Export selector.")
     print("The archive includes the .ecproj and collected footage; QQ and other targets receive a read-granted content URI.")
 
 
