@@ -37,16 +37,24 @@ def patch_manifests(root: Path) -> None:
 
     lock = root / "Cargo.lock"
     source = lock.read_text(encoding="utf-8")
-    package_start = source.find('name = "effectcraft-engine"\nversion = "0.21.1"\ndependencies = [')
-    if package_start < 0:
+    # The app identity step advances all workspace packages to 0.21.2 before
+    # plug-in support is installed. Match the package independent of its patched
+    # version so a version bump cannot break this dependency edit.
+    import re
+    package_match = re.search(
+        r'(?m)^\\[\\[package\\]\\]\\nname = "effectcraft-engine"\\nversion = "[^"]+"\\ndependencies = \\[\\n',
+        source,
+    )
+    if package_match is None:
         raise SystemExit("Could not locate effectcraft-engine package in Cargo.lock")
-    package_end = source.find("\n]\n", package_start)
+    package_start = package_match.start()
+    package_end = source.find("\\n]\\n", package_match.end())
     if package_end < 0:
         raise SystemExit("Could not locate effectcraft-engine dependency list in Cargo.lock")
-    block = source[package_start:package_end]
+    block = source[package_match.end():package_end]
     if '"zip 9.1.3"' not in block:
-        block = replace_once(block, ' "web-time",', ' "web-time",\n "zip 9.1.3",', "Cargo.lock engine ZIP dependency")
-        source = source[:package_start] + block + source[package_end:]
+        block = replace_once(block, ' "web-time",', ' "web-time",\\n "zip 9.1.3",', "Cargo.lock engine ZIP dependency")
+        source = source[:package_match.end()] + block + source[package_end:]
     # zip 9.1.3 and flate2 are already present in the upstream lockfile.
     lock.write_text(source, encoding="utf-8")
 
