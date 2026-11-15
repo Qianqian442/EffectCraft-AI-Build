@@ -12,8 +12,8 @@ from pathlib import Path
 
 MODEL_FILE = "DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf"
 PACKAGE_FILE = "Ae-DeepSeek-AI-Model-Package.zip"
-PACKAGE_FORMAT = "ae-ai-model-package"
-PACKAGE_ID = "ae.deepseek.r1.distill.qwen.1.5b.iq4_xs"
+PACKAGE_FORMAT = "effectcraft-ai-model-plugin"
+PACKAGE_ID = "com.artcraft.effectcraft.deepseek.model"
 MIN_MODEL_BYTES = 500 * 1024 * 1024
 MAX_MODEL_BYTES = 2 * 1024 * 1024 * 1024
 MODEL_SOURCE = (
@@ -53,8 +53,8 @@ def build_package(model_path: Path, output_path: Path) -> dict[str, object]:
         "format_version": 1,
         "id": PACKAGE_ID,
         "model_file": MODEL_FILE,
-        "size_bytes": size_bytes,
-        "sha256": model_hash,
+        "model_size_bytes": size_bytes,
+        "model_sha256": model_hash,
         "display_name": "Ae DeepSeek R1 Distill Qwen 1.5B IQ4_XS",
         "source_url": MODEL_SOURCE,
         "note": "Data-only offline model package. Import this ZIP from Ae; it is not an APK.",
@@ -74,7 +74,7 @@ def build_package(model_path: Path, output_path: Path) -> dict[str, object]:
         allowZip64=True,
     ) as archive:
         archive.writestr(
-            "ai-model.json",
+            "plugin.json",
             json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
             compress_type=zipfile.ZIP_STORED,
         )
@@ -82,9 +82,9 @@ def build_package(model_path: Path, output_path: Path) -> dict[str, object]:
 
     with zipfile.ZipFile(temporary_path, mode="r") as archive:
         names = archive.namelist()
-        if names != ["ai-model.json", MODEL_FILE]:
+        if names != ["plugin.json", MODEL_FILE]:
             raise SystemExit(f"Unexpected model package entries: {names!r}")
-        parsed = json.loads(archive.read("ai-model.json").decode("utf-8"))
+        parsed = json.loads(archive.read("plugin.json").decode("utf-8"))
         if parsed != manifest:
             raise SystemExit("Model package manifest did not round-trip correctly.")
         bad_entry = archive.testzip()
@@ -97,7 +97,7 @@ def build_package(model_path: Path, output_path: Path) -> dict[str, object]:
         "package_bytes": output_path.stat().st_size,
         "model_bytes": size_bytes,
         "sha256": model_hash,
-        "entries": ["ai-model.json", MODEL_FILE],
+        "entries": ["plugin.json", MODEL_FILE],
         "is_apk": False,
     }
 
