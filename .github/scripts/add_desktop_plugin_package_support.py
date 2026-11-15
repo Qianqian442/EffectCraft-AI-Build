@@ -343,9 +343,11 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                         push_unique_native_mapping(&mut native_mappings, mapping);
                     }
                     if !metadata_strings.is_empty() {
+                        // Keep extracted strings private for compatibility matching only.
+                        // The UI and import report show counts, never original English labels.
                         native_metadata.push(json!({
                             "file": entry_name,
-                            "strings": metadata_strings.iter().take(64).collect::<Vec<_>>()
+                            "readable_text_count": metadata_strings.len()
                         }));
                     }
                 }
@@ -371,7 +373,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     "file": entry_name,
                     "binary_format": binary_format,
                     "architecture": architecture,
-                    "strings": embedded_strings.iter().take(64).collect::<Vec<_>>()
+                    "readable_text_count": embedded_strings.len()
                 }));
             }
             _ => {}
@@ -472,12 +474,11 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     }).collect::<Vec<_>>().join("\n");
     let metadata_summary = native_metadata.iter().map(|item| {
         let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑版插件");
-        let format = item.get("binary_format").and_then(Value::as_str).unwrap_or("metadata");
-        let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("");
-        let strings = item.get("strings").and_then(Value::as_array)
-            .map(|values| values.iter().filter_map(Value::as_str).take(24).collect::<Vec<_>>().join(" | "))
-            .unwrap_or_default();
-        format!("\n[{file}] {format} / {architecture}\n{strings}")
+        let format = item.get("binary_format").and_then(Value::as_str).unwrap_or("插件资源信息");
+        let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("未识别");
+        let readable_text_count = item.get("readable_text_count")
+            .and_then(Value::as_u64).unwrap_or(0);
+        format!("\n[{file}] {format} / {architecture}，已提取 {readable_text_count} 条可读信息（原始文字仅用于内部匹配，不在界面中显示）")
     }).collect::<Vec<_>>().join("\n");
     let mut install_result = json!({
         "installed": installed_wasm,
@@ -496,7 +497,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息和参数线索：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在安卓设备上执行。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并提取可读字符串用于后续移植分析，但不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息统计：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在安卓设备上执行。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并在内部分析；原始英文参数文字仅用于兼容匹配，不会显示在界面或报告中，也不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
