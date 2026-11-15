@@ -1,262 +1,95 @@
-name: Build EffectCraft DeepSeek AI Plugin
+name: Build Ae DeepSeek AI model package (ZIP only)
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
-      - "android-ai-plugin/**"
-      - ".github/workflows/build-effectcraft-ai-plugin.yml"
-  workflow_dispatch:
+      - '.github/workflows/build-effectcraft-ai-plugin.yml'
+      - 'android-ai-plugin/**'
 
 permissions:
   contents: write
-  actions: read
 
 concurrency:
-  group: effectcraft-deepseek-plugin-${{ github.ref }}
+  group: ae-deepseek-model-package
   cancel-in-progress: false
 
 jobs:
-  build-deepseek-plugin:
-    name: Build and verify standalone DeepSeek plugin APK
+  package:
+    name: Download, verify and package the local DeepSeek model
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 180
+    env:
+      MODEL_FILE: DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf
+      MODEL_URL: https://huggingface.co/bartowski/DeepSeek-R1-Distill-Qwen-1.5B-GGUF/resolve/main/DeepSeek-R1-Distill-Qwen-1.5B-IQ4_XS.gguf?download=true
     steps:
-      - name: Check out EffectCraft plugin project
+      - name: Check out Ae model-package metadata
         uses: actions/checkout@v4
 
-      - name: Restore the same persistent signing certificate as the host APK
-        id: signing_key_cache
-        uses: actions/cache/restore@v4
-        with:
-          path: |
-            artcraft/keys/artcraft-builder.jks
-            artcraft/keys/.keystore-password
-          key: effectcraft-apk-signing-v1-${{ github.repository_id }}
-
-      - name: Refuse to sign with a different project key
+      - name: Download the 1.5B quantized DeepSeek model
         shell: bash
         run: |
           set -euo pipefail
-          test -s artcraft/keys/artcraft-builder.jks
-          test -s artcraft/keys/.keystore-password
-          KEY_PASSWORD="$(<artcraft/keys/.keystore-password)"
-          echo "::add-mask::$KEY_PASSWORD"
-          keytool -list -keystore artcraft/keys/artcraft-builder.jks \
-            -storepass "$KEY_PASSWORD" -alias artcraftbuilder >/dev/null
-          echo "EFFECTCRAFT_KEYSTORE=$GITHUB_WORKSPACE/artcraft/keys/artcraft-builder.jks" >> "$GITHUB_ENV"
-          echo "EFFECTCRAFT_KEY_PASSWORD=$KEY_PASSWORD" >> "$GITHUB_ENV"
-          echo "Restored the persistent EffectCraft signing identity."
+          mkdir -p package
+          curl --fail --location --show-error --retry 6 --retry-all-errors \
+            --connect-timeout 30 --max-time 10800 \
+            "$MODEL_URL" -o "package/$MODEL_FILE"
+          SIZE="$(stat -c%s "package/$MODEL_FILE")"
+          if (( SIZE < 500 * 1024 * 1024 || SIZE > 2 * 1024 * 1024 * 1024 )); then
+            echo "Unexpected local model size: $SIZE bytes" >&2
+            exit 1
+          fi
+          sha256sum "package/$MODEL_FILE" | tee package/model.sha256
+          echo "Downloaded model size: $SIZE bytes"
 
-      - name: Check out llama.cpp Android inference runtime
-        uses: actions/checkout@v4
-        with:
-          repository: ggml-org/llama.cpp
-          ref: master
-          path: llama.cpp
-
-      - name: Record inference runtime revision
-        shell: bash
-        run: |
-          echo "llama.cpp revision: $(git -C llama.cpp rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Set up Java 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "21"
-
-      - name: Set up Gradle 8.13
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: "8.13"
-
-      - name: Set up Android SDK and native toolchain
+      - name: Create the importable AI model bundle
         shell: bash
         run: |
           set -euo pipefail
-          SDK_ROOT="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager -print -quit)"
-          test -x "$SDKMANAGER"
-          set +o pipefail
-          yes | "$SDKMANAGER" --licenses >/dev/null
-          set -o pipefail
-          "$SDKMANAGER" --install \
-            "platform-tools" \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-            "ndk;29.0.13113456" \
-            "cmake;3.31.6"
-          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_NDK_HOME=$SDK_ROOT/ndk/29.0.13113456" >> "$GITHUB_ENV"
-          echo "NDK_HOME=$SDK_ROOT/ndk/29.0.13113456" >> "$GITHUB_ENV"
-
-      - name: Allow the llama.cpp Android runtime on Android 9 and newer
-        shell: bash
-        run: |
-          set -euo pipefail
-          LIB_BUILD="llama.cpp/examples/llama.android/lib/build.gradle.kts"
-          test -s "$LIB_BUILD"
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path("llama.cpp/examples/llama.android/lib/build.gradle.kts")
-          text = path.read_text()
-          if "minSdk = 33" not in text:
-              raise SystemExit("Unexpected upstream llama.cpp Android minimum SDK declaration.")
-          path.write_text(text.replace("minSdk = 33", "minSdk = 28", 1))
-          print("llama.cpp Android library minSdk configured to API 28.")
-
-          # llama.cpp's latest Android helper calls an API-30-only symbol.
-          # Keep the plugin's API-28 native compatibility by using a threshold
-          # fallback on Android 9/10 and the platform helper on Android 11+.
-          log_path = Path("llama.cpp/examples/llama.android/lib/src/main/cpp/logging.h")
-          log_text = log_path.read_text()
-          old = """static inline int ai_should_log(int prio) {
-              return __android_log_is_loggable(prio, LOG_TAG, LOG_MIN_LEVEL);
-          }"""
-          new = """static inline int ai_should_log(int prio) {
-          #if defined(__ANDROID_API__) && __ANDROID_API__ >= 30
-              return __android_log_is_loggable(prio, LOG_TAG, LOG_MIN_LEVEL);
-          #else
-              return prio >= LOG_MIN_LEVEL;
-          #endif
-          }"""
-          if log_text.count(old) != 1:
-              raise SystemExit("Unexpected llama.cpp logging helper; refusing an unsafe compatibility patch.")
-          log_path.write_text(log_text.replace(old, new, 1))
-          print("llama.cpp Android logging now supports API 28+ without calling API-30 symbols on older targets.")
-          PY
-
-      - name: Tune local inference memory for mobile devices
-        shell: bash
-        run: |
-          set -euo pipefail
-          CPP="llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp"
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path("llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp")
-          text = path.read_text()
-          replacements = {
-              "constexpr int   DEFAULT_CONTEXT_SIZE    = 8192;": "constexpr int   DEFAULT_CONTEXT_SIZE    = 1536;",
-              "constexpr int   BATCH_SIZE              = 512;": "constexpr int   BATCH_SIZE              = 128;",
+          cd package
+          SIZE="$(stat -c%s "$MODEL_FILE")"
+          HASH="$(sha256sum "$MODEL_FILE" | awk '{print $1}')"
+          cat > ai-model.json <<EOF
+          {
+            "format": "ae-ai-model-package",
+            "format_version": 1,
+            "id": "ae.deepseek.r1.distill.qwen.1.5b.iq4_xs",
+            "name": "Ae DeepSeek R1 Distill Qwen 1.5B IQ4_XS",
+            "model_file": "$MODEL_FILE",
+            "size_bytes": $SIZE,
+            "sha256": "$HASH",
+            "runtime": "llama.cpp Android ARM64",
+            "offline_after_import": true
           }
-          for old, new in replacements.items():
-              if text.count(old) != 1:
-                  raise SystemExit(f"Could not safely tune llama.cpp setting: {old}")
-              text = text.replace(old, new, 1)
-          path.write_text(text)
-          print("DeepSeek plugin context tuned to 1536 tokens and batch size 128.")
-          PY
+          EOF
+          # Store the GGUF without recompressing it; the app verifies the manifest and hash.
+          zip -0 -q ../Ae-DeepSeek-AI-Plugin.zip ai-model.json "$MODEL_FILE"
+          cd ..
+          unzip -tq Ae-DeepSeek-AI-Plugin.zip
+          unzip -Z1 Ae-DeepSeek-AI-Plugin.zip | grep -Fxq ai-model.json
+          unzip -Z1 Ae-DeepSeek-AI-Plugin.zip | grep -Fxq "$MODEL_FILE"
+          sha256sum Ae-DeepSeek-AI-Plugin.zip
+          stat -c 'AI model ZIP size: %s bytes' Ae-DeepSeek-AI-Plugin.zip
 
-      - name: Build the standalone AI plugin APK
-        working-directory: android-ai-plugin
-        env:
-          EFFECTCRAFT_KEYSTORE: ${{ github.workspace }}/artcraft/keys/artcraft-builder.jks
-        run: |
-          set -euo pipefail
-          gradle --no-daemon --stacktrace :app:assembleRelease
-          test -s app/build/outputs/apk/release/app-release.apk
-
-      - name: Verify package, ARM64 native runtime, APK integrity and shared signature
-        shell: bash
-        env:
-          EFFECTCRAFT_KEYSTORE: ${{ github.workspace }}/artcraft/keys/artcraft-builder.jks
-        run: |
-          set -euo pipefail
-          APK="android-ai-plugin/app/build/outputs/apk/release/app-release.apk"
-          KEY_PASSWORD="$(<artcraft/keys/.keystore-password)"
-          BUILD_TOOLS="$ANDROID_HOME/build-tools/36.0.0"
-          "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "$APK" > plugin-signature.txt
-          grep -Fqx "Verified using v3 scheme (APK Signature Scheme v3): true" plugin-signature.txt
-          EXPECTED_CERT="$(keytool -list -v -keystore "$EFFECTCRAFT_KEYSTORE" \
-            -storepass "$KEY_PASSWORD" -alias artcraftbuilder \
-            | awk -F': ' '/SHA256:/{gsub(/:/,"",$2); print tolower($2); exit}')"
-          ACTUAL_CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' plugin-signature.txt)"
-          test -n "$EXPECTED_CERT" && test "$EXPECTED_CERT" = "$ACTUAL_CERT"
-          "$BUILD_TOOLS/zipalign" -c -v 4 "$APK"
-          unzip -t "$APK" >/dev/null
-          ENTRIES="$(mktemp)"
-          unzip -Z1 "$APK" > "$ENTRIES"
-          grep -Fxq "lib/arm64-v8a/libai-chat.so" "$ENTRIES"
-          grep -Eq "^lib/arm64-v8a/libllama\.so$" "$ENTRIES"
-          rm -f "$ENTRIES"
-          "$BUILD_TOOLS/aapt" dump badging "$APK" > plugin-badging.txt
-          grep -Fq "package: name='com.artcraft.effectcraft.aiassistant'" plugin-badging.txt
-          grep -Fq "sdkVersion:'28'" plugin-badging.txt
-          grep -Fq "native-code: 'arm64-v8a'" plugin-badging.txt
-          cat plugin-badging.txt | grep -E "^(package:|sdkVersion:|targetSdkVersion:|native-code:|launchable-activity:)"
-          echo "Plugin certificate matches the host APK; V3 signature, ZIP integrity, ARM64 llama.cpp libraries and manifest verified."
-          sha256sum "$APK"
-
-      - name: Package the signed plugin as an importable ZIP bundle
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="android-ai-plugin/app/build/outputs/apk/release/app-release.apk"
-          BUNDLE="plugin-bundle"
-          mkdir -p "$BUNDLE"
-          cp "$APK" "$BUNDLE/plugin.apk"
-          python3 - <<'PY'
-          import hashlib, json
-          from pathlib import Path
-          apk = Path("plugin-bundle/plugin.apk")
-          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
-          manifest = {
-              "format": "effectcraft-android-plugin",
-              "format_version": 1,
-              "id": "com.artcraft.effectcraft.aiassistant",
-              "name": "EffectCraft DeepSeek AI Plugin",
-              "version": 1,
-              "apk": "plugin.apk",
-              "sha256": digest,
-              "abi": ["arm64-v8a"],
-              "min_android_api": 28
-          }
-          Path("plugin-bundle/plugin.json").write_text(
-              json.dumps(manifest, ensure_ascii=False, indent=2) + "\n",
-              encoding="utf-8"
-          )
-          print("Plugin APK SHA-256:", digest)
-          PY
-          (
-            cd "$BUNDLE"
-            zip -0 -q EffectCraft-DeepSeek-AI-Plugin.zip plugin.apk
-            zip -9 -q EffectCraft-DeepSeek-AI-Plugin.zip plugin.json
-            unzip -tq EffectCraft-DeepSeek-AI-Plugin.zip
-            unzip -p EffectCraft-DeepSeek-AI-Plugin.zip plugin.apk > extracted-plugin.apk
-            cmp plugin.apk extracted-plugin.apk
-            rm extracted-plugin.apk
-          )
-          test -s "$BUNDLE/EffectCraft-DeepSeek-AI-Plugin.zip"
-          sha256sum "$BUNDLE/EffectCraft-DeepSeek-AI-Plugin.zip"
-          echo "Built a ZIP import bundle containing the signed companion APK and plugin.json manifest."
-
-      - name: Upload importable DeepSeek AI plugin ZIP
+      - name: Upload the importable AI model ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: EffectCraft-DeepSeek-AI-Plugin-ZIP
-          path: plugin-bundle/EffectCraft-DeepSeek-AI-Plugin.zip
-          if-no-files-found: error
+          name: Ae-DeepSeek-AI-Model-Package
+          path: Ae-DeepSeek-AI-Plugin.zip
           compression-level: 0
-          retention-days: 14
+          retention-days: 30
 
-      - name: Publish direct plugin ZIP release
+      - name: Publish the model package
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: effectcraft-deepseek-plugin-${{ github.run_number }}
-          name: EffectCraft DeepSeek AI Plugin ZIP (Build ${{ github.run_number }})
+          tag_name: ae-deepseek-model-${{ github.run_number }}
+          name: Ae DeepSeek AI 模型包（ZIP）
           body: |
-            Importable EffectCraft DeepSeek AI plugin ZIP bundle.
-
-            - Import the ZIP from EffectCraft's top-left plug-in import entry.
-            - The ZIP contains a signed ARM64 companion APK plus a plugin.json manifest.
-            - EffectCraft validates the package name and signing certificate before invoking Android's system installer.
-            - Android may ask once for permission to install packages and for confirmation; this is required by Android.
-            - Open the installed plug-in's model manager and download the approximately 1.02 GB GGUF model once.
-            - Inference runs locally/offline; no cloud inference endpoint or API key is used.
-
-            The model is not bundled in the ZIP and is downloaded once inside the plug-in.
-          files: plugin-bundle/EffectCraft-DeepSeek-AI-Plugin.zip
+            Importable data-only AI model package for Ae.
+            It contains ai-model.json and the quantized GGUF model. It is not an APK and does not install another application.
+            In Ae, open AI 助手 → 导入 AI 模型包, then select this ZIP. The app verifies the package metadata, byte count and SHA-256 before activating the local model.
+            The main Ae APK contains the Android AI runtime and model manager; this ZIP supplies the approximately 1.02 GB model data.
+          files: Ae-DeepSeek-AI-Plugin.zip
           draft: false
           prerelease: true
