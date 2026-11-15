@@ -182,12 +182,27 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified image/video imports are added to the composition and fitted to the frame.")
 
     menu = (root / "crates/engine/src/menus.rs").read_text(encoding="utf-8")
-    if "导入素材... | file.import" not in menu or "导入工程... | file.importProject" not in menu:
-        raise SystemExit("The Import menu must expose one media entry and one unified project entry.")
-    visible_import = menu[menu.find("  Import\n"):menu.find("  Import Recent Footage\n")]
-    if visible_import.count("导入工程... | file.importProject") != 1:
-        raise SystemExit("Duplicate project-import entries are visible in the Import menu.")
-    print("Verified the Import menu has one media entry and one unified project entry.")
+    import_start = menu.find("  Import\\n")
+    import_end = menu.find("  Import Recent Footage\\n", import_start)
+    if import_start < 0 or import_end < 0:
+        raise SystemExit("The original File > Import menu block is missing.")
+    visible_import = menu[import_start:import_end]
+    original_entries = [
+        "    File... | file.import",
+        "    Multiple Files... | file.importMultiple",
+        "    Adobe Premiere Pro Project... | file.importTimeline",
+        "    EffectCraft Project... | file.importProject",
+        "    Placeholder... | file.importPlaceholder",
+        "    Solid... | file.importSolid",
+        "    After Effects Project... | file.importAep",
+        "    Lottie... | file.importLottie",
+        "    Vanishing Point (.vpe)... | file.importVanishingPoint",
+        "    Essential Graphics Template... | essential.importTemplate",
+    ]
+    positions = [visible_import.find(entry) for entry in original_entries]
+    if any(position < 0 for position in positions) or positions != sorted(positions):
+        raise SystemExit("The original File > Import items were moved, renamed or removed.")
+    print("Verified the original File > Import menu position and all upstream import actions remain intact.")
 
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V3" not in timeline or "let keyframe_enabled = selected_layer.is_some();" not in timeline:
@@ -201,6 +216,22 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if "Sense::click_and_drag()" not in assistant or "bubble_drag_origin" not in assistant or "response.drag_delta()" not in assistant:
         raise SystemExit("The floating AI assistant is missing its tap-and-drag interaction.")
     print("Verified the floating AI assistant bubble supports tap and touch-drag.")
+
+    timing = (root / "crates/engine/src/cmd/layer/timing.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_EXTEND_COMP_ON_LAYER_OUT_DRAG_V1" not in timing or "if extend_comp" not in timing:
+        raise SystemExit("Dragging a layer's Out edge cannot extend the composition duration.")
+    if "comp.work_area.1 = required_end" not in timing:
+        raise SystemExit("Composition work area no longer follows the extended composition end.")
+    timeline_source = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_LAYER_OUT_DRAG_EXTENDS_COMP_V1" not in timeline_source or '"extendComp": true' not in timeline_source:
+        raise SystemExit("Timeline Out-edge drag is not requesting composition extension.")
+    print("Verified right-edge dragging extends the layer, composition and timeline range.")
+
+    if 'window_ui.label(format!("导出进度：{:.0}%"' not in header_source or "show_percentage()" not in header_source:
+        raise SystemExit("The export progress popup is missing its numeric percentage.")
+    if "export_progress_dialog(app, ui);" not in header_source:
+        raise SystemExit("The export progress popup is not drawn by the Android header.")
+    print("Verified export progress displays a real numeric percentage.")
 
     import_frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_SHARE_COLLECTED_PROJECT_V1" not in import_frontend:
