@@ -142,8 +142,8 @@ def main() -> None:
     # restored-session verification and unavailable/retry screens. Keep the URL
     # only in AccountState for internal HTTPS requests and token persistence.
     source = re.sub(
-        r'(?m)^([ \\t]*)ui\\.(?:label|small|weak|monospace|text_edit_singleline)\\([^;\\n]*server_url[^;\\n]*\\);',
-        r'\\1ui.label("服务器连接地址已隐藏，系统会自动选择连接线路");',
+        r'(?m)^([ \t]*)ui\.(?:label|small|weak|monospace|text_edit_singleline)\([^;\n]*server_url[^;\n]*\);',
+        r'\1ui.label("服务器连接地址已隐藏，系统会自动选择连接线路");',
         source,
     )
     source = source.replace(
@@ -155,7 +155,7 @@ def main() -> None:
         raise SystemExit("Account UI entry point was not found during server-address privacy check.")
     account_ui = source[show_start:]
     if re.search(
-        r'(?m)^\\s*ui\\.(?:label|small|weak|monospace|text_edit_singleline)\\([^;\\n]*server_url',
+        r'(?m)^\s*ui\.(?:label|small|weak|monospace|text_edit_singleline)\([^;\n]*server_url',
         account_ui,
     ):
         raise SystemExit("A visible account UI control still references the internal server URL.")
