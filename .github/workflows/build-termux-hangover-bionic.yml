@@ -140,9 +140,22 @@ jobs:
           if source.count(old) != 1:
               raise SystemExit("Pinned Termux Hangover recipe no longer matches the audited interactive make fallback")
           path.write_text(source.replace(old, new, 1), encoding="utf-8")
-          print("Disabled the interactive bash fallback so CI cannot mask a failed Wine build.")
+
+          # The official PulseAudio recipe declares libsndfile as a runtime
+          # dependency, but this forked app-ID build intentionally cannot use
+          # Termux's prebuilt dependency packages. Its Meson configure requires
+          # sndfile at build time, so promote it to a CI-only build dependency.
+          pulse_path = Path("packages/pulseaudio/build.sh")
+          pulse_source = pulse_path.read_text(encoding="utf-8")
+          old_deps = 'TERMUX_PKG_BUILD_DEPENDS="libtool, glib, check"'
+          new_deps = 'TERMUX_PKG_BUILD_DEPENDS="libtool, glib, check, libsndfile"'
+          if pulse_source.count(old_deps) != 1:
+              raise SystemExit("Pinned PulseAudio recipe changed; review the libsndfile build dependency")
+          pulse_path.write_text(pulse_source.replace(old_deps, new_deps, 1), encoding="utf-8")
+          print("Disabled the interactive Wine build fallback.")
+          print("Added libsndfile as a CI-only PulseAudio build dependency so Meson can configure offline from the app-specific prefix.")
           PY
-          git diff -- x11-packages/hangover-wine/build.sh > ../termux-hangover-ci-recipe.patch
+          git diff -- x11-packages/hangover-wine/build.sh packages/pulseaudio/build.sh > ../termux-hangover-ci-recipe.patch
           test -s ../termux-hangover-ci-recipe.patch
 
       - name: Build the pinned Termux Hangover package set
