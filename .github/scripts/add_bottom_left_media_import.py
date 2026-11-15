@@ -26,11 +26,12 @@ def patch_project_panel_import_button(root: Path) -> None:
     source = path.read_text(encoding="utf-8")
     if PROJECT_MARKER not in source:
         anchor = "    let depth = app.session.project.settings.bit_depth.label();\n"
-        button = r'''    // EFFECTCRAFT_ANDROID_PROJECT_FOOTER_IMPORT_V2
-    // Import Media is a real Project-panel control, not a floating overlay on the Timeline.
-    let import_rect = Rect::from_min_size(pos2(x, foot.min.y + 3.0), vec2(22.0, 22.0));
+        button = r'''    // EFFECTCRAFT_ANDROID_PROJECT_FOOTER_IMPORT_V3
+    // Use a clearly labelled, touch-sized control: the old 22px plus icon was easy to miss
+    // or mistake for decoration on a narrow Android Project panel.
+    let import_rect = Rect::from_min_size(pos2(x, foot.min.y + 3.0), vec2(64.0, 22.0));
     let import_response = ui
-        .put(import_rect, egui::Button::new("＋"))
+        .put(import_rect, egui::Button::new("导入素材").min_size(vec2(64.0, 22.0)))
         .on_hover_text(crate::i18n::tr("Import pictures and videos"));
     app.auto.add_response("project.importMedia", &import_response, "导入图片和视频");
     if import_response.clicked()
@@ -38,7 +39,7 @@ def patch_project_panel_import_button(root: Path) -> None:
     {
         app.ui.status = error;
     }
-    x += 26.0;
+    x += 68.0;
 '''
         source = replace_once(source, anchor, button + anchor, "Project panel media import button")
         if PROJECT_MARKER not in source:
