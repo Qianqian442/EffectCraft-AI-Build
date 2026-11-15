@@ -318,6 +318,8 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The curve picker is not receiving the Timeline's displayed current-time indicator.")
     if "app.session.state.selected_keys" not in timeline:
         raise SystemExit("The curve resolver does not use selected keyframes to identify the target property.")
+    if "layer_ids.push(key.layer)" not in timeline:
+        raise SystemExit("The curve resolver does not include the layer owning a touch-selected keyframe.")
     viewer = (root / "crates/ui-egui/src/panels/viewer.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_PROJECT_FILE_VIEWER_SELECTION_V3" not in viewer:
         raise SystemExit("Composition viewer selection is not synchronized for direct keyframing.")
