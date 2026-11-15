@@ -513,13 +513,18 @@ def main() -> None:
     # The APK workflow uses Cargo.lock with --locked; record the UI crate's new ZIP dependency.
     lock_path = root / "Cargo.lock"
     lock_source = lock_path.read_text(encoding="utf-8")
-    package_start = lock_source.find('name = "effectcraft-ui-egui"\nversion = "0.21.1"\ndependencies = [')
-    if package_start < 0:
+    import re
+    package_match = re.search(
+        r'(?m)^\[\[package\]\]\nname = "effectcraft-ui-egui"\nversion = "[^"]+"\ndependencies = \[\n',
+        lock_source,
+    )
+    if package_match is None:
         raise SystemExit("Could not locate effectcraft-ui-egui in Cargo.lock")
-    package_end = lock_source.find("\n]\n", package_start)
+    package_start = package_match.start()
+    package_end = lock_source.find("\n]\n", package_match.end())
     if package_end < 0:
         raise SystemExit("Could not locate effectcraft-ui-egui dependency list in Cargo.lock")
-    dependency_block = lock_source[package_start:package_end]
+    dependency_block = lock_source[package_match.end():package_end]
     if '"zip 9.1.3"' not in dependency_block:
         dependency_block = replace_once(
             dependency_block,
@@ -527,7 +532,7 @@ def main() -> None:
             ' "web-time",\n "zip 9.1.3",',
             "Cargo.lock UI ZIP dependency",
         )
-        lock_source = lock_source[:package_start] + dependency_block + lock_source[package_end:]
+        lock_source = lock_source[:package_match.end()] + dependency_block + lock_source[package_end:]
         lock_path.write_text(lock_source, encoding="utf-8")
 
     print("Added the draggable AE migration confirmation, real ZIP scan progress, 100% completion state, and final OK result window.")
