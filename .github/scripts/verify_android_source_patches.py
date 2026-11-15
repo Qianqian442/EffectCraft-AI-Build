@@ -298,7 +298,9 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     assistant = (root / "crates/ui-egui/src/ai_assistant.rs").read_text(encoding="utf-8")
     if "Sense::click_and_drag()" not in assistant or "bubble_drag_origin" not in assistant or "response.drag_delta()" not in assistant:
         raise SystemExit("The floating AI assistant is missing its tap-and-drag interaction.")
-    print("Verified the floating AI assistant bubble supports tap and touch-drag.")
+    if "EFFECTCRAFT_ANDROID_AI_FULLSCREEN_DRAG_V1" not in assistant or "full_screen: bool" not in assistant or "还原窗口" not in assistant:
+        raise SystemExit("The AI assistant full-screen/restore patch was overwritten or is missing.")
+    print("Verified the AI bubble is draggable and the chat window keeps its full-screen/restore control.")
 
     if "full_screen: bool" not in assistant or 'ui.button(if state.full_screen' not in assistant:
         raise SystemExit("The AI assistant is missing its full-screen / restore control.")
