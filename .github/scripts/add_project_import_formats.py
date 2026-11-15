@@ -58,8 +58,8 @@ def main() -> None:
       导入am工程... | file.importAlightMotionProject
       导入NV工程... | file.importNodeVideoProject
       导入capcut工程... | file.importCapCutProject
-      EffectCraft Project... | file.importProject
-      EffectCraft 手机版工程包... | file.importEffectCraftMobile
+      自有工程... | file.importProject
+      自有工程包... | file.importEffectCraftMobile
       Adobe Premiere Pro Project... | file.importTimeline
       After Effects Project... | file.importAep
     Placeholder... | file.importPlaceholder
@@ -82,7 +82,7 @@ def main() -> None:
     command_registry = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in command_registry:
         raise SystemExit("The native EffectCraft Project import command is not registered")
-    if "EffectCraft Project... | file.importProject" not in menu_source:
+    if "自有工程... | file.importProject" not in menu_source:
         raise SystemExit("The original native EffectCraft Project import entry is missing")
     if "更多工程格式" not in menu_source or "file.importAep" not in menu_source or "file.importTimeline" not in menu_source:
         raise SystemExit("The secondary project-format submenu is missing an original import command")
