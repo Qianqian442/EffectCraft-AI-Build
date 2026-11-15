@@ -148,8 +148,31 @@ def main() -> None:
     )
     source = source.replace(
         'ui.label(&app.account.status);',
-        'ui.label(app.account.status.replace(app.account.server_url.as_str(), "服务器地址已隐藏"));',
+        'ui.label(safe_account_status(&app.account));',
     )
+    safe_status_helper = r"""
+fn safe_account_status(account: &AccountState) -> String {
+    let mut status = account.status.clone();
+    let endpoint = account.server_url.trim();
+    if !endpoint.is_empty() {
+        status = status.replace(endpoint, "服务器地址已隐藏");
+        if let Some((_, authority)) = endpoint.split_once("://") {
+            let host = authority.split('/').next().unwrap_or(authority);
+            if !host.is_empty() {
+                status = status.replace(host, "服务器地址已隐藏");
+            }
+        }
+    }
+    status
+}
+"""
+    if "fn safe_account_status(" not in source:
+        source = replace_once(
+            source,
+            "pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {",
+            safe_status_helper + "\\npub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {",
+            "privacy-safe account status renderer",
+        )
     show_start = source.find("pub(crate) fn show(")
     if show_start < 0:
         raise SystemExit("Account UI entry point was not found during server-address privacy check.")
