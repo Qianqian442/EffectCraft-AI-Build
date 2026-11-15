@@ -63,10 +63,10 @@ def patch_header(root: Path) -> None:
 
     source = replace_once(
         source,
-        "    let x = tool_slots(app, ui, &p, x, cy);\\n",
-        "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\\n"
-        "    let x = history_buttons(app, ui, &p, x, cy);\\n"
-        "    let x = tool_slots(app, ui, &p, x, cy);\\n",
+        "    let x = tool_slots(app, ui, &p, x, cy);\n",
+        "    // EFFECTCRAFT_ANDROID_AM_UNDO_REDO_BUTTONS_V1\n"
+        "    let x = history_buttons(app, ui, &p, x, cy);\n"
+        "    let x = tool_slots(app, ui, &p, x, cy);\n",
         "place touch Undo / Redo controls before the remaining toolbar tools",
     )
 
