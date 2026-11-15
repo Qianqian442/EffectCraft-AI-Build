@@ -891,7 +891,10 @@ jobs:
           LAUNCHER_SRC="source/effectcraft/apps/effectcraft-android/src/lib.rs"
           test -s "$LAUNCHER_SRC"
           P2P_ACTIVITY_DIR="source/effectcraft/apps/effectcraft-android/java/com/artcraft/effectcraft"
-          test -s "$P2P_ACTIVITY_DIR/NativeP2P.java"
+          # NativeP2P.java is kept in the repository's shared p2p-bridge source tree;
+          # it is compiled into DEX but is not required to sit beside EffectCraftActivity.java.
+          P2P_HELPER_SOURCE="$(find .. -type f -path '*/p2p-bridge/android/NativeP2P.java' -print -quit)"
+          test -n "$P2P_HELPER_SOURCE" && test -s "$P2P_HELPER_SOURCE"
           P2P_ACTIVITY_FOUND=false
           for ACTIVITY in "$P2P_ACTIVITY_DIR"/*Activity.java; do
             [[ -f "$ACTIVITY" ]] || continue
