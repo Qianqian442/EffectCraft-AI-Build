@@ -104,6 +104,13 @@ def patch_file_import_auto_add(root: Path) -> None:
     """Auto-place only the dedicated picture/video import action; preserve generic File > Import."""
     path = root / "crates/engine/src/cmd/file.rs"
     source = path.read_text(encoding="utf-8")
+    # The upstream file.rs imports b_p/str_p from its parent cmd module.
+    # This patch also reads the optional numeric stillDuration, so import f_p there.
+    required_import = "use super::{CommandSpec, always, b_p, bad, f_p, str_p};"
+    original_import = "use super::{CommandSpec, always, b_p, bad, str_p};"
+    if "let still_duration = f_p(p, \"stillDuration\")" in source and required_import not in source:
+        source = replace_once(source, original_import, required_import, "Import numeric parameter helper for still duration")
+        path.write_text(source, encoding="utf-8")
     if FINISH_MARKER not in source:
         old = '''fn finish_import(s: &mut Session, r: &mut Value, target: Option<ItemId>, p: &Value) {
     let errors = if b_p(p, "newComp").unwrap_or(false) { new_comp(s, r) } else { add_to_comp(s, r, target, p) };'''
