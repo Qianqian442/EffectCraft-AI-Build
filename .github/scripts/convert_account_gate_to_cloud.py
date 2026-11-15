@@ -115,7 +115,7 @@ def main() -> None:
     )
     source = source.replace(
         'ui.small("请首次填写管理版复制的完整 p2p://管理员节点ID。为防止假节点窃取密码，未固定管理员身份前不会发送账号密码；保存后以后自动连接，无需逐次审批。");',
-        'ui.small("此地址由构建配置自动设置，账号通信优先直连 Cloudflare，连接失败时自动检测公开代理隧道。");',
+        'ui.small("此地址由构建配置自动设置，主 APK 直接通过 HTTPS 连接 Cloudflare 账号服务器。");',
     )
     source = source.replace(
         'ui.label("管理员手机账号节点当前无法连接。为防止离线绕过封禁，软件暂时保持锁定。");',
@@ -123,7 +123,7 @@ def main() -> None:
     )
     source = source.replace(
         'ui.label("请粘贴管理版“复制管理员节点 ID”得到的完整 p2p://地址；同 Wi-Fi 优先直连，跨网络自动尝试打洞和公共中继。");',
-        'ui.label("系统已尝试直连和可用的公开代理隧道，请检查网络后重试。");',
+        'ui.label("主 APK 直接连接 Cloudflare 账号服务器失败，请检查网络后重试。");',
     )
     source = source.replace(
         'ui.label("管理员节点地址");',
