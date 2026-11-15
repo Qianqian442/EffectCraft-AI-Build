@@ -7,6 +7,7 @@ import android.app.TimePickerDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
+import android.net.Uri;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Color;
@@ -75,6 +76,7 @@ public final class MainActivity extends Activity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
+        setApkShareSessionVerified(false);
         boolean cloudMode = CloudflareProxyPool.isCloudflareUrl(BuildConfig.ACCOUNT_API_URL);
         firstAdminPassword = cloudMode ? null : LanAccountServer.ensureAdminPassword(this);
         if (!cloudMode && isNodeServerEnabled()) {
@@ -363,6 +365,11 @@ public final class MainActivity extends Activity {
         return b;
     }
 
+    private void setApkShareSessionVerified(boolean verified) {
+        getSharedPreferences("effectcraft_admin_session", MODE_PRIVATE)
+            .edit().putBoolean("verified", verified).putLong("checked_at", System.currentTimeMillis()).apply();
+    }
+
     private void setRoot(LinearLayout content) {
         root = content;
         setContentView(root);
@@ -385,6 +392,7 @@ public final class MainActivity extends Activity {
         Button logout = button("返回管理员登录");
         logout.setOnClickListener(v -> {
             adminToken = "";
+            setApkShareSessionVerified(false);
             getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
             showLogin();
         });
@@ -467,6 +475,7 @@ public final class MainActivity extends Activity {
             }
             try {
                 adminToken = result.getString("token");
+                setApkShareSessionVerified(false);
                 getPreferences(MODE_PRIVATE).edit().putString("server", server).putString("admin_token", adminToken).apply();
                 showConnecting("密码验证成功，正在读取账号列表…");
                 loadUsers("");
@@ -629,6 +638,7 @@ public final class MainActivity extends Activity {
             JSONObject finalResult = result;
             String finalError = error;
             runOnUiThread(() -> {
+                if (auth) setApkShareSessionVerified(finalError == null && finalResult != null && !adminToken.isEmpty());
                 if (finalError != null) {
                     toast(finalError);
                     if (auth && (finalError.contains("401") || finalError.contains("登录已失效")
@@ -669,6 +679,7 @@ public final class MainActivity extends Activity {
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
         addGlobalNodePanel(page);
+        addApkSharePanel(page);
         addWhitelistPanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
         page.addView(searchInput);
@@ -709,6 +720,68 @@ public final class MainActivity extends Activity {
             addUserRow(user);
         }
         page.invalidate();
+    }
+
+    private void addApkSharePanel(LinearLayout page) {
+        LinearLayout panel = new LinearLayout(this);
+        panel.setOrientation(LinearLayout.VERTICAL);
+        panel.setPadding(dp(12), dp(10), dp(12), dp(10));
+        panel.setBackground(rounded(Color.WHITE));
+        panel.addView(text("安装包发送授权", 18, true));
+        panel.addView(text(
+            "管理员登录并重新验证成功后，可打开 QQ 文件发送流程并附加本机已安装的 EffectCraft 主 APK。安装包不会复制到公共下载目录；读取授权只发给手机 QQ，临时有效。",
+            12, false
+        ));
+        Button send = button("授权并发送主 APK 到 QQ");
+        panel.addView(send, new LinearLayout.LayoutParams(-1, dp(46)));
+        send.setOnClickListener(v -> sendMainApkToQQ());
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(-1, -2);
+        params.bottomMargin = dp(10);
+        page.addView(panel, params);
+    }
+
+    private void sendMainApkToQQ() {
+        if (adminToken == null || adminToken.isEmpty()) {
+            toast("请先登录管理员账号");
+            return;
+        }
+        toast("正在重新验证管理员授权…");
+        requestAsync("GET", "/v1/admin/users?q=", null, true, verified -> {
+            if (verified == null || adminToken.isEmpty()) {
+                setApkShareSessionVerified(false);
+                toast("管理员授权验证失败，未开放 APK");
+                return;
+            }
+            try {
+                Uri provider = Uri.parse("content://com.artcraft.effectcraft.apkshare");
+                Bundle share = getContentResolver().call(
+                    provider, "prepare_qq_apk_share", null, null
+                );
+                if (share == null || !share.getBoolean("authorized", false)) {
+                    String message = share == null ? "主 APK 未返回发送授权" : share.getString("message", "发送授权未通过");
+                    toast(message);
+                    return;
+                }
+                String value = share.getString("uri", "");
+                if (value.isEmpty()) {
+                    toast("主 APK 未提供有效的安装包文件");
+                    return;
+                }
+                Uri apkUri = Uri.parse(value);
+                Intent send = new Intent(Intent.ACTION_SEND);
+                send.setPackage("com.tencent.mobileqq");
+                send.setType("application/vnd.android.package-archive");
+                send.putExtra(Intent.EXTRA_STREAM, apkUri);
+                send.setClipData(ClipData.newUri(getContentResolver(), "EffectCraft.apk", apkUri));
+                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                startActivity(send);
+                toast("已打开 QQ 文件发送流程，请选择聊天对象并确认发送");
+            } catch (android.content.ActivityNotFoundException error) {
+                toast("手机 QQ 无法接收安装包发送请求，请更新 QQ 后重试");
+            } catch (Throwable error) {
+                toast("发送授权失败：" + (error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage()));
+            }
+        });
     }
 
     private void addWhitelistPanel(LinearLayout page) {
