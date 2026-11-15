@@ -369,8 +369,8 @@ def patch_new_comp_layer_fit(root: Path) -> None:
     old = 'layers.push(s.execute("layer.addItem", json!({"comp": cid.0, "item": item.0, "duration": still}))?["layer"].clone());'
     new = 'layers.push(s.execute("layer.addItem", json!({"comp": cid.0, "item": item.0, "duration": still, "fitToComp": b_p(p, "fitToComp").unwrap_or(false)}))?["layer"].clone());'
     replace_once(source, old, new, "Pass the explicit fitToComp option to new compositions")
-    old_spec = '{duration? (s, for stills), single?: bool, dimensionsFrom?: index, sequence?: bool, overlap?: bool, overlapDuration? (s), transition?: off|dissolveFront|crossDissolve, addToRenderQueue?: bool} → {comps}'
-    new_spec = '{duration? (s, for stills), single?: bool, dimensionsFrom?: index, sequence?: bool, overlap?: bool, overlapDuration? (s), transition?: off|dissolveFront|crossDissolve, addToRenderQueue?: bool, fitToComp?: bool} → {comps}'
+    old_spec = '{duration? (s, for stills), single?: bool (one comp for all), dimensionsFrom?: index, sequence?: bool, overlap?: bool, overlapDuration? (s), transition?: off|dissolveFront|crossDissolve, addToRenderQueue?: bool} → {comps}'
+    new_spec = '{duration? (s, for stills), single?: bool (one comp for all), dimensionsFrom?: index, sequence?: bool, overlap?: bool, overlapDuration? (s), transition?: off|dissolveFront|crossDissolve, addToRenderQueue?: bool, fitToComp?: bool} → {comps}'
     replace_once(source, old_spec, new_spec, "Document optional fitToComp on New Comp from Selection")
     path.write_text(source, encoding="utf-8")
 
