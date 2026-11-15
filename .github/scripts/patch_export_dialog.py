@@ -242,7 +242,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                 if ui.button("取消").clicked() {
                     cancel = true;
                 }
-                if ui.add_enabled(comp_name.is_some(), egui::Button::new("开始导出")).clicked() {
+                if ui.add_enabled(comp_name.is_some(), egui::Button::new("导出")).clicked() {
                     submit = true;
                 }
             });
@@ -743,8 +743,8 @@ direct_helper = """    private boolean hasDirectSharedStorageAccess() {
 
 """
 if "private File directSharedProject(Uri uri)" not in saf_text:
-    // configure_android_storage_fallback.py changes treeToPath to an instance method
-    // because it validates permissions and actually writes a probe file in the selected folder.
+    # configure_android_storage_fallback.py changes treeToPath to an instance method
+    # because it validates permissions and actually writes a probe file in the selected folder.
     helper_marker = "    private String treeToPath(Uri tree) {"
     if helper_marker not in saf_text:
         raise SystemExit("Could not find Android SAF helper insertion point.")
