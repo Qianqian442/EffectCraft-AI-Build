@@ -64,14 +64,14 @@ def main() -> None:
 
     helper = '''/// EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1
 /// EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1
-/// One compact top-left entry imports effect plug-ins and opens the embedded DeepSeek module.
+/// One compact top-left entry imports effect plug-ins and opens the separate DeepSeek AI ZIP importer.
 fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy: f32) -> f32 {
     let rect = Rect::from_min_size(pos2(x, cy - 13.0), vec2(78.0, 26.0));
     let menu_id = egui::Id::new("effectcraft-plugin-import-menu");
     let mut menu_open = ui.ctx().data(|d| d.get_temp::<bool>(menu_id).unwrap_or(false));
     let response = ui
         .put(rect, egui::Button::new("导入插件"))
-        .on_hover_text("导入 WASM/WAT/ZIP 效果插件、电脑插件文件，或打开已集成的 DeepSeek AI 模块");
+        .on_hover_text("导入 WASM/WAT/ZIP 效果插件、电脑插件文件，或导入独立 DeepSeek AI 插件 ZIP");
     app.auto.add_response("header.importPlugin", &response, "Import Plug-in");
     widgets::focus_outline(ui, &response, &app.tokens);
     if response.clicked() {
@@ -97,7 +97,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                 if popup.button("WASM / WAT / ZIP 效果插件 / 电脑插件文件").clicked() {
                     import_wasm = true;
                 }
-                if popup.button("DeepSeek AI 插件（已集成）").clicked() {
+                if popup.button("导入 DeepSeek AI 插件 ZIP").clicked() {
                     import_ai = true;
                 }
                 popup.label("电脑版 .aex/.dll/.ofx 单文件和插件 ZIP 可直接选择；安卓端会分析并匹配兼容效果");
@@ -118,7 +118,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     }
     if import_ai {
         match crate::open_ai_plugin_import_from_toolbar() {
-            Ok(()) => app.ui.status = "已打开 APK 内置 DeepSeek AI 插件的模型管理，无需另外安装插件 APK。".into(),
+            Ok(()) => app.ui.status = "已打开 DeepSeek AI 插件 ZIP 导入流程；安装后可在插件内下载本地模型。".into(),
             Err(error) => app.ui.status = error,
         }
     }
@@ -130,7 +130,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     header_path.write_text(source, encoding="utf-8")
     print("Added the top-left 导入插件 button.")
     print("The button calls effect.plugins.load, reusing the original WASM loader and Android file picker.")
-    print("The DeepSeek menu entry opens the in-APK integrated AI module; no companion APK/ZIP installation is required.")
+    print("The DeepSeek menu entry opens the signed standalone AI plugin ZIP importer.")
 
 
 if __name__ == "__main__":
