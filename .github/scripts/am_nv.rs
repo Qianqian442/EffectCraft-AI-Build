@@ -111,9 +111,7 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
             return Err(err(format!("ZIP entry {name} size does not match its archive metadata")));
         }
         let lower = name.to_ascii_lowercase();
-        if lower.ends_with(".aep") || lower.ends_with(".aepx") {
-            project_file = Some(destination);
-        } else if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
+        if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
             project_file = Some(destination);
         } else if project_file.is_none() && (lower.ends_with("draft_content.json") || lower.ends_with(".capcut.json")) {
             project_file = Some(destination);
@@ -1138,15 +1136,27 @@ fn selected_project_path(p: &J) -> Result<String> {
 fn import_aep_mobile_package(s: &mut Session, p: &J) -> Result<J> {
     let path = selected_project_path(p)?;
     if ext(&path) != "zip" {
-        return Err(err("手机版 AE 工程请先导出为 ZIP 工程包；包内必须包含真实 .aep 或 .aepx 工程文件和所需素材。"));
+        return Err(err("手机版 AE 工程请先选择手机 AE 应用原样导出的工程包（通常为 ZIP）。"));
     }
-    let (actual, _package_root) = extract_project_zip(s, &path)?;
-    if !matches!(ext(&actual).as_str(), "aep" | "aepx") {
-        return Err(err("这个 ZIP 中没有找到真实的 .aep/.aepx 工程文件。没有把其他格式改名冒充 AE 工程；请提供手机版 AE 原始导出样例以适配其实际格式。"));
+    let file = std::fs::File::open(&path)
+        .or_else(|_| s.services.read_file(&path))
+        .map_err(|e| err(format!("无法读取手机版 AE 工程包：{e}")))?;
+    let archive = zip::ZipArchive::new(file)
+        .map_err(|e| err(format!("手机版 AE 工程包不是有效 ZIP：{e}")))?;
+    let mut names = Vec::new();
+    for index in 0..archive.len().min(32) {
+        if let Ok(entry) = archive.by_index(index) {
+            names.push(entry.name().to_string());
+        }
     }
-    let mut params = p.clone();
-    params["path"] = json!(actual);
-    super::aep::import_aep(s, &params)
+    let summary = if names.is_empty() {
+        "（没有可识别的文件条目）".to_string()
+    } else {
+        names.join("、")
+    };
+    Err(err(format!(
+        "已读取手机版 AE 工程包，但目前尚未确认该手机 AE 应用的真实工程格式；不会把电脑版 .aep/.aepx ZIP 当作手机版工程。包内文件示例：{summary}。请提供手机 AE 应用原样导出的工程包样例以完成适配。"
+    )))
 }
 
 fn import_alight_motion_project(s: &mut Session, p: &J) -> Result<J> {

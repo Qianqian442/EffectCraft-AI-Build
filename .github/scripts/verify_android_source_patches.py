@@ -255,12 +255,14 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     for command in ("file.importAepMobilePackage", "file.importAlightMotionProject", "file.importNodeVideoProject", "file.importCapCutProject"):
         if f'"{command}"' not in mobile_importer:
             raise SystemExit(f"Missing format-specific importer command: {command}")
-    if 'lower.ends_with(".aep") || lower.ends_with(".aepx")' not in mobile_importer:
-        raise SystemExit("The AE mobile ZIP extractor does not look for a real .aep/.aepx file.")
+    if "尚未确认该手机 AE 应用的真实工程格式" not in mobile_importer:
+        raise SystemExit("The AE mobile import action must report unknown mobile formats honestly.")
+    if 'super::aep::import_aep(s, &params)' in mobile_importer:
+        raise SystemExit("The mobile AE import must not route a desktop AEP package through the desktop importer.")
 
     aep_loss_guard = (root / "crates/ui-egui/src/panels/aep_losses.rs").read_text(encoding="utf-8")
-    if '"file.importAepDesktop"' not in aep_loss_guard or '"file.importAepMobilePackage"' not in aep_loss_guard:
-        raise SystemExit("Desktop/mobile AE imports must share the original loss-confirmation guard.")
+    if '"file.importAepDesktop"' not in aep_loss_guard:
+        raise SystemExit("The dedicated desktop AE import entry bypasses the original loss-confirmation guard.")
     print("Verified separate desktop AE and EffectCraft mobile-export import entries; mobile packages use the native .ecproj reader.")
     import_project_command = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in import_project_command:
