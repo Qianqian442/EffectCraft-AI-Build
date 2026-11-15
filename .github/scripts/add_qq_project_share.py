@@ -199,55 +199,6 @@ pub(crate) fn share_project_package(_project_path: &str) -> Result<(), String> {
     path.write_text(once(source, anchor, anchor + addition, "Rust JNI QQ share bridge"), encoding="utf-8")
 
 
-def patch_ui(effectcraft: Path) -> None:
-    path = effectcraft / "crates/ui-egui/src/header.rs"
-    source = path.read_text(encoding="utf-8")
-    source = once(
-        source,
-        "    let mut collect_project_files = false;\n",
-        "    let mut collect_project_files = false;\n    let mut share_project_package = false;\n",
-        "QQ share button state",
-    )
-    button_anchor = '''            if ui.button("完整导出工程（包含素材）").clicked() {
-                collect_project_files = true;
-            }
-'''
-    button_addition = '''            if ui.button("完整打包并分享到QQ").clicked() {
-                share_project_package = true;
-            }
-'''
-    source = once(source, button_anchor, button_anchor + button_addition, "QQ share button")
-    source = source.replace(
-        '            ui.small("QQ 分享建议：完整导出后压缩整个文件夹；接收方解压后导入其中的 .ecproj。");',
-        '            ui.small("自动打包 .ecproj 和 (Footage) 素材；在系统分享面板选择 QQ 发送 ZIP。");',
-        1,
-    )
-    branch_anchor = '''    if save_project_copy {
-        match crate::menus::invoke(app, ui.ctx(), "file.saveCopy", json!({})) {
-'''
-    share_branch = '''    if share_project_package {
-        match crate::menus::invoke(app, ui.ctx(), "file.collectFiles", json!({})) {
-            Ok(export) => {
-                if let Some(project_path) = export.get("project").and_then(|value| value.as_str()) {
-                    match crate::android_gallery::share_project_package(project_path) {
-                        Ok(()) => {
-                            app.ui.status = "工程 ZIP 正在打包；随后在系统分享面板选择 QQ。".into();
-                            open = false;
-                        }
-                        Err(error) => app.ui.status = format!("工程分享失败：{error}"),
-                    }
-                } else {
-                    app.ui.status = "工程已收集，但没有取得工程文件路径，无法分享。".into();
-                }
-            }
-            Err(error) => app.ui.status = format!("收集工程素材失败：{error}"),
-        }
-    }
-'''
-    source = once(source, branch_anchor, share_branch + branch_anchor, "QQ share project export flow")
-    path.write_text(source, encoding="utf-8")
-
-
 def main() -> None:
     effectcraft = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     builder = Path(os.environ["ARTCRAFT_DIR"]).resolve()
