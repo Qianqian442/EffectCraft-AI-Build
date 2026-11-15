@@ -121,7 +121,7 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
             project_file = Some(destination);
         }
     }
-    let file = project_file.ok_or_else(|| err("This ZIP does not contain an EffectCraft .ecproj/.ecprojx, NodeVideo .nv, or Alight Motion XML project"))?;
+    let file = project_file.ok_or_else(|| err("该 ZIP 不包含自有工程 .ecproj/.ecprojx、NodeVideo .nv 或 Alight Motion XML 工程"))?;
     let file_ext = ext(&file.to_string_lossy());
     Ok((file.to_string_lossy().to_string(), root.to_string_lossy().to_string()))
 }
@@ -1215,17 +1215,17 @@ fn import_capcut_project(s: &mut Session, p: &J) -> Result<J> {
 
 fn import_effectcraft_mobile_project(s: &mut Session, p: &J) -> Result<J> {
     let path = p.get("path").and_then(J::as_str)
-        .ok_or_else(|| err("缺少 EffectCraft 手机版工程路径"))?.to_string();
+        .ok_or_else(|| err("缺少自有工程路径"))?.to_string();
     let actual = match ext(&path).as_str() {
         "ecproj" | "ecprojx" => path,
         "zip" => {
             let (actual, _package_root) = extract_project_zip(s, &path)?;
             if !matches!(ext(&actual).as_str(), "ecproj" | "ecprojx") {
-                return Err(err("ZIP 中没有找到 EffectCraft 手机版导出的 .ecproj/.ecprojx 工程文件"));
+                return Err(err("ZIP 中没有找到自有工程 .ecproj/.ecprojx 文件"));
             }
             actual
         }
-        _ => return Err(err("手机版工程仅支持 .ecproj、.ecprojx，或包含该工程及素材的 ZIP 包")),
+        _ => return Err(err("自有工程仅支持 .ecproj、.ecprojx，或包含工程文件及素材的 ZIP 包")),
     };
     super::import_project::import_project(s, &json!({"path": actual}))
 }
@@ -1244,8 +1244,8 @@ pub fn specs() -> Vec<CommandSpec> {
         cmd!("file.importCapCutProject", "CapCut Project...", ["File", "Import"], None,
             "{path (draft_content.json/.zip)} — imports a CapCut draft project",
             always, import_capcut_project),
-        cmd!("file.importEffectCraftMobile", "EffectCraft Mobile Project...", ["File", "Import"], None,
-            "{path (.ecproj/.ecprojx or .zip containing an EffectCraft mobile project and collected footage)} — imports a project exported by EffectCraft mobile",
+        cmd!("file.importEffectCraftMobile", "自有工程包...", ["File", "Import"], None,
+            "{path (.ecproj/.ecprojx or .zip containing the project and collected footage)} — 导入 Ae 自有工程及其收集的素材",
             always, import_effectcraft_mobile_project),
 
         cmd!("file.exportAlightMotion", "Export Alight Motion Project", ["File", "Export"], None, "{path (.xml)} — exports the active composition as Alight Motion scene XML", always, export_alight_command),
