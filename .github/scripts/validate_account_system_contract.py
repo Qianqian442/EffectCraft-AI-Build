@@ -59,6 +59,67 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
+        "QQ and WeChat identifiers are immutable in both LAN and Cloudflare profile APIs",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/LanAccountServer.java",
+        (
+            "currentQq.equals(requestedQq)",
+            "currentWechat.equalsIgnoreCase(requestedWechat)",
+            "QQ号和微信号注册后不可修改",
+        ),
+    ),
+    (
+        "LAN and cloud account databases distinguish permanent bans and only permit deletion after one",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/LanAccountServer.java",
+        (
+            "permanently_banned INTEGER NOT NULL DEFAULT 0",
+            'body.optBoolean("permanent", false)',
+            'tail.endsWith("/delete")',
+            "只有已永久封号的账号才允许删除",
+            'identifiers_reusable',
+            'whitelist_preserved',
+        ),
+    ),
+    (
+        "Cloudflare profile endpoint rejects changed QQ/WeChat IDs and deletes only permanent accounts",
+        "cloudflare-worker/src/index.js",
+        (
+            "social_id_immutable",
+            "permanently_banned = 1",
+            "adminDeleteUser",
+            "DELETE FROM accounts WHERE id = ? AND permanently_banned = 1",
+            "whitelist_preserved: true",
+        ),
+    ),
+    (
+        "Cloudflare permanent ban migration preserves existing timed-ban and whitelist records",
+        "cloudflare-worker/migrations/0003_permanent_ban.sql",
+        (
+            "ADD COLUMN permanently_banned INTEGER NOT NULL DEFAULT 0",
+            "CHECK (permanently_banned IN (0, 1))",
+        ),
+    ),
+    (
+        "Admin account screen offers permanent ban and deletion while retaining the separate unban button",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
+        (
+            "选择封禁类型",
+            "永久封号",
+            'button(permanent ? "删除账号" : "封禁")',
+            'button("解禁")',
+            "private void deleteUser(String id)",
+            "白名单记录不会删除",
+        ),
+    ),
+    (
+        "Client account profile displays QQ/WeChat as read-only identifiers",
+        ".github/scripts/add_home_lan_account_gate.py",
+        (
+            "QQ号（注册后不可修改）",
+            "微信号（注册后不可修改）",
+            '"name": self.edit_name.trim()',
+        ),
+    ),
+    (
         "P2P account channel pins the administrator peer before credentials are sent",
         "p2p-bridge/src/lib.rs",
         (
