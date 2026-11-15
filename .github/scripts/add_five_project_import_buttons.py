@@ -61,14 +61,39 @@ def patch_file_import_menu(root: Path) -> None:
     )):
         raise SystemExit("Project import labels must stay in File > Import, not the Project panel.")
     print("Installed five independent project import options in File > Import only.")
+    print("Registered separate mobile-AE, AM, NV and CapCut file pickers.")
     print("The original EffectCraft importer remains in the File menu; Project panel keeps media import only.")
 
+
+def patch_frontend_pickers(root: Path) -> None:
+    """Register a native file picker for each of the four non-desktop project formats."""
+    path = root / "crates/ui-egui/src/menus/frontend.rs"
+    source = path.read_text(encoding="utf-8")
+    mappings = """        "file.importAepMobilePackage" => ("path", Ask::Open(&["zip"])),
+        "file.importAlightMotionProject" => ("path", Ask::Open(&["xml", "alight", "zip"])),
+        "file.importNodeVideoProject" => ("path", Ask::Open(&["nv", "json", "zip"])),
+        "file.importCapCutProject" => ("path", Ask::Open(&["json", "zip"])),
+"""
+    required = (
+        '"file.importAepMobilePackage" =>',
+        '"file.importAlightMotionProject" =>',
+        '"file.importNodeVideoProject" =>',
+        '"file.importCapCutProject" =>',
+    )
+    if all(item in source for item in required):
+        return
+    anchor = '        "file.importAepDesktop" => ("path", Ask::Open(&["aep", "aepx"])),\n'
+    if anchor not in source:
+        raise SystemExit("The desktop AE picker mapping must exist before adding other project pickers.")
+    source = source.replace(anchor, anchor + mappings, 1)
+    path.write_text(source, encoding="utf-8")
 
 def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     if not root.is_dir():
         raise SystemExit("EFFECTCRAFT_DIR must point to the checked-out EffectCraft source")
     patch_file_import_menu(root)
+    patch_frontend_pickers(root)
 
 
 if __name__ == "__main__":
