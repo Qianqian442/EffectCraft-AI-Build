@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
-"""Validate the original After Effects Project import menu; do not add a duplicate button."""
+"""Consolidate all supported project formats behind one Import Project menu entry."""
 from __future__ import annotations
 
 import os
 from pathlib import Path
-
-
-MARKER = "EFFECTCRAFT_ANDROID_KEEP_ORIGINAL_AEP_IMPORT_V1"
 
 
 def main() -> None:
@@ -19,20 +16,38 @@ def main() -> None:
     menu_source = menu.read_text(encoding="utf-8")
     frontend_source = frontend.read_text(encoding="utf-8")
 
-    # The original File > Import > After Effects Project... command is the correct entry.
-    # Keep it separate from EffectCraft Project... and do not add a top-toolbar import button.
-    required_menu = "After Effects Project... | file.importAep"
-    required_picker = '"file.importAep" => ("path", Ask::Open(&["aep", "aepx"])),'
-    if required_menu not in menu_source:
-        raise SystemExit("The original File > Import > After Effects Project... menu item was not found")
-    if required_picker not in frontend_source:
-        raise SystemExit("The original .aep/.aepx file picker is missing")
-    if '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx"])),' not in frontend_source:
-        raise SystemExit("The native EffectCraft Project import picker changed unexpectedly")
+    # One visible project-import command handles EffectCraft, AE, AM, NodeVideo and CapCut.
+    # The separate AE and Premiere-specific menu entries caused a crowded, duplicate-looking
+    # import menu. The underlying commands remain registered for internal/compatibility use.
+    project_item = "EffectCraft Project... | file.importProject"
+    unified_item = "导入工程... | file.importProject"
+    if project_item not in menu_source and unified_item not in menu_source:
+        raise SystemExit("The original EffectCraft Project import command was not found")
+    if project_item in menu_source:
+        menu_source = menu_source.replace(project_item, unified_item)
 
-    print("Validated the original File > Import > After Effects Project... entry.")
-    print("The .aep/.aepx picker stays separate from EffectCraft Project (.ecproj/.ecprojx).")
-    print("No duplicate toolbar button or import-menu modification was added.")
+    menu_source = menu_source.replace("    After Effects Project... | file.importAep\\n", "")
+    menu_source = menu_source.replace("    Adobe Premiere Pro Project... | file.importTimeline\\n", "")
+
+    # There must be exactly one visible project import entry, regardless of platform menu block.
+    visible_project_entries = [
+        line for line in menu_source.splitlines()
+        if "file.importProject" in line or "file.importAep" in line or "file.importTimeline" in line
+    ]
+    if sum("file.importProject" in line for line in visible_project_entries) < 1:
+        raise SystemExit("Unified Import Project menu item was lost")
+    if any("file.importAep" in line or "file.importTimeline" in line for line in visible_project_entries):
+        raise SystemExit("A duplicate AE/Premiere project import menu item remains")
+
+    required_picker = '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx"])),'
+    if required_picker not in frontend_source:
+        raise SystemExit("The original EffectCraft Project file picker changed unexpectedly")
+    if "file_dialog_async" not in frontend_source:
+        raise SystemExit("The original asynchronous file-picker pathway is missing")
+
+    menu.write_text(menu_source, encoding="utf-8")
+    print("Consolidated supported EffectCraft, AE, AM, NodeVideo and CapCut project formats into one Import Project menu item.")
+    print("Generic File / Multiple Files media import controls remain separate; no project format support was removed.")
 
 
 if __name__ == "__main__":
