@@ -198,7 +198,17 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
     ),
 
     (
-        "Cloudflare admin APK toggle controls all users and preserves admin recovery access",    (
+        "Cloudflare admin APK toggle controls all users and preserves admin recovery access",
+        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
+        (
+            "/v1/admin/account-service",
+            "云端账号服务器开关（全体用户）",
+            "所有用户的注册、登录和账号验证均已暂停",
+            "管理员仍可登录本管理版并重新开启",
+            "if (isCloudflareMode())",
+        ),
+    ),
+    (
         "Cloudflare server enforces QQ/WeChat whitelist on registration, login and session/profile access",
         "cloudflare-worker/src/index.js",
         (
@@ -243,16 +253,6 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
             "封禁信息已保存在本机",
             "联网核验是否已解封",
             "self.persist_ban(config)",
-        ),
-    ),
-
-        "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java",
-        (
-            "/v1/admin/account-service",
-            "云端账号服务器开关（全体用户）",
-            "所有用户的注册、登录和账号验证均已暂停",
-            "管理员仍可登录本管理版并重新开启",
-            "if (isCloudflareMode())",
         ),
     ),
     (
