@@ -7,12 +7,15 @@ android {
     compileSdk 35
 
     buildFeatures { buildConfig true }
+    // Keep the package ID and signing identity stable for in-place updates.
+    // CI run numbers provide a monotonically increasing versionCode for every APK.
+    def adminBuildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "5").toInteger()
     defaultConfig {
         applicationId "com.qianqian.effectcraftadmin"
         minSdk 26
         targetSdk 35
-        versionCode 5
-        versionName "1.4"
+        versionCode adminBuildNumber
+        versionName "1.4." + adminBuildNumber
         buildConfigField "String", "ACCOUNT_API_URL", "\"${System.getenv('AE_ACCOUNT_API_URL') ?: 'https://ae-account-api-gateway.pages.dev'}\""
     }
     compileOptions {
