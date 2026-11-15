@@ -94,8 +94,8 @@ fn sync_project_selection_from_viewer(app: &mut EffectcraftApp) {
     let selected_layers = app.session.state.selected_layers.clone();
     let items = if let Some(comp) = app.session.active_comp() {
         let mut items = Vec::new();
-        for layer_id in selected_layers {
-            if let Some(item) = comp.layer(layer_id).and_then(|layer| layer.source.item())
+        for layer_id in &selected_layers {
+            if let Some(item) = comp.layer(*layer_id).and_then(|layer| layer.source.item())
                 && !items.contains(&item)
             {
                 items.push(item);
