@@ -312,23 +312,28 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
 
 def patch_workspace_tabs(effectcraft: Path) -> None:
-    """Expose AM as a direct toolbar workspace switch tab."""
+    """Use a clearly labelled Nova-style Layout menu for workspace switching."""
     path = effectcraft / "crates/ui-egui/src/header.rs"
     source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_AM_LAYOUT_SWITCH_TAB_V1"
+    marker = "EFFECTCRAFT_NOVA_LAYOUT_MENU_V1"
     if marker not in source:
         source = replace_once(
             source,
-            '    let shown = ["Standard", "Small Screen", "Learn", "Review", "Default"];',
-            '    // EFFECTCRAFT_AM_LAYOUT_SWITCH_TAB_V1\n'
-            '    let shown = ["AM 竖屏", "Standard", "Small Screen", "Learn", "Review", "Default"];',
-            "AM layout toolbar switch tab",
+            '''    let more = Rect::from_min_max(pos2(rx - 20.0, cy - 11.0), pos2(rx, cy + 11.0));
+    let mresp = ui.interact(more, egui::Id::unique("ws-more"), Sense::click());
+    p.text(more.center(), Align2::CENTER_CENTER, "»", Tokens::ui(15.0), if mresp.hovered() { t.text } else { t.text_dim });''',
+            '''    // EFFECTCRAFT_NOVA_LAYOUT_MENU_V1
+    // A visible Layout dropdown, like Nova Editor; the active workspace is checked in the popup.
+    let more = Rect::from_min_max(pos2(rx - 68.0, cy - 11.0), pos2(rx, cy + 11.0));
+    let mresp = ui.interact(more, egui::Id::unique("ws-more"), Sense::click());
+    p.rect_filled(more, 5.0, if mresp.hovered() { t.hover } else { t.panel_bg });
+    p.text(more.center(), Align2::CENTER_CENTER, "布局 ▾", Tokens::ui(11.5), if mresp.hovered() { t.text } else { t.text_dim });''',
+            "Nova-style visible Layout dropdown",
         )
         path.write_text(source, encoding="utf-8")
     if marker not in path.read_text(encoding="utf-8"):
-        raise SystemExit("AM workspace toolbar switch tab was not installed.")
-    print("Added AM as a direct toolbar workspace switch tab.")
-
+        raise SystemExit("Nova-style Layout dropdown was not installed.")
+    print("Added a visible Layout dropdown for switching between Standard and AM portrait workspaces.")
 
 def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
