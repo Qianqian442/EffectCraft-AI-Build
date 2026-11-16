@@ -18,6 +18,31 @@ def once(source: str, old: str, new: str, label: str) -> str:
 def patch_manifest_generator(builder: Path) -> None:
     path = builder / "lib/android_project.py"
     source = path.read_text(encoding="utf-8")
+    # EFFECTCRAFT_OPEN_SHARED_PROJECT_INTENT_V1: register Ae for incoming project ZIPs.
+    # SafActivity already stages ACTION_VIEW URIs and routes them to the normal import inbox.
+    intent_anchor = '    activities = _as_list(application.get("activity")) or [{}]\\n    for activity in activities:\\n'
+    intent_code = '''    activities = _as_list(application.get("activity")) or [{}]
+    if android_meta.get("package") == "com.artcraft.effectcraft":
+        for activity in activities:
+            filters = activity.setdefault("intent_filter", [])
+            marker_filter = "EFFECTCRAFT_OPEN_SHARED_PROJECT_ZIP"
+            if not any(item.get("_effectcraft_marker") == marker_filter for item in filters):
+                filters.append({
+                    "_effectcraft_marker": marker_filter,
+                    "actions": ["android.intent.action.VIEW"],
+                    "categories": [
+                        "android.intent.category.DEFAULT",
+                        "android.intent.category.BROWSABLE",
+                    ],
+                    "data": [
+                        {"mime_type": "application/zip"},
+                        {"mime_type": "application/x-zip-compressed"},
+                    ],
+                })
+    for activity in activities:
+'''
+    if "EFFECTCRAFT_OPEN_SHARED_PROJECT_ZIP" not in source:
+        source = once(source, intent_anchor, intent_code, "incoming project ZIP intent filters")
     marker = "EFFECTCRAFT_SHARE_FILEPROVIDER_V1"
     if marker not in source:
         anchor = '    lines.append("    </application>")\n'
@@ -264,6 +289,7 @@ def main() -> None:
     # Do not add another standalone button to the export dialog.
     print("Added the Android ZIP share bridge used by the unified Project Export selector.")
     print("The archive includes the .ecproj and collected footage; QQ and other targets receive a read-granted content URI.")
+    print("Incoming application/zip and application/x-zip-compressed ACTION_VIEW intents are registered for Ae and routed into the existing import inbox.")
 
 
 if __name__ == "__main__":
