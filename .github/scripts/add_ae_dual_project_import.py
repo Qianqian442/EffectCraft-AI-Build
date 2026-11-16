@@ -116,6 +116,110 @@ def main() -> None:
         "protect the new desktop AE entry with the original loss confirmation",
     )
 
+    replace_once(
+        losses,
+        "/// A loss category (`snake_case` in the report) as words: `layer_styles` → `Layer styles`.",
+        """/// Whether the report contains actionable, project-specific issues that the user should review.
+/// Generic reader limitations alone do not force a prompt; actual losses, missing footage,
+/// or missing fonts do.
+fn needs_prompt(report: &Value) -> bool {
+    report["losses"].as_array().is_some_and(|items| !items.is_empty())
+        || report["missingFootage"].as_array().is_some_and(|items| !items.is_empty())
+        || report["missingFonts"].as_array().is_some_and(|items| !items.is_empty())
+}
+
+/// Import diagnostics that are distinct from counted losses. These are shown alongside the
+/// loss categories so users can relink media and install fonts before judging the result.
+fn diagnostics(report: &Value) -> Vec<(String, Vec<String>)> {
+    const MAX_DETAILS: usize = 20;
+    let mut result = Vec::new();
+    for (key, title) in [
+        ("missingFootage", "Missing footage — relink these files before final render"),
+        ("missingFonts", "Missing fonts — fallback font will be used"),
+        ("limitations", "Reader limitations — these fields are not currently decoded"),
+    ] {
+        let Some(values) = report[key].as_array() else { continue };
+        if values.is_empty() {
+            continue;
+        }
+        let mut details: Vec<String> = values.iter()
+            .filter_map(Value::as_str)
+            .take(MAX_DETAILS)
+            .map(str::to_string)
+            .collect();
+        if values.len() > MAX_DETAILS {
+            details.push(format!("… and {} more", values.len() - MAX_DETAILS));
+        }
+        result.push((format!("{} ({})", tr(title), values.len()), details));
+    }
+    result
+}
+
+/// A loss category (`snake_case` in the report) as words: `layer_styles` → `Layer styles`.""",
+        "show missing-media, missing-font and reader-limit diagnostics",
+    )
+    replace_once(
+        losses,
+        '        let text = tr("Some parts of this project cannot be imported exactly (left out or changed):");',
+        '        let text = tr("Review items that may be missing, substituted, or not fully supported before importing:");',
+        "make the import-review heading cover missing and substituted content",
+    )
+    replace_once(
+        losses,
+        """            for (head, details) in lines(&report) {
+                ui.label(egui::RichText::new(head).color(t.tab_text_active));
+                for d in details {
+                    ui.label(egui::RichText::new(format!("    {d}")).color(t.text_dim).size(11.0));
+                }
+            }""",
+        """            for (head, details) in lines(&report) {
+                ui.label(egui::RichText::new(head).color(t.tab_text_active));
+                for d in details {
+                    ui.label(egui::RichText::new(format!("    {d}")).color(t.text_dim).size(11.0));
+                }
+            }
+            for (head, details) in diagnostics(&report) {
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new(head).color(t.tab_text_active));
+                for d in details {
+                    ui.label(egui::RichText::new(format!("    {d}")).color(t.text_dim).size(11.0));
+                }
+            }""",
+        "display all import diagnostics in the review dialog",
+    )
+    replace_once(
+        losses,
+        """    #[test]
+    fn the_report_reads_as_categories_with_counts_and_details() {""",
+        """    #[test]
+    fn missing_footage_or_fonts_require_review_even_without_counted_losses() {
+        assert!(needs_prompt(&json!({"losses": [], "missingFootage": ["D:/media/clip.mov"]})));
+        assert!(needs_prompt(&json!({"losses": [], "missingFonts": ["ExamplePS-Bold"]})));
+        assert!(!needs_prompt(&json!({"losses": [], "missingFootage": [], "missingFonts": [], "limitations": ["generic"]})));
+    }
+
+    #[test]
+    fn diagnostics_include_missing_media_fonts_and_reader_limitations() {
+        let report = json!({
+            "missingFootage": ["D:/media/clip.mov"],
+            "missingFonts": ["ExamplePS-Bold"],
+            "limitations": ["Frame blending is not decoded."]
+        });
+        let items = diagnostics(&report);
+        assert_eq!(items.len(), 3);
+        assert!(items[0].0.starts_with("Missing footage"));
+        assert_eq!(items[0].1, vec!["D:/media/clip.mov".to_string()]);
+        assert!(items[1].0.starts_with("Missing fonts"));
+        assert_eq!(items[1].1, vec!["ExamplePS-Bold".to_string()]);
+        assert!(items[2].0.starts_with("Reader limitations"));
+        assert_eq!(items[2].1, vec!["Frame blending is not decoded.".to_string()]);
+    }
+
+    #[test]
+    fn the_report_reads_as_categories_with_counts_and_details() {""",
+        "add tests for import preflight diagnostics and prompt conditions",
+    )
+
     aep_now = aep.read_text(encoding="utf-8")
     am_nv_now = am_nv.read_text(encoding="utf-8")
     frontend_now = frontend.read_text(encoding="utf-8")
@@ -136,6 +240,7 @@ def main() -> None:
     if 'id == "file.importAep" || id == "file.importAepDesktop"' not in losses_now:
         raise SystemExit("The desktop AE loss confirmation guard is missing")
     print("Desktop import: .aep/.aepx through the original After Effects importer.")
+    print("Import review: show counted losses, missing footage/fonts, and reader limitations before continuing.")
     print("Mobile import: EffectCraft .ecproj/.ecprojx or the ZIP exported by EffectCraft mobile, including collected footage.")
     print("Original Import Project and original After Effects import commands remain available.")
     print("Mobile EffectCraft projects are routed to the native project reader, not the AEP parser.")
