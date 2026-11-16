@@ -162,7 +162,8 @@ fn am_mobile_editing_header(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: R
             pos2(rect.min.x, rect.min.y + 40.0),
             rect.max,
         );
-        layout_switch_row(app, ui, &ui.painter().clone(), layout_row);
+        let layout_painter = ui.painter().clone();
+        layout_switch_row(app, ui, &layout_painter, layout_row);
         export_dialog(app, ui);
         export_progress_dialog(app, ui);
         return;
