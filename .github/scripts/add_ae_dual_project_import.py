@@ -194,6 +194,12 @@ fn imported_lines(report: &Value) -> Vec<String> {
     )
     replace_once(
         losses,
+        '    if report["losses"].as_array().is_none_or(|l| l.is_empty()) {\n        return Ok(false);\n    }',
+        '    if !needs_prompt(&report) {\n        return Ok(false);\n    }',
+        "run the full project-specific and reader-limitation preflight guard",
+    )
+    replace_once(
+        losses,
         "const DETAILS: usize = 3;",
         "const DETAILS: usize = 20;",
         "show up to twenty concrete examples for every loss category",
@@ -304,7 +310,7 @@ fn imported_lines(report: &Value) -> Vec<String> {
         raise SystemExit("The EffectCraft mobile menu entry is missing")
     if 'id == "file.importAep" || id == "file.importAepDesktop"' not in losses_now:
         raise SystemExit("The desktop AE loss confirmation guard is missing")
-    for required in ("fn needs_prompt(report: &Value)", "fn imported_lines(report: &Value)", "继续导入（仍有未支持内容）", "const DETAILS: usize = 20;"):
+    for required in ("fn needs_prompt(report: &Value)", "if !needs_prompt(&report)", "fn imported_lines(report: &Value)", "继续导入（仍有未支持内容）", "const DETAILS: usize = 20;"):
         if required not in losses_now:
             raise SystemExit(f"The full desktop-AE preflight report is missing: {required}")
     print("Desktop import: .aep/.aepx through the original After Effects importer.")
