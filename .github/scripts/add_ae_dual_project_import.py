@@ -120,12 +120,14 @@ def main() -> None:
         losses,
         "/// A loss category (`snake_case` in the report) as words: `layer_styles` → `Layer styles`.",
         """/// Whether the report contains actionable, project-specific issues that the user should review.
-/// Generic reader limitations alone do not force a prompt; actual losses, missing footage,
-/// or missing fonts do.
+/// The reader publishes standing format limitations for every parsed project. Always make the
+/// user review that compatibility envelope before committing an import, even if this particular
+/// project has no counted losses or missing assets.
 fn needs_prompt(report: &Value) -> bool {
     report["losses"].as_array().is_some_and(|items| !items.is_empty())
         || report["missingFootage"].as_array().is_some_and(|items| !items.is_empty())
         || report["missingFonts"].as_array().is_some_and(|items| !items.is_empty())
+        || report["limitations"].as_array().is_some_and(|items| !items.is_empty())
 }
 
 /// Import diagnostics that are distinct from counted losses. These are shown alongside the
@@ -155,14 +157,58 @@ fn diagnostics(report: &Value) -> Vec<(String, Vec<String>)> {
     result
 }
 
+/// Counts of the content the importer recognised. The counts are evidence of parsing, not a
+/// promise that the imported project renders identically to After Effects.
+fn imported_lines(report: &Value) -> Vec<String> {
+    const FIELDS: &[(&str, &str)] = &[
+        ("folders", "文件夹"), ("compositions", "合成"), ("solids", "纯色素材"),
+        ("footage", "素材文件"), ("layers", "图层"), ("solidLayers", "纯色图层"),
+        ("nullLayers", "空对象图层"), ("adjustmentLayers", "调整图层"),
+        ("footageLayers", "素材图层"), ("precompLayers", "预合成图层"),
+        ("textLayers", "文字图层"), ("keyframes", "关键帧"), ("expressions", "表达式"),
+        ("masks", "蒙版"), ("trackMattes", "轨道遮罩"), ("markers", "标记"),
+        ("timeRemaps", "时间重映射"), ("shapeLayers", "形状图层"), ("shapeItems", "形状项目"),
+        ("cameras", "摄像机"), ("lights", "灯光"), ("textAnimators", "文字动画器"),
+        ("effects", "效果实例"), ("layerStyles", "图层样式"),
+    ];
+    let mut labels: Vec<String> = FIELDS.iter()
+        .filter_map(|(key, label)| report["imported"][*key].as_u64()
+            .filter(|count| *count > 0)
+            .map(|count| format!("{label} {count}")))
+        .collect();
+    if labels.is_empty() {
+        return vec!["未识别到可导入的工程项目".to_string()];
+    }
+    let mut rows = Vec::new();
+    while !labels.is_empty() {
+        let take = labels.len().min(4);
+        let rest = labels.split_off(take);
+        rows.push(labels.join("  ·  "));
+        labels = rest;
+    }
+    rows
+}
+
 /// A loss category (`snake_case` in the report) as words: `layer_styles` → `Layer styles`.""",
         "show missing-media, missing-font and reader-limit diagnostics",
     )
     replace_once(
         losses,
-        '        let text = tr("Some parts of this project cannot be imported exactly (left out or changed):");',
+        "const DETAILS: usize = 3;",
+        "const DETAILS: usize = 20;",
+        "show up to twenty concrete examples for every loss category",
+    )
+    replace_once(
+        losses,
+        '        let text = tr("Some parts of this project cannot be imported exactly (left out or changed):");'
         '        let text = tr("Review items that may be missing, substituted, or not fully supported before importing:");',
         "make the import-review heading cover missing and substituted content",
+    )
+    replace_once(
+        losses,
+        '            let label = tr("Import Anyway");',
+        '            let label = "继续导入（仍有未支持内容）";',
+        "make the partial-import consent explicit",
     )
     replace_once(
         losses,
@@ -172,7 +218,13 @@ fn diagnostics(report: &Value) -> Vec<(String, Vec<String>)> {
                     ui.label(egui::RichText::new(format!("    {d}")).color(t.text_dim).size(11.0));
                 }
             }""",
-        """            for (head, details) in lines(&report) {
+        """            ui.label(egui::RichText::new("预计识别并导入的内容：").color(t.tab_text_active));
+            for line in imported_lines(&report) {
+                ui.label(egui::RichText::new(format!("    {line}")).color(t.text_dim).size(11.0));
+            }
+            ui.separator();
+            ui.label(egui::RichText::new("未支持、替代或需要处理的内容：").color(t.tab_text_active));
+            for (head, details) in lines(&report) {
                 ui.label(egui::RichText::new(head).color(t.tab_text_active));
                 for d in details {
                     ui.label(egui::RichText::new(format!("    {d}")).color(t.text_dim).size(11.0));
@@ -185,17 +237,30 @@ fn diagnostics(report: &Value) -> Vec<(String, Vec<String>)> {
                     ui.label(egui::RichText::new(format!("    {d}")).color(t.text_dim).size(11.0));
                 }
             }""",
-        "display all import diagnostics in the review dialog",
+        "display recognised project counts and all import diagnostics",
     )
     replace_once(
         losses,
         """    #[test]
     fn the_report_reads_as_categories_with_counts_and_details() {""",
         """    #[test]
-    fn missing_footage_or_fonts_require_review_even_without_counted_losses() {
+    fn all_project_specific_issues_and_reader_limitations_require_review() {
         assert!(needs_prompt(&json!({"losses": [], "missingFootage": ["D:/media/clip.mov"]})));
         assert!(needs_prompt(&json!({"losses": [], "missingFonts": ["ExamplePS-Bold"]})));
-        assert!(!needs_prompt(&json!({"losses": [], "missingFootage": [], "missingFonts": [], "limitations": ["generic"]})));
+        assert!(needs_prompt(&json!({"losses": [], "missingFootage": [], "missingFonts": [], "limitations": ["frame blending"]})));
+        assert!(!needs_prompt(&json!({"losses": [], "missingFootage": [], "missingFonts": [], "limitations": []})));
+    }
+
+    #[test]
+    fn imported_summary_lists_every_nonzero_imported_category() {
+        let report = json!({"imported": {"compositions": 2, "layers": 7, "keyframes": 12, "effects": 3, "masks": 0}});
+        let rows = imported_lines(&report);
+        assert_eq!(rows.len(), 1);
+        assert!(rows[0].contains("合成 2"));
+        assert!(rows[0].contains("图层 7"));
+        assert!(rows[0].contains("关键帧 12"));
+        assert!(rows[0].contains("效果实例 3"));
+        assert!(!rows[0].contains("蒙版 0"));
     }
 
     #[test]
@@ -239,8 +304,11 @@ fn diagnostics(report: &Value) -> Vec<(String, Vec<String>)> {
         raise SystemExit("The EffectCraft mobile menu entry is missing")
     if 'id == "file.importAep" || id == "file.importAepDesktop"' not in losses_now:
         raise SystemExit("The desktop AE loss confirmation guard is missing")
+    for required in ("fn needs_prompt(report: &Value)", "fn imported_lines(report: &Value)", "继续导入（仍有未支持内容）", "const DETAILS: usize = 20;"):
+        if required not in losses_now:
+            raise SystemExit(f"The full desktop-AE preflight report is missing: {required}")
     print("Desktop import: .aep/.aepx through the original After Effects importer.")
-    print("Import review: show counted losses, missing footage/fonts, and reader limitations before continuing.")
+    print("Import review: show recognised object counts, up to 20 loss examples per category, missing assets/fonts and standing parser limitations before any import.")
     print("Mobile import: EffectCraft .ecproj/.ecprojx or the ZIP exported by EffectCraft mobile, including collected footage.")
     print("Original Import Project and original After Effects import commands remain available.")
     print("Mobile EffectCraft projects are routed to the native project reader, not the AEP parser.")
