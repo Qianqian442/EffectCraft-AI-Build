@@ -530,6 +530,20 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     print("Verified Android release-signer guard is installed in the generated Activity template.")
 
 
+def verify_account_security(root: Path) -> None:
+    worker = (root.parent.parent / "cloudflare-worker/src/index.js")
+    if not worker.is_file():
+        worker = Path(os.environ.get("GITHUB_WORKSPACE", ".")) / "cloudflare-worker/src/index.js"
+    if not worker.is_file():
+        raise SystemExit("Cloudflare account worker source is missing; whitelist/ban protections cannot be verified.")
+    cloud = worker.read_text(encoding="utf-8")
+    admin = (Path(os.environ.get("GITHUB_WORKSPACE", ".")) / "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java").read_text(encoding="utf-8")
+    for token in ("/v1/whitelist", "/v1/admin/whitelist", "/v1/admin/whitelist/remove", "requireWhitelistedIdentifiers", "ensureNotBanned", "banned_until"):
+        if token not in cloud: raise SystemExit(f"Cloudflare account security route/check is missing: {token}")
+    for token in ("注册 / 登录白名单", "加入白名单", "移除白名单", "封禁", "解禁", "/ban"):
+        if token not in admin: raise SystemExit(f"Admin account controls are missing: {token}")
+    print("Verified server-enforced whitelist, admin add/remove, login/register checks, and ban/unban controls.")
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -545,6 +559,7 @@ def main() -> None:
     print("Android export memory safety helper is present without imposing an application memory ceiling.")
     verify_chinese_default(root)
     verify_am_workspace_and_android_integrity(root)
+    verify_account_security(root)
 
     parity = root / "docs/localization-parity.md"
     if parity.is_file():
