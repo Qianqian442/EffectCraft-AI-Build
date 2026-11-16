@@ -388,38 +388,56 @@ def patch_workspace_morph_transition(effectcraft: Path) -> None:
 
     end_anchor = "        self.draw_toast(ui, full, lift);\n"
     edge_patch = r'''        self.draw_toast(ui, full, lift);
-        // EFFECTCRAFT_AM_BLUE_WORKSPACE_SWITCH_EDGES_V1
-        // Keep Nova-style layout switching itself; only the real panel/button borders
-        // receive a short blue highlight while the selected workspace is settling.
+        // EFFECTCRAFT_AM_NOVA_LAYOUT_TRACE_V2
+        // Preserve the native dock reflow. Trace the real panel and control borders in
+        // sequence, as Nova's "building layout" transition does; do not slide/scale pages.
         if let Some((started, _direction)) = self.workspace_transition {
-            let progress = (((self.now - started).max(0.0) as f32) / 0.42).clamp(0.0, 1.0);
+            let progress = (((self.now - started).max(0.0) as f32) / 0.72).clamp(0.0, 1.0);
             if progress < 1.0 {
-                let pulse = (std::f32::consts::PI * progress).sin().max(0.0);
-                let alpha = (210.0 * pulse) as u8;
-                let blue = egui::Color32::from_rgba_unmultiplied(42, 135, 255, alpha);
+                let blue = egui::Color32::from_rgba_unmultiplied(42, 150, 255, 235);
                 let painter = ui.painter();
-                for (_, rect) in &self.dock_rects {
-                    if rect.intersects(full) {
-                        painter.rect_stroke(
-                            *rect,
-                            egui::CornerRadius::same(4),
-                            egui::Stroke::new(1.8, blue),
-                            egui::StrokeKind::Inside,
-                        );
-                    }
-                }
+                let mut rects: Vec<egui::Rect> = self.dock_rects.iter().map(|(_, rect)| *rect).collect();
                 for element in &self.auto.elements {
                     let [x, y, w, h] = element.rect;
                     let rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h));
-                    if rect.intersects(full) && w > 4.0 && h > 4.0 {
-                        painter.rect_stroke(
-                            rect,
-                            egui::CornerRadius::same(3),
-                            egui::Stroke::new(1.35, blue),
-                            egui::StrokeKind::Inside,
-                        );
+                    if rect.intersects(full) && w > 8.0 && h > 8.0 {
+                        rects.push(rect);
                     }
                 }
+                let count = rects.len().max(1);
+                for (index, rect) in rects.iter().enumerate() {
+                    if !rect.intersects(full) {
+                        continue;
+                    }
+                    // Stagger each real panel slightly so the layout appears to assemble.
+                    let local = (progress * 1.28 - index as f32 / count as f32 * 0.28).clamp(0.0, 1.0);
+                    let mut remaining = (rect.width() * 2.0 + rect.height() * 2.0) * local;
+                    let edges = [
+                        (rect.left_top(), rect.right_top()),
+                        (rect.right_top(), rect.right_bottom()),
+                        (rect.right_bottom(), rect.left_bottom()),
+                        (rect.left_bottom(), rect.left_top()),
+                    ];
+                    for (from, to) in edges {
+                        let length = (to - from).length();
+                        if remaining <= 0.0 || length <= 0.0 {
+                            break;
+                        }
+                        let fraction = (remaining / length).clamp(0.0, 1.0);
+                        painter.line_segment(
+                            [from, from + (to - from) * fraction],
+                            egui::Stroke::new(1.8, blue),
+                        );
+                        remaining -= length;
+                    }
+                }
+                painter.text(
+                    full.center_top() + egui::vec2(0.0, 18.0),
+                    egui::Align2::CENTER_CENTER,
+                    "正在切换布局…",
+                    egui::FontId::proportional(12.0),
+                    blue,
+                );
                 ctx.request_repaint_after(std::time::Duration::from_millis(16));
             } else {
                 self.workspace_transition = None;
