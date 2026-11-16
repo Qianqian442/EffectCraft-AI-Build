@@ -453,10 +453,19 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("Android-shared project files do not have an automatic format router.")
     if "EFFECTCRAFT_ANDROID_AUTO_IMPORT_EXTERNAL_PROJECT_V1" not in incoming_frontend:
         raise SystemExit("Incoming projects are not passed through the normal File > Import preflight path.")
+    # ZIP/RAR files are extracted before inspecting the contained project extension.
+    # Do not require the obsolete behavior that routed every ZIP directly to NodeVideo.
+    for token in (
+        '"zip" | "rar" => {',
+        '"file.extractProjectArchive"',
+        'return import_incoming_project(app, &inner);',
+    ):
+        if token not in incoming_router:
+            raise SystemExit(f"Automatic ZIP/RAR extraction routing is missing: {token}")
     for token in (
         '"aep" | "aepx" => "file.importAepDesktop"',
         '"ecproj" | "ecprojx" => "file.importEffectCraftMobile"',
-        '"zip" | "nv" => "file.importNodeVideoProject"',
+        '"nv" => "file.importNodeVideoProject"',
         '"alight" => "file.importAlightMotionProject"',
         '"fcpxml" | "otio" | "edl" | "aaf" | "omf" => "file.importTimeline"',
         '"lottie" => "file.importLottie"',
