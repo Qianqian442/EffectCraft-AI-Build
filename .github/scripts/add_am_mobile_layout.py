@@ -312,52 +312,126 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
 
 def patch_workspace_tabs(effectcraft: Path) -> None:
-    """Expose AM in the toolbar and mark its selected state with a blue accent."""
+    """Expose AM as a direct toolbar workspace switch tab."""
     path = effectcraft / "crates/ui-egui/src/header.rs"
     source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_AM_LAYOUT_BLUE_SWITCH_TAB_V1"
-    if marker in source:
-        return
-    source = replace_once(
-        source,
-        '    let shown = ["Standard", "Small Screen", "Learn", "Review", "Default"];',
-        '    // EFFECTCRAFT_AM_LAYOUT_BLUE_SWITCH_TAB_V1\n'
-        '    let shown = ["AM 竖屏", "Standard", "Small Screen", "Learn", "Review", "Default"];',
-        "AM layout toolbar switch tab",
-    )
-    old_color = """        let col = if active {
-            t.hot_text
-        } else if resp.hovered() {
-            t.text
-        } else {
-            t.text_dim
-        };"""
-    new_color = """        let am_blue = Color32::from_rgb(66, 138, 245);
-        let col = if active && name == "AM 竖屏" {
-            am_blue
-        } else if active {
-            t.hot_text
-        } else if resp.hovered() {
-            t.text
-        } else {
-            t.text_dim
-        };"""
-    source = replace_once(source, old_color, new_color, "AM blue active tab text")
-    old_line = '            p.line_segment([pos2(r.min.x + 8.0, r.max.y - 3.0), pos2(r.max.x - 8.0, r.max.y - 3.0)], Stroke::new(2.0, t.hot_text));'
-    new_line = """            let active_line = if name == "AM 竖屏" {
-                Color32::from_rgb(66, 138, 245)
-            } else {
-                t.hot_text
-            };
-            p.line_segment(
-                [pos2(r.min.x + 8.0, r.max.y - 3.0), pos2(r.max.x - 8.0, r.max.y - 3.0)],
-                Stroke::new(2.0, active_line),
-            );"""
-    source = replace_once(source, old_line, new_line, "AM blue active tab underline")
-    if marker not in source or 'let shown = ["AM 竖屏"' not in source:
-        raise SystemExit("AM blue workspace switch tab was not installed.")
-    path.write_text(source, encoding="utf-8")
-    print("Added an AM toolbar workspace tab with a blue active-state label and underline.")
+    marker = "EFFECTCRAFT_AM_LAYOUT_SWITCH_TAB_V1"
+    if marker not in source:
+        source = replace_once(
+            source,
+            '    let shown = ["Standard", "Small Screen", "Learn", "Review", "Default"];',
+            '    // EFFECTCRAFT_AM_LAYOUT_SWITCH_TAB_V1\\n'
+            '    let shown = ["AM 竖屏", "Standard", "Small Screen", "Learn", "Review", "Default"];',
+            "AM layout toolbar switch tab",
+        )
+        path.write_text(source, encoding="utf-8")
+    if marker not in path.read_text(encoding="utf-8"):
+        raise SystemExit("AM workspace toolbar switch tab was not installed.")
+    print("Added AM as a direct toolbar workspace switch tab.")
+
+
+def patch_blue_workspace_transition(effectcraft: Path) -> None:
+    """Show a brief blue fade overlay only while the user changes workspaces."""
+    header = effectcraft / "crates/ui-egui/src/header.rs"
+    source = header.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_BLUE_WORKSPACE_TRANSITION_V1"
+    if marker not in source:
+        helper = r\'''// EFFECTCRAFT_ANDROID_BLUE_WORKSPACE_TRANSITION_V1
+fn begin_workspace_transition(ctx: &egui::Context) {
+    let id = egui::Id::new("effectcraft-blue-workspace-transition");
+    let now = ctx.input(|i| i.time);
+    ctx.data_mut(|data| data.insert_temp(id, now));
+    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+}
+
+pub(crate) fn paint_workspace_transition(ctx: &egui::Context, full: egui::Rect) {
+    let id = egui::Id::new("effectcraft-blue-workspace-transition");
+    let started = ctx.data(|data| data.get_temp::<f64>(id));
+    let Some(started) = started else { return };
+    let elapsed = (ctx.input(|i| i.time) - started).max(0.0);
+    const DURATION: f64 = 0.34;
+    if elapsed >= DURATION {
+        ctx.data_mut(|data| data.remove::<f64>(id));
+        return;
+    }
+    let progress = (elapsed / DURATION).clamp(0.0, 1.0);
+    let envelope = if progress < 0.18 {
+        progress / 0.18
+    } else {
+        (1.0 - progress) / 0.82
+    };
+    let alpha = (envelope.clamp(0.0, 1.0) * 34.0) as u8;
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("effectcraft-blue-workspace-transition-overlay"),
+    ));
+    painter.rect_filled(
+        full,
+        0.0,
+        egui::Color32::from_rgba_unmultiplied(35, 118, 245, alpha),
+    );
+    ctx.request_repaint_after(std::time::Duration::from_millis(16));
+}
+\'''
+        source = replace_once(
+            source,
+            "/// The » button with the menu of all workspaces; returns the new `rx`.\\n",
+            helper + "\\n/// The » button with the menu of all workspaces; returns the new `rx`.\\n",
+            "blue workspace transition helpers",
+        )
+    old_menu = """    ) {
+        app.set_workspace(crate::dock::WORKSPACES[i]);
+    }
+    more.min.x - 6.0"""
+    new_menu = """    ) {
+        if app.ui.workspace != crate::dock::WORKSPACES[i] {
+            begin_workspace_transition(ui.ctx());
+        }
+        app.set_workspace(crate::dock::WORKSPACES[i]);
+    }
+    more.min.x - 6.0"""
+    if "begin_workspace_transition(ui.ctx());" not in source:
+        source = replace_once(source, old_menu, new_menu, "workspace popup transition trigger")
+    old_tab = """        if resp.clicked() {
+            app.set_workspace(name);
+        }"""
+    new_tab = """        if resp.clicked() {
+            if app.ui.workspace != name {
+                begin_workspace_transition(ui.ctx());
+            }
+            app.set_workspace(name);
+        }"""
+    if source.count("begin_workspace_transition(ui.ctx());") < 2:
+        source = replace_once(source, old_tab, new_tab, "workspace tab transition trigger")
+    old_select = """        if ui.selectable_label(app.ui.workspace == w, workspace_label(&w)).clicked() {
+            app.set_workspace(&w);
+            ui.close();
+        }"""
+    new_select = """        if ui.selectable_label(app.ui.workspace == w, workspace_label(&w)).clicked() {
+            if app.ui.workspace != w {
+                begin_workspace_transition(ui.ctx());
+            }
+            app.set_workspace(&w);
+            ui.close();
+        }"""
+    if "workspace_label(&w)).clicked() {\n            if app.ui.workspace != w" not in source:
+        source = replace_once(source, old_select, new_select, "workspace context-menu transition trigger")
+    header.write_text(source, encoding="utf-8")
+
+    frame = effectcraft / "crates/ui-egui/src/app/frame.rs"
+    frame_source = frame.read_text(encoding="utf-8")
+    frame_call = "        crate::header::paint_workspace_transition(&ctx, full);"
+    if frame_call not in frame_source:
+        frame_source = replace_once(
+            frame_source,
+            "        self.draw_toast(ui, full, lift);\\n",
+            "        self.draw_toast(ui, full, lift);\\n" + frame_call + "\\n",
+            "blue workspace transition overlay paint",
+        )
+        frame.write_text(frame_source, encoding="utf-8")
+    if marker not in header.read_text(encoding="utf-8") or frame_call not in frame.read_text(encoding="utf-8"):
+        raise SystemExit("Blue workspace transition was not fully installed.")
+    print("Added a short blue fade overlay during workspace changes; inactive screens and normal editing are unchanged.")
 
 
 def patch_workspace_selection(effectcraft: Path) -> None:
@@ -507,6 +581,7 @@ def main() -> None:
     patch_am_native_effect_browser(effectcraft)
     patch_workspace_selection(effectcraft)
     patch_workspace_tabs(effectcraft)
+    patch_blue_workspace_transition(effectcraft)
     patch_startup_restore(effectcraft)
     patch_android_layout_module(effectcraft)
     patch_activity(builder)
