@@ -572,7 +572,9 @@ jobs:
       - name: Add draggable curve presets to the Android Timeline
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-        run: python3 build-assets/.github/scripts/add_curve_quick_access.py
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_curve_quick_access.py
+          python3 build-assets/.github/scripts/add_curve_quick_access.py
           TIMELINE_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/timeline.rs"
           grep -Fq "EFFECTCRAFT_ANDROID_PERIODIC_CURVE_EDITOR_V1" "$TIMELINE_RS"
           grep -Fq "android_periodic_curve_editor(app, &ctx)" "$TIMELINE_RS"
