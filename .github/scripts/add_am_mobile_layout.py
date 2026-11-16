@@ -334,12 +334,112 @@ def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
     source = path.read_text(encoding="utf-8")
     marker = f'        self.ui.workspace = name.to_string();\n'
-    call = f'''        self.ui.workspace = name.to_string();
+    call = f'''        let previous_workspace = self.ui.workspace.clone();
+        // Only animate transitions to or from the AM editing workspace.
+        self.workspace_transition = if previous_workspace != name
+            && (previous_workspace == "{WORKSPACE}" || name == "{WORKSPACE}") {{
+            Some((self.now, if name == "{WORKSPACE}" {{ 1.0 }} else {{ -1.0 }}))
+        }} else {{
+            None
+        }};
+        self.ui.workspace = name.to_string();
         // EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1
         crate::android_layout::set_workspace_portrait(name == "{WORKSPACE}");
 '''
-    source = replace_once(source, marker, call, "workspace orientation update")
+    source = replace_once(source, marker, call, "workspace orientation and animated transition update")
     path.write_text(source, encoding="utf-8")
+
+
+def patch_workspace_morph_transition(effectcraft: Path) -> None:
+    """Animate the real docked editing page and outline its controls in blue."""
+    lib = effectcraft / "crates/ui-egui/src/lib.rs"
+    source = lib.read_text(encoding="utf-8")
+    field_anchor = "pub struct EffectcraftApp {\n    pub session: Session,\n"
+    field_patch = "pub struct EffectcraftApp {\n    pub(crate) workspace_transition: Option<(f64, f32)>,\n    pub session: Session,\n"
+    if "workspace_transition: Option<(f64, f32)>" not in source:
+        source = replace_once(source, field_anchor, field_patch, "AM workspace animation state field")
+        lib.write_text(source, encoding="utf-8")
+
+    app = effectcraft / "crates/ui-egui/src/app.rs"
+    source = app.read_text(encoding="utf-8")
+    app_anchor = "        EffectcraftApp {\n            session,\n"
+    app_patch = "        EffectcraftApp {\n            workspace_transition: None,\n            session,\n"
+    if "workspace_transition: None" not in source:
+        source = replace_once(source, app_anchor, app_patch, "AM workspace animation state initialization")
+        app.write_text(source, encoding="utf-8")
+
+    frame = effectcraft / "crates/ui-egui/src/app/frame.rs"
+    source = frame.read_text(encoding="utf-8")
+    draw_anchor = "        self.dock_area(ui, body);\n"
+    draw_patch = r'''        // EFFECTCRAFT_AM_WORKSPACE_MORPH_TRANSITION_V1
+        // Move the live editor dock (preview, timeline, tools and panels) into the selected workspace.
+        let workspace_transition = self.workspace_transition;
+        let transition_progress = workspace_transition.map(|(started, _)| {
+            ((self.now - started).max(0.0) as f32 / 0.42).clamp(0.0, 1.0)
+        });
+        if let (Some((_, direction)), Some(progress)) = (workspace_transition, transition_progress) {
+            let eased = progress * progress * (3.0 - 2.0 * progress);
+            let offset_x = direction * body.width() * 0.10 * (1.0 - eased);
+            let scale = 0.965 + 0.035 * eased;
+            let center = body.center().to_vec2();
+            let transform = egui::emath::TSTransform::from_translation(egui::vec2(offset_x, 0.0))
+                * egui::emath::TSTransform::from_translation(center)
+                * egui::emath::TSTransform::from_scaling(scale)
+                * egui::emath::TSTransform::from_translation(-center);
+            ui.with_visual_transform(transform, |ui| {
+                ui.set_clip_rect(body.intersect(ui.clip_rect()));
+                self.dock_area(ui, body);
+            });
+            if progress < 1.0 {
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            }
+        } else {
+            self.dock_area(ui, body);
+        }
+'''
+    if "EFFECTCRAFT_AM_WORKSPACE_MORPH_TRANSITION_V1" not in source:
+        source = replace_once(source, draw_anchor, draw_patch, "AM live dock transition render")
+    end_anchor = "        self.draw_toast(ui, full, lift);\n"
+    edge_patch = r'''        self.draw_toast(ui, full, lift);
+        // Blue edges highlight the actual panel bounds and registered buttons while the editor moves.
+        if let Some((started, _)) = self.workspace_transition {
+            let progress = (((self.now - started).max(0.0) as f32) / 0.42).clamp(0.0, 1.0);
+            if progress < 1.0 {
+                let pulse = (std::f32::consts::PI * progress).sin().max(0.0);
+                let alpha = (210.0 * pulse) as u8;
+                let blue = egui::Color32::from_rgba_unmultiplied(42, 135, 255, alpha);
+                let painter = ui.painter();
+                for (_, rect) in &self.dock_rects {
+                    if rect.intersects(full) {
+                        painter.rect_stroke(
+                            *rect,
+                            egui::CornerRadius::same(4),
+                            egui::Stroke::new(1.8, blue),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
+                }
+                for element in &self.auto.elements {
+                    let [x, y, w, h] = element.rect;
+                    let rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h));
+                    if rect.intersects(full) && w > 4.0 && h > 4.0 {
+                        painter.rect_stroke(
+                            rect,
+                            egui::CornerRadius::same(3),
+                            egui::Stroke::new(1.35, blue),
+                            egui::StrokeKind::Inside,
+                        );
+                    }
+                }
+                ctx.request_repaint_after(std::time::Duration::from_millis(16));
+            } else {
+                self.workspace_transition = None;
+            }
+        }
+'''
+    if "Blue edges highlight the actual panel bounds" not in source:
+        source = replace_once(source, end_anchor, edge_patch, "AM workspace blue panel and control edge highlights")
+    frame.write_text(source, encoding="utf-8")
 
 
 def patch_startup_restore(effectcraft: Path) -> None:
@@ -476,6 +576,7 @@ def main() -> None:
     patch_touch_trim_handles(effectcraft)
     patch_am_native_effect_browser(effectcraft)
     patch_workspace_selection(effectcraft)
+    patch_workspace_morph_transition(effectcraft)
     patch_workspace_tabs(effectcraft)
     patch_startup_restore(effectcraft)
     patch_android_layout_module(effectcraft)
