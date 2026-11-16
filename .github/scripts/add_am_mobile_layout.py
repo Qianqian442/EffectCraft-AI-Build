@@ -336,7 +336,7 @@ def patch_blue_workspace_transition(effectcraft: Path) -> None:
     source = header.read_text(encoding="utf-8")
     marker = "EFFECTCRAFT_ANDROID_BLUE_WORKSPACE_TRANSITION_V1"
     if marker not in source:
-        helper = r\'''// EFFECTCRAFT_ANDROID_BLUE_WORKSPACE_TRANSITION_V1
+        helper = r'''// EFFECTCRAFT_ANDROID_BLUE_WORKSPACE_TRANSITION_V1
 fn begin_workspace_transition(ctx: &egui::Context) {
     let id = egui::Id::new("effectcraft-blue-workspace-transition");
     let now = ctx.input(|i| i.time);
@@ -372,11 +372,12 @@ pub(crate) fn paint_workspace_transition(ctx: &egui::Context, full: egui::Rect) 
     );
     ctx.request_repaint_after(std::time::Duration::from_millis(16));
 }
-\'''
+
+'''
         source = replace_once(
             source,
             "/// The » button with the menu of all workspaces; returns the new `rx`.\\n",
-            helper + "\\n/// The » button with the menu of all workspaces; returns the new `rx`.\\n",
+            helper + "/// The » button with the menu of all workspaces; returns the new `rx`.\\n",
             "blue workspace transition helpers",
         )
     old_menu = """    ) {
@@ -390,7 +391,7 @@ pub(crate) fn paint_workspace_transition(ctx: &egui::Context, full: egui::Rect) 
         app.set_workspace(crate::dock::WORKSPACES[i]);
     }
     more.min.x - 6.0"""
-    if "begin_workspace_transition(ui.ctx());" not in source:
+    if "if app.ui.workspace != crate::dock::WORKSPACES[i]" not in source:
         source = replace_once(source, old_menu, new_menu, "workspace popup transition trigger")
     old_tab = """        if resp.clicked() {
             app.set_workspace(name);
@@ -401,7 +402,7 @@ pub(crate) fn paint_workspace_transition(ctx: &egui::Context, full: egui::Rect) 
             }
             app.set_workspace(name);
         }"""
-    if source.count("begin_workspace_transition(ui.ctx());") < 2:
+    if "if app.ui.workspace != name" not in source:
         source = replace_once(source, old_tab, new_tab, "workspace tab transition trigger")
     old_select = """        if ui.selectable_label(app.ui.workspace == w, workspace_label(&w)).clicked() {
             app.set_workspace(&w);
@@ -414,7 +415,7 @@ pub(crate) fn paint_workspace_transition(ctx: &egui::Context, full: egui::Rect) 
             app.set_workspace(&w);
             ui.close();
         }"""
-    if "workspace_label(&w)).clicked() {\n            if app.ui.workspace != w" not in source:
+    if "if app.ui.workspace != w" not in source:
         source = replace_once(source, old_select, new_select, "workspace context-menu transition trigger")
     header.write_text(source, encoding="utf-8")
 
