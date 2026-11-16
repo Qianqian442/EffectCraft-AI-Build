@@ -140,7 +140,7 @@ jobs:
         run: |
           python3 .github/scripts/add_project_import_formats.py
           python3 .github/scripts/add_am_nv_project_import.py
-          grep -F '导入工程... | file.importProject' effectcraft/crates/engine/src/menus.rs
+          grep -F '自有工程... | file.importProject' effectcraft/crates/engine/src/menus.rs
           ! grep -F 'After Effects Project... | file.importAep' effectcraft/crates/engine/src/menus.rs
           ! grep -F 'Adobe Premiere Pro Project... | file.importTimeline' effectcraft/crates/engine/src/menus.rs
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
