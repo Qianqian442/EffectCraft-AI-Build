@@ -677,16 +677,20 @@ jobs:
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
           grep -Fq "EFFECTCRAFT_AM_NOVA_LAYOUT_TRACE_V2" "$FRAME_RS"
 
-      - name: Add Home layout switch and remove obsolete code-repository shortcut
+      - name: Keep layout switching in the editing toolbar, not on Home
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_home_layout_switch.py
           python3 build-assets/.github/scripts/add_home_layout_switch.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
-          grep -Fq "EFFECTCRAFT_HOME_LAYOUT_SURFACE_MENU_V4" "$HOME_RS"
+          HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
+          ! grep -Fq "EFFECTCRAFT_HOME_LAYOUT_SURFACE_MENU_V4" "$HOME_RS"
+          grep -Fq "EFFECTCRAFT_NOVA_LAYOUT_MENU_V2" "$HEADER_RS"
+          grep -Fq "workspace_label(&app.ui.workspace)" "$HEADER_RS"
+          grep -Fq "popup_menu" "$HEADER_RS"
           ! grep -Fq 'Icon::Code, "EffectCraft on GitHub", "help.github"' "$HOME_RS"
-          echo "Verified Home layout switch is wired and obsolete code-repository shortcut is absent."
+          echo "Verified layout switching is available from the editing toolbar; Home has no separate layout switch."
 
       - name: Rename all visible application branding to Ae
         env:
