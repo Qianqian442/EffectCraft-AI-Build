@@ -202,7 +202,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let labels = Rect::from_min_max(content.min, pos2(content.min.x + label_w, content.max.y));
     let tracks = Rect::from_min_max(pos2(labels.max.x, content.min.y), content.max);
     let visible_secs = (duration / view.zoom).clamp(0.1, duration.max(0.1));
-    let pps = (tracks.width() / visible_secs).max(0.01);
+    let pps = (tracks.width() as f64 / visible_secs).max(0.01);
     let max_start = (duration - visible_secs).max(0.0);
     view.start = view.start.clamp(0.0, max_start);
 
@@ -277,7 +277,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     p.rect_filled(labels, 0.0, t.panel_bg.gamma_multiply(0.7));
     p.rect_filled(tracks, 0.0, t.app_bg.gamma_multiply(0.8));
     let now = app.session.time().seconds();
-    let playhead_x = tracks.min.x + ((now - view.start) * pps as f64) as f32;
+    let playhead_x = tracks.min.x + ((now - view.start) * pps) as f32;
     let playhead = Rect::from_min_max(pos2(playhead_x - 1.0, ruler.min.y), pos2(playhead_x + 1.0, rect.max.y));
     p.rect_filled(playhead, 0.0, Color32::from_rgb(255, 76, 92));
 
@@ -305,8 +305,8 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
         app.auto.add_response(&format!("am.timeline.layer.{}", layer.id.0), &name_response, "选择图层");
 
-        let x0 = tracks.min.x + ((layer.in_point.seconds() - view.start) * pps as f64) as f32;
-        let x1 = tracks.min.x + ((layer.out_point.seconds() - view.start) * pps as f64) as f32;
+        let x0 = tracks.min.x + ((layer.in_point.seconds() - view.start) * pps) as f32;
+        let x1 = tracks.min.x + ((layer.out_point.seconds() - view.start) * pps) as f32;
         let bar_min_x = x0.max(tracks.min.x + 1.0);
         let bar_max_x = x1.min(tracks.max.x - 1.0);
         if bar_max_x <= bar_min_x {
