@@ -368,6 +368,9 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified the original EffectCraft Project importer remains in File > Import.")
 
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
+    effect_controls = (root / "crates/ui-egui/src/panels/effect_controls/panel.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_BUTTON_V1" not in effect_controls or "app.show_panel(crate::dock::PanelKind::EffectsPresets)" not in effect_controls:
+        raise SystemExit("AM Effect Controls must open the native Ae Effects & Presets browser.")
     if "EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V3" not in timeline or "let keyframe_enabled = selected_layer.is_some();" not in timeline:
         raise SystemExit("The keyframe button still requires Project-panel footage selection.")
     if "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_RESOLVE_V2" not in timeline or "android_collect_curve_segments" not in timeline:
