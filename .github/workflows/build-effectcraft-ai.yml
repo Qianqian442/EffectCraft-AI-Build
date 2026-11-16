@@ -1,4 +1,4 @@
-# AM portrait workspace and Texture Flux effect are part of the Android validation/build path.
+# AM portrait workspace is part of the Android validation/build path.
 name: Build Ae Android APK with shared compatibility validation
 
 on:
