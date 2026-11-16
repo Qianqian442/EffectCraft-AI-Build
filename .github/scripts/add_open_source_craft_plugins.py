@@ -90,7 +90,9 @@ def main() -> None:
             builder,
             '            ("ec_looks_studio.wasm", include_bytes!("../../../assets/looks-compat/ec_looks_studio.wasm")),\n            ("ec_sapphire_textureflux.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_textureflux.wasm")),\n        ];',
             '            ("ec_looks_studio.wasm", include_bytes!("../../../assets/looks-compat/ec_looks_studio.wasm")),\n'
-            f'{module_entries}        ];',
+            f'{module_entries}'
+            '            ("ec_sapphire_textureflux.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_textureflux.wasm")),\n'
+            '        ];',
             "built-in WASM module array insertion",
         )
         builder = replace_once(
@@ -115,7 +117,10 @@ def main() -> None:
         )
         builder_path.write_text(builder, encoding="utf-8")
     else:
-        required = ['const BUILTIN_EFFECTS_VERSION: &str = "5.1.0";']
+        required = [
+            'const BUILTIN_EFFECTS_VERSION: &str = "5.1.0";',
+            '("ec_sapphire_textureflux.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_textureflux.wasm"))',
+        ]
         required.extend(f'include_bytes!("../../../assets/craft-plugins/{filename}")' for filename, _ in MODULES)
         missing = [item for item in required if item not in builder]
         if missing:
