@@ -38,7 +38,7 @@ pub(crate) fn set_workspace_portrait(portrait: bool) {
                     jni::jni_str!("com/artcraft/effectcraft/EffectCraftActivity"),
                     jni::jni_str!("setWorkspacePortrait"),
                     jni::jni_sig!("(Z)V"),
-                    &[jni::objects::JValue::Bool(if portrait { 1 } else { 0 })],
+                    &[jni::objects::JValue::Bool(portrait)],
                 )?;
                 Ok(())
             }).map_err(|error| error.to_string())
