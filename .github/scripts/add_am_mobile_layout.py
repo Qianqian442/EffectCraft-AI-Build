@@ -311,6 +311,55 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     path.write_text(source, encoding="utf-8")
 
 
+def patch_workspace_tabs(effectcraft: Path) -> None:
+    """Expose AM in the toolbar and mark its selected state with a blue accent."""
+    path = effectcraft / "crates/ui-egui/src/header.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_AM_LAYOUT_BLUE_SWITCH_TAB_V1"
+    if marker in source:
+        return
+    source = replace_once(
+        source,
+        '    let shown = ["Standard", "Small Screen", "Learn", "Review", "Default"];',
+        '    // EFFECTCRAFT_AM_LAYOUT_BLUE_SWITCH_TAB_V1\n'
+        '    let shown = ["AM 竖屏", "Standard", "Small Screen", "Learn", "Review", "Default"];',
+        "AM layout toolbar switch tab",
+    )
+    old_color = """        let col = if active {
+            t.hot_text
+        } else if resp.hovered() {
+            t.text
+        } else {
+            t.text_dim
+        };"""
+    new_color = """        let am_blue = Color32::from_rgb(66, 138, 245);
+        let col = if active && name == "AM 竖屏" {
+            am_blue
+        } else if active {
+            t.hot_text
+        } else if resp.hovered() {
+            t.text
+        } else {
+            t.text_dim
+        };"""
+    source = replace_once(source, old_color, new_color, "AM blue active tab text")
+    old_line = '            p.line_segment([pos2(r.min.x + 8.0, r.max.y - 3.0), pos2(r.max.x - 8.0, r.max.y - 3.0)], Stroke::new(2.0, t.hot_text));'
+    new_line = """            let active_line = if name == "AM 竖屏" {
+                Color32::from_rgb(66, 138, 245)
+            } else {
+                t.hot_text
+            };
+            p.line_segment(
+                [pos2(r.min.x + 8.0, r.max.y - 3.0), pos2(r.max.x - 8.0, r.max.y - 3.0)],
+                Stroke::new(2.0, active_line),
+            );"""
+    source = replace_once(source, old_line, new_line, "AM blue active tab underline")
+    if marker not in source or 'let shown = ["AM 竖屏"' not in source:
+        raise SystemExit("AM blue workspace switch tab was not installed.")
+    path.write_text(source, encoding="utf-8")
+    print("Added an AM toolbar workspace tab with a blue active-state label and underline.")
+
+
 def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
     source = path.read_text(encoding="utf-8")
@@ -457,6 +506,7 @@ def main() -> None:
     patch_touch_trim_handles(effectcraft)
     patch_am_native_effect_browser(effectcraft)
     patch_workspace_selection(effectcraft)
+    patch_workspace_tabs(effectcraft)
     patch_startup_restore(effectcraft)
     patch_android_layout_module(effectcraft)
     patch_activity(builder)
