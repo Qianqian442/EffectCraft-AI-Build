@@ -1,496 +1,605 @@
 #!/usr/bin/env python3
-"""Build a dedicated Alight Motion-style portrait editing page without replacing Ae features."""
+"""Install a genuinely separate AM mobile editor surface, not a rotated Ae dock layout."""
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
-WORKSPACE = "AM 竖屏"
-HEADER_MARKER = "EFFECTCRAFT_AM_MOBILE_EDITING_HEADER_V1"
-TIMELINE_MARKER = "EFFECTCRAFT_AM_MOBILE_EDITING_TIMELINE_V1"
-DOCK_MARKER = "EFFECTCRAFT_AM_MOBILE_EDITING_DOCK_V1"
-STARTUP_MARKER = "EFFECTCRAFT_AM_CANONICAL_MOBILE_DOCK_RESTORE_V1"
+MARKER = "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1"
+MODULE = r'''//! Independent Alight Motion-inspired phone editing page.
+//! This module intentionally does not call the Ae dock tree or the Ae Timeline renderer.
+//! It reuses the shared composition renderer and engine commands, while owning the mobile
+//! editing layout, multi-layer clip tracks, transport, quick actions and bottom tool drawer.
+
+use egui::{Align2, Color32, Id, Rect, Sense, Stroke, StrokeKind, pos2, vec2};
+use serde_json::json;
+
+use crate::EffectcraftApp;
+use crate::dock::PanelKind;
+use crate::icons::{self, Icon};
+use crate::theme::Tokens;
+
+const WORKSPACE: &str = "AM 竖屏";
+const TOP_H: f32 = 44.0;
+const TRANSPORT_H: f32 = 42.0;
+const BOTTOM_H: f32 = 54.0;
+const ROW_H: f32 = 36.0;
+const NAME_W: f32 = 88.0;
+
+#[derive(Clone, Copy)]
+struct TimelineView {
+    start: f64,
+    zoom: f64,
+    scroll_y: f32,
+}
+impl Default for TimelineView {
+    fn default() -> Self {
+        Self { start: 0.0, zoom: 1.0, scroll_y: 0.0 }
+    }
+}
+
+fn invoke(app: &mut EffectcraftApp, ctx: &egui::Context, command: &str, params: serde_json::Value) {
+    if let Err(error) = crate::menus::invoke(app, ctx, command, params) {
+        app.ui.status = error;
+    }
+}
+
+fn button(ui: &mut egui::Ui, rect: Rect, label: &str, id: impl std::hash::Hash) -> egui::Response {
+    ui.put(rect, egui::Button::new(label).min_size(rect.size()).corner_radius(6.0))
+        .on_hover_text(label)
+}
+
+fn top_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    let t = app.tokens;
+    let p = ui.painter().with_clip_rect(rect);
+    p.rect_filled(rect, 0.0, t.header_bg);
+    p.line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, t.separator));
+
+    let back_rect = Rect::from_min_size(pos2(rect.min.x + 5.0, rect.min.y + 5.0), vec2(34.0, 34.0));
+    let back = button(ui, back_rect, "‹", "am-back");
+    app.auto.add_response("am.header.back", &back, "返回项目");
+    if back.clicked() {
+        app.ui.start_screen = true;
+    }
+
+    let layout_rect = Rect::from_min_size(pos2(rect.min.x + 43.0, rect.min.y + 7.0), vec2(62.0, 30.0));
+    let layout_id = Id::new("am-independent-layout-menu");
+    let layout_response = button(ui, layout_rect, "AM ▾", "am-layout");
+    app.auto.add_response("am.header.layout", &layout_response, "切换 Ae / AM 布局");
+    if layout_response.clicked() {
+        crate::widgets::open_popup(ui, layout_id);
+    }
+    let choices = ["Ae 原布局", "AM 竖屏布局"];
+    if let Some(choice) = crate::widgets::popup_menu(ui, layout_id, layout_rect.left_bottom(), &choices, Some(1)) {
+        app.set_workspace(if choice == 0 { "Default" } else { WORKSPACE });
+    }
+
+    let export_rect = Rect::from_min_size(pos2(rect.max.x - 68.0, rect.min.y + 7.0), vec2(62.0, 30.0));
+    let export = button(ui, export_rect, "导出", "am-export");
+    app.auto.add_response("am.header.export", &export, "导出视频或工程");
+    if export.clicked() {
+        ui.ctx().data_mut(|d| d.insert_temp(Id::new("effectcraft-export-dialog-open"), true));
+    }
+
+    let undo_rect = Rect::from_min_size(pos2(rect.max.x - 150.0, rect.min.y + 7.0), vec2(34.0, 30.0));
+    let can_undo = !app.session.history.undo.is_empty();
+    let undo = ui.add_enabled(can_undo, egui::Button::new("↶").min_size(undo_rect.size()));
+    let undo = if undo_rect.intersects(undo.rect) { undo } else { ui.put(undo_rect, egui::Button::new("↶")) };
+    app.auto.add_response("am.header.undo", &undo, "撤销");
+    if undo.clicked() {
+        invoke(app, ui.ctx(), "edit.undo", json!({}));
+    }
+
+    let redo_rect = Rect::from_min_size(pos2(rect.max.x - 112.0, rect.min.y + 7.0), vec2(34.0, 30.0));
+    let can_redo = !app.session.history.redo.is_empty();
+    let redo = ui.add_enabled(can_redo, egui::Button::new("↷").min_size(redo_rect.size()));
+    let redo = if redo_rect.intersects(redo.rect) { redo } else { ui.put(redo_rect, egui::Button::new("↷")) };
+    app.auto.add_response("am.header.redo", &redo, "重做");
+
+    let title_left = layout_rect.max.x + 7.0;
+    let title_right = (undo_rect.min.x - 6.0).max(title_left);
+    let title_rect = Rect::from_min_max(pos2(title_left, rect.min.y), pos2(title_right, rect.max.y));
+    let title = app.session.active_comp_id()
+        .and_then(|id| app.session.project.item(id))
+        .map(|item| item.name.clone())
+        .unwrap_or_else(|| "未命名工程".to_string());
+    p.with_clip_rect(title_rect).text(title_rect.left_center(), Align2::LEFT_CENTER, title, Tokens::semibold(12.0), t.text);
+}
+
+fn transport(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    let t = app.tokens;
+    let p = ui.painter().with_clip_rect(rect);
+    p.rect_filled(rect, 0.0, t.panel_bg);
+    p.line_segment([rect.left_top(), rect.right_top()], Stroke::new(1.0, t.separator));
+    p.line_segment([rect.left_bottom(), rect.right_bottom()], Stroke::new(1.0, t.separator));
+
+    let buttons = [
+        (Icon::First, "time.start", "到开头"),
+        (Icon::StepBack, "time.previousFrame", "上一帧"),
+        (Icon::Play, "playback.toggle", "播放/暂停"),
+        (Icon::StepFwd, "time.nextFrame", "下一帧"),
+        (Icon::Last, "time.end", "到结尾"),
+    ];
+    let bw = 34.0;
+    let gap = 8.0;
+    let total = bw * 5.0 + gap * 4.0;
+    let mut x = rect.center().x - total / 2.0;
+    for (icon, command, tip) in buttons {
+        let r = Rect::from_min_size(pos2(x, rect.min.y + 5.0), vec2(bw, rect.height() - 10.0));
+        let active = command == "playback.toggle" && app.playback.playing;
+        let response = ui.interact(r, Id::new(("am-transport", command)), Sense::click());
+        p.rect_filled(r, 6.0, if active || response.hovered() { t.hover } else { t.field_bg });
+        let icon = if active { Icon::Pause } else { icon };
+        icons::paint(&p, r.shrink(8.0), icon, if response.hovered() { t.text } else { t.text_dim });
+        app.auto.add_response(&format!("am.transport.{command}"), &response, tip);
+        if response.clicked() {
+            invoke(app, ui.ctx(), command, json!({}));
+        }
+        x += bw + gap;
+    }
+    let current = app.session.time().seconds();
+    let comp_duration = app.session.active_comp().map(|c| c.duration.seconds()).unwrap_or(0.0);
+    let tc = format!("{:02}:{:02}.{:02}", (current / 60.0) as u64, current as u64 % 60, ((current.fract()) * 100.0) as u64);
+    p.text(pos2(rect.min.x + 10.0, rect.center().y), Align2::LEFT_CENTER, tc, Tokens::semibold(11.0), t.text);
+    p.text(pos2(rect.max.x - 10.0, rect.center().y), Align2::RIGHT_CENTER, format!("{:.1}s", comp_duration), Tokens::ui(10.0), t.text_dim);
+}
+
+fn seek_to(app: &mut EffectcraftApp, time: f64) {
+    let target = time.max(0.0);
+    if let Err(error) = app.session.execute("time.set", json!({"time": target})) {
+        app.ui.status = error.to_string();
+    }
+}
+
+fn layer_ids_for_drag(app: &EffectcraftApp, current: u64) -> Vec<u64> {
+    let selected = &app.session.state.selected_layers;
+    if selected.iter().any(|id| id.0 == current) && !selected.is_empty() {
+        selected.iter().map(|id| id.0).collect()
+    } else {
+        vec![current]
+    }
+}
+
+fn apply_timing(app: &mut EffectcraftApp, ids: &[u64], field: &str, value: f64) {
+    let params = match field {
+        "start" => json!({"layers": ids, "start": value, "merge": true}),
+        "inDelta" => json!({"layers": ids, "inDelta": value, "merge": true}),
+        "outDelta" => json!({"layers": ids, "outDelta": value, "merge": true}),
+        _ => return,
+    };
+    if let Err(error) = app.session.execute("layer.timing", params) {
+        app.ui.status = error.to_string();
+    }
+}
+
+fn select_layer(app: &mut EffectcraftApp, id: u64) {
+    if let Err(error) = app.session.execute("layer.select", json!({"layer": id})) {
+        app.ui.status = error.to_string();
+    }
+}
+
+fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    let t = app.tokens;
+    let p = ui.painter().with_clip_rect(rect);
+    p.rect_filled(rect, 0.0, t.app_bg);
+    let Some(comp) = app.session.active_comp().cloned() else {
+        p.text(rect.center(), Align2::CENTER_CENTER, "打开或新建工程后，图层轨道会显示在这里", Tokens::ui(12.0), t.text_dim);
+        return;
+    };
+    let duration = comp.duration.seconds().max(0.001);
+    let view_id = Id::new("am-independent-timeline-view");
+    let mut view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id)).unwrap_or_default();
+    view.zoom = view.zoom.clamp(1.0, 16.0);
+
+    let label_w = NAME_W.min((rect.width() * 0.28).max(64.0));
+    let ruler_h = 28.0;
+    let ruler = Rect::from_min_size(rect.min, vec2(rect.width(), ruler_h));
+    let content = Rect::from_min_max(pos2(rect.min.x, ruler.max.y), rect.max);
+    let labels = Rect::from_min_max(content.min, pos2(content.min.x + label_w, content.max.y));
+    let tracks = Rect::from_min_max(pos2(labels.max.x, content.min.y), content.max);
+    let visible_secs = (duration / view.zoom).clamp(0.1, duration.max(0.1));
+    let pps = (tracks.width() / visible_secs).max(0.01);
+    let max_start = (duration - visible_secs).max(0.0);
+    view.start = view.start.clamp(0.0, max_start);
+
+    // Pinch zoom and background finger swipe are handled here; clip/edge controls are
+    // registered later and therefore retain priority over the track background.
+    let pointer = ui.ctx().pointer_hover_pos();
+    let hovered = pointer.is_some_and(|pt| rect.contains(pt));
+    let zoom_delta = ui.input(|i| i.zoom_delta());
+    if hovered && (zoom_delta - 1.0).abs() > 0.002 {
+        let old_visible = visible_secs;
+        view.zoom = (view.zoom * zoom_delta as f64).clamp(1.0, 16.0);
+        let new_visible = (duration / view.zoom).max(0.1);
+        if let Some(pt) = pointer {
+            let frac = ((pt.x - tracks.min.x) / tracks.width().max(1.0)).clamp(0.0, 1.0) as f64;
+            let anchored_time = view.start + old_visible * frac;
+            view.start = (anchored_time - new_visible * frac).clamp(0.0, (duration - new_visible).max(0.0));
+        }
+    }
+    if hovered {
+        let wheel = ui.input(|i| i.smooth_scroll_delta);
+        if wheel.y.abs() > 0.0 {
+            view.scroll_y = (view.scroll_y - wheel.y).max(0.0);
+        }
+    }
+
+    let pan_id = Id::new("am-independent-timeline-pan");
+    let pan = ui.interact(tracks, pan_id, Sense::drag());
+    let pan_state = Id::new("am-independent-timeline-pan-state");
+    if pan.drag_started() {
+        if let Some(pt) = pan.interact_pointer_pos() {
+            ui.ctx().data_mut(|d| d.insert_temp(pan_state, pt.x));
+        }
+    }
+    if pan.dragged() {
+        if let (Some(pt), Some(last_x)) = (
+            pan.interact_pointer_pos(),
+            ui.ctx().data(|d| d.get_temp::<f32>(pan_state)),
+        ) {
+            view.start = (view.start - (pt.x - last_x) as f64 / pps).clamp(0.0, max_start);
+            ui.ctx().data_mut(|d| d.insert_temp(pan_state, pt.x));
+        }
+    }
+    if pan.drag_stopped() {
+        ui.ctx().data_mut(|d| d.remove::<f32>(pan_state));
+    }
+
+    // Ruler click/drag scrubs the playhead just as it does in a mobile video editor.
+    p.rect_filled(ruler, 0.0, t.panel_bg);
+    p.rect_filled(Rect::from_min_size(ruler.min, vec2(label_w, ruler_h)), 0.0, t.panel_bg);
+    p.text(pos2(ruler.min.x + 8.0, ruler.center().y), Align2::LEFT_CENTER, "时间轴", Tokens::semibold(10.5), t.text_dim);
+    let ruler_resp = ui.interact(tracks.intersect(ruler), Id::new("am-mobile-ruler-scrub"), Sense::click_and_drag());
+    if (ruler_resp.clicked() || ruler_resp.dragged())
+        && let Some(pt) = ruler_resp.interact_pointer_pos()
+    {
+        let target = view.start + (pt.x - tracks.min.x) as f64 / pps;
+        seek_to(app, target.clamp(0.0, duration));
+    }
+
+    let tick_count = 5;
+    for i in 0..=tick_count {
+        let time = view.start + visible_secs * i as f64 / tick_count as f64;
+        let x = tracks.min.x + tracks.width() * i as f32 / tick_count as f32;
+        p.line_segment([pos2(x, ruler.min.y + 18.0), pos2(x, rect.max.y)], Stroke::new(1.0, t.separator.gamma_multiply(0.35)));
+        p.text(pos2(x + 3.0, ruler.min.y + 6.0), Align2::LEFT_TOP, format!("{time:.1}s"), Tokens::ui(9.0), t.text_faint);
+    }
+
+    let row_count = comp.layers.len();
+    let full_rows_h = row_count as f32 * ROW_H;
+    let max_scroll = (full_rows_h - content.height()).max(0.0);
+    view.scroll_y = view.scroll_y.clamp(0.0, max_scroll);
+    p.rect_filled(labels, 0.0, t.panel_bg.gamma_multiply(0.7));
+    p.rect_filled(tracks, 0.0, t.app_bg.gamma_multiply(0.8));
+    let now = app.session.time().seconds();
+    let playhead_x = tracks.min.x + ((now - view.start) * pps as f64) as f32;
+    let playhead = Rect::from_min_max(pos2(playhead_x - 1.0, ruler.min.y), pos2(playhead_x + 1.0, rect.max.y));
+    p.rect_filled(playhead, 0.0, Color32::from_rgb(255, 76, 92));
+
+    for (index, layer) in comp.layers.iter().enumerate() {
+        let y = content.min.y + index as f32 * ROW_H - view.scroll_y;
+        let row = Rect::from_min_size(pos2(rect.min.x, y), vec2(rect.width(), ROW_H));
+        if row.max.y < content.min.y || row.min.y > content.max.y {
+            continue;
+        }
+        let selected = app.session.state.selected_layers.contains(&layer.id);
+        let row_bg = if selected { t.row_selected } else if index % 2 == 0 { t.panel_bg } else { t.app_bg };
+        p.rect_filled(row.intersect(content), 0.0, row_bg);
+        p.line_segment([row.left_bottom(), row.right_bottom()], Stroke::new(1.0, t.separator.gamma_multiply(0.45)));
+        let name_rect = Rect::from_min_max(row.min, pos2(row.min.x + label_w, row.max.y));
+        p.text(name_rect.shrink2(vec2(7.0, 0.0)).left_center(), Align2::LEFT_CENTER, layer.name.clone(), Tokens::ui(10.5), if selected { t.text } else { t.text_dim });
+
+        let x0 = tracks.min.x + ((layer.in_point.seconds() - view.start) * pps as f64) as f32;
+        let x1 = tracks.min.x + ((layer.out_point.seconds() - view.start) * pps as f64) as f32;
+        let bar_min_x = x0.max(tracks.min.x + 1.0);
+        let bar_max_x = x1.min(tracks.max.x - 1.0);
+        if bar_max_x <= bar_min_x {
+            continue;
+        }
+        let bar = Rect::from_min_max(pos2(bar_min_x, y + 5.0), pos2(bar_max_x, y + ROW_H - 5.0));
+        let fill = if selected { Color32::from_rgb(43, 132, 205) } else { Color32::from_rgb(56, 89, 125) };
+        p.rect_filled(bar, 5.0, fill);
+        if bar.width() > 45.0 {
+            p.text(bar.shrink2(vec2(7.0, 0.0)).left_center(), Align2::LEFT_CENTER, layer.name.clone(), Tokens::ui(9.5), Color32::WHITE);
+        }
+
+        // Body movement: a horizontal drag moves the whole selected layer group together.
+        let body_resp = ui.interact(bar, Id::new(("am-mobile-clip", layer.id.0)), Sense::click_and_drag());
+        app.auto.add_response(&format!("am.timeline.clip.{}", layer.id.0), &body_resp, "拖动片段移动图层");
+        if body_resp.clicked() {
+            select_layer(app, layer.id.0);
+        }
+        let move_id = Id::new(("am-mobile-move-state", layer.id.0));
+        if body_resp.drag_started() {
+            select_layer(app, layer.id.0);
+            if let Some(pt) = body_resp.interact_pointer_pos() {
+                ui.ctx().data_mut(|d| d.insert_temp(move_id, (pt.x, layer_ids_for_drag(app, layer.id.0))));
+            }
+        }
+        if body_resp.dragged()
+            && let (Some(pt), Some((last_x, ids))) = (
+                body_resp.interact_pointer_pos(),
+                ui.ctx().data(|d| d.get_temp::<(f32, Vec<u64>)>(move_id)),
+            )
+        {
+            let delta = (pt.x - last_x) as f64 / pps;
+            if delta.abs() > 0.00001 {
+                apply_timing(app, &ids, "start", delta + app.session.active_comp()
+                    .and_then(|c| c.layer(layer.id))
+                    .map(|l| l.start_time.seconds()).unwrap_or(layer.start_time.seconds()));
+                ui.ctx().data_mut(|d| d.insert_temp(move_id, (pt.x, ids)));
+            }
+        }
+        if body_resp.drag_stopped() {
+            ui.ctx().data_mut(|d| d.remove::<(f32, Vec<u64>)>(move_id));
+            app.session.history.merge_key = None;
+        }
+
+        // Separate, finger-sized In / Out handles; these edit the clip edges, not a
+        // fixed four-second duration. Every update remains frame-snapped by the engine.
+        for (edge, edge_x, field) in [
+            ("in", x0, "inDelta"),
+            ("out", x1, "outDelta"),
+        ] {
+            if edge_x < tracks.min.x - 1.0 || edge_x > tracks.max.x + 1.0 {
+                continue;
+            }
+            let grip = Rect::from_center_size(pos2(edge_x, bar.center().y), vec2(16.0, ROW_H - 2.0));
+            p.rect_filled(Rect::from_min_max(pos2(edge_x - 2.0, bar.min.y + 2.0), pos2(edge_x + 2.0, bar.max.y - 2.0)), 2.0, Color32::WHITE);
+            let response = ui.interact(grip, Id::new(("am-mobile-trim", edge, layer.id.0)), Sense::drag());
+            app.auto.add_response(&format!("am.timeline.trim.{}.{}", layer.id.0, edge), &response, if edge == "in" { "拖动片段左边缘调整起点" } else { "拖动片段右边缘延长或缩短时长" });
+            let drag_id = Id::new(("am-mobile-trim-state", edge, layer.id.0));
+            if response.drag_started() {
+                select_layer(app, layer.id.0);
+                if let Some(pt) = response.interact_pointer_pos() {
+                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, (pt.x, layer_ids_for_drag(app, layer.id.0))));
+                }
+            }
+            if response.dragged()
+                && let (Some(pt), Some((last_x, ids))) = (
+                    response.interact_pointer_pos(),
+                    ui.ctx().data(|d| d.get_temp::<(f32, Vec<u64>)>(drag_id)),
+                )
+            {
+                let delta = (pt.x - last_x) as f64 / pps;
+                if delta.abs() > 0.00001 {
+                    apply_timing(app, &ids, field, delta);
+                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, (pt.x, ids)));
+                }
+            }
+            if response.drag_stopped() {
+                ui.ctx().data_mut(|d| d.remove::<(f32, Vec<u64>)>(drag_id));
+                app.session.history.merge_key = None;
+            }
+        }
+    }
+
+    let visible_playhead_x = playhead_x.clamp(tracks.min.x, tracks.max.x);
+    p.line_segment([pos2(visible_playhead_x, ruler.min.y), pos2(visible_playhead_x, rect.max.y)], Stroke::new(1.5, Color32::from_rgb(255, 76, 92)));
+    p.circle_filled(pos2(visible_playhead_x, ruler.min.y + 2.0), 4.0, Color32::from_rgb(255, 76, 92));
+    ui.ctx().data_mut(|d| d.insert_temp(view_id, view));
+}
+
+fn bottom_tools(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    let t = app.tokens;
+    let p = ui.painter().with_clip_rect(rect);
+    p.rect_filled(rect, 0.0, t.header_bg);
+    p.line_segment([rect.left_top(), rect.right_top()], Stroke::new(1.0, t.separator));
+    let buttons = [
+        ("素材", "media"),
+        ("文字", "text"),
+        ("形状", "shape"),
+        ("效果", "effects"),
+        ("属性", "properties"),
+    ];
+    let width = rect.width() / buttons.len() as f32;
+    for (i, (label, action)) in buttons.into_iter().enumerate() {
+        let r = Rect::from_min_size(pos2(rect.min.x + i as f32 * width + 3.0, rect.min.y + 5.0), vec2((width - 6.0).max(1.0), rect.height() - 10.0));
+        let response = ui.interact(r, Id::new(("am-bottom-tool", action)), Sense::click());
+        p.rect_filled(r, 7.0, if response.hovered() { t.hover } else { t.field_bg });
+        p.text(r.center(), Align2::CENTER_CENTER, label, Tokens::semibold(11.0), if response.hovered() { t.text } else { t.text_dim });
+        app.auto.add_response(&format!("am.tools.{action}"), &response, label);
+        if response.clicked() {
+            match action {
+                "media" => invoke(app, ui.ctx(), "file.import", json!({"picturesAndVideos": true})),
+                "text" => invoke(app, ui.ctx(), "layer.newText", json!({})),
+                "shape" => invoke(app, ui.ctx(), "layer.newShape", json!({"kind": "rect"})),
+                "effects" => ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "effects".to_string())),
+                "properties" => ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "properties".to_string())),
+                _ => {}
+            }
+        }
+    }
+}
+
+fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    let id = Id::new("am-mobile-tool-drawer");
+    let Some(kind) = ui.ctx().data(|d| d.get_temp::<String>(id)) else { return };
+    let panel = match kind.as_str() {
+        "effects" => PanelKind::EffectsPresets,
+        "properties" => PanelKind::Properties,
+        "controls" => PanelKind::EffectControls,
+        "project" => PanelKind::Project,
+        _ => return,
+    };
+    let t = app.tokens;
+    let header = Rect::from_min_size(rect.min, vec2(rect.width(), 32.0));
+    let body = Rect::from_min_max(pos2(rect.min.x, header.max.y), rect.max);
+    let p = ui.painter().with_clip_rect(rect);
+    p.rect_filled(rect, 10.0, t.panel_bg);
+    p.line_segment([header.left_bottom(), header.right_bottom()], Stroke::new(1.0, t.separator));
+    p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, kind.as_str(), Tokens::semibold(11.0), t.text);
+    let close = Rect::from_min_size(pos2(header.max.x - 36.0, header.min.y + 2.0), vec2(32.0, 28.0));
+    let response = ui.put(close, egui::Button::new("×").min_size(close.size()));
+    if response.clicked() {
+        ui.ctx().data_mut(|d| d.remove::<String>(id));
+        return;
+    }
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
+    crate::panels::show(app, &mut child, panel, body);
+}
+
+pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    let t = app.tokens;
+    ui.painter().rect_filled(rect, 0.0, t.app_bg);
+
+    // AM is a separate UI surface: no Ae header, no Ae menu strip, no DockArea, and
+    // no Ae Timeline widget. The shared composition renderer stays the canvas backend.
+    let top_rect = Rect::from_min_size(rect.min, vec2(rect.width(), TOP_H));
+    top_bar(app, ui, top_rect);
+
+    let bottom_rect = Rect::from_min_size(pos2(rect.min.x, rect.max.y - BOTTOM_H), vec2(rect.width(), BOTTOM_H));
+    let middle_bottom = bottom_rect.min.y;
+    let available = (middle_bottom - top_rect.max.y - TRANSPORT_H - 8.0).max(210.0);
+    let preview_h = (available * 0.36).clamp(130.0, 260.0).min((available - 160.0).max(100.0));
+    let preview_rect = Rect::from_min_size(pos2(rect.min.x, top_rect.max.y + 4.0), vec2(rect.width(), preview_h));
+    let transport_rect = Rect::from_min_size(pos2(rect.min.x, preview_rect.max.y), vec2(rect.width(), TRANSPORT_H));
+    let timeline_rect = Rect::from_min_max(pos2(rect.min.x, transport_rect.max.y), pos2(rect.max.x, middle_bottom));
+
+    let comp_id = app.session.active_comp_id();
+    if comp_id.is_some() {
+        let mut viewer_ui = ui.new_child(egui::UiBuilder::new().max_rect(preview_rect));
+        let viewer_id = app.ui.active_viewer;
+        crate::panels::viewers::show(app, &mut viewer_ui, viewer_id, preview_rect);
+    } else {
+        let p = ui.painter().with_clip_rect(preview_rect);
+        p.rect_filled(preview_rect, 0.0, Color32::from_rgb(15, 17, 21));
+        p.text(preview_rect.center(), Align2::CENTER_CENTER, "请打开或新建一个工程", Tokens::ui(12.0), t.text_dim);
+    }
+
+    transport(app, ui, transport_rect);
+    draw_timeline(app, ui, timeline_rect);
+    bottom_tools(app, ui, bottom_rect);
+
+    // Panels open as an AM-style bottom drawer rather than replacing the whole Ae dock.
+    let drawer_id = Id::new("am-mobile-tool-drawer");
+    if ui.ctx().data(|d| d.get_temp::<String>(drawer_id)).is_some() {
+        let drawer_h = (rect.height() * 0.42).clamp(180.0, 340.0).min(timeline_rect.height().max(140.0));
+        let drawer_rect = Rect::from_min_max(pos2(rect.min.x, timeline_rect.max.y - drawer_h), pos2(rect.max.x, bottom_rect.min.y));
+        tool_drawer(app, ui, drawer_rect);
+    }
+
+    // Export uses the existing encoder, queue and confirmation/progress state.
+    crate::header::export_dialog(app, ui);
+    crate::header::export_progress_dialog(app, ui);
+}
+'''
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
-    if new in source:
-        return source
     count = source.count(old)
+    if count == 0 and new in source:
+        return source
     if count != 1:
         raise SystemExit(f"{label}: expected one insertion point, found {count}")
     return source.replace(old, new, 1)
 
 
-def patch_dock(root: Path) -> None:
-    path = root / "crates/ui-egui/src/dock.rs"
-    source = path.read_text(encoding="utf-8")
-    if DOCK_MARKER not in source:
-        old = '''        // AM-style portrait workspace: viewer at the top; Timeline, the original
-        // Effects & Presets browser, Effect Controls, Properties and Project share the
-        // lower tab group so every built-in EffectCraft effect remains available.
-        "AM 竖屏" => vsplit(
-            Ratio(0.58),
-            tabs(&[Composition, Layer], 0),
-            tabs(&[Timeline, EffectsPresets, EffectControls, Properties, Project], 0),
-        ),'''
-        new = '''        // EFFECTCRAFT_AM_MOBILE_EDITING_DOCK_V1
-        // A real portrait editing page: Composition preview stays above the multi-layer
-        // Timeline. The remaining native panels stay available as tabs beside Timeline.
-        "AM 竖屏" => vsplit(
-            Ratio(0.43),
-            tabs(&[Composition], 0),
-            tabs(&[Timeline, EffectControls, EffectsPresets, Properties, Project, Layer], 0),
-        ),'''
-        source = replace_once(source, old, new, "replace the simplified AM dock with the mobile editor page")
-        path.write_text(source, encoding="utf-8")
-    if DOCK_MARKER not in path.read_text(encoding="utf-8"):
-        raise SystemExit("The AM mobile editing dock was not installed.")
+def patch_module(root: Path) -> None:
+    lib = root / "crates/ui-egui/src/lib.rs"
+    source = lib.read_text(encoding="utf-8")
+    if "pub mod am_editor;" not in source:
+        source = replace_once(source, "pub mod audio;\n", "pub mod am_editor;\npub mod audio;\n", "declare the independent AM editor module")
+        lib.write_text(source, encoding="utf-8")
+    module = root / "crates/ui-egui/src/am_editor.rs"
+    module.write_text(MODULE, encoding="utf-8")
 
 
-def patch_workspace_selection(root: Path) -> None:
-    path = root / "crates/ui-egui/src/app/window.rs"
-    source = path.read_text(encoding="utf-8")
-    marker = '        self.ui.dock = if name == "AM 竖屏" {'
-    if marker not in source:
-        old = '        self.ui.dock = self.ui.saved_workspaces.get(name).cloned().unwrap_or_else(|| dock::Workspace::new(dock::workspace(name)));'
-        new = '''        // EFFECTCRAFT_AM_CANONICAL_MOBILE_DOCK_RESTORE_V1
-        // Do not revive a previously saved simplified AM layout after a mode switch.
-        self.ui.dock = if name == "AM 竖屏" {
-            dock::Workspace::new(dock::workspace(name))
-        } else {
-            self.ui.saved_workspaces.get(name).cloned().unwrap_or_else(|| dock::Workspace::new(dock::workspace(name)))
-        };'''
-        source = replace_once(source, old, new, "force the canonical AM page on mode switch")
-        path.write_text(source, encoding="utf-8")
-    if "EFFECTCRAFT_AM_CANONICAL_MOBILE_DOCK_RESTORE_V1" not in path.read_text(encoding="utf-8"):
-        raise SystemExit("AM layout switching does not force the canonical mobile editing dock.")
-
-
-def patch_startup(root: Path) -> None:
-    path = root / "crates/ui-egui/src/app.rs"
-    source = path.read_text(encoding="utf-8")
-    if STARTUP_MARKER not in source:
-        old = '''        let app = app.with_ui_commands();
-        // Apply the orientation of the persisted workspace before the first editor frame.
-        crate::android_layout::set_workspace_portrait(app.ui.workspace == "AM 竖屏");
-        app'''
-        new = '''        let mut app = app.with_ui_commands();
-        // EFFECTCRAFT_AM_CANONICAL_MOBILE_DOCK_RESTORE_V1
-        // Older builds saved only the simplified two-panel AM layout. Rebuild the complete
-        // current mobile editing page before the first frame when AM was the saved workspace.
-        if app.ui.workspace == "AM 竖屏" {
-            app.ui.dock = crate::dock::Workspace::new(crate::dock::workspace("AM 竖屏"));
-        }
-        // Apply the orientation of the persisted workspace before the first editor frame.
-        crate::android_layout::set_workspace_portrait(app.ui.workspace == "AM 竖屏");
-        app'''
-        source = replace_once(source, old, new, "restore the canonical AM page at startup")
-        path.write_text(source, encoding="utf-8")
-    if STARTUP_MARKER not in path.read_text(encoding="utf-8"):
-        raise SystemExit("A previously saved simplified AM layout can still override the new page.")
-
-
-def patch_header(root: Path) -> None:
+def patch_export_access(root: Path) -> None:
     path = root / "crates/ui-egui/src/header.rs"
     source = path.read_text(encoding="utf-8")
-    if HEADER_MARKER in source:
-        return
-
-    helper_anchor = "/// The brand mark (About) and the Home button; returns the x after them."
-    helper = r'''
-// EFFECTCRAFT_AM_MOBILE_EDITING_HEADER_V1
-// AM's editor top bar: back to projects, composition name, native Undo/Redo and Export.
-// The separate Ae/AM chooser remains in its own second row below this bar.
-fn am_mobile_editing_header(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
-    let t = app.tokens;
-    let p = ui.painter().clone();
-    let top = Rect::from_min_max(rect.min, pos2(rect.max.x, (rect.min.y + 40.0).min(rect.max.y)));
-    p.rect_filled(top, 0.0, t.header_bg);
-    p.line_segment([top.left_bottom(), top.right_bottom()], Stroke::new(1.0, t.separator));
-    let cy = top.center().y;
-
-    let back = Rect::from_center_size(pos2(top.min.x + 22.0, cy), vec2(30.0, 30.0));
-    let back_response = ui.interact(back, egui::Id::new("am-editor-back-projects"), Sense::click());
-    icons::paint(&p, back.shrink(5.0), Icon::ChevronLeft, if back_response.hovered() { t.text } else { t.text_dim });
-    app.auto.add_response("header.amBack", &back_response, "返回项目");
-    if back_response.clicked() {
-        app.ui.start_screen = true;
-    }
-
-    let export_rect = Rect::from_min_max(
-        pos2((top.max.x - 68.0).max(top.min.x + 190.0), cy - 14.0),
-        pos2(top.max.x - 6.0, cy + 14.0),
-    );
-    let export_response = ui.interact(export_rect, egui::Id::new("am-editor-export"), Sense::click());
-    p.rect_filled(export_rect, 6.0, if export_response.hovered() { t.accent } else { t.panel_bg });
-    p.text(export_rect.center(), Align2::CENTER_CENTER, "导出", Tokens::semibold(12.0), t.text);
-    app.auto.add_response("header.amExport", &export_response, "导出视频或工程");
-    if export_response.clicked() {
-        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("effectcraft-export-dialog-open"), true));
-    }
-
-    let history_x = (export_rect.min.x - 62.0).max(top.min.x + 108.0);
-    let history_end = history_buttons(app, ui, &p, history_x, cy);
-    let title_rect = Rect::from_min_max(
-        pos2(back.max.x + 5.0, top.min.y),
-        pos2((history_x - 7.0).max(back.max.x + 5.0), top.max.y),
-    );
-    let project_name = app.session.active_comp_id()
-        .and_then(|id| app.session.project.item(id))
-        .map(|item| item.name.clone())
-        .unwrap_or_else(|| "未命名工程".to_string());
-    p.with_clip_rect(title_rect).text(
-        title_rect.left_center(),
-        Align2::LEFT_CENTER,
-        project_name,
-        Tokens::semibold(13.0),
-        t.text,
-    );
-    let _ = history_end;
-}
-
-'''
-    source = replace_once(source, helper_anchor, helper + helper_anchor, "insert AM editing header renderer")
-
-    show_anchor = "pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {\n"
-    show_branch = '''pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
-    if app.ui.workspace == "AM 竖屏" && !app.ui.start_screen {
-        am_mobile_editing_header(app, ui, rect);
-        // Keep the layout selector in its dedicated, non-overlapping second row.
-        let layout_row = Rect::from_min_max(
-            pos2(rect.min.x, rect.min.y + 40.0),
-            rect.max,
-        );
-        let layout_painter = ui.painter().clone();
-        layout_switch_row(app, ui, &layout_painter, layout_row);
-        export_dialog(app, ui);
-        export_progress_dialog(app, ui);
-        return;
-    }
-'''
-    source = replace_once(source, show_anchor, show_branch, "route AM mode to its dedicated top bar")
+    source = source.replace("fn export_dialog(app:", "pub(crate) fn export_dialog(app:")
+    source = source.replace("fn export_progress_dialog(app:", "pub(crate) fn export_progress_dialog(app:")
+    if "pub(crate) fn export_dialog(app:" not in source or "pub(crate) fn export_progress_dialog(app:" not in source:
+        raise SystemExit("Could not expose the existing native export dialogs to the independent AM page.")
     path.write_text(source, encoding="utf-8")
 
-    patched = path.read_text(encoding="utf-8")
-    for token in (
-        HEADER_MARKER,
-        "am_mobile_editing_header(app, ui, rect);",
-        "layout_switch_row(app, ui",
-        "export_dialog(app, ui);",
-        "export_progress_dialog(app, ui);",
-    ):
-        if token not in patched:
-            raise SystemExit(f"AM header verification missing: {token}")
 
-
-def patch_timeline(root: Path) -> None:
-    path = root / "crates/ui-egui/src/panels/timeline.rs"
+def patch_frame(root: Path) -> None:
+    path = root / "crates/ui-egui/src/app/frame.rs"
     source = path.read_text(encoding="utf-8")
-    if TIMELINE_MARKER in source:
+    if MARKER in source:
         return
 
-    source = replace_once(
-        source,
-        "fn cols(x0: f32, width: f32, vis: Vis) -> Cols {",
-        "fn cols(x0: f32, width: f32, vis: Vis, min_name_w: f32) -> Cols {",
-        "make the layer-name column responsive",
-    )
-    source = replace_once(
-        source,
-        "    let name_w = (width - vis.fixed()).max(120.0);",
-        "    let name_w = (width - vis.fixed()).max(min_name_w);",
-        "allow narrow AM layer names",
+    source = source.replace(
+        "if self.ui.show_menu_bar {",
+        'if self.ui.show_menu_bar && self.ui.workspace != "AM 竖屏" {',
+        1,
     )
 
-    old_geometry = '''    let header_h = 48.0;
-    let ruler_h = 34.0;
-    let colhdr_h = 22.0;
-    let footer_h = 24.0;
-    let vis = Vis::of(&app.ui.timeline);
-    let left_w = (vis.fixed() + 190.0).clamp(420.0, (rect.width() * 0.72).max(420.0));'''
-    new_geometry = '''    // EFFECTCRAFT_AM_MOBILE_EDITING_TIMELINE_V1
-    // On a portrait phone, keep the visibility switch and layer name only. Desktop
-    // switch/parent/time columns are hidden so the clip tracks retain real width.
-    let am_mobile = app.ui.workspace == "AM 竖屏";
-    let header_h = 48.0;
-    let ruler_h = 34.0;
-    let colhdr_h = 20.0;
-    let footer_h = 24.0;
-    let vis = if am_mobile {
-        Vis {
-            av: true, keys: false, label: false, num: false, comment: false,
-            switches: false, modes: false, parent: false, in_: false, out: false,
-            duration: false, stretch: false,
+    old_header = "        header::show(self, ui, header);\n"
+    new_header = "        // AM draws its own top bar; do not render the Ae toolbar on the AM page.\n        if self.ui.workspace != \"AM 竖屏\" || self.ui.start_screen {\n            header::show(self, ui, header);\n        }\n"
+    source = replace_once(source, old_header, new_header, "skip the Ae toolbar in AM mode")
+
+    source = replace_once(
+        source,
+        "        self.dock_area(ui, body);\n",
+        '''        if self.ui.workspace == "AM 竖屏" && !self.ui.start_screen {
+            crate::am_editor::show(self, ui, full);
+        } else {
+            self.dock_area(ui, body);
         }
-    } else {
-        Vis::of(&app.ui.timeline)
-    };
-    let min_name_w = if am_mobile { 72.0 } else { 120.0 };
-    let natural_w = vis.fixed() + if am_mobile { min_name_w } else { 190.0 };
-    let left_w = if am_mobile {
-        natural_w
-    } else {
-        natural_w.clamp(420.0, (rect.width() * 0.72).max(420.0))
-    };'''
-    source = replace_once(source, old_geometry, new_geometry, "install compact portrait geometry")
-    source = replace_once(
-        source,
-        "    let natural_w = vis.fixed() + 190.0;",
-        "    let natural_w = vis.fixed() + if am_mobile { min_name_w } else { 190.0 };",
-        "use mobile layer-list width",
-    )
-    source = replace_once(
-        source,
-        "    let cw = cols(rect.min.x - oscroll, left_w + overflow, vis);",
-        "    let cw = cols(rect.min.x - oscroll, left_w + overflow, vis, min_name_w);",
-        "pass compact layer column width",
-    )
-    source = replace_once(
-        source,
-        "        rh: t.row_h,",
-        "        rh: if am_mobile { 30.0 } else { t.row_h },",
-        "enlarge touch layer rows in AM mode",
-    )
-
-    header_anchor = "fn header_search_and_switches(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Tl) {\n"
-    transport = r'''fn header_search_and_switches(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Tl) {
-    if app.ui.workspace == "AM 竖屏" {
-        let t = g.t;
-        let rect = g.rect;
-        let top = g.top;
-        let tc_rect = g.tc_rect;
-        let ctx = ui.ctx().clone();
-        // AM-style transport controls: start, previous frame, play/pause, next frame, end.
-        let buttons = [
-            (Icon::First, "time.start", "Go to Start"),
-            (Icon::StepBack, "time.previousFrame", "Previous Frame"),
-            (Icon::Play, "playback.toggle", "Play / Pause"),
-            (Icon::StepFwd, "time.nextFrame", "Next Frame"),
-            (Icon::Last, "time.end", "Go to End"),
-        ];
-        let start_x = tc_rect.max.x + 8.0;
-        for (index, (base_icon, command, tip)) in buttons.into_iter().enumerate() {
-            let r = Rect::from_min_size(
-                pos2(start_x + index as f32 * 29.0, top + 9.0),
-                vec2(24.0, 24.0),
-            );
-            let icon = if command == "playback.toggle" && app.playback.playing {
-                Icon::Pause
-            } else {
-                base_icon
-            };
-            let response = widgets::icon_button(
-                ui,
-                r,
-                icon,
-                command == "playback.toggle" && app.playback.playing,
-                &t,
-                egui::Id::unique(("timeline.amMobileTransport", command)),
-            ).on_hover_text(crate::i18n::tr(tip));
-            app.auto.add_response(&format!("timeline.amMobileTransport.{command}"), &response, tip);
-            if response.clicked()
-                && let Err(error) = crate::menus::invoke(app, &ctx, command, json!({}))
-            {
-                app.ui.status = error;
-            }
-        }
-        return;
-    }
-'''
-    source = replace_once(source, header_anchor, transport, "put AM transport above the clip tracks")
-
-    source = replace_once(
-        source,
-        "fn time_navigator(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Tl) {\n",
-        '''fn time_navigator(app: &mut EffectcraftApp, ui: &mut egui::Ui, g: &Tl) {
-    // The AM transport row occupies the desktop navigator's area.
-    if app.ui.workspace == "AM 竖屏" {
-        return;
-    }
+        // EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1
 ''',
-        "remove the desktop mini navigator from the AM transport row",
+        "route AM editing to its independent surface instead of the Ae DockArea",
     )
 
-    old_footer = '''    let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));
-    let tresp = ui.interact(tgl, egui::Id::unique("tl-toggle-modes"), Sense::click());
-    p.text(
-        tgl.left_center(),
-        Align2::LEFT_CENTER,
-        crate::i18n::tr("Toggle Switches / Modes"),
-        Tokens::ui(11.0),
-        if tresp.hovered() { t.text } else { t.text_dim },
-    );
-    app.auto.add("timeline.toggleSwitchesModes", tgl, "Toggle Switches / Modes");
-    if tresp.clicked() {
-        app.ui.timeline.show_modes = !app.ui.timeline.show_modes;
-    }'''
-    new_footer = r'''    if app.ui.workspace == "AM 竖屏" {
-        let buttons = [
-            ("＋素材", "media"),
-            ("效果", "effects"),
-            ("属性", "properties"),
-            ("项目", "project"),
-        ];
-        for (index, (label, kind)) in buttons.into_iter().enumerate() {
-            let r = Rect::from_min_size(
-                pos2(footer.min.x + 5.0 + index as f32 * 42.0, footer.min.y + 3.0),
-                vec2(39.0, 18.0),
-            );
-            let response = ui.interact(r, egui::Id::new(("timeline.amMobileAction", kind)), Sense::click());
-            p.rect_filled(r, 4.0, if response.hovered() { t.hover } else { t.field_bg });
-            p.text(r.center(), Align2::CENTER_CENTER, label, Tokens::ui(9.5), if response.hovered() { t.text } else { t.text_dim });
-            app.auto.add_response(&format!("timeline.amMobileAction.{kind}"), &response, label);
-            if response.clicked() {
-                match kind {
-                    "media" => {
-                        if let Err(error) = crate::menus::invoke(app, ui.ctx(), "file.import", json!({"picturesAndVideos": true})) {
-                            app.ui.status = error;
-                        }
-                    }
-                    "effects" => app.show_panel(crate::dock::PanelKind::EffectsPresets),
-                    "properties" => app.show_panel(crate::dock::PanelKind::Properties),
-                    "project" => app.show_panel(crate::dock::PanelKind::Project),
-                    _ => {}
-                }
-            }
-        }
-    } else {
-        let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));
-        let tresp = ui.interact(tgl, egui::Id::unique("tl-toggle-modes"), Sense::click());
-        p.text(
-            tgl.left_center(),
-            Align2::LEFT_CENTER,
-            crate::i18n::tr("Toggle Switches / Modes"),
-            Tokens::ui(11.0),
-            if tresp.hovered() { t.text } else { t.text_dim },
-        );
-        app.auto.add("timeline.toggleSwitchesModes", tgl, "Toggle Switches / Modes");
-        if tresp.clicked() {
-            app.ui.timeline.show_modes = !app.ui.timeline.show_modes;
-        }
-    }'''
-    source = replace_once(source, old_footer, new_footer, "add AM media/effects/properties/project controls")
-
+    # The old AM base patch used a 64 px header for an extra selector row. The independent
+    # surface owns its complete top bar, so the underlying DockArea header height is irrelevant;
+    # keep Home's 40 px header and avoid an extra dead strip when the user returns to Home.
+    source = source.replace(
+        "let header_h = if self.ui.start_screen { 40.0 } else { 64.0 };",
+        "let header_h = 40.0;",
+    )
+    source = source.replace("let header_h = 64.0;", "let header_h = 40.0;")
     path.write_text(source, encoding="utf-8")
-    patched = path.read_text(encoding="utf-8")
-    for token in (
-        TIMELINE_MARKER,
-        "timeline.amMobileTransport.",
-        "timeline.amMobileAction.",
-        'command == "playback.toggle"',
-        "let cw = cols(rect.min.x - oscroll, left_w + overflow, vis, min_name_w);",
-    ):
-        if token not in patched:
-            raise SystemExit(f"AM mobile Timeline verification missing: {token}")
-
-
-
-def patch_footer(root: Path) -> None:
-    """Replace the desktop-only footer label with AM's quick editing actions."""
-    path = root / "crates/ui-egui/src/panels/timeline.rs"
-    source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_AM_MOBILE_EDITING_FOOTER_V1"
-    if marker not in source:
-        old = '''    let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));
-    let tresp = ui.interact(tgl, egui::Id::unique("tl-toggle-modes"), Sense::click());
-    p.text(
-        tgl.left_center(),
-        Align2::LEFT_CENTER,
-        crate::i18n::tr("Toggle Switches / Modes"),
-        Tokens::ui(11.0),
-        if tresp.hovered() { t.text } else { t.text_dim },
-    );
-    app.auto.add("timeline.toggleSwitchesModes", tgl, "Toggle Switches / Modes");
-    if tresp.clicked() {
-        app.ui.timeline.show_modes = !app.ui.timeline.show_modes;
-    }'''
-        new = r'''    if app.ui.workspace == "AM 竖屏" {
-        // EFFECTCRAFT_AM_MOBILE_EDITING_FOOTER_V1
-        // Keep these quick actions left of the native timeline zoom controls.
-        let buttons = [
-            ("＋素材", "media"),
-            ("效果", "effects"),
-            ("属性", "properties"),
-        ];
-        for (index, (label, kind)) in buttons.into_iter().enumerate() {
-            let r = Rect::from_min_size(
-                pos2(footer.min.x + 5.0 + index as f32 * 42.0, footer.min.y + 3.0),
-                vec2(39.0, 18.0),
-            );
-            let response = ui.interact(r, egui::Id::new(("timeline.amMobileAction", kind)), Sense::click());
-            p.rect_filled(r, 4.0, if response.hovered() { t.hover } else { t.field_bg });
-            p.text(r.center(), Align2::CENTER_CENTER, label, Tokens::ui(9.5), if response.hovered() { t.text } else { t.text_dim });
-            app.auto.add_response(&format!("timeline.amMobileAction.{kind}"), &response, label);
-            if response.clicked() {
-                match kind {
-                    "media" => {
-                        if let Err(error) = crate::menus::invoke(app, ui.ctx(), "file.import", json!({"picturesAndVideos": true})) {
-                            app.ui.status = error;
-                        }
-                    }
-                    "effects" => app.show_panel(crate::dock::PanelKind::EffectsPresets),
-                    "properties" => app.show_panel(crate::dock::PanelKind::Properties),
-                    _ => {}
-                }
-            }
-        }
-    } else {
-        let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));
-        let tresp = ui.interact(tgl, egui::Id::unique("tl-toggle-modes"), Sense::click());
-        p.text(
-            tgl.left_center(),
-            Align2::LEFT_CENTER,
-            crate::i18n::tr("Toggle Switches / Modes"),
-            Tokens::ui(11.0),
-            if tresp.hovered() { t.text } else { t.text_dim },
-        );
-        app.auto.add("timeline.toggleSwitchesModes", tgl, "Toggle Switches / Modes");
-        if tresp.clicked() {
-            app.ui.timeline.show_modes = !app.ui.timeline.show_modes;
-        }
-    }'''
-        source = replace_once(source, old, new, "install the AM quick action footer")
-        path.write_text(source, encoding="utf-8")
-    if marker not in path.read_text(encoding="utf-8"):
-        raise SystemExit("AM mobile footer actions were not installed.")
+    if MARKER not in path.read_text(encoding="utf-8"):
+        raise SystemExit("The independent AM editor route was not installed.")
 
 
 def verify(root: Path) -> None:
-    dock = (root / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
+    lib = (root / "crates/ui-egui/src/lib.rs").read_text(encoding="utf-8")
+    frame = (root / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
+    module = (root / "crates/ui-egui/src/am_editor.rs").read_text(encoding="utf-8")
     header = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
-    timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
-    window = (root / "crates/ui-egui/src/app/window.rs").read_text(encoding="utf-8")
-    app = (root / "crates/ui-egui/src/app.rs").read_text(encoding="utf-8")
-    required = (
-        (dock, DOCK_MARKER),
-        (header, HEADER_MARKER),
-        (timeline, TIMELINE_MARKER),
-        (timeline, "timeline.amMobileTransport."),
-        (timeline, "timeline.amMobileAction."),
-        (timeline, "EFFECTCRAFT_AM_MOBILE_EDITING_FOOTER_V1"),
-        (window, "EFFECTCRAFT_AM_CANONICAL_MOBILE_DOCK_RESTORE_V1"),
-        (app, STARTUP_MARKER),
-        (header, "export_dialog(app, ui);"),
-        (header, "export_progress_dialog(app, ui);"),
-    )
-    missing = [marker for content, marker in required if marker not in content]
-    if missing:
-        raise SystemExit("AM mobile editing page verification failed: " + ", ".join(missing))
-    print("Verified the AM portrait editing page: custom top bar, persistent viewer, phone timeline, transport and bottom actions.")
-    print("Ae mode, import router, project format handlers and existing export code remain in place.")
+    if "pub mod am_editor;" not in lib:
+        raise SystemExit("Independent AM editor module is not registered.")
+    for token in (
+        MARKER,
+        "crate::am_editor::show(self, ui, full);",
+        'self.ui.workspace == "AM 竖屏" && !self.ui.start_screen',
+    ):
+        if token not in frame:
+            raise SystemExit(f"AM independent frame route missing: {token}")
+    for token in (
+        "pub fn show(app:",
+        "crate::panels::viewers::show",
+        "fn draw_timeline",
+        "layer.timing",
+        "am-mobile-trim",
+        "time.set",
+        "fn bottom_tools",
+        "fn tool_drawer",
+    ):
+        if token not in module:
+            raise SystemExit(f"Independent AM editor module missing feature: {token}")
+    if "pub(crate) fn export_dialog(app:" not in header or "pub(crate) fn export_progress_dialog(app:" not in header:
+        raise SystemExit("AM editor cannot access the original video export workflow.")
+    if "self.dock_area(ui, body);" not in frame:
+        raise SystemExit("The Ae DockArea must remain available for the original Ae workspace.")
+    print("Verified a separate AM editing surface with its own top bar, canvas, transport, clip tracks, trim handles and bottom tools.")
+    print("Verified the Ae DockArea remains the render path for Ae mode; AM no longer uses the Ae dock tree or timeline widget.")
 
 
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
-        raise SystemExit("EFFECTCRAFT_DIR must point to the checked-out EffectCraft source.")
-    patch_dock(root)
-    patch_workspace_selection(root)
-    patch_startup(root)
-    patch_header(root)
-    patch_timeline(root)
-    patch_footer(root)
+        raise SystemExit("EFFECTCRAFT_DIR must point to checked-out EffectCraft source.")
+    patch_module(root)
+    patch_export_access(root)
+    patch_frame(root)
     verify(root)
 
 
