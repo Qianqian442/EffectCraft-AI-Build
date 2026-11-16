@@ -687,7 +687,7 @@ jobs:
           HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
           ! grep -Fq "EFFECTCRAFT_HOME_LAYOUT_SURFACE_MENU_V4" "$HOME_RS"
           grep -Fq "EFFECTCRAFT_NOVA_LAYOUT_MENU_V2" "$HEADER_RS"
-          grep -Fq "workspace_label(&app.ui.workspace)" "$HEADER_RS"
+          grep -Fq "ae_layout_mode_label(&app.ui.workspace)" "$HEADER_RS"
           grep -Fq "popup_menu" "$HEADER_RS"
           ! grep -Fq 'Icon::Code, "EffectCraft on GitHub", "help.github"' "$HOME_RS"
           echo "Verified layout switching is available from the editing toolbar; Home has no separate layout switch."
