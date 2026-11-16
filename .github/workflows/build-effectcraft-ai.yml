@@ -716,6 +716,15 @@ jobs:
         with:
           targets: aarch64-linux-android, wasm32-unknown-unknown
 
+      - name: Prepare vendored Android RFD for workspace test resolution
+        run: |
+          set -euo pipefail
+          test -f artcraft/vendor/rfd/Cargo.toml
+          mkdir -p artcraft/source/effectcraft/vendor
+          rm -rf artcraft/source/effectcraft/vendor/rfd
+          cp -a artcraft/vendor/rfd artcraft/source/effectcraft/vendor/rfd
+          test -f artcraft/source/effectcraft/vendor/rfd/Cargo.toml
+
       - name: Run WASM effect stability regression tests
         working-directory: artcraft/source/effectcraft
         run: |
