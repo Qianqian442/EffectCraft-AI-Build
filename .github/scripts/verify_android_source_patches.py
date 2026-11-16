@@ -320,6 +320,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The dedicated desktop AE import entry bypasses the original loss-confirmation guard.")
     for diagnostic in (
         "fn needs_prompt(report: &Value)",
+        "if !needs_prompt(&report)",
         "fn imported_lines(report: &Value)",
         "fn diagnostics(report: &Value)",
         '"missingFootage"',
