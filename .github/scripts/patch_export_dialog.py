@@ -603,38 +603,15 @@ if "fn effectcraft_export_dimensions(" not in header:
 
 staging_helper = r"""
 /// EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1_HELPER
-/// Use a private app temporary directory as the render output, then publish the completed
-/// file to Android MediaStore. This avoids the crash-prone system Save document picker.
+/// Ask the Android Activity for an app-private cache path so rendering never relies
+/// on a public or shell-owned temporary directory.
 fn effectcraft_android_video_staging_path(default_output: &str) -> Result<String, String> {
-    let source = std::path::Path::new(default_output);
-    let name = source.file_name()
+    let name = std::path::Path::new(default_output)
+        .file_name()
         .and_then(|value| value.to_str())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or("EffectCraft.mp4");
-    let stem = std::path::Path::new(name).file_stem()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.is_empty())
-        .unwrap_or("EffectCraft");
-    let extension = std::path::Path::new(name).extension()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.is_empty())
-        .unwrap_or("mp4");
-    let directory = std::env::temp_dir().join("EffectCraftExports");
-    std::fs::create_dir_all(&directory)
-        .map_err(|error| format!("无法创建视频暂存目录：{error}"))?;
-
-    for suffix in 0..10_000_u32 {
-        let filename = if suffix == 0 {
-            name.to_string()
-        } else {
-            format!("{stem}_{suffix}.{extension}")
-        };
-        let candidate = directory.join(filename);
-        if !candidate.exists() {
-            return Ok(candidate.to_string_lossy().into_owned());
-        }
-    }
-    Err("视频暂存目录中同名文件过多，请稍后重试。".to_string())
+    crate::android_gallery::staging_path(name)
 }
 """
 if "fn effectcraft_android_video_staging_path(" not in header:
