@@ -385,7 +385,7 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
         anchor = "/// The Discord pill and the GitHub and website buttons"
         code = r'''
 // Show the active Ae/AM mode in a dedicated row below the original tool controls.
-fn workspace_label(workspace: &str) -> &'static str {
+fn ae_layout_mode_label(workspace: &str) -> &'static str {
     if workspace == "AM 竖屏" { "AM 竖屏布局" } else { "Ae 原布局" }
 }
 
@@ -404,7 +404,7 @@ fn layout_switch_row(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Pain
         t.text_dim,
     );
 
-    let layout_label = format!("{} ▾", workspace_label(&app.ui.workspace));
+    let layout_label = format!("{} ▾", ae_layout_mode_label(&app.ui.workspace));
     let label_galley = p.layout_no_wrap(layout_label, Tokens::ui(12.0), t.text_dim);
     let menu_width = (label_galley.size().x + 24.0).clamp(104.0, 148.0);
     let more = Rect::from_min_max(
