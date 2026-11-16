@@ -45,10 +45,13 @@ The authoritative item-by-item list and its test notes live in the pinned source
 
 ### Imported with known approximation or renderer differences
 
-- Some keyframe interpolation/ease forms (including documented Orientation and mask-path cases).
-- Curves and Mesh Warp whose rendering/interpolation is not identical to After Effects.
-- Some shape/effect parameter mappings where the source and Ae renderer differ.
-- Some colour/effect results that are imported but are not pixel-identical.
+- Some keyframe interpolation/ease forms (including documented Orientation and mask-path cases); an AE Bezier Orientation side can arrive as linear and is reported.
+- **Curves:** the five curve channels/points are imported, but Ae uses monotone interpolation rather than AE's natural spline; the recorded render comparison differs by up to about 6 levels in the sampled fixture.
+- **Mesh Warp:** rows, columns, quality and vertex offsets are imported, but Ae's bilinear mesh rendering differs from AE; the sampled comparison showed a small region around the moved vertex with differences above 2 levels. Independently moved Bezier handles are not yet imported.
+- **Selected effects:** CC Radial Blur and Channel Blur matched in the documented fixtures; Directional Blur was within 5/255, while Venetian Blinds, Radial Blur, Black & White, Tritone, Luma Key, Matte Choker and Transform showed renderer differences in the recorded comparisons.
+- **Layer styles:** Drop Shadow, Inner Shadow, Satin, Color Overlay and Stroke were close in the documented samples; Glow and Bevel intensities and Gradient Overlay direction differed.
+- **Shape operators:** Repeater copy opacity and Offset Paths outline behavior have documented renderer differences.
+- These are imported controls with a known visual-fidelity caveat, not exact AE equivalents. The UI preflight should make these documented differences visible alongside unimported fields.
 
 These must remain visible in the preflight report until the relevant reader, model mapping and renderer behavior are verified.
 
@@ -58,7 +61,7 @@ These must remain visible in the preflight report until the relevant reader, mod
 2. **Source-backed unsupported records:** preserve plug-in/effect identifiers, version strings and raw readable parameter values as revisitable metadata when the target does not yet have an equivalent. A placeholder is not a working effect and must be labeled as such.
 3. **Media and fonts:** resolve relative paths, keep missing-media placeholders, support relinking and collection, preserve image-sequence numbering/rate, and report substitutions.
 4. **Animation and text:** extend verified readers for separated dimensions, Source Text keyframes, additional text selectors, mask properties and time/ease forms.
-5. **Audio and layer switches:** decode and map audio levels/channel metadata, frame blending, guides, additional layer flags and 3D material properties.
+5. **Audio and layer switches:** decode and map audio levels/channel metadata, frame blending, additional layer flags and 3D material properties. Guide-layer state is already decoded by the current importer.
 6. **Effects and plug-ins:** extend the standard-effect table with verified parameter schemas; inventory third-party plug-ins and map only when an equivalent has matching controls and behavior. Do not execute desktop `.aex` binaries on mobile.
 7. **Visual parity:** compare source/target renders and editable project structure at representative frames and times.
 
