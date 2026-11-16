@@ -340,14 +340,6 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
 """,
             "editing-only reserved layout-switch row",
         )
-        source = replace_once(
-            source,
-            """    let rx = workspace_menu(app, ui, p, rx, cy);
-    workspace_tabs(app, ui, p, rx, left, cy);""",
-            """    // Existing workspace tabs remain available; the Ae/AM mode switch is on row two.
-    workspace_tabs(app, ui, p, rx, left, cy);""",
-            "keep legacy workspace tabs separate from the new layout chooser",
-        )
         anchor = "/// The Discord pill and the GitHub and website buttons"
         code = r'''
 // Show the active Ae/AM mode in a dedicated row below the original tool controls.
@@ -414,8 +406,11 @@ fn layout_switch_row(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Pain
         source = source.replace(anchor, code + anchor, 1)
         path.write_text(source, encoding="utf-8")
 
-    if marker not in path.read_text(encoding="utf-8"):
+    patched_header = path.read_text(encoding="utf-8")
+    if marker not in patched_header:
         raise SystemExit("The dedicated editing-only Ae/AM layout row was not installed.")
+    if "let rx = workspace_menu(app, ui, p, rx, cy);" not in patched_header:
+        raise SystemExit("The original saved-workspace menu must remain available beside the Ae/AM selector.")
 
     frame = effectcraft / "crates/ui-egui/src/app/frame.rs"
     frame_source = frame.read_text(encoding="utf-8")
