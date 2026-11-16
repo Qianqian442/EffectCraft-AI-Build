@@ -250,9 +250,9 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ".github/scripts/add_account_whitelist_local_cache.py",
         (
             "effectcraft-account-ban.json",
-            "封禁信息已保存在本机",
             "联网核验是否已解封",
             "self.persist_ban(config)",
+            "self.status.clear()",
         ),
     ),
     (
