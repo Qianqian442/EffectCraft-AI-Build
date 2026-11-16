@@ -216,7 +216,7 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let title_rect = Rect::from_min_size(pos2(back_rect.max.x + 8.0, y), vec2((rect.width() - 92.0).max(60.0), 32.0));
         painter.text(title_rect.center(), Align2::LEFT_CENTER, crate::i18n::effects::category(&category), Tokens::ui(14.0), t.text);
         y += 40.0;
-        let matching: Vec<_> = reg.iter().filter(|e| e.category == category)
+        let matching: Vec<_> = reg.iter().filter(|e| e.category == category.as_str())
             .filter(|e| query_lower.is_empty() || effectcraft_engine::effects::name_matches(e, &query_lower) || crate::i18n::effects::matches(e.id, e.name, &query_lower))
             .collect();
         let gap = 8.0;
