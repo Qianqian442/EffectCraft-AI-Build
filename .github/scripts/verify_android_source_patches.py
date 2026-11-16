@@ -486,6 +486,9 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     window = (root / "crates/ui-egui/src/app/window.rs").read_text(encoding="utf-8")
     app = (root / "crates/ui-egui/src/app.rs").read_text(encoding="utf-8")
     store = (root / "crates/ui-egui/src/workspace_state.rs").read_text(encoding="utf-8")
+    timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1" not in timeline:
+        raise SystemExit("AM timeline touch trim handles are missing; direct layer-edge duration dragging must remain available.")
     bridge = (root / "crates/ui-egui/src/android_layout.rs").read_text(encoding="utf-8")
     ui_cargo = (root / "crates/ui-egui/Cargo.toml").read_text(encoding="utf-8")
 
