@@ -573,6 +573,9 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/add_curve_quick_access.py
+          TIMELINE_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/timeline.rs"
+          grep -Fq "EFFECTCRAFT_ANDROID_PERIODIC_CURVE_EDITOR_V1" "$TIMELINE_RS"
+          grep -Fq "android_periodic_curve_editor(app, &ctx)" "$TIMELINE_RS"
 
       - name: Resolve curve presets from the visible Timeline playhead
         env:
@@ -669,6 +672,8 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_am_mobile_layout.py
           python3 build-assets/.github/scripts/add_am_mobile_layout.py
+          FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
+          grep -Fq "EFFECTCRAFT_AM_NOVA_LAYOUT_TRACE_V2" "$FRAME_RS"
 
       - name: Add Home layout switch and remove obsolete code-repository shortcut
         env:
@@ -677,7 +682,7 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_home_layout_switch.py
           python3 build-assets/.github/scripts/add_home_layout_switch.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
-          grep -Fq "EFFECTCRAFT_HOME_LAYOUT_SWITCH_V1" "$HOME_RS"
+          grep -Fq "EFFECTCRAFT_HOME_LAYOUT_MENU_NOVA_V2" "$HOME_RS"
           ! grep -Fq 'Icon::Code, "EffectCraft on GitHub", "help.github"' "$HOME_RS"
           echo "Verified Home layout switch is wired and obsolete code-repository shortcut is absent."
 
