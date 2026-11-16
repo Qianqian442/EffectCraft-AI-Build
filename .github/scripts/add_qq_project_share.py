@@ -21,32 +21,51 @@ def patch_manifest_generator(builder: Path) -> None:
     # EFFECTCRAFT_OPEN_SHARED_PROJECT_INTENT_V1: register Ae for incoming project ZIPs.
     # SafActivity already stages ACTION_VIEW URIs and routes them to the normal import inbox.
     intent_anchor = '    activities = _as_list(application.get("activity")) or [{}]\n    for activity in activities:\n'
-    intent_code = '''    activities = _as_list(application.get("activity")) or [{}]
+    intent_code = r'''    activities = _as_list(application.get("activity")) or [{}]
     if android_meta.get("package") == "com.artcraft.effectcraft":
+        project_extensions = (
+            "aep", "aepx", "ecproj", "ecprojx", "zip", "xml", "alight",
+            "nv", "json", "fcpxml", "otio", "edl", "aaf", "omf", "lottie",
+        )
         for activity in activities:
             filters = activity.setdefault("intent_filter", [])
-            marker_filter = "EFFECTCRAFT_OPEN_SHARED_PROJECT_ZIP"
-            if not any(item.get("_effectcraft_marker") == marker_filter for item in filters):
+            for extension in project_extensions:
+                for scheme in ("content", "file"):
+                    marker_filter = f"EFFECTCRAFT_OPEN_PROJECT_{extension}_{scheme}"
+                    if any(item.get("_effectcraft_marker") == marker_filter for item in filters):
+                        continue
+                    filters.append({
+                        "_effectcraft_marker": marker_filter,
+                        "actions": ["android.intent.action.VIEW"],
+                        "categories": [
+                            "android.intent.category.DEFAULT",
+                            "android.intent.category.BROWSABLE",
+                        ],
+                        "data": [{
+                            "scheme": scheme,
+                            "mime_type": "*/*",
+                            "path_pattern": r".*\." + extension,
+                        }],
+                    })
+            send_marker = "EFFECTCRAFT_SEND_PROJECT_MIME_TYPES"
+            if not any(item.get("_effectcraft_marker") == send_marker for item in filters):
                 filters.append({
-                    "_effectcraft_marker": marker_filter,
-                    "actions": [
-                        "android.intent.action.VIEW",
-                        "android.intent.action.SEND",
-                    ],
-                    "categories": [
-                        "android.intent.category.DEFAULT",
-                        "android.intent.category.BROWSABLE",
-                    ],
+                    "_effectcraft_marker": send_marker,
+                    "actions": ["android.intent.action.SEND"],
+                    "categories": ["android.intent.category.DEFAULT"],
                     "data": [
                         {"mime_type": "application/zip"},
                         {"mime_type": "application/x-zip-compressed"},
                         {"mime_type": "application/octet-stream"},
+                        {"mime_type": "application/json"},
+                        {"mime_type": "application/xml"},
+                        {"mime_type": "text/xml"},
                     ],
                 })
     for activity in activities:
 '''
-    if "EFFECTCRAFT_OPEN_SHARED_PROJECT_ZIP" not in source:
-        source = once(source, intent_anchor, intent_code, "incoming project ZIP intent filters")
+    if "EFFECTCRAFT_OPEN_PROJECT_" not in source:
+        source = once(source, intent_anchor, intent_code, "incoming project format intent filters")
     marker = "EFFECTCRAFT_SHARE_FILEPROVIDER_V1"
     if marker not in source:
         anchor = '    lines.append("    </application>")\n'
@@ -280,6 +299,107 @@ def patch_frontend(effectcraft: Path) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def patch_incoming_project_dispatch(builder: Path, effectcraft: Path) -> None:
+    # Resolve every external project path to its existing importer. Keep this inside the UI
+    # crate so desktop-AE imports still pass through the normal loss-review dialog.
+    frontend = effectcraft / "crates/ui-egui/src/menus/frontend.rs"
+    source = frontend.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_AUTO_IMPORT_EXTERNAL_PROJECT_V1"
+    if marker not in source:
+        anchor = "/// View ▸ Zoom In / Zoom Out: the next standard magnification (as a share of screen pixels, so\n"
+        code = """// EFFECTCRAFT_ANDROID_AUTO_IMPORT_EXTERNAL_PROJECT_V1
+/// Open an incoming Android share using the same preflight/dialog path as File > Import.
+pub(super) fn run_incoming_project(app: &mut EffectcraftApp, command: &str, path: &str) -> Result<(), String> {
+    run_with_picked(app, command, "path", &json!({}), Value::String(path.to_owned())).map(|_| ())
+}
+
+"""
+        source = once(source, anchor, code + anchor, "incoming project importer bridge")
+        frontend.write_text(source, encoding="utf-8")
+
+    menus = effectcraft / "crates/ui-egui/src/menus.rs"
+    source = menus.read_text(encoding="utf-8")
+    if marker not in source:
+        anchor = "pub struct UiCommand {\n"
+        code = r"""// EFFECTCRAFT_ANDROID_AUTO_IMPORT_EXTERNAL_PROJECT_V1
+/// Route a file received from QQ / Android Sharesheet to its existing project importer.
+pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(), String> {
+    let extension = std::path::Path::new(path)
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    let command = match extension.as_str() {
+        "aep" | "aepx" => "file.importAepDesktop",
+        "ecproj" | "ecprojx" => "file.importEffectCraftMobile",
+        // This importer probes ZIP contents and detects EffectCraft, NodeVideo,
+        // Alight Motion XML and CapCut draft projects.
+        "zip" | "nv" => "file.importNodeVideoProject",
+        "alight" => "file.importAlightMotionProject",
+        "xml" => {
+            let bytes = std::fs::read(path).unwrap_or_default();
+            let head = String::from_utf8_lossy(&bytes[..bytes.len().min(8192)]).to_ascii_lowercase();
+            if head.contains("<scene") || head.contains("<alightmotion") || head.contains("alight motion") {
+                "file.importAlightMotionProject"
+            } else {
+                "file.importTimeline"
+            }
+        }
+        "fcpxml" | "otio" | "edl" | "aaf" | "omf" => "file.importTimeline",
+        "lottie" => "file.importLottie",
+        "json" => {
+            let bytes = std::fs::read(path).unwrap_or_default();
+            let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+            let lottie = value.get("layers").and_then(Value::as_array).is_some()
+                && value.get("fr").is_some()
+                && value.get("ip").is_some()
+                && value.get("op").is_some();
+            if lottie { "file.importLottie" } else { "file.importNodeVideoProject" }
+        }
+        _ => return Err(format!("Ae 暂不支持自动导入此工程格式：.{}", extension)),
+    };
+
+    frontend::run_incoming_project(app, command, path)
+}
+
+"""
+        source = once(source, anchor, code + anchor, "public incoming-project format router")
+        menus.write_text(source, encoding="utf-8")
+
+    builder_file = builder / "lib" / "build-common.sh"
+    shell = builder_file.read_text(encoding="utf-8")
+    old_open = """    "effectcraft": '''        if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {
+            log::error!("Could not open the incoming file {path}: {error}");
+        }
+''',
+"""
+    new_open = """    "effectcraft": '''        if let Err(error) = effectcraft_ui_egui::menus::import_incoming_project(&mut self.inner, path) {
+            log::error!("Could not automatically import the incoming project {path}: {error}");
+        }
+''',
+"""
+    if "effectcraft_ui_egui::menus::import_incoming_project(&mut self.inner, path)" not in shell:
+        shell = once(shell, old_open, new_open, "Android incoming-project automatic dispatch")
+        builder_file.write_text(shell, encoding="utf-8")
+
+    frontend_check = frontend.read_text(encoding="utf-8")
+    menus_check = menus.read_text(encoding="utf-8")
+    if marker not in frontend_check or marker not in menus_check:
+        raise SystemExit("The format-aware incoming-project router was not installed.")
+    required = (
+        "file.importAepDesktop", "file.importEffectCraftMobile",
+        "file.importAlightMotionProject", "file.importNodeVideoProject",
+        "file.importTimeline", "file.importLottie",
+    )
+    missing = [command for command in required if command not in menus_check]
+    if missing:
+        raise SystemExit("The incoming-project router is missing: " + ", ".join(missing))
+    if "effectcraft_ui_egui::menus::import_incoming_project(&mut self.inner, path)" not in shell:
+        raise SystemExit("The Android shell still bypasses the automatic project importer.")
+    print("Registered automatic external project import routing for AE, EffectCraft, AM, NodeVideo, CapCut, Lottie and timeline formats.")
+
+
 def main() -> None:
     effectcraft = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     builder = Path(os.environ["ARTCRAFT_DIR"]).resolve()
@@ -289,6 +409,7 @@ def main() -> None:
     patch_activity(builder)
     patch_rust_bridge(effectcraft)
     patch_frontend(effectcraft)
+    patch_incoming_project_dispatch(builder, effectcraft)
 
     manifest_generator = (builder / "lib/android_project.py").read_text(encoding="utf-8")
     if "EFFECTCRAFT_OPEN_SHARED_PROJECT_ZIP" not in manifest_generator:
@@ -304,7 +425,7 @@ def main() -> None:
     # Do not add another standalone button to the export dialog.
     print("Added the Android ZIP share bridge used by the unified Project Export selector.")
     print("The archive includes the .ecproj and collected footage; QQ and other targets receive a read-granted content URI.")
-    print("Incoming application/zip and application/x-zip-compressed ACTION_VIEW intents are registered for Ae and routed into the existing import inbox.")
+    print("All supported project extensions are registered with Android and routed into their existing Ae importers after staging.")
 
 
 if __name__ == "__main__":
