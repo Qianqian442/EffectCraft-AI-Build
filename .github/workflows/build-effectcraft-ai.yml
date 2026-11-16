@@ -73,6 +73,14 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate-main-workflow:
+    name: Validate shared Android/P2P integration
+    uses: ./.github/workflows/validate-main-workflow.yml
+
+  validate-sapphire-compat:
+    name: Validate built-in effect compatibility bundle
+    uses: ./.github/workflows/validate-sapphire-compat.yml
+
   validate-desktop-plugin-adapter:
     name: Validate desktop plug-in compatibility adapter
     uses: ./.github/workflows/validate-desktop-plugin-adapter.yml
@@ -121,7 +129,7 @@ jobs:
             .github/scripts/add_open_source_craft_plugins.py
 
   build:
-    needs: [validate-patches, validate-desktop-plugin-adapter]
+    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat]
     # Keep the main APK account client on direct HTTPS to the configured Cloudflare account server; do not route account traffic through P2P or public proxies.
     name: Build EffectCraft 0.21.1 with AI helper
     runs-on: ubuntu-22.04

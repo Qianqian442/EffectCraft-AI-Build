@@ -2,13 +2,7 @@ name: Validate main APK workflow and P2P integration
 # Runs on changes to the Android build and its source integrator.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/build-effectcraft-ai.yml'
-      - '.github/workflows/validate-main-workflow.yml'
-      - '.github/scripts/integrate_p2p_bridge.py'
-      - 'p2p-bridge/**'
+  workflow_call:
   workflow_dispatch:
 
 permissions:
