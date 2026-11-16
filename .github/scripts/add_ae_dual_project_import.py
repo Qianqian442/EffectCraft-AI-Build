@@ -81,12 +81,14 @@ def main() -> None:
             "register EffectCraft mobile-export project import",
         )
 
-    replace_once(
-        am_nv,
-        'let file = project_file.ok_or_else(|| err("该 ZIP 不包含自有工程 .ecproj/.ecprojx、NodeVideo .nv 或 Alight Motion XML 工程"))?;',
-        'let file = project_file.ok_or_else(|| err("该 ZIP 不包含自有工程 .ecproj/.ecprojx、NodeVideo .nv 或 Alight Motion XML 工程"))?;',
-        "explain supported project types in ZIP errors",
-    )
+    # The unified importer already has a current, format-aware ZIP diagnostic.
+    # Verify that diagnostic instead of trying to replace an obsolete message
+    # from an earlier importer revision.
+    am_nv_source = am_nv.read_text(encoding="utf-8")
+    if "let (_, file) = project_file.ok_or_else" not in am_nv_source:
+        raise SystemExit("The ZIP importer no longer reports the selected project file.")
+    if "该 ZIP 不包含可识别的 Ae、AM、NV、CapCut、Lottie 或时间轴工程文件" not in am_nv_source:
+        raise SystemExit("The ZIP importer is missing its current supported-project-format diagnostic.")
 
     frontend_source = frontend.read_text(encoding="utf-8")
     if '        "file.importAep" => ("path", Ask::Open(&["aep", "aepx"])),' not in frontend_source:
