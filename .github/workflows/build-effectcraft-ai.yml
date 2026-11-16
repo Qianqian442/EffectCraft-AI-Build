@@ -1208,6 +1208,7 @@ jobs:
           grep -Fq '("ec.key.chromakey", "Chroma Key", "色度键")' "source/effectcraft/crates/ui-egui/src/i18n/effects.rs"
           echo "Verified the Chroma Key effect, selectable screen-color presets and custom color picker are in the APK source."
           test -s "source/effectcraft/crates/ui-egui/src/android_gallery.rs"
+          grep -Fq "createGalleryStagingPath" "source/effectcraft/crates/ui-egui/src/android_gallery.rs"
           grep -Fq "EFFECTCRAFT_DEEPSEEK_SINGLE_APK_V1" "lib/build-common.sh"
           grep -Fq "init_android_ai_bridge" "lib/build-common.sh"
           grep -Fq "com.artcraft.effectcraft.aiassistant.PluginManagerActivity" "lib/android_project.py"
