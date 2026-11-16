@@ -184,33 +184,25 @@ def patch_am_effect_browser_button(effectcraft: Path) -> None:
     marker = "EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_BUTTON_V1"
     if marker in source:
         return
-    old = """    if fx.is_empty() {
+    old = """    p.text(pos2(hdr.min.x + 10.0, hdr.center().y), Align2::LEFT_CENTER, format!("{} • {}", comp_name, layer.name), Tokens::ui(11.5), t.text_dim);
+    p.line_segment([hdr.left_bottom(), hdr.right_bottom()], Stroke::new(1.0, t.separator));"""
+    new = """    p.text(pos2(hdr.min.x + 10.0, hdr.center().y), Align2::LEFT_CENTER, format!("{} • {}", comp_name, layer.name), Tokens::ui(11.5), t.text_dim);
+    // EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_BUTTON_V1
+    let add_effect_rect = Rect::from_min_size(pos2(hdr.max.x - 116.0, hdr.min.y + 2.0), vec2(108.0, 20.0));
+    let add_effect = ui.put(add_effect_rect, egui::Button::new(format!("＋ {}", crate::i18n::tr("Add Effect"))));
+    app.auto.add_response("effectControls.addEffect", &add_effect, "Add Effect");
+    if add_effect.clicked() {
+        app.show_panel(crate::dock::PanelKind::EffectsPresets);
+    }
+    p.line_segment([hdr.left_bottom(), hdr.right_bottom()], Stroke::new(1.0, t.separator));"""
+    new = """    if fx.is_empty() {
         bp.text(
             pos2(body.center().x, body.min.y + 40.0),
             Align2::CENTER_CENTER,
-            crate::i18n::tr("No effects. Drag one from Effects & Presets."),
+            crate::i18n::tr("No effects. Use Add Effect to browse the native effects library."),
             Tokens::ui(12.0),
             t.text_faint,
         );
-    }"""
-    new = """    if fx.is_empty() {
-        // EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_BUTTON_V1
-        bp.text(
-            pos2(body.center().x, body.min.y + 24.0),
-            Align2::CENTER_CENTER,
-            crate::i18n::tr("No effects added"),
-            Tokens::ui(12.0),
-            t.text_faint,
-        );
-        let add_rect = Rect::from_center_size(
-            pos2(body.center().x, body.min.y + 70.0),
-            vec2((body.width() - 24.0).max(120.0), 42.0),
-        );
-        let add = ui.put(add_rect, egui::Button::new(format!("＋ {}", crate::i18n::tr("Add Effect"))));
-        app.auto.add_response("effectControls.addEffect", &add, "Add Effect");
-        if add.clicked() {
-            app.show_panel(crate::dock::PanelKind::EffectsPresets);
-        }
     }"""
     source = replace_once(source, old, new, "AM direct access to the native Ae effect browser")
     path.write_text(source, encoding="utf-8")
