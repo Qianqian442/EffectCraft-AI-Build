@@ -136,9 +136,9 @@ fn diagnostics(report: &Value) -> Vec<(String, Vec<String>)> {
     const MAX_DETAILS: usize = 20;
     let mut result = Vec::new();
     for (key, title) in [
-        ("missingFootage", "Missing footage — relink these files before final render"),
-        ("missingFonts", "Missing fonts — fallback font will be used"),
-        ("limitations", "Reader limitations — these fields are not currently decoded"),
+        ("missingFootage", "缺失素材"),
+        ("missingFonts", "缺失字体"),
+        ("limitations", "解析器尚未读取的内容"),
     ] {
         let Some(values) = report[key].as_array() else { continue };
         if values.is_empty() {
@@ -151,6 +151,12 @@ fn diagnostics(report: &Value) -> Vec<(String, Vec<String>)> {
             .collect();
         if values.len() > MAX_DETAILS {
             details.push(format!("… and {} more", values.len() - MAX_DETAILS));
+        }
+        if key == "missingFootage" {
+            details.push("导入完成后，打开“文件 > 依赖项 > 重新链接缺失素材”，选择手机内部存储中包含素材的总文件夹。".to_string());
+            details.push("只自动匹配文件名唯一且媒体参数一致的素材；重名或参数不匹配的文件需要手动检查。".to_string());
+        } else if key == "missingFonts" {
+            details.push("文字会暂用替代字体显示；安装对应字体并重新打开工程后再检查。".to_string());
         }
         result.push((format!("{} ({})", tr(title), values.len()), details));
     }
@@ -278,10 +284,13 @@ fn imported_lines(report: &Value) -> Vec<String> {
         });
         let items = diagnostics(&report);
         assert_eq!(items.len(), 3);
-        assert!(items[0].0.starts_with("Missing footage"));
-        assert_eq!(items[0].1, vec!["D:/media/clip.mov".to_string()]);
-        assert!(items[1].0.starts_with("Missing fonts"));
-        assert_eq!(items[1].1, vec!["ExamplePS-Bold".to_string()]);
+        assert!(items[0].0.starts_with("缺失素材"));
+        assert_eq!(items[0].1[0], "D:/media/clip.mov");
+        assert!(items[0].1.iter().any(|line| line.contains("重新链接缺失素材")));
+        assert!(items[0].1.iter().any(|line| line.contains("文件名唯一")));
+        assert!(items[1].0.starts_with("缺失字体"));
+        assert_eq!(items[1].1[0], "ExamplePS-Bold");
+        assert!(items[1].1.iter().any(|line| line.contains("替代字体")));
         assert!(items[2].0.starts_with("Reader limitations"));
         assert_eq!(items[2].1, vec!["Frame blending is not decoded.".to_string()]);
     }
