@@ -55,6 +55,7 @@ on:
       - '.github/scripts/add_mobile_rsmb_controls.py'
       - '.github/scripts/add_effect_controls_crash_guard.py'
       - '.github/scripts/add_am_style_undo_redo.py'
+      - '.github/scripts/add_am_portrait_workspace.py'
       - '.github/scripts/ai_video_export.rs'
       - '.github/scripts/sapphire_compat_pack.rs'
       - '.github/scripts/build_sapphire_compat_pack.py'
@@ -653,6 +654,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_am_style_undo_redo.py
           python3 build-assets/.github/scripts/add_am_style_undo_redo.py
+
+      - name: Add persistent AM portrait editing workspace
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_am_portrait_workspace.py
+          python3 build-assets/.github/scripts/add_am_portrait_workspace.py
 
       - name: Rename all visible application branding to Ae
         env:
