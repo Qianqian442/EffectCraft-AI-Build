@@ -627,15 +627,19 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                     _ => None,
                 };
                 if let Some(kind) = cycle_kind {
-                    let params_id = android_cycle_params_id(current);
-                    let params = ctx.data(|data| data.get_temp::<AndroidCycleParams>(params_id))
-                        .unwrap_or_default();
-                    ctx.data_mut(|data| data.insert_temp(android_cycle_editor_id(), AndroidCycleEditor {
-                        segment: current,
-                        kind,
-                        params,
-                        open: true,
-                    }));
+                    if !current.numeric {
+                        app.ui.status = "周期曲线仅支持数值、位置、缩放等数值属性".into();
+                    } else {
+                        let params_id = android_cycle_params_id(current);
+                        let params = ctx.data(|data| data.get_temp::<AndroidCycleParams>(params_id))
+                            .unwrap_or_default();
+                        ctx.data_mut(|data| data.insert_temp(android_cycle_editor_id(), AndroidCycleEditor {
+                            segment: current,
+                            kind,
+                            params,
+                            open: true,
+                        }));
+                    }
                 } else {
                     android_apply_curve(app, current, curve);
                 }
