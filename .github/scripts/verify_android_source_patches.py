@@ -531,17 +531,39 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
 
 
 def verify_account_security(root: Path) -> None:
-    worker = (root.parent.parent / "cloudflare-worker/src/index.js")
-    if not worker.is_file():
-        worker = Path(os.environ.get("GITHUB_WORKSPACE", ".")) / "cloudflare-worker/src/index.js"
-    if not worker.is_file():
-        raise SystemExit("Cloudflare account worker source is missing; whitelist/ban protections cannot be verified.")
+    # The build checks out this repository as "build-assets", not at the workspace
+    # root. Prefer the explicit BUILD_ASSETS_DIR when set, while retaining the
+    # older root-level locations for local and legacy workflow invocations.
+    workspace = Path(os.environ.get("GITHUB_WORKSPACE", ".")).resolve()
+    assets_root = Path(os.environ.get("BUILD_ASSETS_DIR", str(workspace / "build-assets"))).resolve()
+    worker_candidates = (
+        root.parent.parent / "cloudflare-worker/src/index.js",
+        workspace / "cloudflare-worker/src/index.js",
+        assets_root / "cloudflare-worker/src/index.js",
+    )
+    worker = next((candidate for candidate in worker_candidates if candidate.is_file()), None)
+    if worker is None:
+        searched = ", ".join(str(candidate) for candidate in worker_candidates)
+        raise SystemExit(
+            "Cloudflare account worker source is missing; whitelist/ban protections cannot be verified. "
+            f"Searched: {searched}"
+        )
     cloud = worker.read_text(encoding="utf-8")
-    admin = (Path(os.environ.get("GITHUB_WORKSPACE", ".")) / "admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java").read_text(encoding="utf-8")
+
+    admin_relative = Path("admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java")
+    admin_candidates = (workspace / admin_relative, assets_root / admin_relative)
+    admin_path = next((candidate for candidate in admin_candidates if candidate.is_file()), None)
+    if admin_path is None:
+        searched = ", ".join(str(candidate) for candidate in admin_candidates)
+        raise SystemExit(f"Admin account controls source is missing. Searched: {searched}")
+    admin = admin_path.read_text(encoding="utf-8")
+
     for token in ("/v1/whitelist", "/v1/admin/whitelist", "/v1/admin/whitelist/remove", "requireWhitelistedIdentifiers", "ensureNotBanned", "banned_until"):
-        if token not in cloud: raise SystemExit(f"Cloudflare account security route/check is missing: {token}")
+        if token not in cloud:
+            raise SystemExit(f"Cloudflare account security route/check is missing: {token}")
     for token in ("注册 / 登录白名单", "加入白名单", "移除白名单", "封禁", "解禁", "/ban"):
-        if token not in admin: raise SystemExit(f"Admin account controls are missing: {token}")
+        if token not in admin:
+            raise SystemExit(f"Admin account controls are missing: {token}")
     print("Verified server-enforced whitelist, admin add/remove, login/register checks, and ban/unban controls.")
 
 def main() -> None:
