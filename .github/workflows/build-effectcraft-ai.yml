@@ -132,6 +132,7 @@ jobs:
             .github/scripts/add_effect_controls_crash_guard.py \
             .github/scripts/add_am_style_undo_redo.py \
             .github/scripts/add_am_mobile_layout.py \
+            .github/scripts/add_home_layout_switch.py \
             .github/scripts/pin_android_signing_certificate.py \
             .github/scripts/add_open_source_craft_plugins.py
 
@@ -668,6 +669,17 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_am_mobile_layout.py
           python3 build-assets/.github/scripts/add_am_mobile_layout.py
+
+      - name: Add Home layout switch and remove obsolete code-repository shortcut
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_home_layout_switch.py
+          python3 build-assets/.github/scripts/add_home_layout_switch.py
+          HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
+          grep -Fq "EFFECTCRAFT_HOME_LAYOUT_SWITCH_V1" "$HOME_RS"
+          ! grep -Fq 'Icon::Code, "EffectCraft on GitHub", "help.github"' "$HOME_RS"
+          echo "Verified Home layout switch is wired and obsolete code-repository shortcut is absent."
 
       - name: Rename all visible application branding to Ae
         env:
