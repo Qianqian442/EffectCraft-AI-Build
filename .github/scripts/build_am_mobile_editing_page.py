@@ -291,9 +291,22 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let row_bg = if selected { t.row_selected } else if index % 2 == 0 { t.panel_bg } else { t.app_bg };
         p.rect_filled(row.intersect(content), 0.0, row_bg);
         p.line_segment([row.left_bottom(), row.right_bottom()], Stroke::new(1.0, t.separator.gamma_multiply(0.45)));
-        let name_rect = Rect::from_min_max(row.min, pos2(row.min.x + label_w, row.max.y));
+        let eye_rect = Rect::from_min_size(pos2(row.min.x + 3.0, row.min.y + 6.0), vec2(20.0, 24.0));
+        let eye_response = ui.interact(eye_rect, Id::new(("am-mobile-layer-eye", layer.id.0)), Sense::click());
+        p.text(eye_rect.center(), Align2::CENTER_CENTER, if layer.switches.video { "◉" } else { "○" }, Tokens::ui(12.0), if layer.switches.video { t.text } else { t.text_faint });
+        app.auto.add_response(&format!("am.timeline.eye.{}", layer.id.0), &eye_response, "切换图层可见性");
+        if eye_response.clicked() {
+            if let Err(error) = app.session.execute("layer.setSwitch", json!({
+                "layers": [layer.id.0],
+                "switch": "video",
+                "value": !layer.switches.video
+            })) {
+                app.ui.status = error.to_string();
+            }
+        }
+        let name_rect = Rect::from_min_max(pos2(row.min.x + 25.0, row.min.y), pos2(row.min.x + label_w, row.max.y));
         p.with_clip_rect(name_rect).text(
-            name_rect.shrink2(vec2(7.0, 0.0)).left_center(),
+            name_rect.shrink2(vec2(3.0, 0.0)).left_center(),
             Align2::LEFT_CENTER,
             layer.name.clone(),
             Tokens::ui(10.5),
@@ -412,11 +425,11 @@ fn bottom_tools(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     p.rect_filled(rect, 0.0, t.header_bg);
     p.line_segment([rect.left_top(), rect.right_top()], Stroke::new(1.0, t.separator));
     let buttons = [
-        ("素材", "media"),
-        ("文字", "text"),
-        ("形状", "shape"),
+        ("＋ 添加", "add"),
         ("效果", "effects"),
+        ("变换", "controls"),
         ("属性", "properties"),
+        ("项目", "project"),
     ];
     let width = rect.width() / buttons.len() as f32;
     for (i, (label, action)) in buttons.into_iter().enumerate() {
@@ -427,11 +440,11 @@ fn bottom_tools(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         app.auto.add_response(&format!("am.tools.{action}"), &response, label);
         if response.clicked() {
             match action {
-                "media" => invoke(app, ui.ctx(), "file.import", json!({"picturesAndVideos": true})),
-                "text" => invoke(app, ui.ctx(), "layer.newText", json!({})),
-                "shape" => invoke(app, ui.ctx(), "layer.newShape", json!({"kind": "rect"})),
+                "add" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "add".to_string())); }
                 "effects" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "effects".to_string())); }
+                "controls" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "controls".to_string())); }
                 "properties" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "properties".to_string())); }
+                "project" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "project".to_string())); }
                 _ => {}
             }
         }
@@ -442,10 +455,11 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let id = Id::new("am-mobile-tool-drawer");
     let Some(kind) = ui.ctx().data(|d| d.get_temp::<String>(id)) else { return };
     let panel = match kind.as_str() {
-        "effects" => PanelKind::EffectsPresets,
-        "properties" => PanelKind::Properties,
-        "controls" => PanelKind::EffectControls,
-        "project" => PanelKind::Project,
+        "effects" => Some(PanelKind::EffectsPresets),
+        "properties" => Some(PanelKind::Properties),
+        "controls" => Some(PanelKind::EffectControls),
+        "project" => Some(PanelKind::Project),
+        "add" => None,
         _ => return,
     };
     let t = app.tokens;
@@ -454,15 +468,46 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let p = ui.painter().with_clip_rect(rect);
     p.rect_filled(rect, 10.0, t.panel_bg);
     p.line_segment([header.left_bottom(), header.right_bottom()], Stroke::new(1.0, t.separator));
-    p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, kind.as_str(), Tokens::semibold(11.0), t.text);
+    let title = if kind == "add" { "添加图层" } else { kind.as_str() };
+    p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, title, Tokens::semibold(11.0), t.text);
     let close = Rect::from_min_size(pos2(header.max.x - 36.0, header.min.y + 2.0), vec2(32.0, 28.0));
     let response = ui.put(close, egui::Button::new("×").min_size(close.size()));
     if response.clicked() {
         ui.ctx().data_mut(|d| d.remove::<String>(id));
         return;
     }
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
-    crate::panels::show(app, &mut child, panel, body);
+    if kind == "add" {
+        let actions = [
+            ("照片 / 视频", "media"),
+            ("音频", "audio"),
+            ("文字", "text"),
+            ("形状", "shape"),
+            ("空对象", "null"),
+        ];
+        let width = (body.width() - 32.0) / actions.len() as f32;
+        for (index, (label, action)) in actions.into_iter().enumerate() {
+            let r = Rect::from_min_size(
+                pos2(body.min.x + 6.0 + index as f32 * width, body.min.y + 18.0),
+                vec2((width - 6.0).max(1.0), 48.0),
+            );
+            let response = ui.put(r, egui::Button::new(label).min_size(r.size()));
+            app.auto.add_response(&format!("am.addLayer.{action}"), &response, label);
+            if response.clicked() {
+                match action {
+                    "media" => invoke(app, ui.ctx(), "file.import", json!({"picturesAndVideos": true})),
+                    "audio" => invoke(app, ui.ctx(), "file.import", json!({})),
+                    "text" => invoke(app, ui.ctx(), "layer.newText", json!({})),
+                    "shape" => invoke(app, ui.ctx(), "layer.newShape", json!({"kind": "rect"})),
+                    "null" => invoke(app, ui.ctx(), "layer.newNull", json!({})),
+                    _ => {}
+                }
+                ui.ctx().data_mut(|d| d.remove::<String>(id));
+            }
+        }
+    } else if let Some(panel) = panel {
+        let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
+        crate::panels::show(app, &mut child, panel, body);
+    }
 }
 
 pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
@@ -606,6 +651,10 @@ def verify(root: Path) -> None:
         "time.set",
         "fn bottom_tools",
         "fn tool_drawer",
+        "am.timeline.eye.",
+        "am.addLayer.",
+        "照片 / 视频",
+        "音频",
     ):
         if token not in module:
             raise SystemExit(f"Independent AM editor module missing feature: {token}")
