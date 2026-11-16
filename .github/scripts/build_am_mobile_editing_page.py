@@ -384,6 +384,77 @@ def patch_timeline(root: Path) -> None:
             raise SystemExit(f"AM mobile Timeline verification missing: {token}")
 
 
+
+def patch_footer(root: Path) -> None:
+    """Replace the desktop-only footer label with AM's quick editing actions."""
+    path = root / "crates/ui-egui/src/panels/timeline.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_AM_MOBILE_EDITING_FOOTER_V1"
+    if marker not in source:
+        old = '''    let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));
+    let tresp = ui.interact(tgl, egui::Id::unique("tl-toggle-modes"), Sense::click());
+    p.text(
+        tgl.left_center(),
+        Align2::LEFT_CENTER,
+        crate::i18n::tr("Toggle Switches / Modes"),
+        Tokens::ui(11.0),
+        if tresp.hovered() { t.text } else { t.text_dim },
+    );
+    app.auto.add("timeline.toggleSwitchesModes", tgl, "Toggle Switches / Modes");
+    if tresp.clicked() {
+        app.ui.timeline.show_modes = !app.ui.timeline.show_modes;
+    }'''
+        new = r'''    if app.ui.workspace == "AM 竖屏" {
+        // EFFECTCRAFT_AM_MOBILE_EDITING_FOOTER_V1
+        // Keep these quick actions left of the native timeline zoom controls.
+        let buttons = [
+            ("＋素材", "media"),
+            ("效果", "effects"),
+            ("属性", "properties"),
+        ];
+        for (index, (label, kind)) in buttons.into_iter().enumerate() {
+            let r = Rect::from_min_size(
+                pos2(footer.min.x + 5.0 + index as f32 * 42.0, footer.min.y + 3.0),
+                vec2(39.0, 18.0),
+            );
+            let response = ui.interact(r, egui::Id::new(("timeline.amMobileAction", kind)), Sense::click());
+            p.rect_filled(r, 4.0, if response.hovered() { t.hover } else { t.field_bg });
+            p.text(r.center(), Align2::CENTER_CENTER, label, Tokens::ui(9.5), if response.hovered() { t.text } else { t.text_dim });
+            app.auto.add_response(&format!("timeline.amMobileAction.{kind}"), &response, label);
+            if response.clicked() {
+                match kind {
+                    "media" => {
+                        if let Err(error) = crate::menus::invoke(app, ui.ctx(), "file.import", json!({"picturesAndVideos": true})) {
+                            app.ui.status = error;
+                        }
+                    }
+                    "effects" => app.show_panel(crate::dock::PanelKind::EffectsPresets),
+                    "properties" => app.show_panel(crate::dock::PanelKind::Properties),
+                    _ => {}
+                }
+            }
+        }
+    } else {
+        let tgl = Rect::from_min_size(pos2(footer.min.x + 10.0, footer.min.y + 3.0), vec2(150.0, 18.0));
+        let tresp = ui.interact(tgl, egui::Id::unique("tl-toggle-modes"), Sense::click());
+        p.text(
+            tgl.left_center(),
+            Align2::LEFT_CENTER,
+            crate::i18n::tr("Toggle Switches / Modes"),
+            Tokens::ui(11.0),
+            if tresp.hovered() { t.text } else { t.text_dim },
+        );
+        app.auto.add("timeline.toggleSwitchesModes", tgl, "Toggle Switches / Modes");
+        if tresp.clicked() {
+            app.ui.timeline.show_modes = !app.ui.timeline.show_modes;
+        }
+    }'''
+        source = replace_once(source, old, new, "install the AM quick action footer")
+        path.write_text(source, encoding="utf-8")
+    if marker not in path.read_text(encoding="utf-8"):
+        raise SystemExit("AM mobile footer actions were not installed.")
+
+
 def verify(root: Path) -> None:
     dock = (root / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
     header = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
@@ -396,6 +467,7 @@ def verify(root: Path) -> None:
         (timeline, TIMELINE_MARKER),
         (timeline, "timeline.amMobileTransport."),
         (timeline, "timeline.amMobileAction."),
+        (timeline, "EFFECTCRAFT_AM_MOBILE_EDITING_FOOTER_V1"),
         (window, "EFFECTCRAFT_AM_CANONICAL_MOBILE_DOCK_RESTORE_V1"),
         (app, STARTUP_MARKER),
         (header, "export_dialog(app, ui);"),
@@ -417,6 +489,7 @@ def main() -> None:
     patch_startup(root)
     patch_header(root)
     patch_timeline(root)
+    patch_footer(root)
     verify(root)
 
 
