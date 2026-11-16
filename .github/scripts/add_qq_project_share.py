@@ -315,7 +315,7 @@ def patch_file_associations(builder: Path) -> None:
     if '"rar": ("application/vnd.rar"' not in source:
         source = once(source, "EXT_MIME = {", rar_mimes, "ZIP/RAR MIME associations")
     # Preserve every existing Ae-associated extension and append the supported project types.
-    association = re.search(r'(?ms)^(\\s*"effectcraft"\\s*:\\s*)\\[(.*?)\\](\\s*,)', source)
+    association = re.search(r'(?ms)^(\s*"effectcraft"\s*:\s*)\[(.*?)\](\s*,)', source)
     if association is None:
         raise SystemExit("Could not find the Ae file-association list in lib/file_associations.py")
     extensions = re.findall(r'"([^"]+)"', association.group(2))

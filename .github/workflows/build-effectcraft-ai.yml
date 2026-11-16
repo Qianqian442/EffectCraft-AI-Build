@@ -716,6 +716,12 @@ jobs:
         with:
           targets: aarch64-linux-android, wasm32-unknown-unknown
 
+      - name: Run WASM effect stability regression tests
+        working-directory: artcraft/source/effectcraft
+        run: |
+          set -euo pipefail
+          cargo test -p effectcraft-plugin --features wasm --lib -- --test-threads=1
+
       - name: Build built-in Sapphire-compatible WASM effects
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
