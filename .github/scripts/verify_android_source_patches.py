@@ -318,7 +318,17 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     aep_loss_guard = (root / "crates/ui-egui/src/panels/aep_losses.rs").read_text(encoding="utf-8")
     if '"file.importAepDesktop"' not in aep_loss_guard:
         raise SystemExit("The dedicated desktop AE import entry bypasses the original loss-confirmation guard.")
-    print("Verified separate desktop AE and EffectCraft mobile-export import entries; mobile packages use the native .ecproj reader.")
+    for diagnostic in (
+        "fn needs_prompt(report: &Value)",
+        "fn diagnostics(report: &Value)",
+        '"missingFootage"',
+        '"missingFonts"',
+        '"limitations"',
+        "for (head, details) in diagnostics(&report)",
+    ):
+        if diagnostic not in aep_loss_guard:
+            raise SystemExit(f"The AE import review dialog is missing a required diagnostic: {diagnostic}")
+    print("Verified separate desktop AE and mobile project imports, plus missing-media/font/parser-limit diagnostics.")
     import_project_command = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in import_project_command:
         raise SystemExit("The native Project importer command was removed instead of relocated.")
