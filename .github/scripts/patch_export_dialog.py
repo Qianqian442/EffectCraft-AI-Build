@@ -319,10 +319,10 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                             .and_then(|item| app.session.resolve_output(item))
                             .unwrap_or_else(|| "EffectCraft.mp4".to_string());
 
-                        // The Android SAF hook routes video Save requests to a private staging path
-                        // automatically; MediaStore then publishes the completed file to DCIM/EffectCraft.
-                        match app.hooks.save_dialog(&default_output) {
-                            Some(Some(path)) if !path.trim().is_empty() => {
+                        // EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1
+                        // Reserve a private temporary path directly; video export must not open Android's Save dialog.
+                        match effectcraft_android_video_staging_path(&default_output) {
+                            Ok(path) => {
                                 match crate::menus::invoke(
                                     app,
                                     &ctx,
@@ -381,21 +381,12 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                                     }
                                 }
                             }
-                            Some(_) => {
+                            Err(error) => {
                                 let _ = crate::menus::invoke(
                                     app, &ctx, "renderQueue.setRender",
                                     json!({"item": item_id, "render": false}),
                                 );
-                                app.ui.status = "视频暂存操作未完成，视频没有开始导出。".into();
-                                open = false;
-                            }
-                            None => {
-                                let _ = crate::menus::invoke(
-                                    app, &ctx, "renderQueue.setRender",
-                                    json!({"item": item_id, "render": false}),
-                                );
-                                app.show_panel(crate::dock::PanelKind::RenderQueue);
-                                app.ui.status = "未能创建视频暂存文件，导出任务已暂停。请检查设备存储空间后重试。".into();
+                                app.ui.status = format!("无法准备视频暂存文件：{error}");
                                 open = false;
                             }
                         }
@@ -608,6 +599,46 @@ fn effectcraft_export_dimensions(source_width: u32, source_height: u32, resoluti
 
 if "fn effectcraft_export_dimensions(" not in header:
     header = header.rstrip() + "\n\n" + dimension_helper.strip() + "\n"
+
+
+staging_helper = r"""
+/// EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1_HELPER
+/// Use a private app temporary directory as the render output, then publish the completed
+/// file to Android MediaStore. This avoids the crash-prone system Save document picker.
+fn effectcraft_android_video_staging_path(default_output: &str) -> Result<String, String> {
+    let source = std::path::Path::new(default_output);
+    let name = source.file_name()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("EffectCraft.mp4");
+    let stem = std::path::Path::new(name).file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("EffectCraft");
+    let extension = std::path::Path::new(name).extension()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("mp4");
+    let directory = std::env::temp_dir().join("EffectCraftExports");
+    std::fs::create_dir_all(&directory)
+        .map_err(|error| format!("无法创建视频暂存目录：{error}"))?;
+
+    for suffix in 0..10_000_u32 {
+        let filename = if suffix == 0 {
+            name.to_string()
+        } else {
+            format!("{stem}_{suffix}.{extension}")
+        };
+        let candidate = directory.join(filename);
+        if !candidate.exists() {
+            return Ok(candidate.to_string_lossy().into_owned());
+        }
+    }
+    Err("视频暂存目录中同名文件过多，请稍后重试。".to_string())
+}
+"""
+if "fn effectcraft_android_video_staging_path(" not in header:
+    header = header.rstrip() + "\\n\\n" + staging_helper.strip() + "\\n"
 
 header_path.write_text(header)
 
