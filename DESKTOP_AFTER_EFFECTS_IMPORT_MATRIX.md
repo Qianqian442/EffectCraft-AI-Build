@@ -33,7 +33,7 @@ The authoritative item-by-item list and its test notes live in the pinned source
 
 ### Data not currently decoded or not imported
 
-- Frame blending, 3D material options, audio levels and guide data.
+- Frame blending, 3D material options and audio levels. Guide-layer state is decoded by the current importer and must not be counted as an unsupported field.
 - Additional mask attributes such as mask colour, lock, feather falloff, mask motion blur and RotoBezier state.
 - Per-character 3D text, text-on-a-path data and several unrecognised text style slots.
 - Source Text keyframes and unsupported text animator selectors/properties, including wiggly/expression selectors and additional character controls.
