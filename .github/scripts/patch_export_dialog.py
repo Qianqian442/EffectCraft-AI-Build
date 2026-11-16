@@ -638,7 +638,7 @@ fn effectcraft_android_video_staging_path(default_output: &str) -> Result<String
 }
 """
 if "fn effectcraft_android_video_staging_path(" not in header:
-    header = header.rstrip() + "\\n\\n" + staging_helper.strip() + "\\n"
+    header = header.rstrip() + "\n\n" + staging_helper.strip() + "\n"
 
 header_path.write_text(header)
 
