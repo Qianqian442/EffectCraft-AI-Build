@@ -312,36 +312,125 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
 
 def patch_workspace_tabs(effectcraft: Path) -> None:
-    """Use a clearly labelled Nova-style Layout menu for workspace switching."""
+    """Put the two-mode layout chooser on its own editing-only toolbar row."""
     path = effectcraft / "crates/ui-egui/src/header.rs"
     source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_NOVA_LAYOUT_MENU_V2"
+    marker = "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1"
     if marker not in source:
         source = replace_once(
             source,
-            '''    let more = Rect::from_min_max(pos2(rx - 20.0, cy - 11.0), pos2(rx, cy + 11.0));
-    let mresp = ui.interact(more, egui::Id::unique("ws-more"), Sense::click());
-    p.text(more.center(), Align2::CENTER_CENTER, "»", Tokens::ui(15.0), if mresp.hovered() { t.text } else { t.text_dim });''',
-            '''    // EFFECTCRAFT_NOVA_LAYOUT_MENU_V2
-    // Match Nova Editor: display the active workspace name and open the selectable workspace list.
+            "    let cy = rect.center().y;\n",
+            "    let cy = rect.min.y + 20.0;\n",
+            "keep the original tools in the first 40px toolbar row",
+        )
+        source = replace_once(
+            source,
+            "    right_side(app, ui, &p, rect, x, cy);\n",
+            """    right_side(app, ui, &p, rect, x, cy);
+    // EFFECTCRAFT_NOVA_LAYOUT_MENU_V2
+    // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1
+    // The layout selector owns a separate row; it never shares hit targets with tool buttons.
+    if !app.ui.start_screen {
+        let layout_row = Rect::from_min_max(
+            pos2(rect.min.x, rect.min.y + 40.0),
+            rect.max,
+        );
+        layout_switch_row(app, ui, &p, layout_row);
+    }
+""",
+            "editing-only reserved layout-switch row",
+        )
+        source = replace_once(
+            source,
+            """    let rx = workspace_menu(app, ui, p, rx, cy);
+    workspace_tabs(app, ui, p, rx, left, cy);""",
+            """    // Existing workspace tabs remain available; the Ae/AM mode switch is on row two.
+    workspace_tabs(app, ui, p, rx, left, cy);""",
+            "keep legacy workspace tabs separate from the new layout chooser",
+        )
+        anchor = "/// The Discord pill and the GitHub and website buttons, right to left from rx; returns the new rx."
+        code = r'''
+// Show the active Ae/AM mode in a dedicated row below the original tool controls.
+fn workspace_label(workspace: &str) -> &'static str {
+    if workspace == "AM 竖屏" { "AM 竖屏布局" } else { "Ae 原布局" }
+}
+
+fn layout_switch_row(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Painter, rect: Rect) {
+    let t = app.tokens;
+    let cy = rect.center().y;
+    p.line_segment(
+        [rect.left_top(), rect.right_top()],
+        Stroke::new(1.0, t.separator),
+    );
+    p.text(
+        pos2(rect.min.x + 12.0, cy),
+        Align2::LEFT_CENTER,
+        "编辑布局",
+        Tokens::ui(11.0),
+        t.text_dim,
+    );
+
     let layout_label = format!("{} ▾", workspace_label(&app.ui.workspace));
-    let label_galley = p.layout_no_wrap(layout_label, Tokens::ui(11.5), t.text_dim);
-    let menu_width = (label_galley.size().x + 18.0).clamp(68.0, 118.0);
-    let more = Rect::from_min_max(pos2(rx - menu_width, cy - 12.0), pos2(rx, cy + 12.0));
-    let mresp = ui.interact(more, egui::Id::unique("ws-more"), Sense::click());
+    let label_galley = p.layout_no_wrap(layout_label, Tokens::ui(12.0), t.text_dim);
+    let menu_width = (label_galley.size().x + 24.0).clamp(104.0, 148.0);
+    let more = Rect::from_min_max(
+        pos2(rect.max.x - menu_width - 10.0, cy - 11.0),
+        pos2(rect.max.x - 10.0, cy + 11.0),
+    );
+    let mresp = ui.interact(more, egui::Id::new("ae-layout-switch"), Sense::click());
     p.rect_filled(more, 5.0, if mresp.hovered() { t.hover } else { t.panel_bg });
     p.galley_with_override_text_color(
-        pos2(more.center().x - label_galley.size().x / 2.0, cy - label_galley.size().y / 2.0),
+        pos2(
+            more.center().x - label_galley.size().x / 2.0,
+            cy - label_galley.size().y / 2.0,
+        ),
         label_galley,
         if mresp.hovered() { t.text } else { t.text_dim },
-    );''',
-            "Nova-style active-layout dropdown",
+    );
+    app.auto.add("header.layoutSwitch", more, "Switch between Ae and AM layouts");
 
-        )
+    let current = app.ui.workspace.clone();
+    crate::widgets::context_menu(&mresp, |ui| ws_menu(app, ui, &current));
+    let popup_id = egui::Id::new("ae-layout-switch-popup");
+    if mresp.clicked() {
+        widgets::open_popup(ui, popup_id);
+    }
+    let names = ["Ae 原布局".to_string(), "AM 竖屏布局".to_string()];
+    let selected = if app.ui.workspace == "AM 竖屏" { 1 } else { 0 };
+    if let Some(index) = widgets::popup_menu(
+        ui,
+        popup_id,
+        more.left_bottom() - vec2(140.0, 0.0),
+        &names,
+        Some(selected),
+    ) {
+        app.set_workspace(if index == 1 { "AM 竖屏" } else { "Default" });
+    }
+}
+
+'''
+        if anchor not in source:
+            raise SystemExit("Could not find the header insertion point for the reserved layout row.")
+        source = source.replace(anchor, code + anchor, 1)
         path.write_text(source, encoding="utf-8")
+
     if marker not in path.read_text(encoding="utf-8"):
-        raise SystemExit("Nova-style active-layout dropdown was not installed.")
-    print("Added a Nova-style dropdown showing the active layout and listing all saved workspaces.")
+        raise SystemExit("The dedicated editing-only Ae/AM layout row was not installed.")
+
+    frame = effectcraft / "crates/ui-egui/src/app/frame.rs"
+    frame_source = frame.read_text(encoding="utf-8")
+    frame_marker = "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1"
+    if frame_marker not in frame_source:
+        frame_source = replace_once(
+            frame_source,
+            "        let header_h = 40.0;\n",
+            "        let header_h = if self.ui.start_screen { 40.0 } else { 64.0 }; // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1\n",
+            "reserve 24px for the separate editor-only layout row",
+        )
+        frame.write_text(frame_source, encoding="utf-8")
+    if frame_marker not in frame.read_text(encoding="utf-8"):
+        raise SystemExit("The editor header did not reserve space for the layout-switch row.")
+    print("Added a separate Ae/AM layout row below the editor tools; Home remains unchanged.")
 
 def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
@@ -579,7 +668,14 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
     header = (effectcraft / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
     if "export_progress_dialog(app, ui);" not in header:
         raise SystemExit("AM layout patch detected a missing original export UI.")
-    print("Verified AM layout leaves the existing import router and original export UI connected.")
+    if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" not in header:
+        raise SystemExit("The dedicated Ae/AM layout selector row is missing.")
+    if "if !app.ui.start_screen" not in header:
+        raise SystemExit("The layout selector must remain hidden on the Home screen.")
+    frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
+    if "let header_h = if self.ui.start_screen { 40.0 } else { 64.0 };" not in frame:
+        raise SystemExit("The editor header did not reserve a separate row for the layout selector.")
+    print("Verified AM layout leaves the existing import router/export UI intact and reserves a non-overlapping editing-only selector row.")
 
 
 def main() -> None:
