@@ -314,14 +314,20 @@ def patch_file_associations(builder: Path) -> None:
 '''
     if '"rar": ("application/vnd.rar"' not in source:
         source = once(source, "EXT_MIME = {", rar_mimes, "ZIP/RAR MIME associations")
-    old = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate"],'
-    new = '''    "effectcraft": [
+    # Preserve every existing Ae-associated extension and append the supported project types.
+    association = re.search(r'(?ms)^(\\s*"effectcraft"\\s*:\\s*)\\[(.*?)\\](\\s*,)', source)
+    if association is None:
+        raise SystemExit("Could not find the Ae file-association list in lib/file_associations.py")
+    extensions = re.findall(r'"([^"]+)"', association.group(2))
+    for extension in (
         "ecproj", "ecprojx", "ectemplate",
         "aep", "aepx", "alight", "xml", "nv", "json", "zip", "rar",
         "lottie", "fcpxml", "otio", "edl", "aaf", "omf",
-    ],'''
-    if '"lottie", "fcpxml", "otio"' not in source:
-        source = once(source, old, new, "Ae project file associations")
+    ):
+        if extension not in extensions:
+            extensions.append(extension)
+    replacement = association.group(1) + "[" + ", ".join(f'"{extension}"' for extension in extensions) + "]" + association.group(3)
+    source = source[:association.start()] + replacement + source[association.end():]
     path.write_text(source, encoding="utf-8")
 
 
