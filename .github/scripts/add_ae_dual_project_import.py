@@ -206,7 +206,7 @@ fn imported_lines(report: &Value) -> Vec<String> {
     )
     replace_once(
         losses,
-        '        let text = tr("Some parts of this project cannot be imported exactly (left out or changed):");'
+        '        let text = tr("Some parts of this project cannot be imported exactly (left out or changed):");',
         '        let text = tr("Review items that may be missing, substituted, or not fully supported before importing:");',
         "make the import-review heading cover missing and substituted content",
     )
