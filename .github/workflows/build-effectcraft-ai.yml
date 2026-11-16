@@ -274,11 +274,16 @@ jobs:
           from pathlib import Path
           p = Path(os.environ["EFFECTCRAFT_DIR"]) / "crates/ui-egui/src/ai_assistant.rs"
           s = p.read_text()
-          old = 'const DEFAULT_CHAT_MODEL: &str = "Qwen/Qwen3-8B";'
+          import re
           new = 'const DEFAULT_CHAT_MODEL: &str = "deepseek-ai/DeepSeek-R1-0528-Qwen3-8B";'
-          if old not in s:
-              raise SystemExit("Expected default chat model declaration was not found")
-          p.write_text(s.replace(old, new, 1))
+          pattern = r'const DEFAULT_CHAT_MODEL: &str = "[^"]+";'
+          updated, count = re.subn(pattern, new, s, count=1)
+          if count == 1:
+              p.write_text(updated)
+          elif 'deepseek-ai/DeepSeek-R1-0528-Qwen3-8B' in s:
+              print("DeepSeek chat model is already configured by the source integration.")
+          else:
+              raise SystemExit("No recognized default chat model declaration; preserving source rather than guessing.")
           print("Configured DeepSeek 8B chat and DeepSeek-OCR image recognition.")
           PY
 
