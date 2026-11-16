@@ -34,6 +34,36 @@ fn with_vm<T>(f: impl FnOnce(&jni::vm::JavaVM) -> Result<T, String>) -> Result<T
 }
 
 #[cfg(target_os = "android")]
+pub(crate) fn staging_path(name: &str) -> Result<String, String> {
+    let path = with_vm(|vm| {
+        vm.attach_current_thread(|env| -> jni::errors::Result<String> {
+            let name = env.new_string(name)?;
+            let object = env.call_static_method(
+                jni::jni_str!("com/artcraft/effectcraft/EffectCraftActivity"),
+                jni::jni_str!("createGalleryStagingPath"),
+                jni::jni_sig!("(Ljava/lang/String;)Ljava/lang/String;"),
+                &[jni::objects::JValue::Object(&name)],
+            )?.l()?;
+            if object.is_null() {
+                return Ok(String::new());
+            }
+            let value = env.as_cast::<jni::objects::JString>(&object)?;
+            Ok(value.to_string())
+        }).map_err(|error| error.to_string())
+    })?;
+    if path.trim().is_empty() {
+        Err("Android 未能创建应用私有视频暂存路径。".into())
+    } else {
+        Ok(path)
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+pub(crate) fn staging_path(_name: &str) -> Result<String, String> {
+    Err("视频暂存路径仅在 Android 应用内可用。".into())
+}
+
+#[cfg(target_os = "android")]
 pub(crate) fn start_publish(path: &str, request_id: &str) -> Result<(), String> {
     with_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<()> {
@@ -101,6 +131,35 @@ JAVA_BRIDGE = r'''
     // EFFECTCRAFT_ANDROID_MEDIASTORE_GALLERY_V1
     private static volatile __CLASS__ galleryActivity;
     private static final ConcurrentHashMap<String, String> galleryPublishResults = new ConcurrentHashMap<>();
+
+    public static String createGalleryStagingPath(String requestedName) {
+        __CLASS__ activity = galleryActivity;
+        if (activity == null) {
+            throw new IllegalStateException("EffectCraft 尚未准备好视频暂存目录。");
+        }
+        String requested = requestedName == null ? "EffectCraft.mp4" : requestedName;
+        String name = new File(requested).getName();
+        if (name == null || name.trim().isEmpty()) name = "EffectCraft.mp4";
+        int dot = name.lastIndexOf('.');
+        String stem = dot > 0 ? name.substring(0, dot) : name;
+        String extension = dot > 0 && dot < name.length() - 1 ? name.substring(dot + 1) : "mp4";
+
+        File base = activity.getExternalCacheDir();
+        if (base == null) base = activity.getCacheDir();
+        File directory = new File(base, "EffectCraftExports");
+        if ((!directory.exists() && !directory.mkdirs()) || !directory.canWrite()) {
+            directory = new File(activity.getCacheDir(), "EffectCraftExports");
+            if ((!directory.exists() && !directory.mkdirs()) || !directory.canWrite()) {
+                throw new IllegalStateException("无法写入应用私有视频暂存目录，请检查手机剩余存储空间。");
+            }
+        }
+        for (int suffix = 0; suffix < 10000; suffix++) {
+            String filename = suffix == 0 ? name : stem + "_" + suffix + "." + extension;
+            File candidate = new File(directory, filename);
+            if (!candidate.exists()) return candidate.getAbsolutePath();
+        }
+        throw new IllegalStateException("视频暂存目录中同名文件过多，请稍后重试。");
+    }
 
     public static void startGalleryPublish(String sourcePath, String requestId) {
         __CLASS__ activity = galleryActivity;
