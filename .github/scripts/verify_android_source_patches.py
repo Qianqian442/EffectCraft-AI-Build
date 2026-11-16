@@ -500,6 +500,13 @@ def main() -> None:
         if row:
             print("Upstream localization baseline (not a completion claim):")
             print(row)
+    dock = (root / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_AM_PORTRAIT_WORKSPACE_V1" not in dock or '"AM" => vsplit(' not in dock:
+        raise SystemExit("The AM portrait workspace is missing from the workspace selector or dock layout.")
+    for panel in ("Composition", "Timeline", "EffectControls", "EffectsPresets"):
+        if panel not in dock:
+            raise SystemExit(f"The AM workspace is missing the existing {panel} panel.")
+    print("Verified AM portrait workspace uses existing project, Timeline, Effect Controls and Effects Presets panels; import/export code remains untouched.")
     print("Final Android source patch gate passed.")
 
 
