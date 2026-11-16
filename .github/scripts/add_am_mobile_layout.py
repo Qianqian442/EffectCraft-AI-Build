@@ -154,6 +154,29 @@ def patch_dock(effectcraft: Path) -> None:
         raise SystemExit("AM portrait workspace was not registered.")
 
 
+def patch_touch_trim_handles(effectcraft: Path) -> None:
+    """Make the existing layer In/Out drag zones reliably touchable on Android."""
+    path = effectcraft / "crates/ui-egui/src/panels/timeline.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1"
+    if marker in source:
+        return
+    old = """const TRIM_OUTSIDE: f32 = 4.0;
+const TRIM_INSIDE: f32 = 5.0;"""
+    new = """// EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1
+// Keep desktop hit targets unchanged; expand the existing In/Out trim zones for touch.
+#[cfg(target_os = "android")]
+const TRIM_OUTSIDE: f32 = 12.0;
+#[cfg(not(target_os = "android"))]
+const TRIM_OUTSIDE: f32 = 4.0;
+#[cfg(target_os = "android")]
+const TRIM_INSIDE: f32 = 14.0;
+#[cfg(not(target_os = "android"))]
+const TRIM_INSIDE: f32 = 5.0;"""
+    source = replace_once(source, old, new, "AM touch-friendly layer trim handles")
+    path.write_text(source, encoding="utf-8")
+
+
 def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
     source = path.read_text(encoding="utf-8")
@@ -297,6 +320,7 @@ def main() -> None:
     if not effectcraft.is_dir() or not builder.is_dir():
         raise SystemExit("EFFECTCRAFT_DIR and ARTCRAFT_DIR must point to checked-out source trees.")
     patch_dock(effectcraft)
+    patch_touch_trim_handles(effectcraft)
     patch_workspace_selection(effectcraft)
     patch_startup_restore(effectcraft)
     patch_android_layout_module(effectcraft)
