@@ -80,13 +80,22 @@ jobs:
             ln -s "$GITHUB_WORKSPACE/effectcraft" artcraft/source/effectcraft
           fi
           python3 - <<'PY'
-          import base64, re, zlib
+          import base64, os, re, zlib
           from pathlib import Path
-          workflow = Path(".github/workflows/build-effectcraft-ai.yml").read_text(encoding="utf-8")
-          match = re.search(r'payload = "([A-Za-z0-9+/=]+)"', workflow)
+          workspace = Path(os.environ.get("GITHUB_WORKSPACE", ".")).resolve()
+          workflow_path = workspace / ".github/workflows/build-effectcraft-ai.yml"
+          workflow = workflow_path.read_text(encoding="utf-8")
+          match = re.search(r'payload\s*=\s*"([^"]+)"', workflow, re.MULTILINE)
           if not match:
-              raise SystemExit("Could not find the shared AI/export source patch in the APK workflow.")
-          Path("/tmp/patch_effectcraft_ai.py").write_bytes(zlib.decompress(base64.b64decode(match.group(1))))
+              raise SystemExit(f"Could not find the shared AI/export source patch in {workflow_path}.")
+          encoded = re.sub(r"\s+", "", match.group(1))
+          if not re.fullmatch(r"[A-Za-z0-9_+/=-]+", encoded):
+              raise SystemExit("The shared AI/export source patch is not valid Base64 text.")
+          try:
+              payload = zlib.decompress(base64.b64decode(encoded, validate=True))
+          except Exception as error:
+              raise SystemExit(f"Could not decode the shared AI/export source patch: {error}") from error
+          Path("/tmp/patch_effectcraft_ai.py").write_bytes(payload)
           PY
           mkdir -p "$EFFECTCRAFT_DIR/assets"
           cp "$GITHUB_WORKSPACE/assets/ae-avatar.png" "$EFFECTCRAFT_DIR/assets/ae-avatar.png"
