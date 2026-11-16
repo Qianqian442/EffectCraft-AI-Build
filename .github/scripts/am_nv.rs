@@ -78,7 +78,7 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
     }
 
     let mut total = 0_u64;
-    let mut project_file: Option<PathBuf> = None;
+    let mut project_file: Option<(u8, PathBuf)> = None;
     for index in 0..archive.len() {
         let mut entry = archive.by_index(index).map_err(|e| err(format!("Cannot read ZIP entry: {e}")))?;
         if entry.is_dir() { continue; }
@@ -110,22 +110,14 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
         if copied != size {
             return Err(err(format!("ZIP entry {name} size does not match its archive metadata")));
         }
-        let lower = name.to_ascii_lowercase();
-        if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
-            project_file = Some(destination);
-        } else if lower.ends_with(".aep") || lower.ends_with(".aepx") {
-            if project_file.is_none() { project_file = Some(destination); }
-        } else if project_file.is_none() && (lower.ends_with("draft_content.json") || lower.ends_with(".capcut.json")) {
-            project_file = Some(destination);
-        } else if lower.ends_with(".nv") {
-            if project_file.is_none() { project_file = Some(destination); }
-        } else if project_file.is_none() && (lower.ends_with(".xml") || lower.ends_with(".alight")) {
-            project_file = Some(destination);
-        } else if project_file.is_none() && (lower.ends_with(".lottie") || lower.ends_with(".json")) {
-            project_file = Some(destination);
+        if let Some(priority) = rar_project_priority(&name) {
+            let replace = project_file.as_ref().is_none_or(|(current, _)| priority < *current);
+            if replace {
+                project_file = Some((priority, destination));
+            }
         }
     }
-    let file = project_file.ok_or_else(|| err("该 ZIP 不包含自有工程 .ecproj/.ecprojx、NodeVideo .nv 或 Alight Motion XML 工程"))?;
+    let (_, file) = project_file.ok_or_else(|| err("该 ZIP 不包含可识别的 Ae、AM、NV、CapCut、Lottie 或时间轴工程文件"))?;
     let file_ext = ext(&file.to_string_lossy());
     Ok((file.to_string_lossy().to_string(), root.to_string_lossy().to_string()))
 }

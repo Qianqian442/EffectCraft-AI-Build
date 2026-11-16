@@ -269,6 +269,8 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The dedicated mobile AE project package import option is missing.")
     if "自有工程包... | file.importEffectCraftMobile" not in visible_import:
         raise SystemExit("The preserved EffectCraft mobile project package import option is missing.")
+    if "工程压缩包（ZIP/RAR）... | file.extractProjectArchive" not in visible_import:
+        raise SystemExit("ZIP/RAR project archive import is missing from File > Import.")
     for menu_entry in (
         "导入电脑版Ae工程... | file.importAepDesktop",
         "导入手机版Ae工程... | file.importAepMobilePackage",

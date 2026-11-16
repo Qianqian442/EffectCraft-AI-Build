@@ -57,6 +57,9 @@ def patch_manifest_generator(builder: Path) -> None:
                     "data": [
                         {"mime_type": "application/zip"},
                         {"mime_type": "application/x-zip-compressed"},
+                        {"mime_type": "application/vnd.rar"},
+                        {"mime_type": "application/x-rar-compressed"},
+                        {"mime_type": "application/x-rar"},
                         {"mime_type": "application/octet-stream"},
                         {"mime_type": "application/json"},
                         {"mime_type": "application/xml"},
@@ -370,12 +373,6 @@ pub(super) fn run_incoming_project(app: &mut EffectcraftApp, command: &str, path
 
     menus = effectcraft / "crates/ui-egui/src/menus.rs"
     source = menus.read_text(encoding="utf-8")
-    menu_source = menus.read_text(encoding="utf-8")
-    archive_menu_anchor = "      自有工程包... | file.importEffectCraftMobile\\n"
-    archive_menu_new = archive_menu_anchor + "      工程压缩包（ZIP/RAR）... | file.extractProjectArchive\\n"
-    if "工程压缩包（ZIP/RAR）... | file.extractProjectArchive" not in menu_source:
-        menu_source = once(menu_source, archive_menu_anchor, archive_menu_new, "add ZIP/RAR project menu entry")
-        menus.write_text(menu_source, encoding="utf-8")
     if marker not in source:
         anchor = "pub struct UiCommand {\n"
         code = r"""// EFFECTCRAFT_ANDROID_AUTO_IMPORT_EXTERNAL_PROJECT_V1
@@ -433,6 +430,12 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
         source = once(source, anchor, code + anchor, "public incoming-project format router")
         menus.write_text(source, encoding="utf-8")
 
+    menu_source = menus.read_text(encoding="utf-8")
+    archive_menu_anchor = "      自有工程包... | file.importEffectCraftMobile\\n"
+    archive_menu_new = archive_menu_anchor + "      工程压缩包（ZIP/RAR）... | file.extractProjectArchive\\n"
+    if "工程压缩包（ZIP/RAR）... | file.extractProjectArchive" not in menu_source:
+        menu_source = once(menu_source, archive_menu_anchor, archive_menu_new, "add ZIP/RAR project menu entry")
+        menus.write_text(menu_source, encoding="utf-8")
     builder_file = builder / "lib" / "build-common.sh"
     shell = builder_file.read_text(encoding="utf-8")
     old_open = """    "effectcraft": '''        if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {
