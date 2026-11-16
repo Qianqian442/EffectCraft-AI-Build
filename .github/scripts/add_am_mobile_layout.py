@@ -155,11 +155,27 @@ def patch_dock(effectcraft: Path) -> None:
 
 
 def patch_touch_trim_handles(effectcraft: Path) -> None:
-    """Make the existing layer In/Out drag zones reliably touchable on Android."""
+    """Reuse an existing phone-sized In/Out handle patch, or add one if absent."""
     path = effectcraft / "crates/ui-egui/src/panels/timeline.rs"
     source = path.read_text(encoding="utf-8")
     marker = "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1"
+    existing_marker = "EFFECTCRAFT_ANDROID_TOUCH_TRIM_HANDLES_V1"
     if marker in source:
+        return
+    # add_bottom_left_media_import.py runs earlier in this same build and already
+    # widens the In/Out hit zones and paints a visible Out-edge grip. Reuse that
+    # implementation instead of trying to replace the upstream 4/5-point constants
+    # a second time. This preserves the existing duration-drag interaction.
+    if existing_marker in source:
+        required = (
+            "const TRIM_OUTSIDE: f32 = 18.0;",
+            "const TRIM_INSIDE: f32 = 12.0;",
+            "let grip = Rect::from_center_size(bar.right_center(), vec2(4.0, grip_height));",
+        )
+        missing = [item for item in required if item not in source]
+        if missing:
+            raise SystemExit("Existing AM timeline trim-handle patch is incomplete: " + "; ".join(missing))
+        print("Reusing the existing enlarged In/Out hit zones and visible right-edge handle.")
         return
     old = """const TRIM_OUTSIDE: f32 = 4.0;
 const TRIM_INSIDE: f32 = 5.0;"""
