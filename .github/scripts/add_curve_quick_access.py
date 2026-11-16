@@ -320,9 +320,9 @@ fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, c
                 Err(error) => Err(error),
                 Ok(_) => {
                     let expression = match curve {
-                        "loop_cycle" => "loopOut("cycle")",
-                        "loop_pingpong" => "loopOut("pingpong")",
-                        "loop_offset" => "loopOut("offset")",
+                        "loop_cycle" => "loopOut(\"cycle\")",
+                        "loop_pingpong" => "loopOut(\"pingpong\")",
+                        "loop_offset" => "loopOut(\"offset\")",
                         _ => unreachable!(),
                     };
                     app.session.execute("prop.setExpression", serde_json::json!({
@@ -441,6 +441,7 @@ fn android_periodic_curve_editor(app: &mut EffectcraftApp, ctx: &egui::Context) 
     if !editor.open { return; }
     let mut open = true;
     let mut apply = false;
+    let mut request_close = false;
     egui::Window::new("周期曲线编辑器")
         .id(id.with("window"))
         .default_pos(ctx.content_rect().center() - vec2(170.0, 165.0))
@@ -514,9 +515,10 @@ fn android_periodic_curve_editor(app: &mut EffectcraftApp, ctx: &egui::Context) 
             ui.add(egui::Slider::new(&mut editor.params.phase, 0.0..=std::f32::consts::TAU).text("相位"));
             ui.horizontal(|ui| {
                 if ui.button("应用曲线").clicked() { apply = true; }
-                if ui.button("取消").clicked() { open = false; }
+                if ui.button("取消").clicked() { request_close = true; }
             });
         });
+    if request_close { open = false; }
 
     if apply {
         let expression = android_periodic_expression(editor.segment, editor);
