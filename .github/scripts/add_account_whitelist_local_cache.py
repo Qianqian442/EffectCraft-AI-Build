@@ -93,7 +93,7 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                 self.banned_until = saved_ban.until;
                 self.ban_reason = saved_ban.reason;
                 self.mode = Mode::Banned;
-                self.status = "封禁信息已保存在本机；本次打开无需连接服务器。".to_string();
+                self.status.clear();
                 return;
             }
         }
@@ -157,7 +157,7 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                     format!("本地封禁剩余：{}天 {}小时 {}分 {}秒", days, hours, minutes, secs)
                 }
             }
-            Err(_) => "封禁时间暂不可识别；封禁信息已保存在本机。".to_string(),
+            Err(_) => "封禁时间暂不可识别。".to_string(),
         }
     }
 
@@ -229,7 +229,7 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
                 self.persist_ban(config);
                 self.mode = Mode::Banned;
-                self.status = "封禁信息已保存到本机；下次打开无需连接服务器即可查看封禁状态。".to_string();
+                self.status.clear();
             }''',
         "persist server ban state locally",
     )
@@ -367,7 +367,6 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         '''                ui.label(&app.account.ban_reason);
                 ui.add_space(8.0);
                 ui.label(app.account.ban_countdown_label());
-                ui.label("封禁资料已保存在本机。重新打开 EffectCraft 时会先显示本地封禁信息，不会自动连接服务器。");
                 ui.add_space(12.0);
                 if ui.button("联网核验是否已解封").clicked() {
                     app.account.retry(config);
