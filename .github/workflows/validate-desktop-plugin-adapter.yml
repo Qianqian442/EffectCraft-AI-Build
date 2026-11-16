@@ -1,38 +1,7 @@
 name: Validate desktop plug-in compatibility adapter
 
 on:
-  push:
-    branches: [main, desktop-plugin-compat, capcut-and-ae-export-interop]
-    paths:
-      - '.github/scripts/add_desktop_plugin_package_support.py'
-      - '.github/scripts/add_plugin_migration_progress.py'
-      - '.github/scripts/add_plugin_import_button.py'
-      - '.github/scripts/add_zip_plugin_support.py'
-      - '.github/scripts/install_ai_plugin_bridge.py'
-      - '.github/scripts/ai_assistant_plugin.rs'
-      - '.github/scripts/add_curve_quick_access.py'
-      - '.github/scripts/add_startup_attribution_notice.py'
-      - '.github/scripts/patch_export_dialog.py'
-      - '.github/scripts/add_project_import_formats.py'
-      - '.github/scripts/add_am_nv_project_import.py'
-      - '.github/scripts/am_nv.rs'
-      - '.github/scripts/add_qq_project_share.py'
-      - '.github/scripts/add_chroma_key_effect.py'
-      - '.github/workflows/validate-desktop-plugin-adapter.yml'
-  pull_request:
-    branches: [main]
-    paths:
-      - '.github/scripts/add_desktop_plugin_package_support.py'
-      - '.github/scripts/add_plugin_migration_progress.py'
-      - '.github/scripts/add_plugin_import_button.py'
-      - '.github/scripts/add_zip_plugin_support.py'
-      - '.github/scripts/patch_export_dialog.py'
-      - '.github/scripts/add_project_import_formats.py'
-      - '.github/scripts/add_am_nv_project_import.py'
-      - '.github/scripts/am_nv.rs'
-      - '.github/scripts/patch_export_dialog.py'
-      - '.github/scripts/add_qq_project_share.py'
-      - '.github/workflows/validate-desktop-plugin-adapter.yml'
+  workflow_call:
   workflow_dispatch:
 
 concurrency:
@@ -69,6 +38,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Configure Android shared-storage SAF fallback in the validation checkout
+        env:
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: python3 .github/scripts/configure_android_storage_fallback.py
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
 
@@ -85,7 +59,8 @@ jobs:
             .github/scripts/patch_export_dialog.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_am_nv_project_import.py \
-            .github/scripts/add_chroma_key_effect.py
+            .github/scripts/add_chroma_key_effect.py \
+            .github/scripts/configure_android_storage_fallback.py
 
       - name: Apply the same plug-in patches used by the APK build
         env:
