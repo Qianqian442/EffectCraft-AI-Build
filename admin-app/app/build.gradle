@@ -7,7 +7,7 @@ android {
     compileSdk 35
 
     buildFeatures { buildConfig true }
-    // Keep the package ID and signing identity stable for in-place updates.
+    // Keep the package ID, signing identity and persistent app data stable for in-place updates.
     // CI run numbers provide a monotonically increasing versionCode for every APK.
     def adminBuildNumber = (System.getenv("GITHUB_RUN_NUMBER") ?: "5").toInteger()
     defaultConfig {
