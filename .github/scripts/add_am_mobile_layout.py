@@ -261,7 +261,7 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             let col = i % 2;
             let row = i / 2;
             let r = Rect::from_min_size(pos2(rect.min.x + 8.0 + col as f32 * (col_w + gap), y + row as f32 * (row_h + gap)), vec2(col_w, row_h));
-            let count = reg.iter().filter(|e| e.category == **category).count();
+            let count = reg.iter().filter(|e| e.category == *category).count();
             let label = format!("{}\n{} effects", crate::i18n::effects::category(category), count);
             let response = ui.put(r, egui::Button::new(label));
             if response.clicked() {
