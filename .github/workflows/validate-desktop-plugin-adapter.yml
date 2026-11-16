@@ -61,7 +61,9 @@ jobs:
             .github/scripts/add_am_nv_project_import.py \
             .github/scripts/add_ae_dual_project_import.py \
             .github/scripts/add_chroma_key_effect.py \
-            .github/scripts/configure_android_storage_fallback.py
+            .github/scripts/configure_android_storage_fallback.py \
+            .github/scripts/add_am_mobile_layout.py \
+            .github/scripts/build_am_mobile_editing_page.py
 
       - name: Apply the same plug-in patches used by the APK build
         env:
@@ -171,6 +173,19 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: python3 .github/scripts/add_chroma_key_effect.py
+
+      - name: Apply and verify the independent AM mobile editing page
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: |
+          python3 .github/scripts/add_am_mobile_layout.py
+          python3 .github/scripts/build_am_mobile_editing_page.py
+          grep -Fq "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1" effectcraft/crates/ui-egui/src/app/frame.rs
+          grep -Fq "pub mod am_editor;" effectcraft/crates/ui-egui/src/lib.rs
+          grep -Fq "am-mobile-ruler-scrub" effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "am-mobile-trim" effectcraft/crates/ui-egui/src/am_editor.rs
+          echo "Independent AM page is patched; compile-check will validate its Rust UI and engine command calls."
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
