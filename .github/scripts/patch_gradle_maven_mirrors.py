@@ -48,19 +48,25 @@ def patch(path: Path) -> None:
     if not path.is_file():
         raise SystemExit(f"Android builder settings generator not found: {path}")
     source = path.read_text(encoding="utf-8")
-    if "maven.aliyun.com/repository/public" in source and "mirrors.cloud.tencent.com" in source:
-        print(f"Maven fallback mirrors already configured in {path}")
-        return
+    if "maven.aliyun.com/repository/public" not in source or "mirrors.cloud.tencent.com" not in source:
+        # The generator embeds these blocks in a Python f-string; doubled braces
+        # are intentional and become normal Gradle braces in settings.gradle.
+        if source.count(PLUGIN_OLD) != 1:
+            raise SystemExit("Expected exactly one pluginManagement repository block in android_project.py")
+        if source.count(DEPENDENCY_OLD) != 1:
+            raise SystemExit("Expected exactly one dependencyResolutionManagement repository block in android_project.py")
+        source = source.replace(PLUGIN_OLD, PLUGIN_NEW, 1)
+        source = source.replace(DEPENDENCY_OLD, DEPENDENCY_NEW, 1)
 
-    # The generator embeds these blocks in a Python f-string; doubled braces
-    # are intentional and become normal Gradle braces in settings.gradle.
-    if source.count(PLUGIN_OLD) != 1:
-        raise SystemExit("Expected exactly one pluginManagement repository block in android_project.py")
-    if source.count(DEPENDENCY_OLD) != 1:
-        raise SystemExit("Expected exactly one dependencyResolutionManagement repository block in android_project.py")
-
-    source = source.replace(PLUGIN_OLD, PLUGIN_NEW, 1)
-    source = source.replace(DEPENDENCY_OLD, DEPENDENCY_NEW, 1)
+    # The upstream builder derives the same versionCode for every rebuild of
+    # v0.21.1. Add one so Android accepts this APK as an in-place update over
+    # the already-installed v0.21.1 app, without changing the package ID.
+    version_old = "return (1 << 24) | (major << 16) | (minor << 8) | patch"
+    version_new = "return ((1 << 24) | (major << 16) | (minor << 8) | patch) + 1"
+    if version_old in source:
+        source = source.replace(version_old, version_new, 1)
+    elif version_new not in source:
+        raise SystemExit("Could not safely bump the Android versionCode for an in-place update.")
     compile(source, str(path), "exec")
     if "maven.aliyun.com/repository/google" not in source:
         raise SystemExit("Plugin repository fallback verification failed")
