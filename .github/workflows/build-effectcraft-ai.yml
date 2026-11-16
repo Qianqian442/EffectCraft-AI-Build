@@ -1,4 +1,4 @@
-name: Build EffectCraft AI Android APK
+name: Build Ae Android APK with shared compatibility validation
 
 on:
   push:
@@ -69,9 +69,14 @@ permissions:
 concurrency:
   # Only the newest source revision should consume a runner for this APK.
   group: effectcraft-ai-android-${{ github.ref }}
-  cancel-in-progress: true
+  # Let an already-running APK build finish; queue this unified validation/build run next.
+  cancel-in-progress: false
 
 jobs:
+  validate-desktop-plugin-adapter:
+    name: Validate desktop plug-in compatibility adapter
+    uses: ./.github/workflows/validate-desktop-plugin-adapter.yml
+
   validate-patches:
     name: Validate Android build patch scripts
     runs-on: ubuntu-22.04
@@ -116,7 +121,7 @@ jobs:
             .github/scripts/add_open_source_craft_plugins.py
 
   build:
-    needs: validate-patches
+    needs: [validate-patches, validate-desktop-plugin-adapter]
     # Keep the main APK account client on direct HTTPS to the configured Cloudflare account server; do not route account traffic through P2P or public proxies.
     name: Build EffectCraft 0.21.1 with AI helper
     runs-on: ubuntu-22.04
