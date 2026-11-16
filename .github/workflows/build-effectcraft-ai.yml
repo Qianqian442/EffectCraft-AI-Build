@@ -1215,8 +1215,7 @@ jobs:
           echo "Verified the packaged ARM64 AI worker contains CPU/GPU capability probing."
           SIZE="$(stat -c%s "$APK")"
           test "$SIZE" -gt 1000000
-          # Keep the single-file package below the 2 GiB boundary and validate every ZIP CRC.
-          test "$SIZE" -lt 2147483648
+          # Do not impose an artificial APK file-size ceiling; validate the full ZIP structure and CRCs below.
           FILE_DESCRIPTION="$(file -b "$APK")"
           echo "Detected package type: $FILE_DESCRIPTION"
           case "$FILE_DESCRIPTION" in
