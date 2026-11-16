@@ -83,7 +83,7 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
         let mut entry = archive.by_index(index).map_err(|e| err(format!("Cannot read ZIP entry: {e}")))?;
         if entry.is_dir() { continue; }
         let name = entry.name().map_err(|e| err(format!("Invalid ZIP entry name: {e}")))?.to_string();
-        if name.contains('\\') || name.contains('\0') { continue; }
+        if name.contains(char::from(92)) || name.contains('\0') { continue; }
         let relative = Path::new(&name);
         if relative.components().any(|c| !matches!(c, Component::Normal(_))) { continue; }
         let size = entry.size();
