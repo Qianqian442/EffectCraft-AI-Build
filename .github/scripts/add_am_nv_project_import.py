@@ -147,7 +147,7 @@ def main() -> None:
     dry.insert("dryRun".into(), Value::Bool(true));
     let r = app.session.execute(command, Value::Object(dry)).map_err(|e| e.to_string())?;
     let report = r.get("report").cloned().unwrap_or(Value::Null);
-    if report["losses"].as_array().is_none_or(|l| l.is_empty()) {
+    if !needs_prompt(&report) {
         return Ok(false);
     }
     app.dialog_state.aep_losses.command = Some((command.to_string(), params.clone(), report));
