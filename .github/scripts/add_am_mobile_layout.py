@@ -348,7 +348,7 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
     workspace_tabs(app, ui, p, rx, left, cy);""",
             "keep legacy workspace tabs separate from the new layout chooser",
         )
-        anchor = "/// The Discord pill and the GitHub and website buttons, right to left from rx; returns the new rx."
+        anchor = "/// The Discord pill and the GitHub and website buttons"
         code = r'''
 // Show the active Ae/AM mode in a dedicated row below the original tool controls.
 fn workspace_label(workspace: &str) -> &'static str {
