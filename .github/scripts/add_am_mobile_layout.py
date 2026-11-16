@@ -351,13 +351,13 @@ def patch_workspace_selection(effectcraft: Path) -> None:
 
 
 def patch_workspace_morph_transition(effectcraft: Path) -> None:
-    """Tint the live workspace-switching controls and panel edges blue; do not invent a separate motion."""
+    """Keep the native workspace switch; tint the live panel/control edges blue during it."""
     lib = effectcraft / "crates/ui-egui/src/lib.rs"
     source = lib.read_text(encoding="utf-8")
     field_anchor = "pub struct EffectcraftApp {\n    pub session: Session,\n"
     field_patch = "pub struct EffectcraftApp {\n    pub(crate) workspace_transition: Option<(f64, f32)>,\n    pub session: Session,\n"
     if "workspace_transition: Option<(f64, f32)>" not in source:
-        source = replace_once(source, field_anchor, field_patch, "AM workspace animation state field")
+        source = replace_once(source, field_anchor, field_patch, "AM workspace color-transition state field")
         lib.write_text(source, encoding="utf-8")
 
     app = effectcraft / "crates/ui-egui/src/app.rs"
@@ -365,26 +365,32 @@ def patch_workspace_morph_transition(effectcraft: Path) -> None:
     app_anchor = "        EffectcraftApp {\n            session,\n"
     app_patch = "        EffectcraftApp {\n            workspace_transition: None,\n            session,\n"
     if "workspace_transition: None" not in source:
-        source = replace_once(source, app_anchor, app_patch, "AM workspace animation state initialization")
+        source = replace_once(source, app_anchor, app_patch, "AM workspace color-transition state initialization")
         app.write_text(source, encoding="utf-8")
 
     frame = effectcraft / "crates/ui-egui/src/app/frame.rs"
     source = frame.read_text(encoding="utf-8")
-    draw_anchor = "        self.dock_area(ui, body);\n"
-    draw_patch = r'''        // EFFECTCRAFT_AM_WORKSPACE_MORPH_TRANSITION_V1
-        // Keep the editor's actual layout switch intact. The transition styling below
-        // highlights the live controls and panels in blue while the new workspace settles.
-        self.dock_area(ui, body);
-'''
-    if "EFFECTCRAFT_AM_WORKSPACE_MORPH_TRANSITION_V1" not in source:
-        source = replace_once(source, draw_anchor, draw_patch, "AM live dock blue transition styling")
+    # The dock switches to the selected layout normally. No added slide, scale, detached
+    # animation layer, or replacement transition is applied to the editor page.
+    draw_marker = "EFFECTCRAFT_AM_WORKSPACE_MORPH_TRANSITION_V1"
+    if draw_marker in source:
+        begin = source.index("        // " + draw_marker)
+        end = source.index("        #[cfg(not(target_arch = \"wasm32\"))]\n        prefs_live::dropped_files", begin)
+        source = source[:begin] + "        self.dock_area(ui, body);\n" + source[end:]
+    else:
+        if "        self.dock_area(ui, body);\n" not in source:
+            raise SystemExit("Original dock render call for AM workspace was not found.")
+
     end_anchor = "        self.draw_toast(ui, full, lift);\n"
     edge_patch = r'''        self.draw_toast(ui, full, lift);
-        // Blue edges highlight the actual panel bounds and registered buttons during the workspace change.
-        if let Some((started, _)) = self.workspace_transition {
+        // EFFECTCRAFT_AM_BLUE_WORKSPACE_SWITCH_EDGES_V1
+        // Keep Nova-style layout switching itself; only the real panel/button borders
+        // receive a short blue highlight while the selected workspace is settling.
+        if let Some((started, _direction)) = self.workspace_transition {
             let progress = (((self.now - started).max(0.0) as f32) / 0.42).clamp(0.0, 1.0);
             if progress < 1.0 {
-                let alpha = (220.0 * (1.0 - progress)) as u8;
+                let pulse = (std::f32::consts::PI * progress).sin().max(0.0);
+                let alpha = (210.0 * pulse) as u8;
                 let blue = egui::Color32::from_rgba_unmultiplied(42, 135, 255, alpha);
                 let painter = ui.painter();
                 for (_, rect) in &self.dock_rects {
@@ -415,8 +421,8 @@ def patch_workspace_morph_transition(effectcraft: Path) -> None:
             }
         }
 '''
-    if "Blue edges highlight the actual panel bounds" not in source:
-        source = replace_once(source, end_anchor, edge_patch, "AM workspace blue panel and control edge highlights")
+    if "EFFECTCRAFT_AM_BLUE_WORKSPACE_SWITCH_EDGES_V1" not in source:
+        source = replace_once(source, end_anchor, edge_patch, "blue edges during native AM workspace switch")
     frame.write_text(source, encoding="utf-8")
 
 
