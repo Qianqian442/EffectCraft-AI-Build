@@ -315,6 +315,11 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if 'super::aep::import_aep(s, &params)' in mobile_importer:
         raise SystemExit("The mobile AE import must not route a desktop AEP package through the desktop importer.")
 
+    aep_report = (root / "crates/aep/src/import/report.rs").read_text(encoding="utf-8")
+    aep_layer_build = (root / "crates/aep/src/import/build.rs").read_text(encoding="utf-8")
+    if "guides are not decoded" in aep_report.lower() or "s.guide = h.is_guide();" not in aep_layer_build:
+        raise SystemExit("The AEP import report must reflect the verified guide-layer switch support.")
+
     aep_loss_guard = (root / "crates/ui-egui/src/panels/aep_losses.rs").read_text(encoding="utf-8")
     if '"file.importAepDesktop"' not in aep_loss_guard:
         raise SystemExit("The dedicated desktop AE import entry bypasses the original loss-confirmation guard.")
@@ -329,6 +334,8 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         "重新链接缺失素材",
         "文件名唯一",
         "替代字体",
+        "导入完成后，打开“文件 > 依赖项 > 重新链接缺失素材”",
+        "只自动匹配文件名唯一且媒体参数一致的素材",
         '"预计识别并导入的内容："',
         '"未支持、替代或需要处理的内容："',
         '"继续导入（仍有未支持内容）"',
