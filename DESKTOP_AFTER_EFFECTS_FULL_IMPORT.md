@@ -59,6 +59,10 @@ Import Adobe After Effects desktop project files `.aep` and `.aepx` into Ae as e
 - Regression tests cover both `.aep` and `.aepx`, nested compositions, missing footage/relinking, text/fonts, masks, shape layers, 2D/3D transforms, cameras/lights, animated effects, expressions, audio, time remap, and third-party plug-in metadata.
 - Validate with representative real-world projects and compare reference renders. Only mark a feature as fully supported after tests pass.
 
+## Compatibility implementation matrix
+
+The source-backed coverage baseline, known gaps, staged implementation tasks, and completion gates are tracked in [DESKTOP_AFTER_EFFECTS_IMPORT_MATRIX.md](DESKTOP_AFTER_EFFECTS_IMPORT_MATRIX.md). This matrix is an inventory and implementation plan, not a claim that the missing capabilities are already implemented.
+
 ## Current status disclosure
 
 The existing project has a separate `.aep`/`.aepx` import route and a dry-run loss-confirmation path. Existing patch scripts explicitly acknowledge reporting unsupported effects, 3D conversions, and missing media. That is a useful starting point, not proof of complete import. Full fidelity remains an implementation and validation target.
