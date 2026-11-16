@@ -684,7 +684,7 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_home_layout_switch.py
           python3 build-assets/.github/scripts/add_home_layout_switch.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
-          grep -Fq "EFFECTCRAFT_HOME_LAYOUT_MENU_NOVA_V2" "$HOME_RS"
+          grep -Fq "EFFECTCRAFT_HOME_LAYOUT_SURFACE_MENU_V4" "$HOME_RS"
           ! grep -Fq 'Icon::Code, "EffectCraft on GitHub", "help.github"' "$HOME_RS"
           echo "Verified Home layout switch is wired and obsolete code-repository shortcut is absent."
 
