@@ -289,6 +289,17 @@ def main() -> None:
     patch_activity(builder)
     patch_rust_bridge(effectcraft)
     patch_frontend(effectcraft)
+
+    manifest_generator = (builder / "lib/android_project.py").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_OPEN_SHARED_PROJECT_ZIP" not in manifest_generator:
+        raise SystemExit("Ae is not registered to receive shared project ZIP files.")
+    for action in ("android.intent.action.VIEW", "android.intent.action.SEND"):
+        if action not in manifest_generator:
+            raise SystemExit(f"Ae incoming project intent filter is missing {action}.")
+    activity_source = (builder / "templates/android/SafActivity.java").read_text(encoding="utf-8")
+    for token in ("handleIncomingFiles(getIntent())", "Intent.ACTION_VIEW", "intentPoll"):
+        if token not in activity_source:
+            raise SystemExit(f"Ae incoming file handoff is incomplete: {token}")
     # The QQ destination is now the system Sharesheet opened after Collect Files completes.
     # Do not add another standalone button to the export dialog.
     print("Added the Android ZIP share bridge used by the unified Project Export selector.")
