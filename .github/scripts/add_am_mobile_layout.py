@@ -384,7 +384,6 @@ def patch_workspace_morph_transition(effectcraft: Path) -> None:
         if let Some((started, _)) = self.workspace_transition {
             let progress = (((self.now - started).max(0.0) as f32) / 0.42).clamp(0.0, 1.0);
             if progress < 1.0 {
-                let pulse = (std::f32::consts::PI * progress).sin().max(0.0);
                 let alpha = (220.0 * (1.0 - progress)) as u8;
                 let blue = egui::Color32::from_rgba_unmultiplied(42, 135, 255, alpha);
                 let painter = ui.painter();
