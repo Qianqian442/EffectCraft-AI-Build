@@ -59,6 +59,7 @@ jobs:
             .github/scripts/patch_export_dialog.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_am_nv_project_import.py \
+            .github/scripts/add_ae_dual_project_import.py \
             .github/scripts/add_chroma_key_effect.py \
             .github/scripts/configure_android_storage_fallback.py
 
@@ -140,6 +141,7 @@ jobs:
         run: |
           python3 .github/scripts/add_project_import_formats.py
           python3 .github/scripts/add_am_nv_project_import.py
+          python3 .github/scripts/add_ae_dual_project_import.py
           # Main Import Project dispatches all project types; legacy pickers remain available in the secondary menu.
           grep -F '自有工程... | file.importProject' effectcraft/crates/engine/src/menus.rs
           grep -F '更多工程格式' effectcraft/crates/engine/src/menus.rs
