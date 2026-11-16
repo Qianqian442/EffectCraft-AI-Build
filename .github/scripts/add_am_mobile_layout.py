@@ -351,7 +351,7 @@ def patch_workspace_selection(effectcraft: Path) -> None:
 
 
 def patch_workspace_morph_transition(effectcraft: Path) -> None:
-    """Animate the real docked editing page and outline its controls in blue."""
+    """Tint the live workspace-switching controls and panel edges blue; do not invent a separate motion."""
     lib = effectcraft / "crates/ui-egui/src/lib.rs"
     source = lib.read_text(encoding="utf-8")
     field_anchor = "pub struct EffectcraftApp {\n    pub session: Session,\n"
@@ -372,41 +372,20 @@ def patch_workspace_morph_transition(effectcraft: Path) -> None:
     source = frame.read_text(encoding="utf-8")
     draw_anchor = "        self.dock_area(ui, body);\n"
     draw_patch = r'''        // EFFECTCRAFT_AM_WORKSPACE_MORPH_TRANSITION_V1
-        // Move the live editor dock (preview, timeline, tools and panels) into the selected workspace.
-        let workspace_transition = self.workspace_transition;
-        let transition_progress = workspace_transition.map(|(started, _)| {
-            ((self.now - started).max(0.0) as f32 / 0.42).clamp(0.0, 1.0)
-        });
-        if let (Some((_, direction)), Some(progress)) = (workspace_transition, transition_progress) {
-            let eased = progress * progress * (3.0 - 2.0 * progress);
-            let offset_x = direction * body.width() * 0.10 * (1.0 - eased);
-            let scale = 0.965 + 0.035 * eased;
-            let center = body.center().to_vec2();
-            let transform = egui::emath::TSTransform::from_translation(egui::vec2(offset_x, 0.0))
-                * egui::emath::TSTransform::from_translation(center)
-                * egui::emath::TSTransform::from_scaling(scale)
-                * egui::emath::TSTransform::from_translation(-center);
-            ui.with_visual_transform(transform, |ui| {
-                ui.set_clip_rect(body.intersect(ui.clip_rect()));
-                self.dock_area(ui, body);
-            });
-            if progress < 1.0 {
-                ctx.request_repaint_after(std::time::Duration::from_millis(16));
-            }
-        } else {
-            self.dock_area(ui, body);
-        }
+        // Keep the editor's actual layout switch intact. The transition styling below
+        // highlights the live controls and panels in blue while the new workspace settles.
+        self.dock_area(ui, body);
 '''
     if "EFFECTCRAFT_AM_WORKSPACE_MORPH_TRANSITION_V1" not in source:
-        source = replace_once(source, draw_anchor, draw_patch, "AM live dock transition render")
+        source = replace_once(source, draw_anchor, draw_patch, "AM live dock blue transition styling")
     end_anchor = "        self.draw_toast(ui, full, lift);\n"
     edge_patch = r'''        self.draw_toast(ui, full, lift);
-        // Blue edges highlight the actual panel bounds and registered buttons while the editor moves.
+        // Blue edges highlight the actual panel bounds and registered buttons during the workspace change.
         if let Some((started, _)) = self.workspace_transition {
             let progress = (((self.now - started).max(0.0) as f32) / 0.42).clamp(0.0, 1.0);
             if progress < 1.0 {
                 let pulse = (std::f32::consts::PI * progress).sin().max(0.0);
-                let alpha = (210.0 * pulse) as u8;
+                let alpha = (220.0 * (1.0 - progress)) as u8;
                 let blue = egui::Color32::from_rgba_unmultiplied(42, 135, 255, alpha);
                 let painter = ui.painter();
                 for (_, rect) in &self.dock_rects {
