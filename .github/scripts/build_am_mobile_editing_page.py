@@ -46,8 +46,8 @@ fn invoke(app: &mut EffectcraftApp, ctx: &egui::Context, command: &str, params: 
     }
 }
 
-fn button(ui: &mut egui::Ui, rect: Rect, label: &str, id: impl std::hash::Hash) -> egui::Response {
-    ui.put(rect, egui::Button::new(label).min_size(rect.size()).corner_radius(6.0))
+fn button(ui: &mut egui::Ui, rect: Rect, label: &str, _id: impl std::hash::Hash) -> egui::Response {
+    ui.put(rect, egui::Button::new(label).min_size(rect.size()))
         .on_hover_text(label)
 }
 
@@ -85,8 +85,9 @@ fn top_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
     let undo_rect = Rect::from_min_size(pos2(rect.max.x - 150.0, rect.min.y + 7.0), vec2(34.0, 30.0));
     let can_undo = !app.session.history.undo.is_empty();
-    let undo = ui.add_enabled(can_undo, egui::Button::new("↶").min_size(undo_rect.size()));
-    let undo = if undo_rect.intersects(undo.rect) { undo } else { ui.put(undo_rect, egui::Button::new("↶")) };
+    let undo = ui.add_enabled_ui(can_undo, |ui| {
+        ui.put(undo_rect, egui::Button::new("↶").min_size(undo_rect.size()))
+    }).inner;
     app.auto.add_response("am.header.undo", &undo, "撤销");
     if undo.clicked() {
         invoke(app, ui.ctx(), "edit.undo", json!({}));
@@ -94,8 +95,9 @@ fn top_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
     let redo_rect = Rect::from_min_size(pos2(rect.max.x - 112.0, rect.min.y + 7.0), vec2(34.0, 30.0));
     let can_redo = !app.session.history.redo.is_empty();
-    let redo = ui.add_enabled(can_redo, egui::Button::new("↷").min_size(redo_rect.size()));
-    let redo = if redo_rect.intersects(redo.rect) { redo } else { ui.put(redo_rect, egui::Button::new("↷")) };
+    let redo = ui.add_enabled_ui(can_redo, |ui| {
+        ui.put(redo_rect, egui::Button::new("↷").min_size(redo_rect.size()))
+    }).inner;
     app.auto.add_response("am.header.redo", &redo, "重做");
 
     let title_left = layout_rect.max.x + 7.0;
@@ -164,7 +166,7 @@ fn layer_ids_for_drag(app: &EffectcraftApp, current: u64) -> Vec<u64> {
 
 fn apply_timing(app: &mut EffectcraftApp, ids: &[u64], field: &str, value: f64) {
     let params = match field {
-        "start" => json!({"layers": ids, "start": value, "merge": true}),
+        "delta" => json!({"layers": ids, "delta": value, "merge": true}),
         "inDelta" => json!({"layers": ids, "inDelta": value, "merge": true}),
         "outDelta" => json!({"layers": ids, "outDelta": value, "merge": true}),
         _ => return,
@@ -251,7 +253,8 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     p.rect_filled(ruler, 0.0, t.panel_bg);
     p.rect_filled(Rect::from_min_size(ruler.min, vec2(label_w, ruler_h)), 0.0, t.panel_bg);
     p.text(pos2(ruler.min.x + 8.0, ruler.center().y), Align2::LEFT_CENTER, "时间轴", Tokens::semibold(10.5), t.text_dim);
-    let ruler_resp = ui.interact(tracks.intersect(ruler), Id::new("am-mobile-ruler-scrub"), Sense::click_and_drag());
+    let ruler_track = Rect::from_min_max(pos2(tracks.min.x, ruler.min.y), pos2(tracks.max.x, ruler.max.y));
+    let ruler_resp = ui.interact(ruler_track, Id::new("am-mobile-ruler-scrub"), Sense::click_and_drag());
     if (ruler_resp.clicked() || ruler_resp.dragged())
         && let Some(pt) = ruler_resp.interact_pointer_pos()
     {
@@ -313,9 +316,12 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
         let move_id = Id::new(("am-mobile-move-state", layer.id.0));
         if body_resp.drag_started() {
-            select_layer(app, layer.id.0);
+            if !app.session.state.selected_layers.contains(&layer.id) {
+                select_layer(app, layer.id.0);
+            }
             if let Some(pt) = body_resp.interact_pointer_pos() {
-                ui.ctx().data_mut(|d| d.insert_temp(move_id, (pt.x, layer_ids_for_drag(app, layer.id.0))));
+                let ids = layer_ids_for_drag(app, layer.id.0);
+                ui.ctx().data_mut(|d| d.insert_temp(move_id, (pt.x, ids)));
             }
         }
         if body_resp.dragged()
@@ -326,9 +332,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         {
             let delta = (pt.x - last_x) as f64 / pps;
             if delta.abs() > 0.00001 {
-                apply_timing(app, &ids, "start", delta + app.session.active_comp()
-                    .and_then(|c| c.layer(layer.id))
-                    .map(|l| l.start_time.seconds()).unwrap_or(layer.start_time.seconds()));
+                apply_timing(app, &ids, "delta", delta);
                 ui.ctx().data_mut(|d| d.insert_temp(move_id, (pt.x, ids)));
             }
         }
@@ -352,9 +356,12 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             app.auto.add_response(&format!("am.timeline.trim.{}.{}", layer.id.0, edge), &response, if edge == "in" { "拖动片段左边缘调整起点" } else { "拖动片段右边缘延长或缩短时长" });
             let drag_id = Id::new(("am-mobile-trim-state", edge, layer.id.0));
             if response.drag_started() {
-                select_layer(app, layer.id.0);
+                if !app.session.state.selected_layers.contains(&layer.id) {
+                    select_layer(app, layer.id.0);
+                }
                 if let Some(pt) = response.interact_pointer_pos() {
-                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, (pt.x, layer_ids_for_drag(app, layer.id.0))));
+                    let ids = layer_ids_for_drag(app, layer.id.0);
+                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, (pt.x, ids)));
                 }
             }
             if response.dragged()
@@ -406,8 +413,8 @@ fn bottom_tools(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 "media" => invoke(app, ui.ctx(), "file.import", json!({"picturesAndVideos": true})),
                 "text" => invoke(app, ui.ctx(), "layer.newText", json!({})),
                 "shape" => invoke(app, ui.ctx(), "layer.newShape", json!({"kind": "rect"})),
-                "effects" => ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "effects".to_string())),
-                "properties" => ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "properties".to_string())),
+                "effects" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "effects".to_string())); }
+                "properties" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "properties".to_string())); }
                 _ => {}
             }
         }
