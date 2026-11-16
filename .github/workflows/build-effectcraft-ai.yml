@@ -1086,7 +1086,16 @@ jobs:
           grep -Fq "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
           grep -Fq "import_wasm" "$HEADER_SRC"
           grep -Fq "effect.plugins.load" "$HEADER_SRC"
-          grep -Fq "DeepSeek AI 插件 ZIP" "$HEADER_SRC"
+          # Validate the current in-app DeepSeek model manager, not the retired companion-plugin import UI.
+          AI_ASSISTANT_SRC="source/effectcraft/crates/ui-egui/src/ai_assistant.rs"
+          test -s "$AI_ASSISTANT_SRC"
+          grep -Fq "DeepSeek 本地推理 · 已集成在当前 APK" "$AI_ASSISTANT_SRC"
+          grep -Fq "内置 AI 引擎已就绪；首次使用请先下载模型。" "$AI_ASSISTANT_SRC"
+          grep -Fq "模型管理" "$AI_ASSISTANT_SRC"
+          if grep -Eq "导入 AI 插件|DeepSeek AI 插件 ZIP|import_plugin" "$AI_ASSISTANT_SRC"; then
+            echo "Retired companion-plugin import UI must not be present; DeepSeek models are imported by the in-app manager." >&2
+            exit 1
+          fi
           grep -Fq "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1" "$HEADER_SRC"
           grep -Fq "AE 脚本 (.jsx/.js)" "$HEADER_SRC"
           grep -Fq "ScriptUI 面板 (.jsx)" "$HEADER_SRC"
