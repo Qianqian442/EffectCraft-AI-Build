@@ -292,7 +292,18 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         p.rect_filled(row.intersect(content), 0.0, row_bg);
         p.line_segment([row.left_bottom(), row.right_bottom()], Stroke::new(1.0, t.separator.gamma_multiply(0.45)));
         let name_rect = Rect::from_min_max(row.min, pos2(row.min.x + label_w, row.max.y));
-        p.text(name_rect.shrink2(vec2(7.0, 0.0)).left_center(), Align2::LEFT_CENTER, layer.name.clone(), Tokens::ui(10.5), if selected { t.text } else { t.text_dim });
+        p.with_clip_rect(name_rect).text(
+            name_rect.shrink2(vec2(7.0, 0.0)).left_center(),
+            Align2::LEFT_CENTER,
+            layer.name.clone(),
+            Tokens::ui(10.5),
+            if selected { t.text } else { t.text_dim },
+        );
+        let name_response = ui.interact(name_rect, Id::new(("am-mobile-layer-name", layer.id.0)), Sense::click());
+        if name_response.clicked() {
+            select_layer(app, layer.id.0);
+        }
+        app.auto.add_response(&format!("am.timeline.layer.{}", layer.id.0), &name_response, "选择图层");
 
         let x0 = tracks.min.x + ((layer.in_point.seconds() - view.start) * pps as f64) as f32;
         let x1 = tracks.min.x + ((layer.out_point.seconds() - view.start) * pps as f64) as f32;
@@ -305,7 +316,13 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let fill = if selected { Color32::from_rgb(43, 132, 205) } else { Color32::from_rgb(56, 89, 125) };
         p.rect_filled(bar, 5.0, fill);
         if bar.width() > 45.0 {
-            p.text(bar.shrink2(vec2(7.0, 0.0)).left_center(), Align2::LEFT_CENTER, layer.name.clone(), Tokens::ui(9.5), Color32::WHITE);
+            p.with_clip_rect(bar.shrink2(vec2(4.0, 1.0))).text(
+                bar.shrink2(vec2(7.0, 0.0)).left_center(),
+                Align2::LEFT_CENTER,
+                layer.name.clone(),
+                Tokens::ui(9.5),
+                Color32::WHITE,
+            );
         }
 
         // Body movement: a horizontal drag moves the whole selected layer group together.
