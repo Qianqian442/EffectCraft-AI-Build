@@ -320,9 +320,9 @@ fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, c
                 Err(error) => Err(error),
                 Ok(_) => {
                     let expression = match curve {
-                        "loop_cycle" => "loopOut(\\\"cycle\\\")",
-                        "loop_pingpong" => "loopOut(\\\"pingpong\\\")",
-                        "loop_offset" => "loopOut(\\\"offset\\\")",
+                        "loop_cycle" => "loopOut("cycle")",
+                        "loop_pingpong" => "loopOut("pingpong")",
+                        "loop_offset" => "loopOut("offset")",
                         _ => unreachable!(),
                     };
                     app.session.execute("prop.setExpression", serde_json::json!({
