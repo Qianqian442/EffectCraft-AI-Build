@@ -315,7 +315,7 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
     """Use a clearly labelled Nova-style Layout menu for workspace switching."""
     path = effectcraft / "crates/ui-egui/src/header.rs"
     source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_NOVA_LAYOUT_MENU_V1"
+    marker = "EFFECTCRAFT_NOVA_LAYOUT_MENU_V2"
     if marker not in source:
         source = replace_once(
             source,
