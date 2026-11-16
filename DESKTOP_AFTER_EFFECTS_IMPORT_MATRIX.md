@@ -62,6 +62,11 @@ These must remain visible in the preflight report until the relevant reader, mod
 6. **Effects and plug-ins:** extend the standard-effect table with verified parameter schemas; inventory third-party plug-ins and map only when an equivalent has matching controls and behavior. Do not execute desktop `.aex` binaries on mobile.
 7. **Visual parity:** compare source/target renders and editable project structure at representative frames and times.
 
+### Android media relinking boundary
+
+- The Android folder-based relinker searches recursively only under the device's **primary shared storage** (main/internal shared storage) and requires the app's on-demand **All files access** permission for filesystem scanning. The Android document-tree bridge intentionally rejects non-primary storage volumes; footage stored on an external SD card must first be copied into primary shared storage. The folder picker and path checks reject locations that cannot be written/accessed.
+- The relinker matches exact, unique filenames and checks media kind, dimensions, audio/video properties, codec and (for video/audio) compatible frame-rate/duration metadata. Duplicate names, unsupported source types, incomplete sequences and incompatible media remain unresolved for manual review. A dry-run report is available before applying changes.
+
 ## Build and validation gates
 
 - Unit/fixture tests for both `.aep` and `.aepx`, damaged inputs, all supported property/effect types and every newly decoded field.
