@@ -312,34 +312,76 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
 
 def patch_workspace_tabs(effectcraft: Path) -> None:
-    """Put the two-mode layout chooser on its own editing-only toolbar row."""
+    """Place the two-mode chooser in a dedicated editing row below the scrollable tools."""
     path = effectcraft / "crates/ui-egui/src/header.rs"
     source = path.read_text(encoding="utf-8")
     marker = "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1"
     if marker not in source:
-        source = replace_once(
-            source,
-            "    let cy = rect.center().y;\n",
-            "    let cy = rect.min.y + 20.0;\n",
-            "keep the original tools in the first 40px toolbar row",
-        )
-        source = replace_once(
-            source,
-            "    right_side(app, ui, &p, rect, x, cy);\n",
-            """    right_side(app, ui, &p, rect, x, cy);
+        responsive_marker = "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1"
+        if responsive_marker in source:
+            source = replace_once(
+                source,
+                "    let scroll_rect = rect;\n",
+                """    // Keep all original tools in the first row; the Ae/AM selector is outside this scroll area.
+    let scroll_rect = Rect::from_min_max(
+        rect.min,
+        pos2(rect.max.x, (rect.min.y + 40.0).min(rect.max.y)),
+    );
+""",
+                "reserve the first row for the original horizontally scrollable toolbar",
+            )
+            responsive_anchor = """        });
+
+    // EFFECTCRAFT_ANDROID_SINGLE_EXPORT_BUTTON_V1"""
+            responsive_replacement = """        });
+
     // EFFECTCRAFT_NOVA_LAYOUT_MENU_V2
     // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1
-    // The layout selector owns a separate row; it never shares hit targets with tool buttons.
-    if !app.ui.start_screen {
+    // A fixed second row keeps the Ae/AM selector separate from every scrollable tool hitbox.
+    if !app.ui.start_screen && rect.height() >= 60.0 {
         let layout_row = Rect::from_min_max(
             pos2(rect.min.x, rect.min.y + 40.0),
             rect.max,
         );
+        let layout_painter = ui.painter().clone();
+        layout_switch_row(app, ui, &layout_painter, layout_row);
+    }
+
+    // EFFECTCRAFT_ANDROID_SINGLE_EXPORT_BUTTON_V1"""
+            source = replace_once(
+                source,
+                responsive_anchor,
+                responsive_replacement,
+                "insert the Ae/AM selector after the scrollable tool row",
+            )
+        else:
+            # Compatibility fallback for a build path that has not installed the responsive header.
+            source = replace_once(
+                source,
+                "    let cy = rect.center().y;\n",
+                "    let cy = rect.min.y + 20.0;\n",
+                "keep the original tools in the first 40px toolbar row",
+            )
+            direct_anchor = "    right_side(app, ui, &p, rect, x, cy);\n"
+            direct_replacement = """    right_side(app, ui, &p, rect, x, cy);
+    // EFFECTCRAFT_NOVA_LAYOUT_MENU_V2
+    // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1
+    if !app.ui.start_screen && rect.height() >= 60.0 {
+        let layout_row = Rect::from_min_max(pos2(rect.min.x, rect.min.y + 40.0), rect.max);
         layout_switch_row(app, ui, &p, layout_row);
     }
-""",
-            "editing-only reserved layout-switch row",
-        )
+"""
+            source = replace_once(source, direct_anchor, direct_replacement, "add separate editing-only layout row")
+            source = replace_once(
+                source,
+                """    let rx = workspace_menu(app, ui, p, rx, cy);
+    workspace_tabs(app, ui, p, rx, left, cy);""",
+                """    // Keep the existing saved-workspace menu and tabs unchanged.
+    let rx = workspace_menu(app, ui, p, rx, cy);
+    workspace_tabs(app, ui, p, rx, left, cy);""",
+                "preserve the original workspace menu",
+            )
+
         anchor = "/// The Discord pill and the GitHub and website buttons"
         code = r'''
 // Show the active Ae/AM mode in a dedicated row below the original tool controls.
@@ -410,7 +452,7 @@ fn layout_switch_row(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Pain
     if marker not in patched_header:
         raise SystemExit("The dedicated editing-only Ae/AM layout row was not installed.")
     if "let rx = workspace_menu(app, ui, p, rx, cy);" not in patched_header:
-        raise SystemExit("The original saved-workspace menu must remain available beside the Ae/AM selector.")
+        raise SystemExit("The original saved-workspace menu must remain available alongside the Ae/AM selector.")
 
     frame = effectcraft / "crates/ui-egui/src/app/frame.rs"
     frame_source = frame.read_text(encoding="utf-8")
@@ -424,8 +466,9 @@ fn layout_switch_row(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Pain
         )
         frame.write_text(frame_source, encoding="utf-8")
     if frame_marker not in frame.read_text(encoding="utf-8"):
-        raise SystemExit("The editor header did not reserve space for the layout-switch row.")
-    print("Added a separate Ae/AM layout row below the editor tools; Home remains unchanged.")
+        raise SystemExit("The editor header did not reserve a separate row for the layout switch.")
+    print("Added a fixed second row for the Ae/AM selector beneath the responsive toolbar.")
+    print("Kept the original toolbar scrollable and preserved the existing workspace menu.")
 
 def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
