@@ -177,6 +177,45 @@ const TRIM_INSIDE: f32 = 5.0;"""
     path.write_text(source, encoding="utf-8")
 
 
+def patch_am_effect_browser_button(effectcraft: Path) -> None:
+    """Expose the complete native Ae effect browser directly from AM Effect Controls."""
+    path = effectcraft / "crates/ui-egui/src/panels/effect_controls/panel.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_BUTTON_V1"
+    if marker in source:
+        return
+    old = """    if fx.is_empty() {
+        bp.text(
+            pos2(body.center().x, body.min.y + 40.0),
+            Align2::CENTER_CENTER,
+            crate::i18n::tr("No effects. Drag one from Effects & Presets."),
+            Tokens::ui(12.0),
+            t.text_faint,
+        );
+    }"""
+    new = """    if fx.is_empty() {
+        // EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_BUTTON_V1
+        bp.text(
+            pos2(body.center().x, body.min.y + 24.0),
+            Align2::CENTER_CENTER,
+            crate::i18n::tr("No effects added"),
+            Tokens::ui(12.0),
+            t.text_faint,
+        );
+        let add_rect = Rect::from_center_size(
+            pos2(body.center().x, body.min.y + 70.0),
+            vec2((body.width() - 24.0).max(120.0), 42.0),
+        );
+        let add = ui.put(add_rect, egui::Button::new(format!("＋ {}", crate::i18n::tr("Add Effect"))));
+        app.auto.add_response("effectControls.addEffect", &add, "Add Effect");
+        if add.clicked() {
+            app.show_panel(crate::dock::PanelKind::EffectsPresets);
+        }
+    }"""
+    source = replace_once(source, old, new, "AM direct access to the native Ae effect browser")
+    path.write_text(source, encoding="utf-8")
+
+
 def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
     source = path.read_text(encoding="utf-8")
@@ -321,6 +360,7 @@ def main() -> None:
         raise SystemExit("EFFECTCRAFT_DIR and ARTCRAFT_DIR must point to checked-out source trees.")
     patch_dock(effectcraft)
     patch_touch_trim_handles(effectcraft)
+    patch_am_effect_browser_button(effectcraft)
     patch_workspace_selection(effectcraft)
     patch_startup_restore(effectcraft)
     patch_android_layout_module(effectcraft)
