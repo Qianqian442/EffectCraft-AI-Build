@@ -316,6 +316,24 @@ fn imported_lines(report: &Value) -> Vec<String> {
         "add tests for import preflight diagnostics and prompt conditions",
     )
 
+    # Ensure the prompt predicate exists even when an earlier importer patch
+    # has already rewritten the guard. This prevents a generated Rust compile failure.
+    losses_source = losses.read_text(encoding="utf-8")
+    if "fn needs_prompt(report: &Value)" not in losses_source:
+        helper = """/// Whether the import report contains project-specific issues or parser limitations.
+fn needs_prompt(report: &Value) -> bool {
+    report["losses"].as_array().is_some_and(|items| !items.is_empty())
+        || report["missingFootage"].as_array().is_some_and(|items| !items.is_empty())
+        || report["missingFonts"].as_array().is_some_and(|items| !items.is_empty())
+        || report["limitations"].as_array().is_some_and(|items| !items.is_empty())
+}
+
+"""
+        anchor = "/// A loss category (`snake_case` in the report) as words: `layer_styles` → `Layer styles`."
+        if anchor not in losses_source:
+            raise SystemExit("Cannot add the AE import prompt predicate: category helper anchor is missing.")
+        losses.write_text(losses_source.replace(anchor, helper + anchor, 1), encoding="utf-8")
+
     aep_now = aep.read_text(encoding="utf-8")
     am_nv_now = am_nv.read_text(encoding="utf-8")
     frontend_now = frontend.read_text(encoding="utf-8")
