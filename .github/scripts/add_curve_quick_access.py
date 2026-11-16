@@ -381,6 +381,164 @@ fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, c
     }
 }
 
+// EFFECTCRAFT_ANDROID_PERIODIC_CURVE_EDITOR_V1
+#[derive(Clone, Copy)]
+struct AndroidCycleParams {
+    cycles: f32,
+    amplitude: f32,
+    phase: f32,
+}
+impl Default for AndroidCycleParams {
+    fn default() -> Self {
+        Self { cycles: 3.0, amplitude: 0.55, phase: 0.0 }
+    }
+}
+#[derive(Clone, Copy)]
+struct AndroidCycleEditor {
+    segment: AndroidCurveSegment,
+    kind: u8,
+    params: AndroidCycleParams,
+    open: bool,
+}
+fn android_cycle_editor_id() -> egui::Id {
+    egui::Id::new("effectcraft-android-periodic-curve-editor")
+}
+fn android_cycle_params_id(segment: AndroidCurveSegment) -> egui::Id {
+    egui::Id::new(("effectcraft-android-periodic-curve-params", segment.layer, segment.prop, segment.first, segment.second))
+}
+fn android_cycle_wave(kind: u8, x: f32, params: AndroidCycleParams) -> f32 {
+    let phase = x * params.cycles + params.phase / std::f32::consts::TAU;
+    match kind {
+        1 => {
+            let q = phase.rem_euclid(1.0);
+            1.0 - 4.0 * (q - 0.5).abs()
+        }
+        2 => 2.0 * phase.rem_euclid(1.0) - 1.0,
+        3 => 2.0 * (std::f32::consts::PI * phase).sin().abs() - 1.0,
+        _ => (std::f32::consts::TAU * phase).sin(),
+    }
+}
+fn android_periodic_expression(segment: AndroidCurveSegment, editor: AndroidCycleEditor) -> String {
+    let cycles = editor.params.cycles.clamp(1.0, 12.0);
+    let amplitude = editor.params.amplitude.clamp(0.0, 1.5);
+    let phase = editor.params.phase;
+    let wave = match editor.kind {
+        1 => format!("var q = (u*{cycles:.4} + {phase:.5}/(2*Math.PI)) % 1; var wave = 1 - 4*Math.abs(q-0.5);"),
+        2 => format!("var wave = 2*((u*{cycles:.4} + {phase:.5}/(2*Math.PI)) % 1)-1;"),
+        3 => format!("var wave = 2*Math.abs(Math.sin(Math.PI*(u*{cycles:.4} + {phase:.5}/(2*Math.PI))))-1;"),
+        _ => format!("var wave = Math.sin(2*Math.PI*{cycles:.4}*u + {phase:.5});"),
+    };
+    format!(
+        "var a = key({}); var b = key({}); var r = value; if (time >= a.time && time <= b.time) {{ var u = clamp((time-a.time)/(b.time-a.time),0,1); var envelope = Math.sin(Math.PI*u); {} r = a.value + (b.value-a.value)*u + (b.value-a.value)*{amplitude:.5}*wave*envelope; }} r;",
+        segment.first_index, segment.second_index, wave
+    )
+}
+
+/// AM-style editor: drag yellow handles or use the controls to adjust the periodic curve.
+fn android_periodic_curve_editor(app: &mut EffectcraftApp, ctx: &egui::Context) {
+    let id = android_cycle_editor_id();
+    let Some(mut editor) = ctx.data(|data| data.get_temp::<AndroidCycleEditor>(id)) else { return; };
+    if !editor.open { return; }
+    let mut open = true;
+    let mut apply = false;
+    egui::Window::new("周期曲线编辑器")
+        .id(id.with("window"))
+        .default_pos(ctx.content_rect().center() - vec2(170.0, 165.0))
+        .default_size(vec2(ctx.content_rect().width().min(350.0).max(260.0), 330.0))
+        .min_size(vec2(250.0, 290.0))
+        .max_size(ctx.content_rect().size())
+        .constrain_to(ctx.content_rect())
+        .movable(true)
+        .resizable(false)
+        .collapsible(false)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            let mode_name = match editor.kind {
+                1 => "往返周期",
+                2 => "偏移周期",
+                3 => "弹跳周期",
+                _ => "周期运动",
+            };
+            ui.label(format!("{mode_name} · 拖动黄色控制点调整曲线"));
+            ui.add_space(4.0);
+
+            let graph_width = ui.available_width().max(220.0);
+            let (graph, _) = ui.allocate_exact_size(vec2(graph_width, 126.0), Sense::hover());
+            let plot = graph.shrink2(vec2(14.0, 9.0));
+            let painter = ui.painter();
+            painter.rect_filled(graph, 5.0, Color32::from_rgb(31, 37, 65));
+            for i in 0..=4 {
+                let x = plot.left() + plot.width() * i as f32 / 4.0;
+                let y = plot.top() + plot.height() * i as f32 / 4.0;
+                painter.line_segment([pos2(x, plot.top()), pos2(x, plot.bottom())], Stroke::new(0.6, Color32::from_gray(72)));
+                painter.line_segment([pos2(plot.left(), y), pos2(plot.right(), y)], Stroke::new(0.6, Color32::from_gray(72)));
+            }
+            painter.line_segment([plot.left_bottom(), plot.right_bottom()], Stroke::new(1.0, Color32::from_gray(150)));
+            painter.line_segment([plot.left_center(), plot.right_center()], Stroke::new(0.8, Color32::from_gray(100)));
+
+            let mut previous = plot.left_center();
+            for i in 1..=128 {
+                let x = i as f32 / 128.0;
+                let envelope = (std::f32::consts::PI * x).sin();
+                let y = 0.5 - android_cycle_wave(editor.kind, x, editor.params) * editor.params.amplitude * 0.43 * envelope;
+                let point = pos2(plot.left() + x * plot.width(), plot.bottom() - y.clamp(0.0, 1.0) * plot.height());
+                painter.line_segment([previous, point], Stroke::new(2.5, Color32::from_rgb(245, 139, 176)));
+                previous = point;
+            }
+
+            let cycle_x = plot.left() + ((editor.params.cycles - 1.0) / 11.0).clamp(0.0, 1.0) * plot.width();
+            let cycle_handle = pos2(cycle_x, plot.bottom() - 3.0);
+            painter.circle_filled(cycle_handle, 7.0, Color32::from_rgb(255, 218, 74));
+            let cycle_response = ui.interact(Rect::from_center_size(cycle_handle, vec2(24.0, 24.0)), id.with("cycle-handle"), Sense::drag());
+            if cycle_response.dragged() {
+                if let Some(pointer) = cycle_response.interact_pointer_pos() {
+                    editor.params.cycles = (1.0 + 11.0 * ((pointer.x - plot.left()) / plot.width()).clamp(0.0, 1.0)).round();
+                }
+            }
+
+            let amp_x = plot.left() + plot.width() * 0.22;
+            let amp_y = plot.center().y - editor.params.amplitude.clamp(0.0, 1.5) * plot.height() * 0.27;
+            let amp_handle = pos2(amp_x, amp_y);
+            painter.line_segment([pos2(amp_x, plot.center().y), amp_handle], Stroke::new(1.5, Color32::from_rgb(255, 218, 74)));
+            painter.circle_filled(amp_handle, 7.0, Color32::from_rgb(255, 218, 74));
+            let amp_response = ui.interact(Rect::from_center_size(amp_handle, vec2(24.0, 24.0)), id.with("amplitude-handle"), Sense::drag());
+            if amp_response.dragged() {
+                if let Some(pointer) = amp_response.interact_pointer_pos() {
+                    editor.params.amplitude = ((plot.center().y - pointer.y) / (plot.height() * 0.27)).clamp(0.0, 1.5);
+                }
+            }
+
+            ui.label("下方黄色点：左右调整周期数；左侧黄色点：上下调整振幅");
+            ui.add(egui::Slider::new(&mut editor.params.cycles, 1.0..=12.0).step_by(1.0).text("周期数"));
+            ui.add(egui::Slider::new(&mut editor.params.amplitude, 0.0..=1.5).text("振幅"));
+            ui.add(egui::Slider::new(&mut editor.params.phase, 0.0..=std::f32::consts::TAU).text("相位"));
+            ui.horizontal(|ui| {
+                if ui.button("应用曲线").clicked() { apply = true; }
+                if ui.button("取消").clicked() { open = false; }
+            });
+        });
+
+    if apply {
+        let expression = android_periodic_expression(editor.segment, editor);
+        match app.session.execute("prop.setExpression", serde_json::json!({
+            "comp": editor.segment.comp,
+            "layer": editor.segment.layer,
+            "prop": editor.segment.prop,
+            "expression": expression,
+            "enabled": true
+        })) {
+            Ok(_) => {
+                ctx.data_mut(|data| data.insert_temp(android_cycle_params_id(editor.segment), editor.params));
+                app.ui.status = "周期曲线已应用；重新打开曲线编辑器可继续调整周期数、振幅和相位。".into();
+                editor.open = false;
+            }
+            Err(error) => app.ui.status = error.to_string(),
+        }
+    }
+    if !open { editor.open = false; }
+    ctx.data_mut(|data| data.insert_temp(id, editor));
+}
+
 /// Left-bottom shortcut and centered draggable curve picker.
 fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let ctx = ui.ctx().clone();
@@ -461,7 +619,26 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
                         });
                 });
             if let Some(curve) = picked {
-                android_apply_curve(app, current, curve);
+                let cycle_kind = match curve {
+                    "loop_pingpong" => Some(1),
+                    "loop_offset" => Some(2),
+                    "bounce" => Some(3),
+                    "loop_cycle" => Some(0),
+                    _ => None,
+                };
+                if let Some(kind) = cycle_kind {
+                    let params_id = android_cycle_params_id(current);
+                    let params = ctx.data(|data| data.get_temp::<AndroidCycleParams>(params_id))
+                        .unwrap_or_default();
+                    ctx.data_mut(|data| data.insert_temp(android_cycle_editor_id(), AndroidCycleEditor {
+                        segment: current,
+                        kind,
+                        params,
+                        open: true,
+                    }));
+                } else {
+                    android_apply_curve(app, current, curve);
+                }
                 current.open = false;
             }
             if !open {
@@ -470,6 +647,7 @@ fn android_curve_quick_access(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect:
         }
         ctx.data_mut(|data| data.insert_temp(id, current));
     }
+    android_periodic_curve_editor(app, &ctx);
 }
 '''
     anchor = "const EXPR_MAX_LINES: usize = 100;\n"
