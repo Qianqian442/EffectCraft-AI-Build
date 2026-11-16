@@ -25,6 +25,8 @@ const MANIFEST: &str = {
     { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.halftone","name":"蓝宝石半色调","category":"风格化","version":"1.2.0","author":"效果工坊兼容实现","description":"移动端抗锯齿半色调效果，提供黑白网点、频率、角度、宽度、锐度、提亮、原图平滑、颜色和图案偏移控制。","params":[{"id":"dots","name":"网点类型","type":"popup","default":0,"options":["黑色网点","白色网点"]},{"id":"dots_frequency","name":"网点频率","type":"slider","default":50,"min":1,"max":200,"decimals":2},{"id":"dots_angle","name":"网点角度","type":"angle","default":30},{"id":"dots_rel_width","name":"网点相对宽度","type":"slider","default":1,"min":0.01,"max":4,"decimals":2},{"id":"dots_sharpness","name":"网点锐度","type":"slider","default":4,"min":0,"max":32,"decimals":2},{"id":"dots_lighten","name":"网点提亮","type":"slider","default":0,"min":-1,"max":1,"decimals":2},{"id":"smooth_source","name":"平滑原图","type":"slider","default":0,"min":0,"max":64,"decimals":2},{"id":"color1","name":"颜色一","type":"color","default":[1,1,1,1]},{"id":"color0","name":"颜色二","type":"color","default":[0,0,0,1]},{"id":"dots_shift","name":"网点偏移","type":"point","default":[0,0]},{"id":"mix","name":"混合强度","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
     #[cfg(sapphire_pixelsort)]
     { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.pixelsort","name":"蓝宝石像素排序","category":"风格化","version":"1.2.0","author":"效果工坊兼容实现","description":"安卓端像素排序效果，支持线性、径向和圆形扫描路径，可对中心点、角度、范围、分段长度及变化量设置关键帧。","params":[{"id":"effect","name":"效果模式","type":"popup","default":0,"options":["线性排序","径向排序","圆形排序"]},{"id":"threshold","name":"阈值","type":"slider","default":0.5,"min":0,"max":1.5,"decimals":2},{"id":"sort_angle","name":"排序角度","type":"angle","default":0},{"id":"center","name":"中心点","type":"point","default":[0.5,0.5]},{"id":"radial_start_angle","name":"径向起始角度","type":"angle","default":0},{"id":"degrees_sorted","name":"排序角度范围","type":"slider","default":360,"min":0,"max":360,"decimals":0},{"id":"inner_radius","name":"内半径","type":"slider","default":0.1,"min":0,"max":1,"decimals":2},{"id":"ray_length","name":"射线长度","type":"slider","default":0.8,"min":0,"max":3,"decimals":2},{"id":"vary_radius","name":"半径变化量","type":"slider","default":0.1,"min":0,"max":1,"decimals":2},{"id":"circular_start_angle","name":"圆形起始角度","type":"angle","default":0},{"id":"circular_degrees_sorted","name":"圆形排序角度范围","type":"slider","default":270,"min":0,"max":360,"decimals":0},{"id":"circle_center","name":"圆心位置","type":"point","default":[0.5,0.5]},{"id":"vary_start","name":"起始变化量","type":"slider","default":0.15,"min":0,"max":1,"decimals":2},{"id":"min_length","name":"最短分段长度","type":"slider","default":4,"min":2,"max":256,"decimals":0},{"id":"max_length","name":"最长分段长度","type":"slider","default":48,"min":2,"max":1024,"decimals":0},{"id":"sort_by","name":"排序依据","type":"popup","default":0,"options":["亮度","红色通道","绿色通道","蓝色通道"]},{"id":"reverse","name":"反向排序","type":"checkbox","default":false},{"id":"mix","name":"混合强度","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
+    #[cfg(sapphire_textureflux)]
+    { r#"{"api":1,"id":"org.effectcraft.sapphire.compat.texture-flux","name":"蓝宝石纹理通量","category":"纹理","version":"1.0.0","author":"效果工坊兼容实现","description":"程序化多层流体与细胞纹理，支持时间形变、气泡扭曲、颜色映射与混合模式；为独立兼容重实现，并非电脑版原厂插件。","params":[{"id":"frequency","name":"纹理频率","type":"slider","default":4,"min":0.01,"max":100,"decimals":2},{"id":"frequency_rel_x","name":"横向频率比例","type":"slider","default":1,"min":0.01,"max":10,"decimals":2},{"id":"octaves","name":"噪波层数","type":"slider","default":3,"min":1,"max":10,"decimals":0},{"id":"seed","name":"随机种子","type":"slider","default":0.234,"min":0,"max":1000,"decimals":3},{"id":"shift","name":"纹理偏移","type":"point","default":[0,0]},{"id":"bubble_amount","name":"气泡扭曲量","type":"slider","default":1,"min":-2,"max":2,"decimals":2},{"id":"bubble_smooth","name":"气泡平滑","type":"slider","default":0.25,"min":0.008,"max":2,"decimals":3},{"id":"rotate_warp_dir","name":"扭曲方向","type":"angle","default":0},{"id":"morph_speed","name":"流动速度","type":"slider","default":0.3,"min":-5,"max":5,"decimals":2},{"id":"morph","name":"流动方向","type":"point","default":[0,1]},{"id":"brightness1","name":"亮部亮度","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"color1","name":"亮部颜色","type":"color","default":[1,1,1,1]},{"id":"color0","name":"暗部颜色","type":"color","default":[0,0.12,0.15,1]},{"id":"saturation","name":"饱和度","type":"slider","default":1,"min":0,"max":4,"decimals":2},{"id":"combine","name":"合成模式","type":"popup","default":0,"options":["仅纹理","正片叠底","相加","滤色","差值","叠加"]},{"id":"output_opacity","name":"输出透明度","type":"popup","default":0,"options":["复制原图","完全不透明"]},{"id":"mix","name":"混合强度","type":"slider","default":100,"min":0,"max":100,"decimals":0}]}"# }
 };
 
 thread_local! {
@@ -633,6 +635,159 @@ fn render_halftone(pixels: &mut [[f32; 4]], width: usize, height: usize, params:
     0
 }
 
+#[cfg(sapphire_textureflux)]
+fn texture_hash(ix: i32, iy: i32, seed: f32) -> f32 {
+    let mut h = (ix as u32).wrapping_mul(0x9E37_79B1)
+        ^ (iy as u32).wrapping_mul(0x85EB_CA77)
+        ^ (seed.to_bits().rotate_left(13));
+    h ^= h >> 16;
+    h = h.wrapping_mul(0x7FEB_352D);
+    h ^= h >> 15;
+    h = h.wrapping_mul(0x846C_A68B);
+    h ^= h >> 16;
+    (h as f64 / u32::MAX as f64) as f32
+}
+
+#[cfg(sapphire_textureflux)]
+fn texture_noise(x: f32, y: f32, seed: f32) -> f32 {
+    let x0 = x.floor() as i32;
+    let y0 = y.floor() as i32;
+    let tx = x - x0 as f32;
+    let ty = y - y0 as f32;
+    let sx = tx * tx * (3.0 - 2.0 * tx);
+    let sy = ty * ty * (3.0 - 2.0 * ty);
+    let a = texture_hash(x0, y0, seed);
+    let b = texture_hash(x0 + 1, y0, seed);
+    let c = texture_hash(x0, y0 + 1, seed);
+    let d = texture_hash(x0 + 1, y0 + 1, seed);
+    let top = a + (b - a) * sx;
+    let bottom = c + (d - c) * sx;
+    top + (bottom - top) * sy
+}
+
+#[cfg(sapphire_textureflux)]
+fn texture_fbm(x: f32, y: f32, seed: f32, octaves: usize) -> f32 {
+    let mut frequency = 1.0_f32;
+    let mut amplitude = 1.0_f32;
+    let mut total = 0.0_f32;
+    let mut weight = 0.0_f32;
+    for octave in 0..octaves.clamp(1, 10) {
+        total += (texture_noise(x * frequency, y * frequency, seed + octave as f32 * 19.19) * 2.0 - 1.0) * amplitude;
+        weight += amplitude;
+        frequency *= 2.0;
+        amplitude *= 0.5;
+    }
+    if weight <= 1e-6 { 0.5 } else { (0.5 + 0.5 * total / weight).clamp(0.0, 1.0) }
+}
+
+#[cfg(sapphire_textureflux)]
+fn render_texture_flux(
+    pixels: &mut [[f32; 4]],
+    width: usize,
+    height: usize,
+    params: &[f64],
+    time: f64,
+) -> i32 {
+    if width == 0 || height == 0 || pixels.is_empty() { return 1; }
+    let frequency = params[0].clamp(0.01, 100.0) as f32;
+    let frequency_rel_x = params[1].clamp(0.01, 10.0) as f32;
+    let octaves = params[2].round().clamp(1.0, 10.0) as usize;
+    let seed = params[3].clamp(0.0, 1000.0) as f32;
+    let shift_x = params[4] as f32;
+    let shift_y = params[5] as f32;
+    let bubble_amount = params[6].clamp(-2.0, 2.0) as f32;
+    let bubble_smooth = params[7].clamp(0.008, 2.0) as f32;
+    let rotate = (params[8] as f32).to_radians();
+    let morph_speed = params[9].clamp(-5.0, 5.0) as f32;
+    let morph_x = params[10] as f32;
+    let morph_y = params[11] as f32;
+    let brightness = params[12].clamp(0.0, 4.0) as f32;
+    let color1 = [params[13] as f32, params[14] as f32, params[15] as f32];
+    let color0 = [params[17] as f32, params[18] as f32, params[19] as f32];
+    let saturation = params[21].clamp(0.0, 4.0) as f32;
+    let combine = params[22].round().clamp(0.0, 5.0) as usize;
+    let output_opaque = params[23] >= 0.5;
+    let mix = (params[24] / 100.0).clamp(0.0, 1.0) as f32;
+    if mix <= 0.0 { return 0; }
+
+    let source = pixels.to_vec();
+    let w = width as f32;
+    let h = height as f32;
+    let (sin_r, cos_r) = rotate.sin_cos();
+    let time_phase = time.max(0.0) as f32 * morph_speed;
+    for y in 0..height {
+        for x in 0..width {
+            let idx = y * width + x;
+            let alpha = source[idx][3].clamp(0.0, 1.0);
+            let src = if alpha > 1e-6 {
+                [source[idx][0] / alpha, source[idx][1] / alpha, source[idx][2] / alpha]
+            } else {
+                [0.0, 0.0, 0.0]
+            };
+            let px = (x as f32 + shift_x) / w - 0.5;
+            let py = (y as f32 + shift_y) / h - 0.5;
+            let rx = px * cos_r - py * sin_r;
+            let ry = px * sin_r + py * cos_r;
+            let mut u = rx * frequency * frequency_rel_x + 0.5 * frequency_rel_x;
+            let mut v = ry * frequency + 0.5;
+            // Two decorrelated fractal fields bend the domain into liquid/cellular contours.
+            let warp_scale = (frequency * bubble_smooth).max(0.05);
+            let wa = texture_fbm(
+                u * warp_scale + time_phase * morph_x,
+                v * warp_scale + time_phase * morph_y,
+                seed + 43.7,
+                octaves.max(2),
+            );
+            let wb = texture_fbm(
+                u * warp_scale - time_phase * morph_y,
+                v * warp_scale + time_phase * morph_x,
+                seed + 91.3,
+                octaves.max(2),
+            );
+            let bend_a = (wa - 0.5) * bubble_amount * 2.0;
+            let bend_b = (wb - 0.5) * bubble_amount * 2.0;
+            u += bend_a * cos_r - bend_b * sin_r;
+            v += bend_a * sin_r + bend_b * cos_r;
+            let raw = texture_fbm(
+                u + time_phase * morph_x,
+                v + time_phase * morph_y,
+                seed,
+                octaves,
+            );
+            let edge = bubble_smooth.clamp(0.008, 1.0);
+            let field = smoothstep(0.5 - edge * 0.5, 0.5 + edge * 0.5, raw);
+            let mut tex = [0.0_f32; 3];
+            for channel in 0..3 {
+                tex[channel] = (color0[channel] + (color1[channel] * brightness - color0[channel]) * field).max(0.0);
+            }
+            let luma = tex[0] * 0.2126 + tex[1] * 0.7152 + tex[2] * 0.0722;
+            for channel in 0..3 {
+                tex[channel] = (luma + (tex[channel] - luma) * saturation).max(0.0);
+            }
+            let mut out = tex;
+            for channel in 0..3 {
+                out[channel] = match combine {
+                    1 => src[channel] * tex[channel],
+                    2 => src[channel] + tex[channel],
+                    3 => 1.0 - (1.0 - src[channel]) * (1.0 - tex[channel]),
+                    4 => (src[channel] - tex[channel]).abs(),
+                    5 => if src[channel] <= 0.5 {
+                        2.0 * src[channel] * tex[channel]
+                    } else {
+                        1.0 - 2.0 * (1.0 - src[channel]) * (1.0 - tex[channel])
+                    },
+                    _ => tex[channel],
+                };
+                out[channel] = (src[channel] + (out[channel] - src[channel]) * mix).clamp(0.0, 16.0);
+                pixels[idx][channel] = out[channel] * if output_opaque { 1.0 } else { alpha };
+            }
+            pixels[idx][3] = if output_opaque { 1.0 } else { alpha };
+        }
+    }
+    0
+}
+
+
 #[cfg(sapphire_pixelsort)]
 fn sort_pixel_path(
     path: &[usize],
@@ -803,6 +958,7 @@ pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params:
         #[cfg(sapphire_rays)] { 31 }
         #[cfg(sapphire_halftone)] { 18 }
         #[cfg(sapphire_pixelsort)] { 20 }
+        #[cfg(sapphire_textureflux)] { 25 }
     };
     if nparams < needed { return 1; }
     let values = unsafe { std::slice::from_raw_parts(params as *const f64, nparams as usize) };
@@ -820,6 +976,7 @@ pub unsafe extern "C" fn ec_render(pixels: i32, width: i32, height: i32, params:
     #[cfg(sapphire_rays)] { render_rays(frame, w, h, values, _scale) }
     #[cfg(sapphire_halftone)] { render_halftone(frame, w, h, values, _scale) }
     #[cfg(sapphire_pixelsort)] { render_pixelsort(frame, w, h, values) }
+    #[cfg(sapphire_textureflux)] { render_texture_flux(frame, w, h, values, _time) }
 }
 
 
@@ -947,5 +1104,40 @@ mod tests {
         for index in 1..frame.len() {
             assert!(frame[index - 1][0] <= frame[index][0] + 1e-6);
         }
+    }
+}
+
+#[cfg(all(test, sapphire_textureflux))]
+mod texture_flux_tests {
+    use super::render_texture_flux;
+
+    #[test]
+    fn texture_flux_creates_animated_cellular_texture() {
+        let original = vec![[0.18_f32, 0.22, 0.26, 1.0]; 16 * 16];
+        let mut first = original.clone();
+        let mut second = original.clone();
+        let mut params = [0.0_f64; 25];
+        params[0] = 4.0;
+        params[1] = 1.0;
+        params[2] = 3.0;
+        params[3] = 0.234;
+        params[6] = 1.0;
+        params[7] = 0.25;
+        params[9] = 0.8;
+        params[11] = 1.0;
+        params[12] = 1.0;
+        params[13] = 1.0;
+        params[14] = 0.8;
+        params[15] = 0.5;
+        params[17] = 0.0;
+        params[18] = 0.12;
+        params[19] = 0.15;
+        params[21] = 1.0;
+        params[24] = 100.0;
+        assert_eq!(render_texture_flux(&mut first, 16, 16, &params, 0.0), 0);
+        assert_eq!(render_texture_flux(&mut second, 16, 16, &params, 1.0), 0);
+        assert!(first.iter().any(|pixel| (pixel[0] - original[0][0]).abs() > 0.01));
+        assert!(first.iter().zip(second.iter()).any(|(a,b)| (a[0]-b[0]).abs() > 1e-5));
+        assert!(first.iter().chain(second.iter()).flatten().all(|value| value.is_finite()));
     }
 }

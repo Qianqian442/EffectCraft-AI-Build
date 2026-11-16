@@ -55,7 +55,8 @@ on:
       - '.github/scripts/add_mobile_rsmb_controls.py'
       - '.github/scripts/add_effect_controls_crash_guard.py'
       - '.github/scripts/add_am_style_undo_redo.py'
-      - '.github/scripts/add_am_portrait_workspace.py'
+      - '.github/scripts/add_am_mobile_layout.py'
+      - '.github/scripts/pin_android_signing_certificate.py'
       - '.github/scripts/ai_video_export.rs'
       - '.github/scripts/sapphire_compat_pack.rs'
       - '.github/scripts/build_sapphire_compat_pack.py'
@@ -127,6 +128,8 @@ jobs:
             .github/scripts/add_ai_assistant_fullscreen_drag.py \
             .github/scripts/add_effect_controls_crash_guard.py \
             .github/scripts/add_am_style_undo_redo.py \
+            .github/scripts/add_am_mobile_layout.py \
+            .github/scripts/pin_android_signing_certificate.py \
             .github/scripts/add_open_source_craft_plugins.py
 
   build:
@@ -655,12 +658,13 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_am_style_undo_redo.py
           python3 build-assets/.github/scripts/add_am_style_undo_redo.py
 
-      - name: Add persistent AM portrait editing workspace
+      - name: Add AM portrait workspace and Android anti-tamper guard
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: |
-          python3 -m py_compile build-assets/.github/scripts/add_am_portrait_workspace.py
-          python3 build-assets/.github/scripts/add_am_portrait_workspace.py
+          python3 -m py_compile build-assets/.github/scripts/add_am_mobile_layout.py
+          python3 build-assets/.github/scripts/add_am_mobile_layout.py
 
       - name: Rename all visible application branding to Ae
         env:
@@ -673,6 +677,7 @@ jobs:
       - name: Verify final Android source patches and repair missing export helper
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: python3 build-assets/.github/scripts/verify_android_source_patches.py
 
       - name: Save generated AI assistant source for offline integration
@@ -731,6 +736,13 @@ jobs:
             artcraft/keys/artcraft-builder.jks
             artcraft/keys/.keystore-password
           key: effectcraft-apk-signing-v1-${{ github.repository_id }}
+
+      - name: Pin Android startup guard to the persistent release certificate
+        env:
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: |
+          python3 build-assets/.github/scripts/pin_android_signing_certificate.py
+          grep -Eq 'EXPECTED_SIGNING_CERT_SHA256 = "[A-F0-9]{64}"' artcraft/templates/android/SafActivity.java
 
       - name: Set up Rust for Android
         uses: dtolnay/rust-toolchain@stable
@@ -1046,14 +1058,19 @@ jobs:
           # not under apps/effectcraft-android. Verify the actual packaged .so below.
           echo "Verified the main EffectCraft Android launcher starts the native P2P transport."
           grep -Fq "EFFECTCRAFT_ANDROID_WASM_PLUGIN_AUTOLOAD_V1" "$LAUNCHER_SRC"
+          grep -Fq "EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1" source/effectcraft/crates/ui-egui/src/app/window.rs
+          grep -Fq "AM 竖屏" source/effectcraft/crates/ui-egui/src/dock.rs
+          grep -Fq "setWorkspacePortrait" "$P2P_ACTIVITY_DIR"/*.java
+          grep -Eq 'EXPECTED_SIGNING_CERT_SHA256 = "[A-F0-9]{64}"' "$P2P_ACTIVITY_DIR"/*.java
           grep -Fq "EFFECTCRAFT_ANDROID_BUILTIN_EFFECTS_V1" "$LAUNCHER_SRC"
-          for MODULE in glow aura lensflare blur distort stylize glint rays halftone pixelsort; do
+          for MODULE in glow aura lensflare blur distort stylize glint rays halftone pixelsort textureflux; do
             test -s "source/effectcraft/assets/sapphire-compat/ec_sapphire_${MODULE}.wasm"
           done
           test -s "source/effectcraft/assets/rsmb-compat/ec_rsmb_motion_blur.wasm"
           test -s "source/effectcraft/assets/looks-compat/ec_looks_studio.wasm"
           grep -Fq '"ec_looks_studio.wasm"' "$LAUNCHER_SRC"
-          grep -Fq 'const BUILTIN_EFFECTS_VERSION: &str = "5.0.0";' "$LAUNCHER_SRC"
+          grep -Fq '"ec_sapphire_textureflux.wasm"' "$LAUNCHER_SRC"
+          grep -Fq 'const BUILTIN_EFFECTS_VERSION: &str = "5.1.0";' "$LAUNCHER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_CRAFTPLUGINS_BUNDLE_V1" "$LAUNCHER_SRC"
           test -s "source/effectcraft/assets/craft-plugins/LICENSE"
           for MODULE in craft_glow craft_chromatic craft_camera_shake craft_displacer craft_halftone_dither craft_vhs_glitch craft_pixel_sort craft_anamorphic_flare craft_motion_blur_curves craft_reveal; do

@@ -20,11 +20,12 @@ VARIANTS = {
     "rays": "org.effectcraft.sapphire.compat.rays",
     "halftone": "org.effectcraft.sapphire.compat.halftone",
     "pixelsort": "org.effectcraft.sapphire.compat.pixelsort",
+    "textureflux": "org.effectcraft.sapphire.compat.texture-flux",
 }
 
 EXPECTED_FLATTENED_PARAMS = {
     "glow": 3, "aura": 7, "lensflare": 8, "blur": 2, "distort": 5,
-    "stylize": 3, "glint": 30, "rays": 31, "halftone": 18, "pixelsort": 20,
+    "stylize": 3, "glint": 30, "rays": 31, "halftone": 18, "pixelsort": 20, "textureflux": 25,
 }
 PARAM_WIDTH = {"slider": 1, "angle": 1, "checkbox": 1, "popup": 1, "point": 2, "color": 4}
 

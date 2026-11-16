@@ -102,8 +102,8 @@ def main() -> None:
     } else {
         // EFFECTCRAFT_ANDROID_BUILTIN_EFFECTS_V1
         // Ship original compatibility and color-grading modules in the host APK itself.
-        const BUILTIN_EFFECTS_VERSION: &str = "4.0.0";
-        let bundled_modules: [(&str, &[u8]); 12] = [
+        const BUILTIN_EFFECTS_VERSION: &str = "5.1.0";
+        let bundled_modules: [(&str, &[u8]); 13] = [
             ("ec_sapphire_glow.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_glow.wasm")),
             ("ec_sapphire_aura.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_aura.wasm")),
             ("ec_sapphire_lensflare.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_lensflare.wasm")),
@@ -116,6 +116,7 @@ def main() -> None:
             ("ec_sapphire_pixelsort.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_pixelsort.wasm")),
             ("ec_rsmb_motion_blur.wasm", include_bytes!("../../../assets/rsmb-compat/ec_rsmb_motion_blur.wasm")),
             ("ec_looks_studio.wasm", include_bytes!("../../../assets/looks-compat/ec_looks_studio.wasm")),
+            ("ec_sapphire_textureflux.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_textureflux.wasm")),
         ];
         // Remove the legacy RSMB file that older builds incorrectly stored in the Sapphire pack.
         let legacy_rsmb_module = plugins_dir.join("ec_sapphire_motion.wasm");

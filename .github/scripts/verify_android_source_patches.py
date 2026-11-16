@@ -478,6 +478,52 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified automatic opening routes all supported external project formats through the existing importers.")
 
 
+
+def verify_am_workspace_and_android_integrity(root: Path) -> None:
+    """Verify portrait AM presentation, saved workspace restoration and Android signer guard."""
+    workspace = "AM 竖屏"
+    dock = (root / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
+    window = (root / "crates/ui-egui/src/app/window.rs").read_text(encoding="utf-8")
+    app = (root / "crates/ui-egui/src/app.rs").read_text(encoding="utf-8")
+    store = (root / "crates/ui-egui/src/workspace_state.rs").read_text(encoding="utf-8")
+    bridge = (root / "crates/ui-egui/src/android_layout.rs").read_text(encoding="utf-8")
+    ui_cargo = (root / "crates/ui-egui/Cargo.toml").read_text(encoding="utf-8")
+
+    for token in (
+        f'"{workspace}"',
+        "tabs(&[Composition, Layer], 0)",
+        "tabs(&[Timeline, EffectsPresets, EffectControls, Properties, Project], 0)",
+    ):
+        if token not in dock:
+            raise SystemExit(f"AM portrait workspace is missing a required panel/layout element: {token}")
+    if f'set_workspace_portrait(name == "{workspace}")' not in window:
+        raise SystemExit("Switching away from AM does not restore sensor orientation.")
+    if f'set_workspace_portrait(app.ui.workspace == "{workspace}")' not in app:
+        raise SystemExit("The last saved AM layout is not applied to orientation on app startup.")
+    if "workspace: ui.workspace.clone()" not in store or "ui.workspace = self.workspace" not in store:
+        raise SystemExit("The active workspace name is not persisted/restored with workspaces.json.")
+    if "android_layout::set_workspace_portrait" not in app or "setWorkspacePortrait" not in bridge:
+        raise SystemExit("The Android Activity orientation bridge is not connected.")
+    if 'jni = "0.22"' not in ui_cargo:
+        raise SystemExit("The Android JNI dependency for orientation switching is missing.")
+
+    builder_root = Path(os.environ.get("ARTCRAFT_DIR", "")).resolve()
+    template = builder_root / "templates/android/SafActivity.java"
+    if not template.is_file():
+        raise SystemExit("Android SafActivity template is missing from ARTCRAFT_DIR.")
+    java = template.read_text(encoding="utf-8")
+    for token in (
+        "EFFECTCRAFT_ANDROID_AM_ORIENTATION_AND_SIGNER_GUARD_V1",
+        "verifyReleaseSigningCertificate()",
+        "setWorkspacePortrait(boolean portrait)",
+        "__EFFECTCRAFT_SIGNING_CERT_SHA256__",
+    ):
+        if token not in java:
+            raise SystemExit(f"Android startup integrity/orientation guard is missing: {token}")
+    print("Verified AM portrait layout, two-way sensor switching and workspaces.json restart persistence.")
+    print("Verified Android release-signer guard is installed in the generated Activity template.")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -492,6 +538,7 @@ def main() -> None:
         raise SystemExit(f"Expected one module-level effectcraft_export_memory_ok helper; found {memory_helper_count}.")
     print("Android export memory safety helper is present without imposing an application memory ceiling.")
     verify_chinese_default(root)
+    verify_am_workspace_and_android_integrity(root)
 
     parity = root / "docs/localization-parity.md"
     if parity.is_file():
@@ -500,13 +547,6 @@ def main() -> None:
         if row:
             print("Upstream localization baseline (not a completion claim):")
             print(row)
-    dock = (root / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_AM_PORTRAIT_WORKSPACE_V1" not in dock or '"AM" => vsplit(' not in dock:
-        raise SystemExit("The AM portrait workspace is missing from the workspace selector or dock layout.")
-    for panel in ("Composition", "Timeline", "EffectControls", "EffectsPresets"):
-        if panel not in dock:
-            raise SystemExit(f"The AM workspace is missing the existing {panel} panel.")
-    print("Verified AM portrait workspace uses existing project, Timeline, Effect Controls and Effects Presets panels; import/export code remains untouched.")
     print("Final Android source patch gate passed.")
 
 

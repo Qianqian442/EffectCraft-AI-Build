@@ -78,8 +78,8 @@ def main() -> None:
     if MARKER not in builder:
         builder = replace_once(
             builder,
-            'let bundled_modules: [(&str, &[u8]); 12] = [',
-            'let bundled_modules: [(&str, &[u8]); 22] = [',
+            'let bundled_modules: [(&str, &[u8]); 13] = [',
+            'let bundled_modules: [(&str, &[u8]); 23] = [',
             "built-in WASM module array length",
         )
         module_entries = "".join(
@@ -88,15 +88,15 @@ def main() -> None:
         )
         builder = replace_once(
             builder,
-            '            ("ec_looks_studio.wasm", include_bytes!("../../../assets/looks-compat/ec_looks_studio.wasm")),\n        ];',
+            '            ("ec_looks_studio.wasm", include_bytes!("../../../assets/looks-compat/ec_looks_studio.wasm")),\n            ("ec_sapphire_textureflux.wasm", include_bytes!("../../../assets/sapphire-compat/ec_sapphire_textureflux.wasm")),\n        ];',
             '            ("ec_looks_studio.wasm", include_bytes!("../../../assets/looks-compat/ec_looks_studio.wasm")),\n'
             f'{module_entries}        ];',
             "built-in WASM module array insertion",
         )
         builder = replace_once(
             builder,
-            'const BUILTIN_EFFECTS_VERSION: &str = "4.0.0";',
-            'const BUILTIN_EFFECTS_VERSION: &str = "5.0.0";',
+            'const BUILTIN_EFFECTS_VERSION: &str = "5.1.0";',
+            'const BUILTIN_EFFECTS_VERSION: &str = "5.1.0";',
             "built-in effects cache version",
         )
         builder = replace_once(
@@ -115,7 +115,7 @@ def main() -> None:
         )
         builder_path.write_text(builder, encoding="utf-8")
     else:
-        required = ['const BUILTIN_EFFECTS_VERSION: &str = "5.0.0";']
+        required = ['const BUILTIN_EFFECTS_VERSION: &str = "5.1.0";']
         required.extend(f'include_bytes!("../../../assets/craft-plugins/{filename}")' for filename, _ in MODULES)
         missing = [item for item in required if item not in builder]
         if missing:
@@ -124,7 +124,7 @@ def main() -> None:
     print(f"Bundled {len(records)} prebuilt EffectCraft API-v1 CraftPlugins modules from {UPSTREAM_COMMIT}:")
     for filename, effect_id, size, digest in records:
         print(f"  {filename}: {effect_id}, {size} bytes, sha256={digest}")
-    print("Kept the original 12 built-in EffectCraft modules; total bundled modules are now 22.")
+    print("Kept the original 13 built-in EffectCraft modules; total bundled modules are now 23.")
     print("Installed the upstream MIT license notice beside the bundled plug-ins.")
     print("No native EffectCraft effects, effect menu actions, or project-export commands were replaced.")
 
