@@ -71,7 +71,7 @@ fn top_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     if layout_response.clicked() {
         crate::widgets::open_popup(ui, layout_id);
     }
-    let choices = ["Ae 原布局", "AM 竖屏布局"];
+    let choices = vec!["Ae 原布局".to_string(), "AM 竖屏布局".to_string()];
     if let Some(choice) = crate::widgets::popup_menu(ui, layout_id, layout_rect.left_bottom(), &choices, Some(1)) {
         app.set_workspace(if choice == 0 { "Default" } else { WORKSPACE });
     }
