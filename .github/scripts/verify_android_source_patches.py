@@ -291,6 +291,8 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The original AE project picker was removed.")
     if '"file.importEffectCraftMobile" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"]))' not in aep_picker:
         raise SystemExit("The self-owned project picker must accept .ecproj/.ecprojx and ZIP packages.")
+    if '"file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"]))' not in aep_picker:
+        raise SystemExit("ZIP/RAR project packages are not selectable from File > Import.")
     for mapping in (
         '"file.importAepMobilePackage" => ("path", Ask::Open(&["zip"]))',
         '"file.importAlightMotionProject" => ("path", Ask::Open(&["xml", "alight", "zip"]))',
@@ -303,6 +305,11 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     mobile_importer = (root / "crates/engine/src/cmd/am_nv.rs").read_text(encoding="utf-8")
     if '"file.importEffectCraftMobile"' not in mobile_importer or "import_effectcraft_mobile_project" not in mobile_importer:
         raise SystemExit("The self-owned project import command is missing.")
+    if '"file.extractProjectArchive"' not in mobile_importer or "extract_project_rar" not in mobile_importer:
+        raise SystemExit("ZIP/RAR extraction and RAR decoding are missing.")
+    engine_manifest = (root / "crates/engine/Cargo.toml").read_text(encoding="utf-8")
+    if 'rars = { version = "0.12.3", default-features = false }' not in engine_manifest:
+        raise SystemExit("The native RAR reader dependency is missing.")
     if '"ecproj" | "ecprojx"' not in mobile_importer or '"zip" =>' not in mobile_importer:
         raise SystemExit("The native self-owned project importer no longer recognizes its project packages.")
     if 'super::import_project::import_project(s, &json!({"path": actual}))' not in mobile_importer:
@@ -348,6 +355,11 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         if diagnostic not in aep_loss_guard:
             raise SystemExit(f"The AE import review dialog is missing a required diagnostic: {diagnostic}")
     print("Verified separate desktop AE and mobile project imports, plus missing-media/font/parser-limit diagnostics.")
+    incoming_router = (root / "crates/ui-egui/src/menus.rs").read_text(encoding="utf-8")
+    if '"zip" | "rar"' not in incoming_router or '"file.extractProjectArchive"' not in incoming_router:
+        raise SystemExit("Incoming ZIP/RAR shares are not unpacked and dispatched by their inner project type.")
+    print("Verified incoming ZIP/RAR packages are extracted before their format-specific importers.")
+
     import_project_command = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
     if '"file.importProject"' not in import_project_command:
         raise SystemExit("The native Project importer command was removed instead of relocated.")

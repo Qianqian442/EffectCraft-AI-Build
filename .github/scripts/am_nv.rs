@@ -113,17 +113,132 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
         let lower = name.to_ascii_lowercase();
         if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") {
             project_file = Some(destination);
+        } else if lower.ends_with(".aep") || lower.ends_with(".aepx") {
+            if project_file.is_none() { project_file = Some(destination); }
         } else if project_file.is_none() && (lower.ends_with("draft_content.json") || lower.ends_with(".capcut.json")) {
             project_file = Some(destination);
         } else if lower.ends_with(".nv") {
             if project_file.is_none() { project_file = Some(destination); }
         } else if project_file.is_none() && (lower.ends_with(".xml") || lower.ends_with(".alight")) {
             project_file = Some(destination);
+        } else if project_file.is_none() && (lower.ends_with(".lottie") || lower.ends_with(".json")) {
+            project_file = Some(destination);
         }
     }
     let file = project_file.ok_or_else(|| err("该 ZIP 不包含自有工程 .ecproj/.ecprojx、NodeVideo .nv 或 Alight Motion XML 工程"))?;
     let file_ext = ext(&file.to_string_lossy());
     Ok((file.to_string_lossy().to_string(), root.to_string_lossy().to_string()))
+}
+
+fn rar_project_priority(name: &str) -> Option<u8> {
+    let lower = name.to_ascii_lowercase();
+    let base = Path::new(&lower).file_name().and_then(|v| v.to_str()).unwrap_or("");
+    if lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") { Some(0) }
+    else if lower.ends_with(".aep") || lower.ends_with(".aepx") { Some(1) }
+    else if base == "draft_content.json" || lower.ends_with(".capcut.json") { Some(2) }
+    else if lower.ends_with(".nv") { Some(3) }
+    else if lower.ends_with(".xml") || lower.ends_with(".alight") { Some(4) }
+    else if lower.ends_with(".json") { Some(5) }
+    else if lower.ends_with(".lottie") { Some(6) }
+    else if lower.ends_with(".fcpxml") || lower.ends_with(".otio") || lower.ends_with(".edl")
+        || lower.ends_with(".aaf") || lower.ends_with(".omf") { Some(7) }
+    else { None }
+}
+
+/// Extract a single RAR archive with explicit parsing, dictionary, member and total-output limits.
+/// Entry names are validated before they are joined to the private extraction directory.
+#[cfg(not(target_arch = "wasm32"))]
+fn extract_project_rar(s: &Session, path: &str) -> Result<(String, String)> {
+    use rars::{ArchiveReadOptions, ArchiveReader};
+    use std::fs::{self, OpenOptions};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const MAX_RAR_HEADERS: u64 = 10_000;
+    const MAX_RAR_HEADER_BYTES: u64 = 64 * 1024 * 1024;
+    const MAX_RAR_READER_WORKSPACE: u64 = 256 * 1024 * 1024;
+    const MAX_RAR_DICTIONARY: u64 = 256 * 1024 * 1024;
+
+    let parse_options = ArchiveReadOptions::new()
+        .with_max_header_count(MAX_RAR_HEADERS)
+        .with_max_header_bytes(MAX_RAR_HEADER_BYTES);
+    let archive = ArchiveReader::read_path_with_options(path, parse_options)
+        .map_err(|e| err(format!("RAR 工程包无法读取：{e}")))?;
+
+    let config = s.config.as_ref().and_then(|c| c.dir())
+        .ok_or_else(|| err("没有可写入的 Ae 工程目录，无法解压 RAR 工程包"))?;
+    let stem = Path::new(path).file_stem().map(|x| x.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Imported_Project".into());
+    let nonce = SystemTime::now().duration_since(UNIX_EPOCH)
+        .map(|v| v.as_nanos()).unwrap_or(0);
+    let root = config.join("Imported-Projects")
+        .join(format!("{}-{nonce}", safe_name(&stem)));
+    fs::create_dir_all(&root)
+        .map_err(|e| err(format!("无法创建 RAR 解压目录：{e}")))?;
+
+    let options = ArchiveReadOptions::new()
+        .with_max_header_count(MAX_RAR_HEADERS)
+        .with_max_header_bytes(MAX_RAR_HEADER_BYTES)
+        .with_max_member_output_bytes(MAX_ZIP_ENTRY)
+        .with_max_total_output_bytes(MAX_ZIP_TOTAL)
+        .with_max_reader_workspace_bytes(MAX_RAR_READER_WORKSPACE)
+        .with_rar50_dictionary_size_limit(MAX_RAR_DICTIONARY);
+    let mut project: Option<(u8, PathBuf)> = None;
+    let extraction = archive.extract_to_with_options(options, |entry| {
+        rars::validate_entry_name(&entry.name)?;
+        let name = entry.name_lossy();
+        if name.contains('\\\\') || name.contains('\\0') {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "unsafe RAR entry path").into());
+        }
+        let trimmed = name.trim_end_matches('/');
+        if trimmed.is_empty() {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "empty RAR entry path").into());
+        }
+        let relative = Path::new(trimmed);
+        if relative.components().any(|part| !matches!(part, Component::Normal(_))) {
+            return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "RAR entry escapes extraction directory").into());
+        }
+        let destination = root.join(relative);
+        if entry.is_directory {
+            fs::create_dir_all(&destination)?;
+            return Ok(Box::new(std::io::sink()) as Box<dyn Write>);
+        }
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let output = OpenOptions::new().write(true).create_new(true).open(&destination)?;
+        if let Some(priority) = rar_project_priority(&name) {
+            let replace = project.as_ref().is_none_or(|(current, _)| priority < *current);
+            if replace {
+                project = Some((priority, destination.clone()));
+            }
+        }
+        Ok(Box::new(output) as Box<dyn Write>)
+    });
+    if let Err(error) = extraction {
+        let _ = fs::remove_dir_all(&root);
+        return Err(err(format!("RAR 解压失败或工程包受损：{error}")));
+    }
+    let Some((_, project_file)) = project else {
+        let _ = fs::remove_dir_all(&root);
+        return Err(err("RAR 已解压，但其中没有识别到 Ae、AM、NV、CapCut、Lottie 或时间轴工程文件"));
+    };
+    Ok((project_file.to_string_lossy().to_string(), root.to_string_lossy().to_string()))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn extract_project_rar(_s: &Session, _path: &str) -> Result<(String, String)> {
+    Err(err("RAR 工程包解压仅在 Android / 桌面原生版本可用"))
+}
+
+fn extract_project_archive(s: &mut Session, p: &J) -> Result<J> {
+    let path = p.get("path").and_then(J::as_str)
+        .ok_or_else(|| err("缺少工程压缩包路径"))?.to_string();
+    let (actual, root) = match ext(&path).as_str() {
+        "zip" => extract_project_zip(s, &path)?,
+        "rar" => extract_project_rar(s, &path)?,
+        _ => return Err(err("工程压缩包只支持 ZIP 或 RAR")),
+    };
+    Ok(json!({"path": actual, "root": root}))
 }
 
 fn collect_refs<'a>(root: &'a J) -> HashMap<&'a str, &'a J> {
@@ -1232,6 +1347,9 @@ fn import_effectcraft_mobile_project(s: &mut Session, p: &J) -> Result<J> {
 
 pub fn specs() -> Vec<CommandSpec> {
     vec![
+        cmd!("file.extractProjectArchive", "工程压缩包（ZIP/RAR）...", ["File", "Import"], None,
+            "{path (.zip or .rar containing a supported project and its media)} — safely extracts the project bundle and returns the contained project path",
+            always, extract_project_archive),
         cmd!("file.importAepMobilePackage", "AE Mobile Project Package...", ["File", "Import"], None,
             "{path (.zip containing a genuine .aep/.aepx mobile project and media)} — imports an AE mobile project package without renaming unrelated formats",
             always, import_aep_mobile_package),

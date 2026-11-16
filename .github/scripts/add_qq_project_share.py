@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -25,7 +26,7 @@ def patch_manifest_generator(builder: Path) -> None:
     if android_meta.get("package") == "com.artcraft.effectcraft":
         project_extensions = (
             "aep", "aepx", "ecproj", "ecprojx", "zip", "xml", "alight",
-            "nv", "json", "fcpxml", "otio", "edl", "aaf", "omf", "lottie",
+            "nv", "json", "fcpxml", "otio", "edl", "aaf", "omf", "lottie", "rar",
         )
         for activity in activities:
             filters = activity.setdefault("intent_filter", [])
@@ -299,6 +300,37 @@ def patch_frontend(effectcraft: Path) -> None:
     path.write_text(source, encoding="utf-8")
 
 
+def patch_file_associations(builder: Path) -> None:
+    path = builder / "lib" / "file_associations.py"
+    source = path.read_text(encoding="utf-8")
+    rar_mimes = '''EXT_MIME = {
+    # Ae accepts project bundles shared from QQ and Android file managers.
+    "zip": ("application/zip", "application/x-zip-compressed"),
+    "rar": ("application/vnd.rar", "application/x-rar-compressed", "application/x-rar"),
+'''
+    if '"rar": ("application/vnd.rar"' not in source:
+        source = once(source, "EXT_MIME = {", rar_mimes, "ZIP/RAR MIME associations")
+    old = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate"],'
+    new = '''    "effectcraft": [
+        "ecproj", "ecprojx", "ectemplate",
+        "aep", "aepx", "alight", "xml", "nv", "json", "zip", "rar",
+        "lottie", "fcpxml", "otio", "edl", "aaf", "omf",
+    ],'''
+    if '"lottie", "fcpxml", "otio"' not in source:
+        source = once(source, old, new, "Ae project file associations")
+    path.write_text(source, encoding="utf-8")
+
+
+def patch_rar_dependency(effectcraft: Path) -> None:
+    path = effectcraft / "crates" / "engine" / "Cargo.toml"
+    source = path.read_text(encoding="utf-8")
+    dependency = 'rars = { version = "0.12.3", default-features = false }'
+    if dependency not in source:
+        anchor = "effectcraft-sam2 = { workspace = true }"
+        source = once(source, anchor, anchor + "\\n" + dependency, "RAR reader dependency")
+        path.write_text(source, encoding="utf-8")
+
+
 def patch_incoming_project_dispatch(builder: Path, effectcraft: Path) -> None:
     # Resolve every external project path to its existing importer. Keep this inside the UI
     # crate so desktop-AE imports still pass through the normal loss-review dialog.
@@ -317,8 +349,33 @@ pub(super) fn run_incoming_project(app: &mut EffectcraftApp, command: &str, path
         source = once(source, anchor, code + anchor, "incoming project importer bridge")
         frontend.write_text(source, encoding="utf-8")
 
+    # Add a ZIP/RAR picker and immediately import the extracted inner project.
+    picker_anchor = '        "file.importEffectCraftMobile" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"])),'
+    picker_new = picker_anchor + '\\n        "file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"])),'
+    if '"file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"]))' not in source:
+        source = once(source, picker_anchor, picker_new, "ZIP/RAR project archive picker")
+    run_anchor = '    p.insert(key.to_string(), v);\\n    // Picked files import in the background, with the Importing card showing progress (#270).'
+    run_new = '''    p.insert(key.to_string(), v);
+    if id == "file.extractProjectArchive" {
+        let extracted = app.session.execute(id, Value::Object(p)).map_err(|error| error.to_string())?;
+        let inner = extracted.get("path").and_then(Value::as_str)
+            .ok_or_else(|| "压缩包已解压，但没有识别到工程文件".to_string())?.to_owned();
+        super::import_incoming_project(app, &inner)?;
+        return Ok(extracted);
+    }
+    // Picked files import in the background, with the Importing card showing progress (#270).'''
+    if 'if id == "file.extractProjectArchive"' not in source:
+        source = once(source, run_anchor, run_new, "automatic import after archive picker")
+    frontend.write_text(source, encoding="utf-8")
+
     menus = effectcraft / "crates/ui-egui/src/menus.rs"
     source = menus.read_text(encoding="utf-8")
+    menu_source = menus.read_text(encoding="utf-8")
+    archive_menu_anchor = "      自有工程包... | file.importEffectCraftMobile\\n"
+    archive_menu_new = archive_menu_anchor + "      工程压缩包（ZIP/RAR）... | file.extractProjectArchive\\n"
+    if "工程压缩包（ZIP/RAR）... | file.extractProjectArchive" not in menu_source:
+        menu_source = once(menu_source, archive_menu_anchor, archive_menu_new, "add ZIP/RAR project menu entry")
+        menus.write_text(menu_source, encoding="utf-8")
     if marker not in source:
         anchor = "pub struct UiCommand {\n"
         code = r"""// EFFECTCRAFT_ANDROID_AUTO_IMPORT_EXTERNAL_PROJECT_V1
@@ -333,9 +390,18 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
     let command = match extension.as_str() {
         "aep" | "aepx" => "file.importAepDesktop",
         "ecproj" | "ecprojx" => "file.importEffectCraftMobile",
-        // This importer probes ZIP contents and detects EffectCraft, NodeVideo,
-        // Alight Motion XML and CapCut draft projects.
-        "zip" | "nv" => "file.importNodeVideoProject",
+        // Extract project bundles first, then dispatch the actual contained project format.
+        "zip" | "rar" => {
+            let extracted = app.session.execute(
+                "file.extractProjectArchive",
+                json!({"path": path}),
+            ).map_err(|error| error.to_string())?;
+            let inner = extracted.get("path").and_then(Value::as_str)
+                .ok_or_else(|| "压缩包已解压，但没有识别到工程文件".to_string())?
+                .to_owned();
+            return import_incoming_project(app, &inner);
+        }
+        "nv" => "file.importNodeVideoProject",
         "alight" => "file.importAlightMotionProject",
         "xml" => {
             let bytes = std::fs::read(path).unwrap_or_default();
@@ -380,7 +446,11 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
 ''',
 """
     if "effectcraft_ui_egui::menus::import_incoming_project(&mut self.inner, path)" not in shell:
-        shell = once(shell, old_open, new_open, "Android incoming-project automatic dispatch")
+        # Match the EffectCraft INTENT_OPEN entry by key and closing delimiter.
+        pattern = re.compile(r"""(?ms)^    "effectcraft": '''.*?^''',\n(?=    "filmcraft":)""")
+        shell, count = pattern.subn(lambda _match: new_open, shell, count=1)
+        if count != 1:
+            raise SystemExit("Could not locate the EffectCraft INTENT_OPEN entry in build-common.sh")
         builder_file.write_text(shell, encoding="utf-8")
 
     frontend_check = frontend.read_text(encoding="utf-8")
@@ -406,6 +476,8 @@ def main() -> None:
     if not effectcraft.is_dir() or not builder.is_dir():
         raise SystemExit("EFFECTCRAFT_DIR and ARTCRAFT_DIR must point to the checked-out sources.")
     patch_manifest_generator(builder)
+    patch_file_associations(builder)
+    patch_rar_dependency(effectcraft)
     patch_activity(builder)
     patch_rust_bridge(effectcraft)
     patch_frontend(effectcraft)
@@ -414,6 +486,9 @@ def main() -> None:
     manifest_generator = (builder / "lib/android_project.py").read_text(encoding="utf-8")
     if "EFFECTCRAFT_OPEN_PROJECT_" not in manifest_generator:
         raise SystemExit("Ae is not registered to receive supported project formats.")
+    associations = (builder / "lib" / "file_associations.py").read_text(encoding="utf-8")
+    if '"rar"' not in associations or "application/vnd.rar" not in associations:
+        raise SystemExit("Ae is not registered for RAR project packages.")
     for action in ("android.intent.action.VIEW", "android.intent.action.SEND"):
         if action not in manifest_generator:
             raise SystemExit(f"Ae incoming project intent filter is missing {action}.")
