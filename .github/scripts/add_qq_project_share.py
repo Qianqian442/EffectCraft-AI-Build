@@ -20,7 +20,7 @@ def patch_manifest_generator(builder: Path) -> None:
     source = path.read_text(encoding="utf-8")
     # EFFECTCRAFT_OPEN_SHARED_PROJECT_INTENT_V1: register Ae for incoming project ZIPs.
     # SafActivity already stages ACTION_VIEW URIs and routes them to the normal import inbox.
-    intent_anchor = '    activities = _as_list(application.get("activity")) or [{}]\\n    for activity in activities:\\n'
+    intent_anchor = '    activities = _as_list(application.get("activity")) or [{}]\n    for activity in activities:\n'
     intent_code = '''    activities = _as_list(application.get("activity")) or [{}]
     if android_meta.get("package") == "com.artcraft.effectcraft":
         for activity in activities:
@@ -29,7 +29,10 @@ def patch_manifest_generator(builder: Path) -> None:
             if not any(item.get("_effectcraft_marker") == marker_filter for item in filters):
                 filters.append({
                     "_effectcraft_marker": marker_filter,
-                    "actions": ["android.intent.action.VIEW"],
+                    "actions": [
+                        "android.intent.action.VIEW",
+                        "android.intent.action.SEND",
+                    ],
                     "categories": [
                         "android.intent.category.DEFAULT",
                         "android.intent.category.BROWSABLE",
@@ -37,6 +40,7 @@ def patch_manifest_generator(builder: Path) -> None:
                     "data": [
                         {"mime_type": "application/zip"},
                         {"mime_type": "application/x-zip-compressed"},
+                        {"mime_type": "application/octet-stream"},
                     ],
                 })
     for activity in activities:
