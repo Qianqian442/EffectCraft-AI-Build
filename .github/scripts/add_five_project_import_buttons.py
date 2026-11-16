@@ -78,6 +78,13 @@ def patch_frontend_pickers(root: Path) -> None:
         "file.importNodeVideoProject" => ("path", Ask::Open(&["nv", "json", "zip"])),
         "file.importCapCutProject" => ("path", Ask::Open(&["json", "zip"])),
 """
+    am_old = '"file.importAlightMotionProject" => ("path", Ask::Open(&["xml", "alight", "zip"])),'
+    am_new = '"file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"])),'
+    if am_old in source:
+        source = source.replace(am_old, am_new, 1)
+    elif am_new not in source:
+        raise SystemExit("Could not safely extend the Alight Motion file picker with .amproj")
+
     required = (
         '"file.extractProjectArchive" =>',
         '"file.importAepMobilePackage" =>',
@@ -86,6 +93,7 @@ def patch_frontend_pickers(root: Path) -> None:
         '"file.importCapCutProject" =>',
     )
     if all(item in source for item in required):
+        path.write_text(source, encoding="utf-8")
         return
     anchor = '        "file.importAepDesktop" => ("path", Ask::Open(&["aep", "aepx"])),\n'
     if anchor not in source:

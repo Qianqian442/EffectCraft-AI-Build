@@ -69,7 +69,7 @@ def main() -> None:
     replace_once(
         import_project,
         '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx")\n',
-        '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") || lower.ends_with(".nv") || lower.ends_with(".zip") || lower.ends_with(".alight") || lower.ends_with(".xml") || lower.ends_with(".aep") || lower.ends_with(".aepx") || lower.ends_with(".json")\n',
+        '    lower.ends_with(".ecproj") || lower.ends_with(".ecprojx") || lower.ends_with(".nv") || lower.ends_with(".zip") || lower.ends_with(".amproj") || lower.ends_with(".alight") || lower.ends_with(".xml") || lower.ends_with(".aep") || lower.ends_with(".aepx") || lower.ends_with(".json")\n',
         "AE, NodeVideo and project package routing",
     )
     replace_once(
@@ -97,12 +97,13 @@ def main() -> None:
     replace_once(
         frontend,
         '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx"])),',
-        '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "xml", "alight", "aep", "aepx", "json"])),',
+        '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "amproj", "xml", "alight", "aep", "aepx", "json"])),',
         "original Import Project picker formats",
     )
 
-    if not target.is_file() or "pub fn import_path" not in target.read_text(encoding="utf-8"):
-        raise SystemExit("Alight Motion / NodeVideo import implementation was not installed")
+    installed_importer = target.read_text(encoding="utf-8") if target.is_file() else ""
+    if "pub fn import_path" not in installed_importer or 'ext(path) == "amproj"' not in installed_importer:
+        raise SystemExit("Alight Motion / NodeVideo importer or .amproj archive route was not installed")
     if "mod am_nv;" not in cmd_registry.read_text(encoding="utf-8"):
         raise SystemExit("Alight Motion / NodeVideo import command module is not registered")
 
@@ -169,7 +170,7 @@ def main() -> None:
     if "id == \"file.importProject\"" not in aep_losses.read_text(encoding="utf-8"):
         raise SystemExit("The unified AEP import is not guarded against silent loss")
     print("Unified Import Project AEP/AEPX picks now use the same dry-run and user loss-confirmation dialog.")
-    print("Installed Alight Motion XML, NodeVideo .nv, CapCut draft_content.json and ZIP project import.")
+    print("Installed Alight Motion XML and .amproj ZIP project import, NodeVideo .nv, CapCut draft_content.json and ZIP project import.")
     print("The single Import Project control now routes .ecproj/.ecprojx, .aep/.aepx, .nv/.zip, AM XML and CapCut JSON.")
     print("Unsupported effects, 3D conversions and missing media are reported to the user.")
 

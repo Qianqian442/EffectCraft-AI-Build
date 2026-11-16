@@ -1375,7 +1375,7 @@ fn parse_xml_color(value: &str) -> [f64; 4] {
 }
 
 pub fn import_path(s: &mut Session, path: &str) -> Result<J> {
-    let (actual, package_root) = if ext(path) == "zip" || ext(path) == "alight" && std::fs::read(path).ok().is_some_and(|b| b.starts_with(b"PK")) {
+    let (actual, package_root) = if ext(path) == "zip" || ext(path) == "amproj" || ext(path) == "alight" && std::fs::read(path).ok().is_some_and(|b| b.starts_with(b"PK")) {
         let (file, root) = extract_project_zip(s, path)?;
         (file, Some(root))
     } else { (path.to_string(), None) };
