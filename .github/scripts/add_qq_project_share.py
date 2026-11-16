@@ -18,7 +18,7 @@ def once(source: str, old: str, new: str, label: str) -> str:
 def patch_manifest_generator(builder: Path) -> None:
     path = builder / "lib/android_project.py"
     source = path.read_text(encoding="utf-8")
-    # EFFECTCRAFT_OPEN_SHARED_PROJECT_INTENT_V1: register Ae for incoming project ZIPs.
+    # EFFECTCRAFT_OPEN_SHARED_PROJECT_INTENT_V1: register Ae for all supported incoming project formats.
     # SafActivity already stages ACTION_VIEW URIs and routes them to the normal import inbox.
     intent_anchor = '    activities = _as_list(application.get("activity")) or [{}]\n    for activity in activities:\n'
     intent_code = r'''    activities = _as_list(application.get("activity")) or [{}]
@@ -412,8 +412,8 @@ def main() -> None:
     patch_incoming_project_dispatch(builder, effectcraft)
 
     manifest_generator = (builder / "lib/android_project.py").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_OPEN_SHARED_PROJECT_ZIP" not in manifest_generator:
-        raise SystemExit("Ae is not registered to receive shared project ZIP files.")
+    if "EFFECTCRAFT_OPEN_PROJECT_" not in manifest_generator:
+        raise SystemExit("Ae is not registered to receive supported project formats.")
     for action in ("android.intent.action.VIEW", "android.intent.action.SEND"):
         if action not in manifest_generator:
             raise SystemExit(f"Ae incoming project intent filter is missing {action}.")
@@ -423,7 +423,7 @@ def main() -> None:
             raise SystemExit(f"Ae incoming file handoff is incomplete: {token}")
     # The QQ destination is now the system Sharesheet opened after Collect Files completes.
     # Do not add another standalone button to the export dialog.
-    print("Added the Android ZIP share bridge used by the unified Project Export selector.")
+    print("Added the Android full-project share bridge used by the unified Project Export selector.")
     print("The archive includes the .ecproj and collected footage; QQ and other targets receive a read-granted content URI.")
     print("All supported project extensions are registered with Android and routed into their existing Ae importers after staging.")
 
