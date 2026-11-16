@@ -166,7 +166,8 @@ fn diagnostics(report: &Value) -> Vec<(String, Vec<String>)> {
             details.push(format!("… and {} more", values.len() - MAX_DETAILS));
         }
         if key == "missingFootage" {
-            details.push("导入完成后，打开“文件 > 依赖项 > 重新链接缺失素材”，选择手机内部存储中包含素材的总文件夹。".to_string());
+            details.push("导入完成后，打开“文件 > 依赖项 > 重新链接缺失素材”，选择手机内部共享存储中包含素材的总文件夹。".to_string());
+            details.push("请允许 Ae 使用“所有文件访问”权限；当前 Android 文件夹扫描仅支持内部共享存储，外置 SD 卡目录请先复制到内部存储。".to_string());
             details.push("只自动匹配文件名唯一且媒体参数一致的素材；重名或参数不匹配的文件需要手动检查。".to_string());
         } else if key == "missingFonts" {
             details.push("文字会暂用替代字体显示；安装对应字体并重新打开工程后再检查。".to_string());
