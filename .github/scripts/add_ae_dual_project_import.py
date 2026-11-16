@@ -23,8 +23,10 @@ def main() -> None:
     frontend = root / "crates/ui-egui/src/menus/frontend.rs"
     menu = root / "crates/engine/src/menus.rs"
     losses = root / "crates/ui-egui/src/panels/aep_losses.rs"
+    report = root / "crates/aep/src/import/report.rs"
+    layer_build = root / "crates/aep/src/import/build.rs"
 
-    for path in (aep, am_nv, frontend, menu, losses):
+    for path in (aep, am_nv, frontend, menu, losses, report, layer_build):
         if not path.is_file():
             raise SystemExit(f"Required project-import source is missing: {path}")
 
@@ -107,6 +109,17 @@ def main() -> None:
 """,
         "add distinct desktop AE and EffectCraft mobile import menu entries",
     )
+
+    # The guide-layer bit is verified in LayerHeader and copied into Layer.switches.guide.
+    # Do not advertise it as unsupported in the reader's standing limitation list.
+    replace_once(
+        report,
+        '"Frame blending, 3D material options, audio levels, guides are not decoded and not imported.",',
+        '"Frame blending, 3D material options and audio levels are not decoded and not imported.",',
+        "remove the stale guide-layer limitation because the switch is decoded",
+    )
+    if "s.guide = h.is_guide();" not in layer_build.read_text(encoding="utf-8"):
+        raise SystemExit("The AEP importer no longer maps the verified guide-layer switch.")
 
     # Keep the original AE dry-run/loss-consent path and apply it to the new desktop alias.
     replace_once(
@@ -305,6 +318,9 @@ fn imported_lines(report: &Value) -> Vec<String> {
     frontend_now = frontend.read_text(encoding="utf-8")
     menu_now = menu.read_text(encoding="utf-8")
     losses_now = losses.read_text(encoding="utf-8")
+    report_now = report.read_text(encoding="utf-8")
+    if "guides are not decoded" in report_now.lower() or "s.guide = h.is_guide();" not in layer_build.read_text(encoding="utf-8"):
+        raise SystemExit("The desktop-AE import report contains a stale guide-layer limitation.")
     if "file.importAepDesktop" not in aep_now:
         raise SystemExit("The desktop AE command was not registered")
     if "file.importAep" not in aep_now:
