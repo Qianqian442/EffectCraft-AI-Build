@@ -175,6 +175,15 @@ def patch_touch_trim_handles(effectcraft: Path) -> None:
         missing = [item for item in required if item not in source]
         if missing:
             raise SystemExit("Existing AM timeline trim-handle patch is incomplete: " + "; ".join(missing))
+        # The final source verifier checks this AM-specific marker to make sure the
+        # AM workspace retains the same touch-ready duration handle. Add a Rust comment
+        # beside the shared implementation; do not duplicate or alter its hit zones.
+        source = source.replace(
+            existing_marker,
+            existing_marker + "\\n// EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1",
+            1,
+        )
+        path.write_text(source, encoding="utf-8")
         print("Reusing the existing enlarged In/Out hit zones and visible right-edge handle.")
         return
     old = """const TRIM_OUTSIDE: f32 = 4.0;
