@@ -44,6 +44,7 @@ def patch_manifest_generator(builder: Path) -> None:
                         ],
                         "data": [{
                             "scheme": scheme,
+                            "host": "*",
                             "mime_type": "*/*",
                             "path_pattern": r".*\." + extension,
                         }],
@@ -330,7 +331,7 @@ def patch_rar_dependency(effectcraft: Path) -> None:
     dependency = 'rars = { version = "0.12.3", default-features = false }'
     if dependency not in source:
         anchor = "effectcraft-sam2 = { workspace = true }"
-        source = once(source, anchor, anchor + "\\n" + dependency, "RAR reader dependency")
+        source = once(source, anchor, anchor + "\n" + dependency, "RAR reader dependency")
         path.write_text(source, encoding="utf-8")
 
 
@@ -354,10 +355,10 @@ pub(super) fn run_incoming_project(app: &mut EffectcraftApp, command: &str, path
 
     # Add a ZIP/RAR picker and immediately import the extracted inner project.
     picker_anchor = '        "file.importEffectCraftMobile" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"])),'
-    picker_new = picker_anchor + '\\n        "file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"])),'
+    picker_new = picker_anchor + '\n        "file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"])),'
     if '"file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"]))' not in source:
         source = once(source, picker_anchor, picker_new, "ZIP/RAR project archive picker")
-    run_anchor = '    p.insert(key.to_string(), v);\\n    // Picked files import in the background, with the Importing card showing progress (#270).'
+    run_anchor = '    p.insert(key.to_string(), v);\n    // Picked files import in the background, with the Importing card showing progress (#270).'
     run_new = '''    p.insert(key.to_string(), v);
     if id == "file.extractProjectArchive" {
         let extracted = app.session.execute(id, Value::Object(p)).map_err(|error| error.to_string())?;
@@ -431,8 +432,8 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
         menus.write_text(source, encoding="utf-8")
 
     menu_source = menus.read_text(encoding="utf-8")
-    archive_menu_anchor = "      自有工程包... | file.importEffectCraftMobile\\n"
-    archive_menu_new = archive_menu_anchor + "      工程压缩包（ZIP/RAR）... | file.extractProjectArchive\\n"
+    archive_menu_anchor = "      自有工程包... | file.importEffectCraftMobile\n"
+    archive_menu_new = archive_menu_anchor + "      工程压缩包（ZIP/RAR）... | file.extractProjectArchive\n"
     if "工程压缩包（ZIP/RAR）... | file.extractProjectArchive" not in menu_source:
         menu_source = once(menu_source, archive_menu_anchor, archive_menu_new, "add ZIP/RAR project menu entry")
         menus.write_text(menu_source, encoding="utf-8")

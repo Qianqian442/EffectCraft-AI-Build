@@ -178,7 +178,7 @@ fn extract_project_rar(s: &Session, path: &str) -> Result<(String, String)> {
     let extraction = archive.extract_to_with_options(options, |entry| {
         rars::validate_entry_name(&entry.name)?;
         let name = entry.name_lossy();
-        if name.contains('\\\\') || name.contains('\\0') {
+        if name.contains('\\\\') || name.contains('\0') {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "unsafe RAR entry path").into());
         }
         let trimmed = name.trim_end_matches('/');
