@@ -305,27 +305,36 @@ fn android_curve_preview(ui: &mut egui::Ui, rect: Rect, kind: &str, color: Color
 
 fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, curve: &str) {
     let result = match curve {
-        "loop_cycle" => app.session.execute("prop.setExpression", serde_json::json!({
-            "comp": segment.comp,
-            "layer": segment.layer,
-            "prop": segment.prop,
-            "expression": "loopOut(\"cycle\")",
-            "enabled": true
-        })),
-        "loop_pingpong" => app.session.execute("prop.setExpression", serde_json::json!({
-            "comp": segment.comp,
-            "layer": segment.layer,
-            "prop": segment.prop,
-            "expression": "loopOut(\"pingpong\")",
-            "enabled": true
-        })),
-        "loop_offset" => app.session.execute("prop.setExpression", serde_json::json!({
-            "comp": segment.comp,
-            "layer": segment.layer,
-            "prop": segment.prop,
-            "expression": "loopOut(\"offset\")",
-            "enabled": true
-        })),
+        "loop_cycle" | "loop_pingpong" | "loop_offset" => {
+            // Keep the cycle expression tied to editable Bezier handles on the selected segment.
+            // The native Graph Editor evaluates the expression curve and edits these source handles.
+            let bezier = app.session.execute("keys.setSegmentCurve", serde_json::json!({
+                "comp": segment.comp,
+                "layer": segment.layer,
+                "prop": segment.prop,
+                "first": Tick(segment.first).seconds(),
+                "second": Tick(segment.second).seconds(),
+                "curve": "bezier"
+            }));
+            match bezier {
+                Err(error) => Err(error),
+                Ok(_) => {
+                    let expression = match curve {
+                        "loop_cycle" => "loopOut(\\\"cycle\\\")",
+                        "loop_pingpong" => "loopOut(\\\"pingpong\\\")",
+                        "loop_offset" => "loopOut(\\\"offset\\\")",
+                        _ => unreachable!(),
+                    };
+                    app.session.execute("prop.setExpression", serde_json::json!({
+                        "comp": segment.comp,
+                        "layer": segment.layer,
+                        "prop": segment.prop,
+                        "expression": expression,
+                        "enabled": true
+                    }))
+                }
+            }
+        }
         "bounce" => {
             if !segment.numeric {
                 app.ui.status = "弹跳曲线仅适用于数值、位置、缩放等数值属性".into();
@@ -358,10 +367,15 @@ fn android_apply_curve(app: &mut EffectcraftApp, segment: AndroidCurveSegment, c
     } else if curve == "bounce" {
         app.ui.status = "已应用 AM 风格弹跳周期：多次回弹并逐渐收敛到终点".into();
     } else if curve.starts_with("loop_") {
+        // Open the native, editable Value Graph after applying the cycle expression.
+        // The selected segment's Bezier handles remain the source curve repeated by loopOut.
+        app.ui.timeline.graph_mode = "value".into();
+        app.ui.timeline.graph_show_selected = true;
+        app.ui.timeline.graph_editor = true;
         app.ui.status = match curve {
-            "loop_cycle" => "已应用周期运动：loopOut(cycle)".into(),
-            "loop_pingpong" => "已应用往返周期：loopOut(pingpong)".into(),
-            "loop_offset" => "已应用偏移周期：loopOut(offset)".into(),
+            "loop_cycle" => "已打开周期运动曲线编辑器：拖动黄色贝塞尔手柄即可调整循环曲线".into(),
+            "loop_pingpong" => "已打开往返周期曲线编辑器：拖动黄色贝塞尔手柄即可调整曲线".into(),
+            "loop_offset" => "已打开偏移周期曲线编辑器：拖动黄色贝塞尔手柄即可调整曲线".into(),
             _ => String::new(),
         };
     }
