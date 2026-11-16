@@ -359,11 +359,23 @@ pub(super) fn run_incoming_project(app: &mut EffectcraftApp, command: &str, path
         source = once(source, anchor, code + anchor, "incoming project importer bridge")
         frontend.write_text(source, encoding="utf-8")
 
-    # Add a ZIP/RAR picker and immediately import the extracted inner project.
-    picker_anchor = '        "file.importEffectCraftMobile" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"])),'
-    picker_new = picker_anchor + '\n        "file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"])),'
-    if '"file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"]))' not in source:
-        source = once(source, picker_anchor, picker_new, "ZIP/RAR project archive picker")
+    # Add the ZIP/RAR picker beside the original native project picker. This runs
+    # before later scripts split mobile AE / EffectCraft imports, so do not depend on
+    # the later file.importEffectCraftMobile mapping already existing.
+    archive_picker = '"file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"]))'
+    if archive_picker not in source:
+        base_picker = re.compile(
+            r'(?m)^(?P<indent>[ \t]*)"file\.importProject"\s*=>\s*\("path",\s*Ask::Open\(&\[[^\]]*\]\)\),\s*$'
+        )
+        match = base_picker.search(source)
+        if match is None:
+            raise SystemExit("Could not locate the original file.importProject picker for ZIP/RAR registration.")
+        line_end = source.find("\n", match.end())
+        if line_end < 0:
+            line_end = len(source)
+        insertion = match.group("indent") + "        " + archive_picker + ",\n"
+        source = source[:line_end + 1] + insertion + source[line_end + 1:]
+
     run_anchor = '    p.insert(key.to_string(), v);\n    // Picked files import in the background, with the Importing card showing progress (#270).'
     run_new = '''    p.insert(key.to_string(), v);
     if id == "file.extractProjectArchive" {
@@ -437,12 +449,8 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
         source = once(source, anchor, code + anchor, "public incoming-project format router")
         menus.write_text(source, encoding="utf-8")
 
-    menu_source = menus.read_text(encoding="utf-8")
-    archive_menu_anchor = "      自有工程包... | file.importEffectCraftMobile\n"
-    archive_menu_new = archive_menu_anchor + "      工程压缩包（ZIP/RAR）... | file.extractProjectArchive\n"
-    if "工程压缩包（ZIP/RAR）... | file.extractProjectArchive" not in menu_source:
-        menu_source = once(menu_source, archive_menu_anchor, archive_menu_new, "add ZIP/RAR project menu entry")
-        menus.write_text(menu_source, encoding="utf-8")
+    # The final File > Import menu is generated later by
+    # add_five_project_import_buttons.py; it adds the archive command there.
     builder_file = builder / "lib" / "build-common.sh"
     shell = builder_file.read_text(encoding="utf-8")
     old_open = """    "effectcraft": '''        if let Err(error) = self.inner.session.execute("file.open", serde_json::json!({ "path": path })) {

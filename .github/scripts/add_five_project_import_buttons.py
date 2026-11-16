@@ -30,6 +30,7 @@ def patch_file_import_menu(root: Path) -> None:
     更多工程格式
       自有工程... | file.importProject
       自有工程包... | file.importEffectCraftMobile
+      工程压缩包（ZIP/RAR）... | file.extractProjectArchive
       Adobe Premiere Pro Project... | file.importTimeline
       After Effects Project... | file.importAep
     Placeholder... | file.importPlaceholder
@@ -50,6 +51,7 @@ def patch_file_import_menu(root: Path) -> None:
         "导入capcut工程... | file.importCapCutProject",
         "自有工程... | file.importProject",
         "自有工程包... | file.importEffectCraftMobile",
+        "工程压缩包（ZIP/RAR）... | file.extractProjectArchive",
     )
     for entry in required:
         if entry not in final:
@@ -70,12 +72,14 @@ def patch_frontend_pickers(root: Path) -> None:
     """Register a native file picker for each of the four non-desktop project formats."""
     path = root / "crates/ui-egui/src/menus/frontend.rs"
     source = path.read_text(encoding="utf-8")
-    mappings = """        "file.importAepMobilePackage" => ("path", Ask::Open(&["zip"])),
+    mappings = """        "file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"])),
+        "file.importAepMobilePackage" => ("path", Ask::Open(&["zip"])),
         "file.importAlightMotionProject" => ("path", Ask::Open(&["xml", "alight", "zip"])),
         "file.importNodeVideoProject" => ("path", Ask::Open(&["nv", "json", "zip"])),
         "file.importCapCutProject" => ("path", Ask::Open(&["json", "zip"])),
 """
     required = (
+        '"file.extractProjectArchive" =>',
         '"file.importAepMobilePackage" =>',
         '"file.importAlightMotionProject" =>',
         '"file.importNodeVideoProject" =>',
