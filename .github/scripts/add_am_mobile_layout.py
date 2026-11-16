@@ -180,7 +180,7 @@ def patch_touch_trim_handles(effectcraft: Path) -> None:
         # beside the shared implementation; do not duplicate or alter its hit zones.
         source = source.replace(
             existing_marker,
-            existing_marker + "\\n// EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1",
+            existing_marker + "\n// EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1",
             1,
         )
         path.write_text(source, encoding="utf-8")
@@ -320,7 +320,7 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
         source = replace_once(
             source,
             '    let shown = ["Standard", "Small Screen", "Learn", "Review", "Default"];',
-            '    // EFFECTCRAFT_AM_LAYOUT_SWITCH_TAB_V1\\n'
+            '    // EFFECTCRAFT_AM_LAYOUT_SWITCH_TAB_V1\n'
             '    let shown = ["AM 竖屏", "Standard", "Small Screen", "Learn", "Review", "Default"];',
             "AM layout toolbar switch tab",
         )
@@ -376,8 +376,8 @@ pub(crate) fn paint_workspace_transition(ctx: &egui::Context, full: egui::Rect) 
 '''
         source = replace_once(
             source,
-            "/// The » button with the menu of all workspaces; returns the new `rx`.\\n",
-            helper + "/// The » button with the menu of all workspaces; returns the new `rx`.\\n",
+            "/// The » button with the menu of all workspaces; returns the new `rx`.\n",
+            helper + "/// The » button with the menu of all workspaces; returns the new `rx`.\n",
             "blue workspace transition helpers",
         )
     old_menu = """    ) {
@@ -425,8 +425,8 @@ pub(crate) fn paint_workspace_transition(ctx: &egui::Context, full: egui::Rect) 
     if frame_call not in frame_source:
         frame_source = replace_once(
             frame_source,
-            "        self.draw_toast(ui, full, lift);\\n",
-            "        self.draw_toast(ui, full, lift);\\n" + frame_call + "\\n",
+            "        self.draw_toast(ui, full, lift);\n",
+            "        self.draw_toast(ui, full, lift);\n" + frame_call + "\n",
             "blue workspace transition overlay paint",
         )
         frame.write_text(frame_source, encoding="utf-8")
