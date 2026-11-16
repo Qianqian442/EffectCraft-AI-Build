@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - '.github/workflows/build-effectcraft-ai.yml'
+      - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/add_qq_project_share.py'
