@@ -176,8 +176,8 @@ fn extract_project_rar(s: &Session, path: &str) -> Result<(String, String)> {
         .with_rar50_dictionary_size_limit(MAX_RAR_DICTIONARY);
     let mut project: Option<(u8, PathBuf)> = None;
     let extraction = archive.extract_to_with_options(options, |entry| {
-        rars::validate_entry_name(&entry.name)?;
-        let name = entry.name_lossy();
+        let validated_name = rars::validate_entry_name(entry.name.clone())?;
+        let name = String::from_utf8_lossy(&validated_name).to_string();
         if name.contains('\\\\') || name.contains('\0') {
             return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, "unsafe RAR entry path").into());
         }
