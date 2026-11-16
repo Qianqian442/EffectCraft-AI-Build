@@ -79,7 +79,7 @@ def main() -> None:
         builder = replace_once(
             builder,
             'let bundled_modules: [(&str, &[u8]); 13] = [',
-            'let bundled_modules: [(&str, &[u8]); 23] = [',
+            'let bundled_modules: &[(&str, &[u8])] = &[',
             "built-in WASM module array length",
         )
         module_entries = "".join(
@@ -124,7 +124,7 @@ def main() -> None:
     print(f"Bundled {len(records)} prebuilt EffectCraft API-v1 CraftPlugins modules from {UPSTREAM_COMMIT}:")
     for filename, effect_id, size, digest in records:
         print(f"  {filename}: {effect_id}, {size} bytes, sha256={digest}")
-    print("Kept the original 13 built-in EffectCraft modules; total bundled modules are now 23.")
+    print("Kept the original built-in EffectCraft modules and added all ten CraftPlugins modules.")
     print("Installed the upstream MIT license notice beside the bundled plug-ins.")
     print("No native EffectCraft effects, effect menu actions, or project-export commands were replaced.")
 
