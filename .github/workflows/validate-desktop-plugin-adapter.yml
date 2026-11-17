@@ -186,11 +186,15 @@ jobs:
         run: |
           python3 .github/scripts/add_am_mobile_layout.py
           python3 .github/scripts/build_am_mobile_editing_page.py
-          grep -Fq "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1" effectcraft/crates/ui-egui/src/app/frame.rs
-          grep -Fq "pub mod am_editor;" effectcraft/crates/ui-egui/src/lib.rs
-          grep -Fq "am-mobile-ruler-scrub" effectcraft/crates/ui-egui/src/am_editor.rs
-          grep -Fq "am-mobile-trim" effectcraft/crates/ui-egui/src/am_editor.rs
-          echo "Independent AM page is patched; compile-check will validate its Rust UI and engine command calls."
+          # The user explicitly chose not to add a separate AM-like clip-editor page.
+          # Validate the AM portrait presentation on the existing native Ae panels instead.
+          grep -Fq "EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_V1" effectcraft/crates/ui-egui/src/panels/effects_presets.rs
+          grep -Fq '"AM 竖屏"' effectcraft/crates/ui-egui/src/dock.rs
+          grep -Fq 'EffectControls' effectcraft/crates/ui-egui/src/dock.rs
+          grep -Fq "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" effectcraft/crates/ui-egui/src/header.rs
+          grep -Fq "EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1" effectcraft/crates/ui-egui/src/app/window.rs
+          test ! -e effectcraft/crates/ui-egui/src/am_editor.rs
+          echo "Verified AM portrait mode reuses native Ae editing panels and does not add a duplicate clip-editor page."
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
