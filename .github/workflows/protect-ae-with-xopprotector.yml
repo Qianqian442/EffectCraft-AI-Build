@@ -74,15 +74,15 @@ jobs:
           from pathlib import Path
           path = Path("settings.gradle.kts")
           source = path.read_text(encoding="utf-8")
-          windows_only = '    file("E:/Android/SDK-Android@5.14-20260706/SDK/libs"),\\n'
-          if windows_only in source:
-              source = source.replace(windows_only, "", 1)
-          elif "E:/Android/SDK-Android@5.14-20260706/SDK/libs" in source:
-              raise SystemExit("Found the Windows SDK path in an unexpected form; refusing an unsafe rewrite.")
+          windows_path = "E:/Android/SDK-Android@5.14-20260706/SDK/libs"
+          lines = [line for line in source.splitlines() if windows_path not in line]
+          if len(lines) == len(source.splitlines()):
+              raise SystemExit("Expected Windows-only SDK candidate was not found; refusing to patch silently.")
+          source = "\\n".join(lines) + "\\n"
           path.write_text(source, encoding="utf-8")
-          if "E:/Android/SDK-Android@5.14-20260706/SDK/libs" in source:
+          if windows_path in source:
               raise SystemExit("Windows-only path still remains in the CI settings file.")
-          print("Removed only the upstream developer-local Windows SDK candidate for this CI checkout.")
+          print("Removed the upstream developer-local Windows SDK candidate for this Linux CI checkout.")
           PY
 
       - name: Install Android SDK, NDK and CMake for Xop shell
