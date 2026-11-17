@@ -100,7 +100,7 @@ def patch_frontend_pickers(root: Path) -> None:
         anchor = '        "file.importAepDesktop" => ("path", Ask::Open(&["aep", "aepx"])),'
         if anchor not in source:
             raise SystemExit("The desktop AE picker mapping must exist before adding other project pickers.")
-        source = source.replace(anchor, anchor + "\\n" + "\\n".join(missing), 1)
+        source = source.replace(anchor, anchor + "\n" + "\n".join(missing), 1)
 
     path.write_text(source, encoding="utf-8")
     final = path.read_text(encoding="utf-8")
