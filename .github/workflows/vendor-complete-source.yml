@@ -36,6 +36,17 @@ jobs:
           git config --global --add url."https://github.com/".insteadOf "ssh://git@github.com/"
           mkdir -p vendor
 
+          # This repository already contains the complete pinned EffectCraft,
+          # Android-builder and native dependency trees. Do not clone over them:
+          # the vendor task is only needed for a genuinely empty source checkout.
+          if [[ -f vendor/effectcraft/Cargo.toml \
+             && -f vendor/android-builder/lib/build-common.sh \
+             && -f vendor/native-deps/rife/src/rife_ops.h \
+             && -f vendor/native-deps/realesrgan/src/CMakeLists.txt ]]; then
+            echo "The pinned source trees are already present; no vendor import is required."
+            exit 0
+          fi
+
           git clone --depth 1 --branch v0.21.1 https://github.com/storytold/effectcraft.git vendor/effectcraft
           git clone --depth 1 --branch v0.5.0 https://github.com/MostafaXS1/artcraft-android.git vendor/android-builder
 
