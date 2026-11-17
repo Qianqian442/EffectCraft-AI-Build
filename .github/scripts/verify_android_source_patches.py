@@ -594,14 +594,25 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         if token not in java:
             raise SystemExit(f"Android startup integrity/orientation guard is missing: {token}")
     print("Verified AM portrait layout, two-way sensor switching and workspaces.json restart persistence.")
+    # Ae×am intentionally reuses the original native Ae Effects & Presets panel (no duplicate AM clip-editor page).
+    # Its registry's all() function combines built-in effects with every successfully registered plug-in;
+    # the ordinary Effect Controls panel then exposes each registered EffectSpec's real typed parameters.
     am_effects = (root / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_AM_IMPORTED_PLUGIN_EFFECTS_V1" not in am_effects:
-        raise SystemExit("AM Effects browser does not expose imported plug-in effects.")
-    if "effectcraft_engine::effects::all()" not in am_effects:
-        raise SystemExit("AM Effects browser no longer includes all built-in Ae effects.")
-    if "effectcraft_engine::effects::plugin::plugins()" not in am_effects or "__EFFECTCRAFT_IMPORTED_PLUGINS__" not in am_effects:
-        raise SystemExit("AM Effects browser does not show successfully registered plug-ins in a dedicated section.")
-    print("Verified AM Effects contains all built-in Ae effects and imported runnable plug-in effects.")
+    effect_registry = (root / "crates/effects/src/lib.rs").read_text(encoding="utf-8")
+    plugin_api = (root / "crates/effects/src/plugin.rs").read_text(encoding="utf-8")
+    effect_controls = (root / "crates/ui-egui/src/panels/effect_controls/panel.rs").read_text(encoding="utf-8")
+    for token in ("effectcraft_engine::effects::all()", "effectcraft_engine::effects::find(id)", '"effect.apply"', "app.session.execute(cmd, params)"):
+        if token not in am_effects:
+            raise SystemExit(f"Native Effects & Presets lost its real effect-application path: {token}")
+    for token in ("pub fn all()", "let plugins = plugin::plugins();", "v.extend(plugins);", "pub fn find(id: &str)", "plugin::plugins()"):
+        if token not in effect_registry:
+            raise SystemExit(f"Engine effect registry no longer exposes imported plug-ins: {token}")
+    for token in ("pub fn register_plugin", "pub fn plugins()", "pub fn plugin(id: &str)", "pub trait EffectPlugin"):
+        if token not in plugin_api:
+            raise SystemExit(f"Runnable plug-in effect API is missing: {token}")
+    if "PanelScroll::begin" not in effect_controls:
+        raise SystemExit("Native Effect Controls must display the real scrollable parameter panel.")
+    print("Verified Ae×am uses the native effects browser, built-in and registered plug-in effects, real effect.apply and scrollable Effect Controls.")
     print("Verified Android release-signer guard is installed in the generated Activity template.")
 
 
