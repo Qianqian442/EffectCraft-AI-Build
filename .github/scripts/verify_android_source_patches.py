@@ -480,7 +480,11 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if "EFFECTCRAFT_ANDROID_SHARE_ALL_PROJECT_EXPORTS_V1" not in import_frontend:
         raise SystemExit("AM, NodeVideo and CapCut exports are not connected to the project Sharesheet.")
     for token in (
-        '"file.exportAlightMotion" | "file.exportNodeVideo" | "file.exportCapCut"',
+        '"file.saveCopy"',
+        '"file.exportLottie"',
+        '"file.exportAlightMotion"',
+        '"file.exportNodeVideo"',
+        '"file.exportCapCut"',
         "share_project_file(exported_path)",
     ):
         if token not in import_frontend:
