@@ -224,6 +224,85 @@ def patch_activity(builder: Path) -> None:
                 }
                 output.closeEntry();
             }
+
+        
+    // EFFECTCRAFT_ANDROID_QQ_PROJECT_FILE_SHARE_V1
+    /** Stage one exported project file in the app-owned FileProvider directory and share it. */
+    public static void shareProjectFile(String exportedPath) {
+        __CLASS__ activity = galleryActivity;
+        if (activity == null) {
+            throw new IllegalStateException("Ae 尚未准备好工程分享界面，请返回应用后重试。");
+        }
+        if (exportedPath == null || exportedPath.trim().isEmpty()) {
+            throw new IllegalArgumentException("没有取得已导出工程文件的路径。");
+        }
+        activity.io.execute(() -> {
+            File staged = null;
+            try {
+                Uri sourceUri = (exportedPath.startsWith("content://") || exportedPath.startsWith("file://"))
+                    ? Uri.parse(exportedPath) : null;
+                String sourceName = sourceUri != null ? sourceUri.getLastPathSegment()
+                    : new File(exportedPath).getName();
+                if (sourceName == null || sourceName.trim().isEmpty()) sourceName = "EffectCraft-Project.bin";
+                sourceName = new File(sourceName).getName();
+                StringBuilder safeName = new StringBuilder();
+                for (int i = 0; i < sourceName.length(); i++) {
+                    char ch = sourceName.charAt(i);
+                    safeName.append((ch == '/' || ch == '\\' || ch == 0) ? '_' : ch);
+                }
+
+                File storage = activity.getExternalFilesDir(null);
+                if (storage == null) storage = activity.getFilesDir();
+                File shareDirectory = new File(storage, "EffectCraftShare");
+                if (!shareDirectory.isDirectory() && !shareDirectory.mkdirs()) {
+                    throw new IOException("无法创建工程分享暂存目录。");
+                }
+                staged = new File(shareDirectory, System.currentTimeMillis() + "-" + safeName.toString());
+                InputStream raw = sourceUri != null
+                    ? activity.getContentResolver().openInputStream(sourceUri)
+                    : new FileInputStream(new File(exportedPath));
+                if (raw == null) throw new IOException("无法读取导出的工程文件。");
+                try (InputStream input = new BufferedInputStream(raw);
+                     java.io.OutputStream output = new BufferedOutputStream(new FileOutputStream(staged))) {
+                    byte[] buffer = new byte[64 * 1024];
+                    int count;
+                    while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                }
+                if (!staged.isFile() || staged.length() <= 0) {
+                    throw new IOException("导出的工程文件为空，不能分享。");
+                }
+
+                String lower = staged.getName().toLowerCase(java.util.Locale.ROOT);
+                String mime = lower.endsWith(".zip") || lower.endsWith(".amproj") ? "application/zip"
+                    : lower.endsWith(".xml") || lower.endsWith(".alight") ? "application/xml"
+                    : lower.endsWith(".json") ? "application/json" : "application/octet-stream";
+                Uri uri = FileProvider.getUriForFile(
+                    activity, activity.getPackageName() + ".effectcraft.files", staged);
+                Intent send = new Intent(Intent.ACTION_SEND);
+                send.setType(mime);
+                send.putExtra(Intent.EXTRA_STREAM, uri);
+                send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                send.setClipData(ClipData.newUri(activity.getContentResolver(), staged.getName(), uri));
+                Intent chooser = Intent.createChooser(send, "分享工程文件（可选择 QQ）");
+                chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+                activity.runOnUiThread(() -> {
+                    try {
+                        activity.startActivity(chooser);
+                        Toast.makeText(activity, "工程文件已准备，请选择 QQ 或其他应用。", Toast.LENGTH_LONG).show();
+                    } catch (Exception error) {
+                        Log.e(TAG, "Could not open the project-file share sheet.", error);
+                        Toast.makeText(activity, "无法打开分享面板：" + error.getMessage(), Toast.LENGTH_LONG).show();
+                    }
+                });
+            } catch (Exception error) {
+                if (staged != null) try { staged.delete(); } catch (Exception ignored) {}
+                Log.e(TAG, "Could not stage the exported project for sharing.", error);
+                final String detail = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+                activity.runOnUiThread(() ->
+                    Toast.makeText(activity, "工程分享失败：" + detail, Toast.LENGTH_LONG).show());
+            }
+        });
+    }
         }
     }
 '''
