@@ -56,7 +56,7 @@ header = header_path.read_text()
 
 # The Export toolbar button opens a centered setup dialog instead of jumping straight to the queue.
 old_click = 'if export_response.clicked() {\n        app.show_panel(crate::dock::PanelKind::RenderQueue);\n    }'
-new_click = 'if export_response.clicked() {\n        ui.ctx().data_mut(|d| d.insert_temp(egui::Id::new("effectcraft-export-dialog-open"), true));\n    }'
+new_click = 'if export_response.clicked() {\n        ui.ctx().data_mut(|d| {\n            d.insert_temp(egui::Id::new("effectcraft-export-dialog-open"), true);\n            d.insert_temp(egui::Id::new("effectcraft-export-progress-open"), false);\n            d.remove::<Vec<u64>>(egui::Id::new("effectcraft-export-progress-items"));\n            d.remove::<Option<String>>(egui::Id::new("effectcraft-export-progress-error"));\n            d.remove::<f64>(egui::Id::new("effectcraft-export-progress-start-time"));\n        });\n    }'
 if new_click not in header:
     if old_click not in header:
         raise SystemExit("Could not find the existing Export button click handler.")
@@ -340,6 +340,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                                             data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
                                             data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), vec![item_id]);
                                             data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
+                                            data.insert_temp(egui::Id::new("effectcraft-export-progress-start-time"), ctx.input(|input| input.time));
                                         });
                                         // EFFECTCRAFT_ANDROID_EXPORT_START_PANIC_GUARD_V1
                                         // A synchronous engine panic while creating the render job must
@@ -464,8 +465,17 @@ fn export_progress_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
         }
     }
     let all_done = !ids.is_empty() && done_items == ids.len();
-    let no_job_started = !rendering && progress.is_none() && !all_done && failure.is_none() && !stopped;
-    if no_job_started {
+    // RenderQueue::render(wait:false) may enqueue native work before the render worker
+    // publishes is_rendering()/render_progress(). Do not mistake that startup window for
+    // a failure and immediately display a misleading 0% export error.
+    let start_id = egui::Id::new("effectcraft-export-progress-start-time");
+    let started_at = ctx.data(|data| data.get_temp::<f64>(start_id)).unwrap_or_else(|| ctx.input(|input| input.time));
+    let startup_elapsed = (ctx.input(|input| input.time) - started_at).max(0.0);
+    let waiting_for_start = !rendering && progress.is_none() && !all_done && failure.is_none() && !stopped && startup_elapsed < 5.0;
+    let no_job_started = !rendering && progress.is_none() && !all_done && failure.is_none() && !stopped && startup_elapsed >= 5.0;
+    if waiting_for_start {
+        ctx.request_repaint_after(std::time::Duration::from_millis(120));
+    } else if no_job_started {
         failure = Some("导出未能启动，请检查输出路径和导出格式。".to_string());
     }
 
@@ -568,6 +578,7 @@ fn export_progress_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
             data.insert_temp(visible_id, false);
             data.remove::<Vec<u64>>(items_id);
             data.remove::<Option<String>>(error_id);
+            data.remove::<f64>(egui::Id::new("effectcraft-export-progress-start-time"));
         });
     }
 }
