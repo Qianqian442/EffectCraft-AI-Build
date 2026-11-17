@@ -97,7 +97,7 @@ def main() -> None:
     replace_once(
         frontend,
         '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx"])),',
-        '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "amproj", "xml", "alight", "aep", "aepx", "json"])),',
+        '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "rar", "amproj", "xml", "alight", "aep", "aepx", "json"])),',
         "original Import Project picker formats",
     )
 
