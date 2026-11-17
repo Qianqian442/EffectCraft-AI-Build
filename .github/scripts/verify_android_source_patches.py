@@ -477,6 +477,27 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("QQ ZIP share package validation/content-URI read grant is missing.")
     print("Verified mobile project ZIP sharing starts after Collect Files and reports Android Sharesheet errors.")
 
+    if "EFFECTCRAFT_ANDROID_SHARE_ALL_PROJECT_EXPORTS_V1" not in import_frontend:
+        raise SystemExit("AM, NodeVideo and CapCut exports are not connected to the project Sharesheet.")
+    for token in (
+        '"file.exportAlightMotion" | "file.exportNodeVideo" | "file.exportCapCut"',
+        "share_project_file(exported_path)",
+    ):
+        if token not in import_frontend:
+            raise SystemExit("A supported project export is missing its QQ share handoff: " + token)
+    if "EFFECTCRAFT_ANDROID_QQ_PROJECT_FILE_SHARE_V1" not in saf_activity:
+        raise SystemExit("Single-file project exports cannot be staged through FileProvider.")
+    if "shareProjectFile" not in saf_activity or "分享工程文件（可选择 QQ）" not in saf_activity:
+        raise SystemExit("The Android single-project-file Sharesheet bridge is incomplete.")
+    if "share_project_file" not in (root / "crates/ui-egui/src/android_gallery.rs").read_text(encoding="utf-8"):
+        raise SystemExit("The Rust-to-Android single-file project share bridge is missing.")
+    print("Verified self, AM, NodeVideo and CapCut project exports all invoke the Android Sharesheet.")
+
+    if "primary:Download" not in saf_activity or 'intent.setType("*/*")' not in saf_activity:
+        raise SystemExit("The Android project picker no longer starts in Downloads with an all-file filter.")
+    if '"zip" | "rar" => {' not in incoming_frontend and '"zip" | "rar" =>' not in (root / "crates/ui-egui/src/menus.rs").read_text(encoding="utf-8"):
+        raise SystemExit("Downloaded ZIP/RAR project archives no longer route through the archive importer.")
+
     incoming_router = (root / "crates/ui-egui/src/menus.rs").read_text(encoding="utf-8")
     incoming_frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_AUTO_IMPORT_EXTERNAL_PROJECT_V1" not in incoming_router:
