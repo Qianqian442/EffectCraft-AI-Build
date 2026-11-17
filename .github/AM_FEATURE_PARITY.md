@@ -28,10 +28,11 @@ they are functionally equivalent, undo history, encoders, and serialization. A s
 may produce the composition pixels, but AM must provide its own preview surface and AM-oriented
 touch interactions/overlays rather than embedding the Ae viewer panel.
 
-The current independent page is only a first pass: it already has its own frame route and custom
-timeline, but its tool drawer still delegates to Ae `PanelKind` panels and its preview still
-calls the Ae viewer widget. Those two dependencies are known gaps and must be removed before
-the UI-separation gate can pass.
+The current in-tree custom page remains a first pass, not a completed AM editor. The selected
+AbsentMotion source is the intended independent editing surface; until it has been compiled as
+a separate module and launched from the layout switch, the current page must not be presented
+as the final AM layout. Its Ae panel and viewer dependencies remain forbidden during this
+transition.
 
 ## Package size policy
 
@@ -50,6 +51,15 @@ source code the project owner is authorized to provide, or third-party component
 licenses permit modification and redistribution. Open Motion is an MIT-licensed prototype;
 the AM project parser/player libraries are MIT/Apache-2.0 components. Neither is a complete
 replacement for the Alight Motion application.
+
+A full independent open-source editor has now been selected as the AM-layout base:
+[AbsentMotion](https://github.com/Comett1225/AbsentMotion), release v5.1.1, pinned commit
+`f350576485c42ff7aefa5c2f205b9f1b8ad873f7`. It is a GPL-3.0 Android editor and supports
+Alight Motion project import, but it is an alternative editor, **not** the official Alight
+Motion source and not proof of exact AM feature parity. The integration must use its own
+Compose editing surface and native renderer as a separate module; it must not be reduced to
+a portrait version of the Ae screen. Preserve its GPL-3.0 notices and provide corresponding
+source when distributing modified binaries.
 
 ## Acceptance checklist
 
