@@ -300,7 +300,17 @@ fn effect_row(
         return;
     }
     let star = Rect::from_center_size(pos2(r.max.x - 38.0, r.center().y), vec2(16.0, 16.0));
-    let resp = ui.interact(r.intersect(list), id, if tab { Sense::click_and_drag() } else { Sense::CLICK | Sense::DRAG });
+    // EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1
+    // On touch devices, taps apply immediately and vertical swipes stay available to PanelScroll.
+    let touch_device = ui.input(|i| i.has_touch_screen());
+    let row_sense = if touch_device {
+        Sense::click()
+    } else if tab {
+        Sense::click_and_drag()
+    } else {
+        Sense::CLICK | Sense::DRAG
+    };
+    let resp = ui.interact(r.intersect(list), id, row_sense);
     if selected {
         lp.rect_filled(r, 0.0, t.row_selected);
     } else if resp.hovered() {
@@ -339,7 +349,11 @@ fn effect_row(
         return;
     }
     if resp.clicked() {
-        nav_click(&ctx, app, id);
+        if touch_device {
+            *apply = Some(Apply::Effect(e.id.to_string()));
+        } else {
+            nav_click(&ctx, app, id);
+        }
     }
     if resp.double_clicked() {
         *apply = Some(Apply::Effect(e.id.to_string()));
