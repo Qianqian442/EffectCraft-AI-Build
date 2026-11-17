@@ -768,11 +768,27 @@ def patch_project_import_shortcut(effectcraft: Path) -> None:
     marker = "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1"
     if marker in source:
         return
-    plugin_call = "            let x = plugin_import_button(app, scroll_ui, x, cy);\n"
-    project_call = plugin_call + "            let x = project_import_button(app, scroll_ui, x, cy);\n"
-    if plugin_call not in source:
-        raise SystemExit("Could not locate the scrollable top-left plug-in import control.")
-    source = source.replace(plugin_call, project_call, 1)
+    # The plug-in shortcut may be injected by a different validation/build path.
+    # Prefer inserting after it when present; otherwise put Project Import after brand/Home.
+    lines = source.splitlines(keepends=True)
+    insert_at = None
+    indent = "            "
+    for wanted, preferred_indent in (
+        ("let x = plugin_import_button(", "            "),
+        ("let x = brand_and_home(", "            "),
+    ):
+        offset = 0
+        for line in lines:
+            if wanted in line:
+                insert_at = offset + len(line)
+                indent = preferred_indent
+                break
+            offset += len(line)
+        if insert_at is not None:
+            break
+    if insert_at is None:
+        raise SystemExit("Could not locate a toolbar anchor for the unified project-import shortcut.")
+    source = source[:insert_at] + indent + "let x = project_import_button(app, scroll_ui, x, cy);\n" + source[insert_at:]
     helper_anchor = "/// The tool slots (with group separators after camera tools and pan-behind); returns the x after them.\n"
     button = r'''
 // EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1
