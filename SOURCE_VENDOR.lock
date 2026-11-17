@@ -3,3 +3,4 @@ Android builder v0.5.0
 RIFE ncnn Vulkan a7532fc3f9f8f008cd6eecd6f2ffe2a9698e0cf7
 Real-ESRGAN ncnn Vulkan 37026f49824c5cf84062e7c6a5dd71445dcf610f
 Submodule SSH rewrite via HTTPS
+AbsentMotion v5.1.1 f350576485c42ff7aefa5c2f205b9f1b8ad873f7 GPL-3.0 (integration pending)
