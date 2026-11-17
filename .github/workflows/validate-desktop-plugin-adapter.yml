@@ -154,7 +154,7 @@ jobs:
           grep -F 'lower.ends_with(".aep") || lower.ends_with(".aepx")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F 'lower.ends_with(".amproj")' effectcraft/crates/engine/src/cmd/import_project.rs
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
-          grep -F '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "amproj", "xml", "alight", "aep", "aepx", "json"])),' effectcraft/crates/ui-egui/src/menus/frontend.rs
+          grep -F '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "rar", "amproj", "xml", "alight", "aep", "aepx", "json"])),' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F '"file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"])),' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F 'AM 工程支持 .amproj' .github/scripts/am_nv.rs
 
