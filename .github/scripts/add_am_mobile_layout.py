@@ -218,7 +218,6 @@ def patch_am_native_effect_browser(effectcraft: Path) -> None:
 fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let t = app.tokens;
     let ctx = ui.ctx().clone();
-    let painter = ui.painter().with_clip_rect(rect);
     let search_rect = Rect::from_min_size(rect.min + vec2(10.0, 8.0), vec2((rect.width() - 20.0).max(80.0), 30.0));
     let mut query = app.ui.effects_search.clone();
     let search_hint = tr("Search effects");
@@ -228,73 +227,99 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let query_lower = query.trim().to_lowercase();
     let category_id = egui::Id::new("am-native-effect-browser-category");
     let selected_category: Option<String> = ctx.data(|d| d.get_temp(category_id));
-    let mut y = search_rect.max.y + 10.0;
-    let reg = effectcraft_engine::effects::all();
+    let registry = effectcraft_engine::effects::all();
     let categories = effectcraft_engine::effects::categories();
+    let list_rect = Rect::from_min_max(
+        pos2(rect.min.x + 6.0, search_rect.max.y + 6.0),
+        pos2(rect.max.x - 6.0, rect.max.y - 6.0),
+    );
+    let mut apply_id: Option<String> = None;
 
-    if let Some(category) = selected_category.clone() {
-        let back_rect = Rect::from_min_size(pos2(rect.min.x + 8.0, y), vec2(64.0, 32.0));
-        let back = ui.put(back_rect, egui::Button::new("‹"));
-        if back.clicked() {
-            ctx.data_mut(|d| d.remove::<String>(category_id));
-        }
-        let title_rect = Rect::from_min_size(pos2(back_rect.max.x + 8.0, y), vec2((rect.width() - 92.0).max(60.0), 32.0));
-        painter.text(title_rect.center(), Align2::LEFT_CENTER, crate::i18n::effects::category(&category), Tokens::ui(14.0), t.text);
-        y += 40.0;
-        let matching: Vec<_> = reg.iter().filter(|e| e.category == category.as_str())
-            .filter(|e| query_lower.is_empty() || effectcraft_engine::effects::name_matches(e, &query_lower) || crate::i18n::effects::matches(e.id, e.name, &query_lower))
-            .collect();
-        let gap = 8.0;
-        let col_w = ((rect.width() - 24.0 - gap) / 2.0).max(90.0);
-        let row_h = 66.0;
-        let mut apply_id: Option<String> = None;
-        for (i, effect) in matching.iter().enumerate() {
-            let col = i % 2;
-            let row = i / 2;
-            let r = Rect::from_min_size(pos2(rect.min.x + 8.0 + col as f32 * (col_w + gap), y + row as f32 * (row_h + gap)), vec2(col_w, row_h));
-            let response = ui.put(r, egui::Button::new(crate::i18n::effects::name(effect.id, effect.name)));
-            if response.clicked() {
-                apply_id = Some(effect.id.to_string());
-            }
-        }
-        if let Some(id) = apply_id {
-            if app.session.state.selected_layers.is_empty() {
-                app.ui.status = "Select a layer to apply to".into();
-            } else {
-                match app.session.execute("effect.apply", serde_json::json!({"effect": id})) {
-                    Err(e) => app.ui.status = e.to_string(),
-                    Ok(applied) => {
-                        push_recent(&mut app.ui.effects_recent, &id);
-                        app.show_panel(crate::dock::PanelKind::EffectControls);
-                        app.ui.focused = crate::dock::PanelKind::EffectsPresets;
-                        crate::panels::effect_controls::choose_files_after_apply(app, &applied);
+    // The search box stays fixed while the category/effect list scrolls vertically.
+    // drag_to_scroll makes a finger swipe work on Android as well as a mouse wheel.
+    ui.allocate_ui_at_rect(list_rect, |list_host| {
+        egui::ScrollArea::vertical()
+            .id_salt("am-native-effect-browser-scroll")
+            .auto_shrink([false, false])
+            .drag_to_scroll(true)
+            .show(list_host, |list_ui| {
+                list_ui.set_width(list_rect.width());
+                if let Some(category) = selected_category.as_deref() {
+                    list_ui.horizontal(|row| {
+                        if row.add_sized(vec2(44.0, 34.0), egui::Button::new("‹")).clicked() {
+                            ctx.data_mut(|d| d.remove::<String>(category_id));
+                        }
+                        row.label(crate::i18n::effects::category(category));
+                    });
+                    list_ui.add_space(8.0);
+                    let matching: Vec<_> = registry.iter()
+                        .filter(|effect| effect.category == category)
+                        .filter(|effect| {
+                            query_lower.is_empty()
+                                || effectcraft_engine::effects::name_matches(effect, &query_lower)
+                                || crate::i18n::effects::matches(effect.id, effect.name, &query_lower)
+                        })
+                        .collect();
+                    let gap = 8.0;
+                    let col_w = ((list_ui.available_width() - gap) / 2.0).max(90.0);
+                    list_ui.columns(2, |columns| {
+                        for (index, effect) in matching.iter().enumerate() {
+                            let column = index % 2;
+                            let response = columns[column].add_sized(
+                                vec2(col_w, 66.0),
+                                egui::Button::new(crate::i18n::effects::name(effect.id, effect.name)),
+                            );
+                            if response.clicked() {
+                                apply_id = Some(effect.id.to_string());
+                            }
+                            columns[column].add_space(gap);
+                        }
+                    });
+                    if matching.is_empty() {
+                        list_ui.label(tr("No matching effects"));
+                    }
+                } else {
+                    let mut visible: Vec<&str> = categories.into_iter().filter(|category| {
+                        registry.iter().any(|effect| effect.category == *category
+                            && (query_lower.is_empty()
+                                || effectcraft_engine::effects::name_matches(effect, &query_lower)
+                                || crate::i18n::effects::matches(effect.id, effect.name, &query_lower)))
+                    }).collect();
+                    visible.sort_by_key(|category| category.to_lowercase());
+                    let gap = 8.0;
+                    let col_w = ((list_ui.available_width() - gap) / 2.0).max(90.0);
+                    list_ui.columns(2, |columns| {
+                        for (index, category) in visible.iter().enumerate() {
+                            let column = index % 2;
+                            let count = registry.iter().filter(|effect| effect.category == *category).count();
+                            let label = format!("{}\n{} effects", crate::i18n::effects::category(category), count);
+                            if columns[column].add_sized(vec2(col_w, 82.0), egui::Button::new(label)).clicked() {
+                                ctx.data_mut(|d| d.insert_temp(category_id, (*category).to_string()));
+                            }
+                            columns[column].add_space(gap);
+                        }
+                    });
+                    if visible.is_empty() {
+                        list_ui.label(tr("No matching effects"));
                     }
                 }
+            });
+    });
+
+    if let Some(id) = apply_id {
+        if app.session.state.selected_layers.is_empty() {
+            app.ui.status = "Select a layer to apply to".into();
+        } else {
+            match app.session.execute("effect.apply", serde_json::json!({"effect": id})) {
+                Err(error) => app.ui.status = error.to_string(),
+                Ok(applied) => {
+                    push_recent(&mut app.ui.effects_recent, &id);
+                    // Switch to the parameter panel after the effect has really been added.
+                    // Do not reset focus back to the browser in the same frame.
+                    app.show_panel(crate::dock::PanelKind::EffectControls);
+                    crate::panels::effect_controls::choose_files_after_apply(app, &applied);
+                }
             }
-        }
-    } else {
-        let mut visible: Vec<&str> = categories.into_iter().filter(|cat| {
-            reg.iter().any(|e| e.category == *cat &&
-                (query_lower.is_empty() || effectcraft_engine::effects::name_matches(e, &query_lower) ||
-                 crate::i18n::effects::matches(e.id, e.name, &query_lower)))
-        }).collect();
-        visible.sort_by_key(|c| c.to_lowercase());
-        let gap = 8.0;
-        let col_w = ((rect.width() - 24.0 - gap) / 2.0).max(90.0);
-        let row_h = 82.0;
-        for (i, category) in visible.iter().enumerate() {
-            let col = i % 2;
-            let row = i / 2;
-            let r = Rect::from_min_size(pos2(rect.min.x + 8.0 + col as f32 * (col_w + gap), y + row as f32 * (row_h + gap)), vec2(col_w, row_h));
-            let count = reg.iter().filter(|e| e.category == *category).count();
-            let label = format!("{}\n{} effects", crate::i18n::effects::category(category), count);
-            let response = ui.put(r, egui::Button::new(label));
-            if response.clicked() {
-                ctx.data_mut(|d| d.insert_temp(category_id, (*category).to_string()));
-            }
-        }
-        if visible.is_empty() {
-            painter.text(pos2(rect.center().x, y + 28.0), Align2::CENTER_CENTER, tr("No matching effects"), Tokens::ui(12.0), t.text_faint);
         }
     }
 }
