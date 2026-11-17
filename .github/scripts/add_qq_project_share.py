@@ -226,6 +226,9 @@ def patch_activity(builder: Path) -> None:
             }
 
         
+
+        }
+    }
     // EFFECTCRAFT_ANDROID_QQ_PROJECT_FILE_SHARE_V1
     /** Stage one exported project file in the app-owned FileProvider directory and share it. */
     public static void shareProjectFile(String exportedPath) {
@@ -302,8 +305,6 @@ def patch_activity(builder: Path) -> None:
                     Toast.makeText(activity, "工程分享失败：" + detail, Toast.LENGTH_LONG).show());
             }
         });
-    }
-        }
     }
 '''
         source = once(source, anchor, anchor + bridge, "Android QQ project share implementation")
