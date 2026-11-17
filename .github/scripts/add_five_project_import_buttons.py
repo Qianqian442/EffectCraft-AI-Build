@@ -107,8 +107,8 @@ def patch_frontend_pickers(root: Path) -> None:
     for mapping in mappings:
         if mapping not in final:
             raise SystemExit("Missing project file picker mapping: " + mapping)
-    if '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "amproj", "xml", "alight", "aep", "aepx", "json"])),' not in final:
-        raise SystemExit("Unified Import Project picker is missing the .amproj format")
+    if '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "rar", "amproj", "xml", "alight", "aep", "aepx", "json"])),' not in final:
+        raise SystemExit("Unified Import Project picker is missing a supported project or ZIP/RAR extension")
 
 def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
