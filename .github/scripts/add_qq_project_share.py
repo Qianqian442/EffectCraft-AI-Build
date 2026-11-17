@@ -314,15 +314,13 @@ def patch_activity(builder: Path) -> None:
 def patch_rust_bridge(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/android_gallery.rs"
     source = path.read_text(encoding="utf-8")
-    marker = "pub(crate) fn share_project_package"
-    if marker in source:
-        return
-    anchor = '''#[cfg(not(target_os = "android"))]
+    if "pub(crate) fn share_project_package" not in source:
+        anchor = '''#[cfg(not(target_os = "android"))]
 pub(crate) fn poll_publish(_request_id: &str) -> Result<Option<String>, String> {
     Ok(Some("ERROR: 当前平台不支持 Android 相册发布。".into()))
 }
 '''
-    addition = r'''
+        package_bridge = r'''
 #[cfg(target_os = "android")]
 pub(crate) fn share_project_package(project_path: &str) -> Result<(), String> {
     with_vm(|vm| {
@@ -344,7 +342,33 @@ pub(crate) fn share_project_package(_project_path: &str) -> Result<(), String> {
     Err("工程分享到 QQ 需要使用 Android 版 EffectCraft。".into())
 }
 '''
-    path.write_text(once(source, anchor, anchor + addition, "Rust JNI QQ share bridge"), encoding="utf-8")
+        source = once(source, anchor, anchor + package_bridge, "Rust JNI QQ package share bridge")
+
+    if "pub(crate) fn share_project_file" not in source:
+        file_bridge = r'''
+#[cfg(target_os = "android")]
+pub(crate) fn share_project_file(exported_path: &str) -> Result<(), String> {
+    with_vm(|vm| {
+        vm.attach_current_thread(|env| -> jni::errors::Result<()> {
+            let path = jni::objects::JObject::from(env.new_string(exported_path)?);
+            env.call_static_method(
+                jni::jni_str!("com/artcraft/effectcraft/EffectCraftActivity"),
+                jni::jni_str!("shareProjectFile"),
+                jni::jni_sig!("(Ljava/lang/String;)V"),
+                &[jni::objects::JValue::Object(&path)],
+            )?;
+            Ok(())
+        }).map_err(|error| error.to_string())
+    })
+}
+
+#[cfg(not(target_os = "android"))]
+pub(crate) fn share_project_file(_exported_path: &str) -> Result<(), String> {
+    Err("工程分享到 QQ 需要使用 Android 版 EffectCraft。".into())
+}
+'''
+        source += "\n" + file_bridge
+    path.write_text(source, encoding="utf-8")
 
 
 def patch_frontend(effectcraft: Path) -> None:
