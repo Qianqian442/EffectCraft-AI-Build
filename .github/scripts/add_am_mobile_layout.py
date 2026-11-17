@@ -227,7 +227,12 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let query_lower = query.trim().to_lowercase();
     let category_id = egui::Id::new("am-native-effect-browser-category");
     let selected_category: Option<String> = ctx.data(|d| d.get_temp(category_id));
+    // EFFECTCRAFT_AM_IMPORTED_PLUGIN_EFFECTS_V1
+    // effects::all() includes both built-in Ae effects and all successfully registered
+    // API-v1 plug-ins. Keep a dedicated shortcut for imported runnable plug-ins as well.
+    const IMPORTED_PLUGINS_CATEGORY: &str = "__EFFECTCRAFT_IMPORTED_PLUGINS__";
     let registry = effectcraft_engine::effects::all();
+    let plugin_effects = effectcraft_engine::effects::plugin::plugins();
     let categories = effectcraft_engine::effects::categories();
     let list_rect = Rect::from_min_max(
         pos2(rect.min.x + 6.0, search_rect.max.y + 6.0),
@@ -244,22 +249,46 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             .drag_to_scroll(true)
             .show(list_host, |list_ui| {
                 list_ui.set_width(list_rect.width());
+                if selected_category.is_none() && !plugin_effects.is_empty() {
+                    let label = format!("已导入插件效果\\n{} 个可用效果", plugin_effects.len());
+                    if list_ui.add_sized(
+                        vec2(list_rect.width(), 44.0),
+                        egui::Button::new(label),
+                    ).clicked() {
+                        ctx.data_mut(|d| d.insert_temp(category_id, IMPORTED_PLUGINS_CATEGORY.to_string()));
+                    }
+                    list_ui.add_space(8.0);
+                }
                 if let Some(category) = selected_category.as_deref() {
                     list_ui.horizontal(|row| {
                         if row.add_sized(vec2(44.0, 34.0), egui::Button::new("‹")).clicked() {
                             ctx.data_mut(|d| d.remove::<String>(category_id));
                         }
-                        row.label(crate::i18n::effects::category(category));
+                        if category == IMPORTED_PLUGINS_CATEGORY {
+                            row.label("已导入插件效果");
+                        } else {
+                            row.label(crate::i18n::effects::category(category));
+                        }
                     });
                     list_ui.add_space(8.0);
-                    let matching: Vec<_> = registry.iter()
-                        .filter(|effect| effect.category == category)
-                        .filter(|effect| {
-                            query_lower.is_empty()
-                                || effectcraft_engine::effects::name_matches(effect, &query_lower)
-                                || crate::i18n::effects::matches(effect.id, effect.name, &query_lower)
-                        })
-                        .collect();
+                    let matching: Vec<_> = if category == IMPORTED_PLUGINS_CATEGORY {
+                        plugin_effects.iter().copied()
+                            .filter(|effect| {
+                                query_lower.is_empty()
+                                    || effectcraft_engine::effects::name_matches(effect, &query_lower)
+                                    || crate::i18n::effects::matches(effect.id, effect.name, &query_lower)
+                            })
+                            .collect()
+                    } else {
+                        registry.iter()
+                            .filter(|effect| effect.category == category)
+                            .filter(|effect| {
+                                query_lower.is_empty()
+                                    || effectcraft_engine::effects::name_matches(effect, &query_lower)
+                                    || crate::i18n::effects::matches(effect.id, effect.name, &query_lower)
+                            })
+                            .collect()
+                    };
                     let gap = 8.0;
                     let col_w = ((list_ui.available_width() - gap) / 2.0).max(90.0);
                     list_ui.columns(2, |columns| {
