@@ -47,33 +47,26 @@ def main() -> None:
         "remove visible local-whitelist summary",
     )
 
-    source = replace_once(
-        source,
-        '''                ui.label(&app.account.ban_reason);
-                ui.add_space(8.0);
-                ui.label(app.account.ban_countdown_label());
-                ui.add_space(12.0);
-                if ui.button("联网核验是否已解封").clicked() {
-                    app.account.retry(config);
-                }
-''',
-        '''                ui.label("账号当前无法通过验证，请稍后重试。");
+    # Replace the complete ban window, not selected labels: the exact UI shape can
+    # differ between generator revisions, and a partial match could leave expiry/reason
+    # fields visible. Ban state remains in AccountState and private local storage.
+    ban_start = source.find("        Mode::Banned => centered_window(")
+    editor_start = source.find("        Mode::Editor => {}", ban_start)
+    if ban_start < 0 or editor_start < 0:
+        raise SystemExit("Could not locate the complete account ban UI branch.")
+    generic_ban_ui = '''        Mode::Banned => centered_window(ctx, "暂不可用", vec2(400.0, 260.0), |ui| {
+            ui.vertical_centered(|ui| {
+                ui.heading("暂时无法进入");
+                ui.add_space(10.0);
+                ui.label("账号当前无法通过验证，请稍后重试。");
                 ui.add_space(18.0);
-''',
-        "replace visible ban reason and expiry with generic status",
-    )
-    source = replace_once(
-        source,
-        'Mode::Banned => centered_window(ctx, "账号已被封禁"',
-        'Mode::Banned => centered_window(ctx, "暂不可用"',
-        "hide ban-specific window title",
-    )
-    source = replace_once(
-        source,
-        'ui.heading("账号已被封禁");',
-        'ui.heading("暂时无法进入");',
-        "hide ban-specific heading",
-    )
+                if ui.button("OK").clicked() {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                }
+            });
+        }),
+'''
+    source = source[:ban_start] + generic_ban_ui + source[editor_start:]
 
     replacements = {
         "本机白名单尚未下载，请连接网络后重试。": "账号验证暂不可用，请稍后重试。",
