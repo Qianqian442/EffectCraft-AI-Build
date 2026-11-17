@@ -369,8 +369,19 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
 
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
     am_effects = (root / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_V1" not in am_effects or 'app.ui.workspace == "AM 竖屏"' not in am_effects or 'app.session.execute("effect.apply"' not in am_effects:
-        raise SystemExit("AM native effect browser must use the native Ae effect registry and effect.apply command.")
+    effect_controls = (root / "crates/ui-egui/src/panels/effect_controls/panel.rs").read_text(encoding="utf-8")
+    widgets = (root / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
+    home = (root / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" not in am_effects:
+        raise SystemExit("Android Effects & Presets entries must apply on a single tap.")
+    if "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" not in widgets or "PanelScroll::begin" not in am_effects:
+        raise SystemExit("Native effect list is missing finger-drag vertical scrolling.")
+    if "PanelScroll::begin" not in effect_controls:
+        raise SystemExit("Native Effect Controls must retain its scrollable parameter panel.")
+    if "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" not in home:
+        raise SystemExit("Ae×am portrait Home is missing.")
+    if "EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_V1" in am_effects or "show_am_native" in am_effects:
+        raise SystemExit("The retired simplified AM effect-card replacement must not return.")
     if "EFFECTCRAFT_ANDROID_VISIBLE_KEYFRAME_BUTTON_V3" not in timeline or "let keyframe_enabled = selected_layer.is_some();" not in timeline:
         raise SystemExit("The keyframe button still requires Project-panel footage selection.")
     if "EFFECTCRAFT_ANDROID_CURVE_PLAYHEAD_RESOLVE_V2" not in timeline or "android_collect_curve_segments" not in timeline:
@@ -492,6 +503,17 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1" not in timeline:
         raise SystemExit("AM timeline touch trim handles are missing; direct layer-edge duration dragging must remain available.")
+    frame = (root / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
+    header = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
+    home = (root / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
+    if "self.dock_area(ui, body);" not in frame or "crate::am_editor::show" in frame:
+        raise SystemExit("AM layout must keep using the original Ae DockArea, not a replacement clip editor.")
+    if "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" not in header:
+        raise SystemExit("The original horizontally swipeable Ae toolbar is missing.")
+    if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" not in header or "if rect.height() >= 60.0" not in header:
+        raise SystemExit("Ae×am layout selector must be visible on Home and in the editor.")
+    if "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" not in home:
+        raise SystemExit("Ae×am portrait Home is missing.")
     bridge = (root / "crates/ui-egui/src/android_layout.rs").read_text(encoding="utf-8")
     ui_cargo = (root / "crates/ui-egui/Cargo.toml").read_text(encoding="utf-8")
 
