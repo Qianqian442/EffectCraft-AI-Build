@@ -385,11 +385,15 @@ def patch_frontend(effectcraft: Path) -> None:
     r
 }"""
     new = """    // EFFECTCRAFT_ANDROID_SHARE_COLLECTED_PROJECT_V1
-    // The caller requests sharing by setting shareAfterCollect. Remove that UI-only flag
-    // before sending parameters to the engine, then wait until the folder picker has returned
-    // and file.collectFiles has actually copied the .ecproj and all footage.
+    // Share the full native project together with collected footage.
     let share_after_collect = id == "file.collectFiles"
         && params.get("shareAfterCollect").and_then(Value::as_bool) == Some(true);
+    // Share every supported interchange-project export after the async picker and writer finish.
+    // EFFECTCRAFT_ANDROID_SHARE_ALL_PROJECT_EXPORTS_V1
+    let share_exported_project = matches!(
+        id,
+        "file.exportAlightMotion" | "file.exportNodeVideo" | "file.exportCapCut"
+    );
     p.remove("shareAfterCollect");
     let r = app.session.execute(id, Value::Object(p)).map_err(|e| e.to_string());
     if let Err(e) = &r {
@@ -408,6 +412,21 @@ def patch_frontend(effectcraft: Path) -> None:
                     }
                 } else {
                     app.ui.status = "工程已收集，但没有取得工程文件路径，无法分享。".into();
+                }
+            }
+            Err(_) => {}
+        }
+    } else if share_exported_project {
+        match &r {
+            Ok(result) => {
+                if let Some(exported_path) = result.get("path").and_then(Value::as_str) {
+                    if let Err(error) = crate::android_gallery::share_project_file(exported_path) {
+                        app.ui.status = format!("工程已导出，但分享失败：{error}");
+                    } else {
+                        app.ui.status = "工程已导出，正在打开系统分享面板；可选择 QQ 发送。".into();
+                    }
+                } else {
+                    app.ui.status = "工程已导出，但没有取得文件路径，无法分享。".into();
                 }
             }
             Err(_) => {}
