@@ -250,9 +250,12 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ".github/scripts/hide_account_security_details.py",
         (
             "EFFECTCRAFT_ACCOUNT_SECURITY_DETAIL_DISPLAY_SUPPRESSED_V1",
-            "账号当前无法通过验证",
+            "Mode::Banned => centered_window(ctx, \"暂不可用\"",
             "app.account.ban_reason",
+            "app.account.banned_until",
             "app.account.whitelist.qq_hashes",
+            "封禁截止时间",
+            "封禁原因",
             "云端账号服务地址",
         ),
     ),
