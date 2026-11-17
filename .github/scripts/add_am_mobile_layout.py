@@ -794,26 +794,32 @@ def patch_project_import_shortcut(effectcraft: Path) -> None:
     if marker in source:
         return
     # The plug-in shortcut may be injected by a different validation/build path.
-    # Prefer inserting after it when present; otherwise put Project Import after brand/Home.
+    # Reuse the UI variable of the exact toolbar row: scroll_ui in the mobile scroller,
+    # ui in the desktop/validation header before the responsive wrapper is installed.
     lines = source.splitlines(keepends=True)
     insert_at = None
-    indent = "            "
-    for wanted, preferred_indent in (
-        ("let x = plugin_import_button(", "            "),
-        ("let x = brand_and_home(", "            "),
-    ):
+    ui_var = "ui"
+    indent = "    "
+    anchors = (
+        ("let x = plugin_import_button(app, scroll_ui,", "scroll_ui", "            "),
+        ("let x = brand_and_home(app, scroll_ui,", "scroll_ui", "            "),
+        ("let x = plugin_import_button(app, ui,", "ui", "    "),
+        ("let x = brand_and_home(app, ui,", "ui", "    "),
+    )
+    for wanted, selected_ui, selected_indent in anchors:
         offset = 0
         for line in lines:
             if wanted in line:
                 insert_at = offset + len(line)
-                indent = preferred_indent
+                ui_var = selected_ui
+                indent = selected_indent
                 break
             offset += len(line)
         if insert_at is not None:
             break
     if insert_at is None:
         raise SystemExit("Could not locate a toolbar anchor for the unified project-import shortcut.")
-    source = source[:insert_at] + indent + "let x = project_import_button(app, scroll_ui, x, cy);\n" + source[insert_at:]
+    source = source[:insert_at] + indent + f"let x = project_import_button(app, {ui_var}, x, cy);\n" + source[insert_at:]
     helper_anchor = "/// The tool slots (with group separators after camera tools and pan-behind); returns the x after them.\n"
     button = r'''
 // EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1
