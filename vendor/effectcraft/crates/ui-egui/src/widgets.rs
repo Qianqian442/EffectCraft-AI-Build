@@ -691,6 +691,21 @@ impl PanelScroll {
         if ui.rect_contains_pointer(area) {
             offset -= ui.input(|i| i.smooth_scroll_delta.y);
         }
+        // EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1
+        // Finger swipes on a panel's non-dragging rows/background scroll the native list.
+        // A slider, curve handle or another active drag keeps ownership of its gesture.
+        let touch_pan = ui.input(|i| {
+            i.has_touch_screen()
+                && i.pointer.primary_down()
+                && i.pointer.press_origin().is_some_and(|origin| area.contains(origin))
+        });
+        if touch_pan && ui.ctx().dragged_id().is_none() {
+            let delta = ui.input(|i| i.pointer.delta());
+            if delta.y.abs() >= delta.x.abs() && delta.y.abs() > 0.1 {
+                offset = (offset - delta.y).clamp(0.0, max.max(0.0));
+                ui.ctx().request_repaint();
+            }
+        }
         let gutter: Gutter = ui.data(|d| d.get_temp(id.with("gutter"))).unwrap_or_default();
         let mut content = area;
         if gutter.on {
