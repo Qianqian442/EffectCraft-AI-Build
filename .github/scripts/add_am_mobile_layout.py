@@ -682,6 +682,44 @@ def patch_activity(builder: Path) -> None:
         raise SystemExit("Android portrait/signer Activity bridge was not fully installed.")
 
 
+def patch_project_import_shortcut(effectcraft: Path) -> None:
+    """Expose the unified project importer beside the existing plug-in import entry."""
+    path = effectcraft / "crates/ui-egui/src/header.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1"
+    if marker in source:
+        return
+    plugin_call = "            let x = plugin_import_button(app, scroll_ui, x, cy);\n"
+    project_call = plugin_call + "            let x = project_import_button(app, scroll_ui, x, cy);\n"
+    if plugin_call not in source:
+        raise SystemExit("Could not locate the scrollable top-left plug-in import control.")
+    source = source.replace(plugin_call, project_call, 1)
+    helper_anchor = "/// The tool slots (with group separators after camera tools and pan-behind); returns the x after them.\n"
+    button = r'''
+// EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1
+/// A single-tap shortcut to the original unified project importer.
+fn project_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy: f32) -> f32 {
+    let rect = Rect::from_min_size(pos2(x, cy - 13.0), vec2(76.0, 26.0));
+    let response = ui
+        .put(rect, egui::Button::new("导入工程"))
+        .on_hover_text("导入 Ae、AM、NV、CapCut 或 Ae 自有工程");
+    app.auto.add_response("header.importProject", &response, "导入工程");
+    widgets::focus_outline(ui, &response, &app.tokens);
+    if response.clicked()
+        && let Err(error) = crate::menus::invoke(app, ui.ctx(), "file.importProject", json!({}))
+    {
+        app.ui.status = error;
+    }
+    x + 82.0
+}
+
+'''
+    if helper_anchor not in source:
+        raise SystemExit("Could not locate the toolbar helper insertion point for the project-import shortcut.")
+    source = source.replace(helper_anchor, button + helper_anchor, 1)
+    path.write_text(source, encoding="utf-8")
+
+
 def patch_home_surface(effectcraft: Path) -> None:
     """Give AM mode a portrait Home while keeping the same native Ae project actions."""
     path = effectcraft / "crates/ui-egui/src/panels/home.rs"
@@ -860,6 +898,8 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("The dedicated Ae/AM layout selector row is missing.")
     if "if rect.height() >= 60.0" not in header or "Ae×am 竖屏布局" not in header:
         raise SystemExit("The layout selector must remain visible on both Home and the editor.")
+    if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in header or "file.importProject" not in header:
+        raise SystemExit("The scrollable top toolbar must retain the unified project-import shortcut and plugin-import button.")
     frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
     if "let header_h = 64.0;" not in frame:
         raise SystemExit("The two-row layout toolbar must remain visible on Home and in the editor.")
@@ -876,6 +916,7 @@ def main() -> None:
     patch_workspace_selection(effectcraft)
     patch_workspace_morph_transition(effectcraft)
     patch_workspace_tabs(effectcraft)
+    patch_project_import_shortcut(effectcraft)
     patch_startup_restore(effectcraft)
     patch_home_surface(effectcraft)
     patch_android_layout_module(effectcraft)
