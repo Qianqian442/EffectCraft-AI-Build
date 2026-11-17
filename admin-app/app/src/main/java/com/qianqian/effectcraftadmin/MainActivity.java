@@ -403,11 +403,8 @@ public final class MainActivity extends Activity {
             ? "主 APK 和管理版 APK 共用同一 Cloudflare 账号数据库。"
             : "其他用户无需与管理员处于同一 Wi-Fi；主 APK 自动发现本机节点，并通过加密 P2P 通道注册、登录和核验封禁状态。", 13, false));
         if (!isCloudflareMode()) addNodeServerToggle(page);
-        page.addView(text("账号服务器地址", 13, true));
-        serverInput = field("服务器地址由管理版构建配置提供", false);
-        serverInput.setText(server);
-        serverInput.setEnabled(false);
-        page.addView(serverInput);
+        page.addView(text("账号服务连接已自动配置", 12, false));
+        // The endpoint remains internal configuration and is never rendered in the admin UI.
         page.addView(text("管理员账号", 13, true));
         usernameInput = field("admin", false);
         usernameInput.setText("admin");

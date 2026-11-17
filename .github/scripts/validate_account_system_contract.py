@@ -246,13 +246,14 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
-        "Main APK persists ban information locally and displays it before server requests on reopening",
-        ".github/scripts/add_account_whitelist_local_cache.py",
+        "Main APK stores ban/whitelist data locally but hides security details from the ordinary UI",
+        ".github/scripts/hide_account_security_details.py",
         (
             "effectcraft-account-ban.json",
-            "联网核验是否已解封",
-            "self.persist_ban(config)",
-            "self.status.clear()",
+            "effectcraft-account-whitelist.json",
+            "EFFECTCRAFT_ACCOUNT_SECURITY_DETAIL_DISPLAY_SUPPRESSED_V1",
+            "账号当前无法通过验证",
+            "self.status = if response.status == 403 || response.status == 423",
         ),
     ),
     (

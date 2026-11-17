@@ -41,6 +41,7 @@ on:
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/add_account_whitelist_local_cache.py'
+      - '.github/scripts/hide_account_security_details.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/normalize_account_network_dependencies.py'
@@ -113,6 +114,7 @@ jobs:
             .github/scripts/add_qq_project_share.py \
             .github/scripts/add_account_avatar_picker.py \
             .github/scripts/add_account_whitelist_local_cache.py \
+            .github/scripts/hide_account_security_details.py \
             .github/scripts/integrate_p2p_bridge.py \
             .github/scripts/convert_account_gate_to_cloud.py \
             .github/scripts/patch_gradle_maven_mirrors.py \
@@ -565,6 +567,11 @@ jobs:
           grep -Fq 'EFFECTCRAFT_LOCAL_WHITELIST_AND_OFFLINE_BAN_V1' "$ACCOUNT_RS"
           grep -Fq 'effectcraft-account-whitelist.json' "$ACCOUNT_RS"
           grep -Fq 'effectcraft-account-ban.json' "$ACCOUNT_RS"
+          python3 -m py_compile build-assets/.github/scripts/hide_account_security_details.py
+          python3 build-assets/.github/scripts/hide_account_security_details.py
+          grep -Fq 'EFFECTCRAFT_ACCOUNT_SECURITY_DETAIL_DISPLAY_SUPPRESSED_V1' "$ACCOUNT_RS"
+          ! grep -Fq 'app.account.ban_reason' "$ACCOUNT_RS"
+          ! grep -Fq 'app.account.whitelist.qq_hashes' "$ACCOUNT_RS"
 
       - name: Add independent connected Puppet pin rigs
         env:
