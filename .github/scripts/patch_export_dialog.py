@@ -341,8 +341,16 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                                             data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), vec![item_id]);
                                             data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
                                         });
-                                        match crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false})) {
-                                            Ok(result) => {
+                                        // EFFECTCRAFT_ANDROID_EXPORT_START_PANIC_GUARD_V1
+                                        // A synchronous engine panic while creating the render job must
+                                        // become a visible export error, not terminate the editor process.
+                                        let render_start = std::panic::catch_unwind(
+                                            std::panic::AssertUnwindSafe(|| {
+                                                crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false}))
+                                            }),
+                                        );
+                                        match render_start {
+                                            Ok(Ok(result)) => {
                                                 let started_ids: Vec<u64> = result.get("items")
                                                     .and_then(|items| items.as_array())
                                                     .map(|items| items.iter()
@@ -354,11 +362,22 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                                                     data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), ids);
                                                 });
                                             }
-                                            Err(error) => {
+                                            Ok(Err(error)) => {
                                                 let _ = crate::menus::invoke(
                                                     app, &ctx, "renderQueue.setRender",
                                                     json!({"item": item_id, "render": false}),
                                                 );
+                                                app.ui.status = error.clone();
+                                                ctx.data_mut(|data| {
+                                                    data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
+                                                });
+                                            }
+                                            Err(_) => {
+                                                let _ = crate::menus::invoke(
+                                                    app, &ctx, "renderQueue.setRender",
+                                                    json!({"item": item_id, "render": false}),
+                                                );
+                                                let error = "启动视频渲染时发生内部异常；编辑器已拦截该异常，请检查格式和参数后重试。".to_string();
                                                 app.ui.status = error.clone();
                                                 ctx.data_mut(|data| {
                                                     data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
