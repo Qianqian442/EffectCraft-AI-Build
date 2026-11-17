@@ -107,6 +107,7 @@ def patch_activity(builder: Path) -> None:
     source = path.read_text(encoding="utf-8")
     imports = [
         "import androidx.core.content.FileProvider;",
+        "import android.widget.Toast;",
         "import java.io.BufferedInputStream;",
         "import java.io.BufferedOutputStream;",
         "import java.io.IOException;",
@@ -131,7 +132,12 @@ def patch_activity(builder: Path) -> None:
      */
     public static void shareProjectPackage(String projectPath) {
         __CLASS__ activity = galleryActivity;
-        if (activity == null || projectPath == null || projectPath.trim().isEmpty()) return;
+        if (activity == null) {
+            throw new IllegalStateException("Ae 尚未准备好工程分享界面，请返回应用后重试。");
+        }
+        if (projectPath == null || projectPath.trim().isEmpty()) {
+            throw new IllegalArgumentException("没有取得已收集工程的文件路径。");
+        }
         activity.io.execute(() -> {
             try {
                 File projectFile = new File(projectPath).getCanonicalFile();
@@ -150,6 +156,9 @@ def patch_activity(builder: Path) -> None:
                 File archive = new File(shareDirectory,
                     root.getName().replaceAll("[^A-Za-z0-9_-]", "_") + "-" + System.currentTimeMillis() + ".zip");
                 zipProjectDirectory(root, root, archive);
+                if (!archive.isFile() || archive.length() <= 22) {
+                    throw new IOException("工程 ZIP 打包结果为空或不完整。");
+                }
 
                 Uri uri = FileProvider.getUriForFile(
                     activity, activity.getPackageName() + ".effectcraft.files", archive);
@@ -159,15 +168,21 @@ def patch_activity(builder: Path) -> None:
                 send.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 send.setClipData(ClipData.newUri(activity.getContentResolver(), archive.getName(), uri));
                 Intent chooser = Intent.createChooser(send, "选择 QQ 发送工程 ZIP");
+                chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
                 activity.runOnUiThread(() -> {
                     try {
                         activity.startActivity(chooser);
+                        Toast.makeText(activity, "工程包已准备好，请选择 QQ 发送。", Toast.LENGTH_LONG).show();
                     } catch (Exception error) {
                         Log.e(TAG, "Could not open the Android project share sheet.", error);
+                        Toast.makeText(activity, "无法打开分享面板：" + error.getMessage(), Toast.LENGTH_LONG).show();
                     }
                 });
             } catch (Exception error) {
                 Log.e(TAG, "Could not package the EffectCraft project for QQ.", error);
+                final String detail = error.getMessage() == null ? error.getClass().getSimpleName() : error.getMessage();
+                activity.runOnUiThread(() ->
+                    Toast.makeText(activity, "工程分享失败：" + detail, Toast.LENGTH_LONG).show());
             }
         });
     }
@@ -418,7 +433,8 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
             return import_incoming_project(app, &inner);
         }
         "nv" => "file.importNodeVideoProject",
-        "alight" | "amproj" => "file.importAlightMotionProject",
+        "alight" => "file.importAlightMotionProject",
+        "amproj" => "file.importAlightMotionProject",
         "xml" => {
             let bytes = std::fs::read(path).unwrap_or_default();
             let head = String::from_utf8_lossy(&bytes[..bytes.len().min(8192)]).to_ascii_lowercase();
@@ -477,8 +493,8 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
     associations = (builder / "lib" / "file_associations.py").read_text(encoding="utf-8")
     if '"amproj"' not in manifest_generator or '"amproj"' not in associations:
         raise SystemExit("Alight Motion .amproj files are not registered for direct Android open.")
-    if '"alight" | "amproj" => "file.importAlightMotionProject"' not in menus_check:
-        raise SystemExit("Alight Motion .amproj incoming files are not routed to the AM importer.")
+    if '"alight" => "file.importAlightMotionProject"' not in menus_check or '"amproj" => "file.importAlightMotionProject"' not in menus_check:
+        raise SystemExit("Alight Motion .alight/.amproj incoming files are not routed to the AM importer.")
     if marker not in frontend_check or marker not in menus_check:
         raise SystemExit("The format-aware incoming-project router was not installed.")
     required = (
