@@ -23,11 +23,11 @@ concurrency:
 
 jobs:
   protect:
-    if: \${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
-      SOURCE_RUN_ID: \${{ github.event.workflow_run.id || inputs.source_run_id }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.source_run_id }}
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       XOP_REF: '0.8.5'
@@ -43,9 +43,9 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: EffectCraft-Android-APK
-          repository: \${{ github.repository }}
-          run-id: \${{ env.SOURCE_RUN_ID }}
-          github-token: \${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           path: release
 
       - name: Check out XopProtector source
@@ -98,7 +98,7 @@ jobs:
           path: |
             artcraft/keys/artcraft-builder.jks
             artcraft/keys/.keystore-password
-          key: effectcraft-apk-signing-v1-\${{ github.repository_id }}
+          key: effectcraft-apk-signing-v1-${{ github.repository_id }}
 
       - name: Validate original APK signature and persistent signing key
         shell: bash
