@@ -1281,8 +1281,8 @@ fn import_aep_mobile_package(s: &mut Session, p: &J) -> Result<J> {
 
 fn import_alight_motion_project(s: &mut Session, p: &J) -> Result<J> {
     let path = selected_project_path(p)?;
-    if !matches!(ext(&path).as_str(), "xml" | "alight" | "zip") {
-        return Err(err("AM 工程支持 .xml、.alight 或包含工程与素材的 ZIP 包。"));
+    if !matches!(ext(&path).as_str(), "xml" | "alight" | "zip" | "amproj") {
+        return Err(err("AM 工程支持 .amproj、.xml、.alight 或包含工程与素材的 ZIP 包。"));
     }
     import_path(s, &path)
 }
@@ -1346,7 +1346,7 @@ pub fn specs() -> Vec<CommandSpec> {
             "{path (.zip containing a genuine .aep/.aepx mobile project and media)} — imports an AE mobile project package without renaming unrelated formats",
             always, import_aep_mobile_package),
         cmd!("file.importAlightMotionProject", "Alight Motion Project...", ["File", "Import"], None,
-            "{path (.xml/.alight/.zip)} — imports Alight Motion scene XML or project package",
+            "{path (.amproj/.xml/.alight/.zip)} — imports Alight Motion project archive or scene XML",
             always, import_alight_motion_project),
         cmd!("file.importNodeVideoProject", "NodeVideo Project...", ["File", "Import"], None,
             "{path (.nv/.json/.zip)} — imports a NodeVideo project",
