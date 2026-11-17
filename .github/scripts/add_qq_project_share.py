@@ -473,6 +473,8 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
 
     frontend_check = frontend.read_text(encoding="utf-8")
     menus_check = menus.read_text(encoding="utf-8")
+    manifest_generator = (builder / "lib" / "android_project.py").read_text(encoding="utf-8")
+    associations = (builder / "lib" / "file_associations.py").read_text(encoding="utf-8")
     if '"amproj"' not in manifest_generator or '"amproj"' not in associations:
         raise SystemExit("Alight Motion .amproj files are not registered for direct Android open.")
     if '"alight" | "amproj" => "file.importAlightMotionProject"' not in menus_check:
