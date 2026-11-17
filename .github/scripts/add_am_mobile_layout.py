@@ -338,7 +338,7 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
     // EFFECTCRAFT_NOVA_LAYOUT_MENU_V2
     // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1
     // A fixed second row keeps the Ae/AM selector separate from every scrollable tool hitbox.
-    if !app.ui.start_screen && rect.height() >= 60.0 {
+    if rect.height() >= 60.0 {
         let layout_row = Rect::from_min_max(
             pos2(rect.min.x, rect.min.y + 40.0),
             rect.max,
@@ -366,7 +366,7 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
             direct_replacement = """    right_side(app, ui, &p, rect, x, cy);
     // EFFECTCRAFT_NOVA_LAYOUT_MENU_V2
     // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1
-    if !app.ui.start_screen && rect.height() >= 60.0 {
+    if rect.height() >= 60.0 {
         let layout_row = Rect::from_min_max(pos2(rect.min.x, rect.min.y + 40.0), rect.max);
         layout_switch_row(app, ui, &p, layout_row);
     }
@@ -386,7 +386,7 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
         code = r'''
 // Show the active Ae/AM mode in a dedicated row below the original tool controls.
 fn ae_layout_mode_label(workspace: &str) -> &'static str {
-    if workspace == "AM 竖屏" { "AM 竖屏布局" } else { "Ae 原布局" }
+    if workspace == "AM 竖屏" { "Ae×am 竖屏布局" } else { "Ae 原布局" }
 }
 
 fn layout_switch_row(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Painter, rect: Rect) {
@@ -461,7 +461,7 @@ fn layout_switch_row(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Pain
         frame_source = replace_once(
             frame_source,
             "        let header_h = 40.0;\n",
-            "        let header_h = if self.ui.start_screen { 40.0 } else { 64.0 }; // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1\n",
+            "        let header_h = 64.0; // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1\n",
             "reserve 24px for the separate editor-only layout row",
         )
         frame.write_text(frame_source, encoding="utf-8")
@@ -682,6 +682,156 @@ def patch_activity(builder: Path) -> None:
         raise SystemExit("Android portrait/signer Activity bridge was not fully installed.")
 
 
+def patch_home_surface(effectcraft: Path) -> None:
+    """Give AM mode a portrait Home while keeping the same native Ae project actions."""
+    path = effectcraft / "crates/ui-egui/src/panels/home.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_AM_PORTRAIT_HOME_V1"
+    if marker in source:
+        return
+    show_anchor = "pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {"
+    helper_code = r'''
+// EFFECTCRAFT_AM_PORTRAIT_HOME_V1
+/// Compact portrait Home for Ae×am. It uses the same native project commands and
+/// recent-project records as Ae; only the Home presentation changes.
+fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    let t = app.tokens;
+    let ctx = ui.ctx().clone();
+    let painter = ui.painter().with_clip_rect(rect);
+    painter.rect_filled(rect, 0.0, t.app_bg);
+
+    painter.text(
+        pos2(rect.min.x + 18.0, rect.min.y + 26.0),
+        Align2::LEFT_CENTER,
+        "Ae×am",
+        Tokens::semibold(25.0),
+        t.tab_text_active,
+    );
+    painter.text(
+        pos2(rect.min.x + 18.0, rect.min.y + 54.0),
+        Align2::LEFT_CENTER,
+        "移动创作工作区",
+        Tokens::ui(12.0),
+        t.text_dim,
+    );
+
+    let pad = 14.0;
+    let gap = 9.0;
+    let card_top = rect.min.y + 78.0;
+    let card_w = ((rect.width() - pad * 2.0 - gap) / 2.0).max(76.0);
+    let card_h = 46.0;
+    let actions: [(&str, &str); 6] = [
+        ("新建合成", "app.newComp"),
+        ("打开工程", "file.open"),
+        ("导入工程", "file.importProject"),
+        ("导入素材", "file.import"),
+        ("模板", "am.home.templates"),
+        ("教程", "am.home.learn"),
+    ];
+    let mut commands: Vec<(&'static str, serde_json::Value)> = Vec::new();
+    for (index, (label, command)) in actions.iter().enumerate() {
+        let row = index / 2;
+        let col = index % 2;
+        let r = Rect::from_min_size(
+            pos2(rect.min.x + pad + col as f32 * (card_w + gap), card_top + row as f32 * (card_h + gap)),
+            vec2(card_w, card_h),
+        );
+        let response = ui.put(
+            r,
+            egui::Button::new(*label)
+                .fill(t.panel_bg)
+                .stroke(egui::Stroke::new(1.0, t.separator))
+                .min_size(r.size()),
+        );
+        app.auto.add_response(&format!("am.home.{}", command), &response, label);
+        if response.clicked() {
+            match *command {
+                "am.home.templates" => {
+                    app.ui.home_templates = true;
+                    app.ui.home_learn = false;
+                }
+                "am.home.learn" => {
+                    app.ui.home_learn = true;
+                    app.ui.home_templates = false;
+                }
+                "file.import" => commands.push(("file.import", json!({"picturesAndVideos": true}))),
+                "app.newComp" | "file.open" | "file.importProject" => {
+                    commands.push((*command, json!({})));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let edit_rect = Rect::from_min_size(
+        pos2(rect.min.x + pad, card_top + 3.0 * (card_h + gap) + 2.0),
+        vec2((rect.width() - pad * 2.0).max(60.0), 38.0),
+    );
+    let edit = ui.put(
+        edit_rect,
+        egui::Button::new("进入编辑")
+            .fill(t.accent.gamma_multiply(0.20))
+            .stroke(egui::Stroke::new(1.0, t.accent))
+            .min_size(edit_rect.size()),
+    );
+    app.auto.add_response("am.home.enterEditor", &edit, "进入编辑");
+    if edit.clicked() {
+        app.ui.start_screen = false;
+        app.ui.home_learn = false;
+        app.ui.home_templates = false;
+    }
+
+    let recent_top = edit_rect.max.y + 14.0;
+    painter.text(
+        pos2(rect.min.x + pad, recent_top + 9.0),
+        Align2::LEFT_CENTER,
+        "最近工程",
+        Tokens::semibold(15.0),
+        t.tab_text_active,
+    );
+    let recent_rect = Rect::from_min_max(
+        pos2(rect.min.x + pad, recent_top + 24.0),
+        pos2(rect.max.x - pad, rect.max.y - 8.0),
+    );
+    let entries = recent_entries(&app.session.prefs);
+    let mut recent_ui = ui.new_child(egui::UiBuilder::new().max_rect(recent_rect));
+    egui::ScrollArea::vertical()
+        .id_salt("effectcraft-am-home-recent")
+        .auto_shrink([false, false])
+        .show(&mut recent_ui, |scroll_ui| {
+            for entry in entries {
+                let title = if entry.exists { entry.name.clone() } else { format!("{}（文件不存在）", entry.name) };
+                let response = scroll_ui.add_sized(
+                    [scroll_ui.available_width(), 42.0],
+                    egui::Button::new(title).fill(t.panel_bg),
+                );
+                app.auto.add_response(&format!("am.home.recent.{}", entry.index), &response, &entry.path);
+                if response.clicked() {
+                    commands.push(("file.openRecent", json!({"index": entry.index})));
+                }
+            }
+            if app.session.prefs.recent_projects.is_empty() {
+                scroll_ui.label("最近打开的工程会显示在这里");
+            }
+        });
+    run_actions(app, &ctx, commands);
+}
+
+'''
+    if show_anchor not in source:
+        raise SystemExit("Could not locate the Home panel entry point for the Ae×am portrait Home.")
+    source = source.replace(show_anchor, helper_code + show_anchor, 1)
+    dispatch = show_anchor + '''
+    if app.ui.workspace == "AM 竖屏" {
+        show_am_portrait_home(app, ui, rect);
+        return;
+    }
+'''
+    if "show_am_portrait_home(app, ui, rect);" not in source:
+        source = source.replace(show_anchor, dispatch, 1)
+    path.write_text(source, encoding="utf-8")
+
+
 def verify_import_export_unchanged(effectcraft: Path) -> None:
     # This patch must not take ownership of any file-open, share, serialization, or export route.
     router = (effectcraft / "crates/ui-egui/src/menus.rs").read_text(encoding="utf-8")
@@ -708,12 +858,12 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("AM layout patch detected a missing original export UI.")
     if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" not in header:
         raise SystemExit("The dedicated Ae/AM layout selector row is missing.")
-    if "if !app.ui.start_screen" not in header:
-        raise SystemExit("The layout selector must remain hidden on the Home screen.")
+    if "if rect.height() >= 60.0" not in header or "Ae×am 竖屏布局" not in header:
+        raise SystemExit("The layout selector must remain visible on both Home and the editor.")
     frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
-    if "let header_h = if self.ui.start_screen { 40.0 } else { 64.0 };" not in frame:
-        raise SystemExit("The editor header did not reserve a separate row for the layout selector.")
-    print("Verified AM layout leaves the existing import router/export UI intact and reserves a non-overlapping editing-only selector row.")
+    if "let header_h = 64.0;" not in frame:
+        raise SystemExit("The two-row layout toolbar must remain visible on Home and in the editor.")
+    print("Verified the Ae×am selector and original horizontally-scrollable tools remain available on Home and in the editor.")
 
 
 def main() -> None:
@@ -723,16 +873,16 @@ def main() -> None:
         raise SystemExit("EFFECTCRAFT_DIR and ARTCRAFT_DIR must point to checked-out source trees.")
     patch_dock(effectcraft)
     patch_touch_trim_handles(effectcraft)
-    patch_am_native_effect_browser(effectcraft)
     patch_workspace_selection(effectcraft)
     patch_workspace_morph_transition(effectcraft)
     patch_workspace_tabs(effectcraft)
     patch_startup_restore(effectcraft)
+    patch_home_surface(effectcraft)
     patch_android_layout_module(effectcraft)
     patch_activity(builder)
     verify_import_export_unchanged(effectcraft)
-    print("Added the AM portrait workspace; the selected workspace is restored from workspaces.json on relaunch.")
-    print("AM uses the original Effects & Presets and Effect Controls panels, preserving all loaded EffectCraft effects.")
+    print("Added the Ae×am portrait workspace and portrait Home; the selected workspace is restored from workspaces.json on relaunch.")
+    print("AM portrait mode keeps the native Ae Effects & Presets, Effect Controls, timeline, keyframes, curves, puppet and vector tools.")
     print("Project import/share/export routes and project formats were not changed.")
     print("Added release-certificate pin verification and sensor/AM portrait switching for Android.")
     
