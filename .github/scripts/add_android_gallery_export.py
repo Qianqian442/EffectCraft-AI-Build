@@ -463,13 +463,29 @@ def patch_ui(effectcraft: Path) -> None:
                 }'''
         h = replace_once(h, old_actions, new_actions, "Gallery OK action")
 
+        old_close_with_export_start = '''            data.remove::<Option<String>>(error_id);
+            data.remove::<f64>(egui::Id::new("effectcraft-export-progress-start-time"));
+        });'''
+        new_close_with_export_start = '''            data.remove::<Option<String>>(error_id);
+            data.remove::<f64>(egui::Id::new("effectcraft-export-progress-start-time"));
+            data.remove::<String>(gallery_state_id);
+            data.remove::<String>(gallery_request_id);
+        });'''
         old_close = '''            data.remove::<Option<String>>(error_id);
         });'''
         new_close = '''            data.remove::<Option<String>>(error_id);
             data.remove::<String>(gallery_state_id);
             data.remove::<String>(gallery_request_id);
         });'''
-        h = replace_once(h, old_close, new_close, "Gallery state cleanup")
+        if new_close_with_export_start not in h and old_close_with_export_start in h:
+            h = replace_once(
+                h, old_close_with_export_start, new_close_with_export_start,
+                "Gallery state cleanup with export startup timer",
+            )
+        elif new_close not in h and old_close in h:
+            h = replace_once(h, old_close, new_close, "Gallery state cleanup")
+        elif new_close_with_export_start not in h and new_close not in h:
+            raise SystemExit("Gallery state cleanup: could not find the active export progress cleanup block.")
 
         h = h.replace(
             '        .movable(true)\n        .collapsible(false)\n        .resizable(false)\n        .default_pos(ctx.content_rect().center() - vec2(175.0, 105.0))',
