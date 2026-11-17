@@ -25,7 +25,7 @@ def patch_manifest_generator(builder: Path) -> None:
     intent_code = r'''    activities = _as_list(application.get("activity")) or [{}]
     if android_meta.get("package") == "com.artcraft.effectcraft":
         project_extensions = (
-            "aep", "aepx", "ecproj", "ecprojx", "zip", "xml", "alight",
+            "aep", "aepx", "ecproj", "ecprojx", "zip", "xml", "alight", "amproj",
             "nv", "json", "fcpxml", "otio", "edl", "aaf", "omf", "lottie", "rar",
         )
         for activity in activities:
@@ -321,7 +321,7 @@ def patch_file_associations(builder: Path) -> None:
     extensions = re.findall(r'"([^"]+)"', association.group(2))
     for extension in (
         "ecproj", "ecprojx", "ectemplate",
-        "aep", "aepx", "alight", "xml", "nv", "json", "zip", "rar",
+        "aep", "aepx", "alight", "amproj", "xml", "nv", "json", "zip", "rar",
         "lottie", "fcpxml", "otio", "edl", "aaf", "omf",
     ):
         if extension not in extensions:
@@ -418,7 +418,7 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
             return import_incoming_project(app, &inner);
         }
         "nv" => "file.importNodeVideoProject",
-        "alight" => "file.importAlightMotionProject",
+        "alight" | "amproj" => "file.importAlightMotionProject",
         "xml" => {
             let bytes = std::fs::read(path).unwrap_or_default();
             let head = String::from_utf8_lossy(&bytes[..bytes.len().min(8192)]).to_ascii_lowercase();
@@ -473,6 +473,10 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
 
     frontend_check = frontend.read_text(encoding="utf-8")
     menus_check = menus.read_text(encoding="utf-8")
+    if '"amproj"' not in manifest_generator or '"amproj"' not in associations:
+        raise SystemExit("Alight Motion .amproj files are not registered for direct Android open.")
+    if '"alight" | "amproj" => "file.importAlightMotionProject"' not in menus_check:
+        raise SystemExit("Alight Motion .amproj incoming files are not routed to the AM importer.")
     if marker not in frontend_check or marker not in menus_check:
         raise SystemExit("The format-aware incoming-project router was not installed.")
     required = (
