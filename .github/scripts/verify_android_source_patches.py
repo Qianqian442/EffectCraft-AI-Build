@@ -526,6 +526,10 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
             raise SystemExit(f"Automatic project import routing is missing: {token}")
     if "run_with_picked(app, command, \"path\"" not in incoming_frontend:
         raise SystemExit("Incoming project imports bypass the original importer preflight/dialog path.")
+    if "selected_rar" not in incoming_frontend or "file.extractProjectArchive" not in incoming_frontend:
+        raise SystemExit("The unified Import Project entry does not route selected RAR archives through extraction.")
+    if '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "rar", "amproj", "xml", "alight", "aep", "aepx", "json"])),' not in incoming_frontend:
+        raise SystemExit("The unified project picker does not expose supported QQ-downloaded RAR files.")
     print("Verified automatic opening routes all supported external project formats through the existing importers.")
 
 
