@@ -156,6 +156,7 @@ jobs:
           grep -F '"aep", "aepx"' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "amproj", "xml", "alight", "aep", "aepx", "json"])),' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F '"file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"])),' effectcraft/crates/ui-egui/src/menus/frontend.rs
+          grep -F 'AM 工程支持 .amproj' .github/scripts/am_nv.rs
 
       - name: Apply standalone DeepSeek AI plugin bridge
         env:
