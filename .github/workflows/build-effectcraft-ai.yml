@@ -62,6 +62,7 @@ on:
       - '.github/scripts/build_am_mobile_editing_page.py'
       - '.github/scripts/add_am_brand_label.py'
       - '.github/scripts/add_home_layout_switch.py'
+      - '.github/scripts/patch_absentmotion_external_navigation.py'
       - '.github/scripts/pin_android_signing_certificate.py'
       - '.github/scripts/ai_video_export.rs'
       - '.github/scripts/sapphire_compat_pack.rs'
@@ -183,6 +184,25 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: build-assets
+
+      - name: Check out pinned native AbsentMotion source
+        uses: actions/checkout@v4
+        with:
+          repository: Comett1225/AbsentMotion
+          ref: f350576485c42ff7aefa5c2f205b9f1b8ad873f7
+          path: absentmotion
+
+      - name: Patch and audit native AM external navigation
+        env:
+          ABSENTMOTION_DIR: ${{ github.workspace }}/absentmotion
+        run: |
+          set -euo pipefail
+          python3 -m py_compile build-assets/.github/scripts/patch_absentmotion_external_navigation.py
+          python3 build-assets/.github/scripts/patch_absentmotion_external_navigation.py
+          grep -Fq 'AE_AM_EXTERNAL_NAVIGATION_CLEANUP_V1' absentmotion/android/src/main/kotlin/app/absentmotion/ui/home/HelpScreen.kt
+          grep -Fq 'AE_AM_EXTERNAL_NAVIGATION_CLEANUP_V1' absentmotion/android/src/main/kotlin/app/absentmotion/ui/home/UpdateDialog.kt
+          test -s absentmotion/LICENSE
+          echo "Pinned native AM source checked out and external navigation patches applied."
 
       - name: Check out pinned CraftPlugins prebuilt WASM effects
         uses: actions/checkout@v4
