@@ -179,22 +179,24 @@ jobs:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
         run: python3 .github/scripts/add_chroma_key_effect.py
 
-      - name: Apply and verify the independent AM mobile editing page
+      - name: Apply and verify Ae×am native portrait workspace
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: |
           python3 .github/scripts/add_am_mobile_layout.py
-          python3 .github/scripts/build_am_mobile_editing_page.py
-          # The user explicitly chose not to add a separate AM-like clip-editor page.
-          # Validate the AM portrait presentation on the existing native Ae panels instead.
-          grep -Fq "EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_V1" effectcraft/crates/ui-egui/src/panels/effects_presets.rs
-          grep -Fq '"AM 竖屏"' effectcraft/crates/ui-egui/src/dock.rs
-          grep -Fq 'EffectControls' effectcraft/crates/ui-egui/src/dock.rs
+          # Ae×am is a portrait layout for the original Ae editor, not a second clip-editor page.
+          ! grep -Fq "crate::am_editor::show" effectcraft/crates/ui-egui/src/app/frame.rs
+          ! grep -Fq "pub mod am_editor;" effectcraft/crates/ui-egui/src/lib.rs
+          test ! -e effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" effectcraft/crates/ui-egui/src/panels/home.rs
+          grep -Fq "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" effectcraft/crates/ui-egui/src/panels/effects_presets.rs
+          grep -Fq "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" effectcraft/crates/ui-egui/src/widgets.rs
+          grep -Fq "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" effectcraft/crates/ui-egui/src/header.rs
           grep -Fq "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" effectcraft/crates/ui-egui/src/header.rs
           grep -Fq "EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1" effectcraft/crates/ui-egui/src/app/window.rs
-          test ! -e effectcraft/crates/ui-egui/src/am_editor.rs
-          echo "Verified AM portrait mode reuses native Ae editing panels and does not add a duplicate clip-editor page."
+          grep -Fq "self.dock_area(ui, body);" effectcraft/crates/ui-egui/src/app/frame.rs
+          echo "Verified Ae×am portrait Home and native Ae effects, scrollable parameters, keyframes, curves, puppet, vector and timeline tools."
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
