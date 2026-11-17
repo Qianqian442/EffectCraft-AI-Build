@@ -299,4 +299,6 @@ if 'page.addView(serverInput)' in admin_ui or 'page.addView(text("账号服务�
     raise SystemExit("FAIL: administrator login page still renders the account server address")
 if "账号服务连接已自动配置" not in admin_ui:
     raise SystemExit("FAIL: administrator login page must show only the generic automatic-connection label")
-print("PASS: administrator login UI does not render the server address")
+if "hideServerEndpoint" not in admin_ui or "toast(finalError)" in admin_ui:
+    raise SystemExit("FAIL: administrator network errors may still disclose the server endpoint")
+print("PASS: administrator login UI and network errors do not render the server address")
