@@ -115,6 +115,12 @@ def main() -> None:
     if removed not in (0, 1):
         raise SystemExit("Unexpected number of ban countdown helpers.")
 
+    source = source.replace('ui.label("云端账号服务地址");', 'ui.label("账号服务已自动配置");')
+    source = source.replace(
+        'ui.small("此地址由构建配置自动设置，主 APK 直接通过 HTTPS 连接 Cloudflare 账号服务器。");',
+        'ui.small("正在安全连接账号服务。");',
+    )
+
     # Never render the configured server endpoint or an endpoint-derived error.
     # The address remains private configuration used by the transport layer.
     if "fn safe_account_status(" in source:
@@ -136,6 +142,8 @@ def main() -> None:
         "封禁原因",
         "白名单已下载",
         "服务器地址",
+        "云端账号服务地址",
+        "此地址由构建配置自动设置",
     )
     found = [item for item in forbidden if item in ui_source]
     if found:
