@@ -69,37 +69,46 @@ def patch_file_import_menu(root: Path) -> None:
 
 
 def patch_frontend_pickers(root: Path) -> None:
-    """Register a native file picker for each of the four non-desktop project formats."""
+    """Register stable file pickers for the five project-import formats."""
     path = root / "crates/ui-egui/src/menus/frontend.rs"
     source = path.read_text(encoding="utf-8")
-    mappings = """        "file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"])),
-        "file.importAepMobilePackage" => ("path", Ask::Open(&["zip"])),
-        "file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"])),
-        "file.importNodeVideoProject" => ("path", Ask::Open(&["nv", "json", "zip"])),
-        "file.importCapCutProject" => ("path", Ask::Open(&["json", "zip"])),
-"""
-    am_old = '"file.importAlightMotionProject" => ("path", Ask::Open(&["xml", "alight", "zip"])),'
-    am_new = '"file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"])),'
-    if am_old in source:
-        source = source.replace(am_old, am_new, 1)
-    elif am_new not in source:
-        raise SystemExit("Could not safely extend the Alight Motion file picker with .amproj")
+    mappings = [
+        '        "file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"])),',
+        '        "file.importAepMobilePackage" => ("path", Ask::Open(&["zip"])),',
+        '        "file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"])),',
+        '        "file.importNodeVideoProject" => ("path", Ask::Open(&["nv", "json", "zip"])),',
+        '        "file.importCapCutProject" => ("path", Ask::Open(&["json", "zip"])),',
+    ]
 
-    required = (
-        '"file.extractProjectArchive" =>',
-        '"file.importAepMobilePackage" =>',
-        '"file.importAlightMotionProject" =>',
-        '"file.importNodeVideoProject" =>',
-        '"file.importCapCutProject" =>',
-    )
-    if all(item in source for item in required):
-        path.write_text(source, encoding="utf-8")
-        return
-    anchor = '        "file.importAepDesktop" => ("path", Ask::Open(&["aep", "aepx"])),\n'
-    if anchor not in source:
-        raise SystemExit("The desktop AE picker mapping must exist before adding other project pickers.")
-    source = source.replace(anchor, anchor + mappings, 1)
+    # Replace stale mappings by command id, retain correct entries, and add missing ones.
+    missing = []
+    for mapping in mappings:
+        command = mapping.split('"', 2)[1]
+        if mapping in source:
+            continue
+        old_line = next(
+            (line for line in source.splitlines()
+             if line.lstrip().startswith(f'"{command}" =>')),
+            None,
+        )
+        if old_line:
+            source = source.replace(old_line, mapping, 1)
+        else:
+            missing.append(mapping)
+
+    if missing:
+        anchor = '        "file.importAepDesktop" => ("path", Ask::Open(&["aep", "aepx"])),'
+        if anchor not in source:
+            raise SystemExit("The desktop AE picker mapping must exist before adding other project pickers.")
+        source = source.replace(anchor, anchor + "\\n" + "\\n".join(missing), 1)
+
     path.write_text(source, encoding="utf-8")
+    final = path.read_text(encoding="utf-8")
+    for mapping in mappings:
+        if mapping not in final:
+            raise SystemExit("Missing project file picker mapping: " + mapping)
+    if '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "amproj", "xml", "alight", "aep", "aepx", "json"])),' not in final:
+        raise SystemExit("Unified Import Project picker is missing the .amproj format")
 
 def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
