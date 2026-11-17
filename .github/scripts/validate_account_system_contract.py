@@ -246,14 +246,23 @@ checks: list[tuple[str, str, tuple[str, ...]]] = [
         ),
     ),
     (
-        "Main APK stores ban/whitelist data locally but hides security details from the ordinary UI",
+        "Main Ae UI suppresses ban details, whitelist details and server-address display",
         ".github/scripts/hide_account_security_details.py",
         (
-            "effectcraft-account-ban.json",
-            "effectcraft-account-whitelist.json",
             "EFFECTCRAFT_ACCOUNT_SECURITY_DETAIL_DISPLAY_SUPPRESSED_V1",
             "账号当前无法通过验证",
-            "self.status = if response.status == 403 || response.status == 423",
+            "app.account.ban_reason",
+            "app.account.whitelist.qq_hashes",
+            "云端账号服务地址",
+        ),
+    ),
+    (
+        "Main APK stores ban information locally while hiding its details from the ordinary UI",
+        ".github/scripts/add_account_whitelist_local_cache.py",
+        (
+            "effectcraft-account-ban.json",
+            "self.persist_ban(config)",
+            "self.status.clear()",
         ),
     ),
     (
@@ -284,3 +293,10 @@ if "Duration::from_secs(10)" in gate_source or "last_verified" in gate_source:
     raise SystemExit("FAIL: timed ten-second account verification must not be present")
 print("PASS: no fixed ten-second account verification polling")
 print(f"PASS: all {len(checks)} account-system contracts are present")
+
+admin_ui = read("admin-app/app/src/main/java/com/qianqian/effectcraftadmin/MainActivity.java")
+if 'page.addView(serverInput)' in admin_ui or 'page.addView(text("账号服务器地址"' in admin_ui:
+    raise SystemExit("FAIL: administrator login page still renders the account server address")
+if "账号服务连接已自动配置" not in admin_ui:
+    raise SystemExit("FAIL: administrator login page must show only the generic automatic-connection label")
+print("PASS: administrator login UI does not render the server address")
