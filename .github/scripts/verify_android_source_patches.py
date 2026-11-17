@@ -297,7 +297,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("ZIP/RAR project packages are not selectable from File > Import.")
     for mapping in (
         '"file.importAepMobilePackage" => ("path", Ask::Open(&["zip"]))',
-        '"file.importAlightMotionProject" => ("path", Ask::Open(&["xml", "alight", "zip"]))',
+        '"file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"]))',
         '"file.importNodeVideoProject" => ("path", Ask::Open(&["nv", "json", "zip"]))',
         '"file.importCapCutProject" => ("path", Ask::Open(&["json", "zip"]))',
     ):
