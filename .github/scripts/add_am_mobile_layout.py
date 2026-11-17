@@ -682,6 +682,85 @@ def patch_activity(builder: Path) -> None:
         raise SystemExit("Android portrait/signer Activity bridge was not fully installed.")
 
 
+def patch_native_effect_touch_behavior(effectcraft: Path) -> None:
+    """Make the original Effects & Presets panel usable with phone touch gestures."""
+    panel = effectcraft / "crates/ui-egui/src/panels/effects_presets.rs"
+    source = panel.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1"
+    if marker not in source:
+        begin = source.find("fn effect_row(")
+        end = source.find("fn preset_row(", begin)
+        if begin < 0 or end < 0:
+            raise SystemExit("Could not locate the native Effects & Presets effect-row handler.")
+        section = source[begin:end]
+        old_sense = "    let resp = ui.interact(r.intersect(list), id, if tab { Sense::click_and_drag() } else { Sense::CLICK | Sense::DRAG });"
+        new_sense = """    // EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1
+    // Phone taps apply immediately; a click-only row lets PanelScroll own vertical swipes.
+    let touch_device = ui.input(|i| i.has_touch_screen());
+    let row_sense = if touch_device {
+        Sense::click()
+    } else if tab {
+        Sense::click_and_drag()
+    } else {
+        Sense::CLICK | Sense::DRAG
+    };
+    let resp = ui.interact(r.intersect(list), id, row_sense);"""
+        if old_sense not in section:
+            raise SystemExit("Native effect rows changed; refusing to patch the wrong gesture handler.")
+        section = section.replace(old_sense, new_sense, 1)
+        old_click = """    if resp.clicked() {
+        nav_click(&ctx, app, id);
+    }
+    if resp.double_clicked() {
+        *apply = Some(Apply::Effect(e.id.to_string()));
+    }"""
+        new_click = """    if resp.clicked() {
+        if touch_device {
+            *apply = Some(Apply::Effect(e.id.to_string()));
+        } else {
+            nav_click(&ctx, app, id);
+        }
+    }
+    if resp.double_clicked() {
+        *apply = Some(Apply::Effect(e.id.to_string()));
+    }"""
+        if old_click not in section:
+            raise SystemExit("Native effect-row tap handler changed; refusing an unsafe partial patch.")
+        section = section.replace(old_click, new_click, 1)
+        source = source[:begin] + section + source[end:]
+        panel.write_text(source, encoding="utf-8")
+
+    widgets_path = effectcraft / "crates/ui-egui/src/widgets.rs"
+    widgets = widgets_path.read_text(encoding="utf-8")
+    scroll_marker = "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1"
+    if scroll_marker not in widgets:
+        old_scroll = """        if ui.rect_contains_pointer(area) {
+            offset -= ui.input(|i| i.smooth_scroll_delta.y);
+        }
+        let gutter: Gutter = ui.data(|d| d.get_temp(id.with("gutter"))).unwrap_or_default();"""
+        new_scroll = """        if ui.rect_contains_pointer(area) {
+            offset -= ui.input(|i| i.smooth_scroll_delta.y);
+        }
+        // EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1
+        // Finger swipes on non-dragging rows/background scroll native effect and parameter lists.
+        // Sliders, curve handles and other active drag widgets keep ownership of their gestures.
+        let touch_pan = ui.input(|i| {
+            i.has_touch_screen()
+                && i.pointer.primary_down()
+                && i.pointer.press_origin().is_some_and(|origin| area.contains(origin))
+        });
+        if touch_pan && ui.ctx().dragged_id().is_none() {
+            let delta = ui.input(|i| i.pointer.delta());
+            if delta.y.abs() >= delta.x.abs() && delta.y.abs() > 0.1 {
+                offset = (offset - delta.y).clamp(0.0, max.max(0.0));
+                ui.ctx().request_repaint();
+            }
+        }
+        let gutter: Gutter = ui.data(|d| d.get_temp(id.with("gutter"))).unwrap_or_default();"""
+        widgets = replace_once(widgets, old_scroll, new_scroll, "native PanelScroll finger gesture")
+        widgets_path.write_text(widgets, encoding="utf-8")
+
+
 def patch_project_import_shortcut(effectcraft: Path) -> None:
     """Expose the unified project importer beside the existing plug-in import entry."""
     path = effectcraft / "crates/ui-egui/src/header.rs"
@@ -896,6 +975,12 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("AM layout patch detected a missing original export UI.")
     if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" not in header:
         raise SystemExit("The dedicated Ae/AM layout selector row is missing.")
+    effects = (effectcraft / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
+    widgets = (effectcraft / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" not in effects:
+        raise SystemExit("AM portrait Effects & Presets must apply an effect on a single tap.")
+    if "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" not in widgets:
+        raise SystemExit("AM portrait effect/parameter panels must support finger-drag vertical scrolling.")
     if "if rect.height() >= 60.0" not in header or "Ae×am 竖屏布局" not in header:
         raise SystemExit("The layout selector must remain visible on both Home and the editor.")
     if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in header or "file.importProject" not in header:
@@ -916,6 +1001,7 @@ def main() -> None:
     patch_workspace_selection(effectcraft)
     patch_workspace_morph_transition(effectcraft)
     patch_workspace_tabs(effectcraft)
+    patch_native_effect_touch_behavior(effectcraft)
     patch_project_import_shortcut(effectcraft)
     patch_startup_restore(effectcraft)
     patch_home_surface(effectcraft)
