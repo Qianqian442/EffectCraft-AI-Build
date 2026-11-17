@@ -203,6 +203,8 @@ jobs:
           printf 'Protection profile: balanced DEX + SAFE eligible SO\n' >> release/xop-protection-info.txt
           printf 'RASP test profile: alert-only; root/emulator/CRC checks disabled\n' >> release/xop-protection-info.txt
           sha256sum "$OUTPUT_APK" > release/xop-protected-sha256.txt
+          cp "$GITHUB_WORKSPACE/xop/LICENSE" release/XopProtector-LICENSE.txt
+          cp "$GITHUB_WORKSPACE/xop/NOTICE" release/XopProtector-NOTICE.txt
 
       - name: Upload Xop-protected APK as a test artifact only
         uses: actions/upload-artifact@v4
@@ -213,6 +215,8 @@ jobs:
             release/xop-protected-sha256.txt
             release/xop-signer-sha256.txt
             release/xop-protection-info.txt
+            release/XopProtector-LICENSE.txt
+            release/XopProtector-NOTICE.txt
           compression-level: 0
           retention-days: 14
 
