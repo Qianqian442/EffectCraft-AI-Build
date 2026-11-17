@@ -223,6 +223,10 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if '"wav"' not in frontend or '"gltf"' not in frontend or "footage(MEDIA)" not in frontend:
         raise SystemExit("The original generic File > Import media types were removed.")
     print("Verified only the dedicated Media button filters to pictures/videos; generic File > Import retains other media types.")
+    builder_root = Path(os.environ.get("ARTCRAFT_DIR", "")).resolve()
+    saf_activity = (builder_root / "templates/android/SafActivity.java").read_text(encoding="utf-8")
+    if "Intent.ACTION_GET_CONTENT" not in saf_activity or "launchDocumentMediaFallback" not in saf_activity:
+        raise SystemExit("Android 12 media imports must prefer a gallery/media provider and keep a fallback.")
 
     file_cmd = (root / "crates/engine/src/cmd/file.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_AUTO_ADD_IMPORTED_MEDIA_V4" not in file_cmd or "picturesAndVideos" not in file_cmd:
@@ -452,14 +456,24 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The export progress popup is missing its numeric percentage.")
     if "export_progress_dialog(app, ui);" not in header_source:
         raise SystemExit("The export progress popup is not drawn by the Android header.")
-    print("Verified export progress displays a real numeric percentage.")
+    if "EFFECTCRAFT_ANDROID_EXPORT_START_PANIC_GUARD_V1" not in header_source:
+        raise SystemExit("Synchronous render-start panics are not converted into visible export errors.")
+    if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in header_source or "file.importProject" not in header_source:
+        raise SystemExit("The horizontally-scrollable toolbar must include a unified project-import entry.")
+    print("Verified export progress, guarded render startup and project-import toolbar shortcut.")
 
     import_frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_SHARE_COLLECTED_PROJECT_V1" not in import_frontend:
         raise SystemExit("Mobile full-project export does not wait for Collect Files before sharing.")
     if "shareAfterCollect" not in import_frontend or "share_project_package(project_path)" not in import_frontend:
         raise SystemExit("The mobile project Sharesheet handoff is not connected to the completed collection.")
-    print("Verified mobile project ZIP sharing starts after the folder picker and footage collection finish.")
+    builder_root = Path(os.environ.get("ARTCRAFT_DIR", "")).resolve()
+    saf_activity = (builder_root / "templates/android/SafActivity.java").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_QQ_PROJECT_SHARE_V1" not in saf_activity or "Toast.makeText(activity, \"工程分享失败：\"" not in saf_activity:
+        raise SystemExit("QQ ZIP packaging/share failures must be shown to the user, not only written to logcat.")
+    if "archive.length() <= 22" not in saf_activity or "chooser.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)" not in saf_activity:
+        raise SystemExit("QQ ZIP share package validation/content-URI read grant is missing.")
+    print("Verified mobile project ZIP sharing starts after Collect Files and reports Android Sharesheet errors.")
 
     incoming_router = (root / "crates/ui-egui/src/menus.rs").read_text(encoding="utf-8")
     incoming_frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
