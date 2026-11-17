@@ -392,7 +392,11 @@ def patch_frontend(effectcraft: Path) -> None:
     // EFFECTCRAFT_ANDROID_SHARE_ALL_PROJECT_EXPORTS_V1
     let share_exported_project = matches!(
         id,
-        "file.exportAlightMotion" | "file.exportNodeVideo" | "file.exportCapCut"
+        "file.saveCopy"
+            | "file.exportLottie"
+            | "file.exportAlightMotion"
+            | "file.exportNodeVideo"
+            | "file.exportCapCut"
     );
     p.remove("shareAfterCollect");
     let r = app.session.execute(id, Value::Object(p)).map_err(|e| e.to_string());
