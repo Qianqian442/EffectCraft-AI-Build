@@ -78,7 +78,7 @@ jobs:
           lines = [line for line in source.splitlines() if windows_path not in line]
           if len(lines) == len(source.splitlines()):
               raise SystemExit("Expected Windows-only SDK candidate was not found; refusing to patch silently.")
-          source = "\\n".join(lines) + "\\n"
+          source = "\n".join(lines) + "\n"
           path.write_text(source, encoding="utf-8")
           if windows_path in source:
               raise SystemExit("Windows-only path still remains in the CI settings file.")
@@ -128,10 +128,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK="release/effectcraft-0.21.1.apk"
+          APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 5 -type f -name 'effectcraft-0.21.1.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
           KEYSTORE="artcraft/keys/artcraft-builder.jks"
           PASSWORD_FILE="artcraft/keys/.keystore-password"
-          test -s "$APK"
           test -s "$KEYSTORE"
           test -s "$PASSWORD_FILE"
           KEY_PASSWORD="$(<"$PASSWORD_FILE")"
@@ -190,7 +190,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          INPUT_APK="release/effectcraft-0.21.1.apk"
+          INPUT_APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 5 -type f -name 'effectcraft-0.21.1.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
           OUTPUT_APK="release/ae-xopprotected-test.apk"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APK_SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
