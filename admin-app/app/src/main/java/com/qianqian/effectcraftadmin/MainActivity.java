@@ -440,7 +440,7 @@ public final class MainActivity extends Activity {
         String pass = passwordInput.getText().toString().trim();
         server = configuredAccountServer();
         if (server.isEmpty() || user.isEmpty() || pass.isEmpty()) {
-            toast("请填写服务器地址、管理员账号和密码");
+            toast("管理员连接配置不可用，请检查管理端设置。");
             return;
         }
         JSONObject body = new JSONObject();
@@ -483,6 +483,27 @@ public final class MainActivity extends Activity {
         while (s.endsWith("/")) s = s.substring(0, s.length() - 1);
         return s;
     }
+
+    // Keep the endpoint private even when low-level network exceptions include a URL or IP.
+    private String hideServerEndpoint(String message) {
+        if (message == null || message.isEmpty()) return message;
+        String safe = message;
+        String configured = server == null ? "" : server.trim();
+        if (!configured.isEmpty()) safe = safe.replace(configured, "安全连接线路");
+        try {
+            if (!configured.isEmpty()) {
+                URL endpoint = new URL(configured);
+                String host = endpoint.getHost();
+                if (host != null && !host.isEmpty()) safe = safe.replace(host, "安全连接线路");
+                if (endpoint.getPort() > 0) safe = safe.replace(":" + endpoint.getPort(), "");
+            }
+        } catch (Exception ignored) {}
+        safe = safe.replace(DEFAULT_SERVER, "安全连接线路")
+            .replace("127.0.0.1:8787", "安全连接线路")
+            .replace("localhost:8787", "安全连接线路");
+        return safe;
+    }
+
 
     private static final class AdminCredentialMismatchException extends Exception {
         AdminCredentialMismatchException(String message) { super(message); }
@@ -626,14 +647,15 @@ public final class MainActivity extends Activity {
             JSONObject finalResult = result;
             String finalError = error;
             runOnUiThread(() -> {
-                if (finalError != null) {
-                    toast(finalError);
-                    if (auth && (finalError.contains("401") || finalError.contains("登录已失效")
-                        || finalError.contains("账号权限不足"))) showLogin();
+                String safeError = finalError == null ? null : hideServerEndpoint(finalError);
+                if (safeError != null) {
+                    toast(safeError);
+                    if (auth && (safeError.contains("401") || safeError.contains("登录已失效")
+                        || safeError.contains("账号权限不足"))) showLogin();
                 }
                 if (callback != null) callback.done(finalResult);
-                if (finalError != null && "/v1/admin/login".equals(path) && loginStatus != null) {
-                    loginStatus.setText("登录失败诊断：" + finalError);
+                if (safeError != null && "/v1/admin/login".equals(path) && loginStatus != null) {
+                    loginStatus.setText("登录失败诊断：" + safeError);
                 }
             });
         });
