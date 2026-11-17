@@ -153,7 +153,7 @@ def patch_activity(builder: Path) -> None:
                 launchLegacyMediaPicker(id);
             }
         } catch (android.content.ActivityNotFoundException unavailable) {
-            Log.i(TAG, "Android Photo Picker unavailable; using image/video-only Documents picker.", unavailable);
+            Log.i(TAG, "Android Photo Picker unavailable; opening installed gallery/media providers.", unavailable);
             launchLegacyMediaPicker(id);
         } catch (Exception error) {
             enqueueError(id, "open", error.toString());
@@ -161,6 +161,28 @@ def patch_activity(builder: Path) -> None:
     }
 
     private void launchLegacyMediaPicker(long id) {
+        try {
+            // Android 12 and earlier: ACTION_GET_CONTENT is routed to an installed gallery/
+            // photo provider (for example Google Photos or the OEM Gallery), not directly to
+            // the generic Documents/Files browser.
+            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("*/*");
+            intent.putExtra(Intent.EXTRA_MIME_TYPES, new String[] { "image/*", "video/*" });
+            intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            requestIds.put(REQ_OPEN, id);
+            startActivityForResult(Intent.createChooser(intent, "选择图片或视频"), REQ_OPEN);
+        } catch (android.content.ActivityNotFoundException unavailable) {
+            // Some stripped Android builds have no media-content provider. Keep a safe
+            // system Documents fallback rather than making media import unusable.
+            launchDocumentMediaFallback(id);
+        } catch (Exception error) {
+            enqueueError(id, "open", error.toString());
+        }
+    }
+
+    private void launchDocumentMediaFallback(long id) {
         try {
             Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
