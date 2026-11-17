@@ -5,6 +5,43 @@ It is deliberately stricter than a visual resemblance check: a feature is comple
 when its editing controls, saved project data, renderer/export path, and regression tests
 all work in the AM workspace without removing the original Ae workspace.
 
+## UI separation requirement (hard gate)
+
+Switching to **AM 竖屏** must route directly to a separate mobile editing application surface,
+not resize, rotate, recolour, relabel, or rearrange the Ae screen.
+
+The AM workspace must own its own:
+- editing top bar, project actions, preview controls, playback/transport bar and bottom tool navigation;
+- multi-track layer timeline, layer operations, keyframe controls and AM-style clip-edge gestures;
+- Add Layer browser, effect browser, effect parameter editor, transform/property editor and project/media browser;
+- AM-specific drawers, sheets, dialogs, touch gestures and contextual menus.
+
+The AM surface must **not** render or call Ae UI components such as `DockArea`,
+`crate::panels::show` with Ae `PanelKind` values, Ae `Effects & Presets`,
+Ae `Effect Controls`, Ae `Properties`, Ae `Project` panels, Ae Timeline widgets,
+or Ae viewer chrome as its editing UI. The existing Ae workspace remains untouched and
+continues to use its original panels and layout.
+
+Permitted shared internals are non-UI services: the project/session data model, command engine,
+compositor/rendering backend, footage/media decoding, audio engine, effect implementations where
+they are functionally equivalent, undo history, encoders, and serialization. A shared renderer
+may produce the composition pixels, but AM must provide its own preview surface and AM-oriented
+touch interactions/overlays rather than embedding the Ae viewer panel.
+
+The current independent page is only a first pass: it already has its own frame route and custom
+timeline, but its tool drawer still delegates to Ae `PanelKind` panels and its preview still
+calls the Ae viewer widget. Those two dependencies are known gaps and must be removed before
+the UI-separation gate can pass.
+
+## Package size policy
+
+There is no arbitrary product-imposed APK size target or 1 GB cap. A 2 GB distribution target is
+acceptable when needed for local models, effect resources, media codecs or other complete
+functionality. Do not remove features, models, effects or assets just to meet an artificial size
+budget. Build and delivery must still account for actual Android packaging, filesystem, signing,
+download and artifact-host limits; report those constraints if they become relevant rather than
+silently reducing the application.
+
 ## Legal and source boundary
 
 The official Alight Motion application source is not publicly available as an open-source
