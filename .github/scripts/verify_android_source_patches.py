@@ -586,6 +586,14 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         if token not in java:
             raise SystemExit(f"Android startup integrity/orientation guard is missing: {token}")
     print("Verified AM portrait layout, two-way sensor switching and workspaces.json restart persistence.")
+    am_effects = (root / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_AM_IMPORTED_PLUGIN_EFFECTS_V1" not in am_effects:
+        raise SystemExit("AM Effects browser does not expose imported plug-in effects.")
+    if "effectcraft_engine::effects::all()" not in am_effects:
+        raise SystemExit("AM Effects browser no longer includes all built-in Ae effects.")
+    if "effectcraft_engine::effects::plugin::plugins()" not in am_effects or "__EFFECTCRAFT_IMPORTED_PLUGINS__" not in am_effects:
+        raise SystemExit("AM Effects browser does not show successfully registered plug-ins in a dedicated section.")
+    print("Verified AM Effects contains all built-in Ae effects and imported runnable plug-in effects.")
     print("Verified Android release-signer guard is installed in the generated Activity template.")
 
 
