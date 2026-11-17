@@ -1,6 +1,10 @@
 name: Protect Ae APK with XopProtector (test only)
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/protect-ae-with-xopprotector.yml'
   workflow_run:
     workflows:
       - Build Ae Android APK with shared compatibility validation
@@ -27,7 +31,7 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     env:
-      SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.source_run_id }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.source_run_id || '44097354613' }}
       ANDROID_HOME: /usr/local/lib/android/sdk
       ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
       XOP_REF: '0.8.5'
@@ -244,8 +248,11 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -euo pipefail
-            APK="release/ae-xopprotected-test.apk"
-            test -s "$APK"
+            APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 4 -type f -name 'ae-xopprotected-test.apk' -print -quit)"
+            echo "Workspace: $GITHUB_WORKSPACE"
+            find "$GITHUB_WORKSPACE/release" -maxdepth 4 -type f -printf '%p (%s bytes)\\n' || true
+            test -n "$APK" && test -s "$APK"
+            echo "Installing protected APK: $APK"
             adb shell getprop ro.product.cpu.abi
             adb install "$APK"
             adb shell pm path com.artcraft.effectcraft
