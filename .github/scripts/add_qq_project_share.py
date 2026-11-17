@@ -516,8 +516,19 @@ pub(super) fn run_incoming_project(app: &mut EffectcraftApp, command: &str, path
 
     run_anchor = '    p.insert(key.to_string(), v);\n    // Picked files import in the background, with the Importing card showing progress (#270).'
     run_new = '''    p.insert(key.to_string(), v);
-    if id == "file.extractProjectArchive" {
-        let extracted = app.session.execute(id, Value::Object(p)).map_err(|error| error.to_string())?;
+    // The unified Import Project button also accepts RAR archives; extract and dispatch
+    // the contained project just like a file received from QQ.
+    let selected_rar = id == "file.importProject"
+        && p.get("path").and_then(Value::as_str).is_some_and(|path| {
+            std::path::Path::new(path).extension().and_then(|ext| ext.to_str())
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("rar"))
+        });
+    if id == "file.extractProjectArchive" || selected_rar {
+        let archive_path = p.get("path").and_then(Value::as_str).unwrap_or_default().to_string();
+        let extracted = app.session.execute(
+            "file.extractProjectArchive",
+            json!({"path": archive_path}),
+        ).map_err(|error| error.to_string())?;
         let inner = extracted.get("path").and_then(Value::as_str)
             .ok_or_else(|| "压缩包已解压，但没有识别到工程文件".to_string())?.to_owned();
         super::import_incoming_project(app, &inner)?;
