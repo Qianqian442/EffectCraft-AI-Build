@@ -458,6 +458,8 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The export progress popup is not drawn by the Android header.")
     if "EFFECTCRAFT_ANDROID_EXPORT_START_PANIC_GUARD_V1" not in header_source:
         raise SystemExit("Synchronous render-start panics are not converted into visible export errors.")
+    if "effectcraft-export-progress-start-time" not in header_source or "startup_elapsed < 5.0" not in header_source:
+        raise SystemExit("The export progress popup must allow asynchronous render startup before reporting failure.")
     if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in header_source or "file.importProject" not in header_source:
         raise SystemExit("The horizontally-scrollable toolbar must include a unified project-import entry.")
     print("Verified export progress, guarded render startup and project-import toolbar shortcut.")
