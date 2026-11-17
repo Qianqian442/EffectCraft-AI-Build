@@ -984,43 +984,44 @@ jobs:
           if "enableV1Signing = true" not in source:
               source = source.replace(marker, marker + signing_flags, 1)
 
-          # R8 obfuscates the Java/Dex layer. Preserve JNI class and native method names
-          # because the Rust bridge resolves Java_com_artcraft_effectcraft_* symbols.
-          release_marker = """    buildTypes {{
-                  release {{
-                      if (System.getenv('ARTCRAFT_KEYSTORE') != null) {{
-          """
-          release_patch = """    buildTypes {{
-                  release {{
-                      minifyEnabled true
-                      proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-                      if (System.getenv('ARTCRAFT_KEYSTORE') != null) {{
-          """
+          # R8 obfuscates the Java/Dex layer. Keep JNI names used by the Rust bridge.
+          release_marker = (
+              "    buildTypes {{\n"
+              "        release {{\n"
+              "            if (System.getenv('ARTCRAFT_KEYSTORE') != null) {{"
+          )
+          release_patch = (
+              "    buildTypes {{\n"
+              "        release {{\n"
+              "            minifyEnabled true\n"
+              "            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'\n"
+              "            if (System.getenv('ARTCRAFT_KEYSTORE') != null) {{"
+          )
           if source.count(release_marker) != 1:
               raise SystemExit("Could not uniquely locate the generated release build type for R8.")
           source = source.replace(release_marker, release_patch, 1)
 
-          # Increase versionCode on each GitHub Actions build so a repair release can
-          # update an already-installed 0.21.1 build rather than reusing its code.
-          if source.count("import re\\n") != 1:
+          # Increase versionCode on every Actions run so repair releases can update installs.
+          if source.count("import re\n") != 1:
               raise SystemExit("Could not uniquely locate imports in android_project.py.")
-          source = source.replace("import re\\n", "import os\\nimport re\\n", 1)
-          version_marker = "    code = version_code(version)\\n"
-          version_patch = '    code = version_code(version) + int(os.environ.get("GITHUB_RUN_NUMBER", "0"))\\n'
+          source = source.replace("import re\n", "import os\nimport re\n", 1)
+          version_marker = "    code = version_code(version)\n"
+          version_patch = '    code = version_code(version) + int(os.environ.get("GITHUB_RUN_NUMBER", "0"))\n'
           if source.count(version_marker) != 1:
               raise SystemExit("Could not uniquely locate generated Android versionCode calculation.")
           source = source.replace(version_marker, version_patch, 1)
 
-          rules_marker = '    (gradle_dir / "gradle.properties").write_text(GRADLE_PROPERTIES)\\n'
-          rules_code = (
-              '    (gradle_dir / "proguard-rules.pro").write_text("\\n".join([\\n'
-              '        "-keep class com.artcraft.effectcraft.NativeP2P { *; }",\\n'
-              '        "-keepclasseswithmembernames,includedescriptorclasses class * {",\\n'
-              '        "    native <methods>;",\\n'
-              '        "}",\\n'
-              '        "-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod",\\n'
-              '    ]) + "\\n")\\n'
+          rules_marker = '    (gradle_dir / "gradle.properties").write_text(GRADLE_PROPERTIES)\n'
+          rules_code = """    (gradle_dir / "proguard-rules.pro").write_text(
+              "\\n".join([
+                  "-keep class com.artcraft.effectcraft.NativeP2P { *; }",
+                  "-keepclasseswithmembernames,includedescriptorclasses class * {",
+                  "    native <methods>;",
+                  "}",
+                  "-keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod",
+              ]) + "\\n"
           )
+          """
           if source.count(rules_marker) != 1:
               raise SystemExit("Could not uniquely locate Gradle properties generation for R8 rules.")
           source = source.replace(rules_marker, rules_marker + rules_code, 1)
