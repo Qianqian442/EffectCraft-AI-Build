@@ -499,7 +499,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
 
     if "primary:Download" not in saf_activity or 'intent.setType("*/*")' not in saf_activity:
         raise SystemExit("The Android project picker no longer starts in Downloads with an all-file filter.")
-    if '"zip" | "rar" => {' not in incoming_frontend and '"zip" | "rar" =>' not in (root / "crates/ui-egui/src/menus.rs").read_text(encoding="utf-8"):
+    if '"zip" | "rar" => {' not in import_frontend and '"zip" | "rar" =>' not in (root / "crates/ui-egui/src/menus.rs").read_text(encoding="utf-8"):
         raise SystemExit("Downloaded ZIP/RAR project archives no longer route through the archive importer.")
 
     incoming_router = (root / "crates/ui-egui/src/menus.rs").read_text(encoding="utf-8")
