@@ -60,6 +60,7 @@ on:
       - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/scripts/add_am_mobile_layout.py'
       - '.github/scripts/build_am_mobile_editing_page.py'
+      - '.github/scripts/add_am_brand_label.py'
       - '.github/scripts/add_home_layout_switch.py'
       - '.github/scripts/pin_android_signing_certificate.py'
       - '.github/scripts/ai_video_export.rs'
@@ -136,6 +137,7 @@ jobs:
             .github/scripts/add_am_style_undo_redo.py \
             .github/scripts/add_am_mobile_layout.py \
             .github/scripts/build_am_mobile_editing_page.py \
+            .github/scripts/add_am_brand_label.py \
             .github/scripts/add_home_layout_switch.py \
             .github/scripts/pin_android_signing_certificate.py \
             .github/scripts/add_open_source_craft_plugins.py
@@ -685,6 +687,9 @@ jobs:
           python3 build-assets/.github/scripts/add_am_mobile_layout.py
           python3 -m py_compile build-assets/.github/scripts/build_am_mobile_editing_page.py
           python3 build-assets/.github/scripts/build_am_mobile_editing_page.py
+          python3 -m py_compile build-assets/.github/scripts/add_am_brand_label.py
+          python3 build-assets/.github/scripts/add_am_brand_label.py
+          grep -Fq 'button(ui, layout_rect, "Ae×am ▾", "am-layout")' "$EFFECTCRAFT_DIR/crates/ui-egui/src/am_editor.rs"
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
           grep -Fq "EFFECTCRAFT_AM_NOVA_LAYOUT_TRACE_V2" "$FRAME_RS"
 
