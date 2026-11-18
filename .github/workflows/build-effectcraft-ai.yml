@@ -1397,7 +1397,7 @@ jobs:
           grep -Fq "NativeP2P" "$P2P_DEX_STRINGS"
           # Rust calls these Android Activity methods through JNI. R8 must retain their
           # exact names and signatures, or file handoff and album export fail at runtime.
-          for JNI_METHOD in intentPoll intentPending createGalleryStagingPath startGalleryPublish pollGalleryPublish shareProjectFile shareProjectPackage; do
+          for JNI_METHOD in safRequestStoragePermission safRequestMicrophonePermission safRequestOpen safRequestSave safRequestFolder printDocument safPoll intentPoll intentPending safFilesDir safCommit createGalleryStagingPath startGalleryPublish pollGalleryPublish shareProjectFile shareProjectPackage; do
             grep -Fq "$JNI_METHOD" "$P2P_DEX_STRINGS" || {
               echo "R8 removed a required EffectCraftActivity JNI method: $JNI_METHOD" >&2
               exit 1
