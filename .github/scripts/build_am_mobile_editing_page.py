@@ -65,9 +65,9 @@ fn top_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         app.ui.start_screen = true;
     }
 
-    let layout_rect = Rect::from_min_size(pos2(rect.min.x + 43.0, rect.min.y + 7.0), vec2(62.0, 30.0));
+    let layout_rect = Rect::from_min_size(pos2(rect.min.x + 43.0, rect.min.y + 7.0), vec2(78.0, 30.0));
     let layout_id = Id::new("am-independent-layout-menu");
-    let layout_response = button(ui, layout_rect, "AM ▾", "am-layout");
+    let layout_response = button(ui, layout_rect, "Ae×am ▾", "am-layout");
     app.auto.add_response("am.header.layout", &layout_response, "切换 Ae / AM 布局");
     if layout_response.clicked() {
         crate::widgets::open_popup(ui, layout_id);
