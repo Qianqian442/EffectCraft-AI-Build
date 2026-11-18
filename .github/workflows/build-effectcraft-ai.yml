@@ -1501,7 +1501,8 @@ jobs:
   install-smoke-test:
     name: Install APK on Android 12 emulator (API 31)
     needs: build
-    runs-on: ubuntu-latest
+    # Pin a stable runner image for the emulator instead of ubuntu-latest image rollovers.
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - name: Download the signed APK from the build job
@@ -1534,11 +1535,34 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096 -cores 4
           script: |
             set -euo pipefail
             test -n "$AE_APK_PATH" && test -s "$AE_APK_PATH"
-            echo "Installing APK: $AE_APK_PATH"
-            adb install "$AE_APK_PATH"
+            adb wait-for-device
+            echo "Waiting for Android Package Manager service..."
+            package_ready=false
+            for attempt in $(seq 1 90); do
+              if adb shell service check package 2>/dev/null | grep -q "found"; then
+                package_ready=true
+                break
+              fi
+              sleep 2
+            done
+            if [[ "$package_ready" != true ]]; then
+              echo "Android Package Manager service did not become ready."
+              adb logcat -d -t 1500 | grep -iE "PackageManager|PackageManagerService|system_server|FATAL EXCEPTION|lowmemorykiller" | tail -n 160 || true
+              exit 1
+            fi
+            adb shell cmd package list packages >/dev/null
+            echo "Package Manager is ready. Installing APK without streaming: $AE_APK_PATH"
+            if ! adb install --no-streaming "$AE_APK_PATH"; then
+              echo "APK installation command failed; collecting Android diagnostics."
+              adb shell service check package || true
+              adb shell dumpsys activity services package || true
+              adb logcat -d -t 2000 | grep -iE "PackageManager|PackageInstaller|installd|system_server|FATAL EXCEPTION|lowmemorykiller|artcraft" | tail -n 220 || true
+              exit 1
+            fi
             adb shell pm path com.artcraft.effectcraft
             adb shell dumpsys package com.artcraft.effectcraft | grep -E "versionCode|versionName"
             echo "Android 12 Package Manager installed Ae successfully."
