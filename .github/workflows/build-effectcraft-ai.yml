@@ -1527,7 +1527,9 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096 -cores 4
           script: |
-            set -euo pipefail
+            # android-emulator-runner invokes this input with /bin/sh, not Bash.
+            # Keep the smoke-test script POSIX-compatible; pipefail and [[ ]] fail in dash.
+            set -eu
             test -n "$AE_APK_PATH" && test -s "$AE_APK_PATH"
             adb wait-for-device
             echo "Waiting for Android Package Manager service..."
@@ -1539,7 +1541,7 @@ jobs:
               fi
               sleep 2
             done
-            if [[ "$package_ready" != true ]]; then
+            if [ "$package_ready" != true ]; then
               echo "Android Package Manager service did not become ready."
               adb logcat -d -t 1500 | grep -iE "PackageManager|PackageManagerService|system_server|FATAL EXCEPTION|lowmemorykiller" | tail -n 160 || true
               exit 1
