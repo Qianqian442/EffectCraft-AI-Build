@@ -563,8 +563,8 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         raise SystemExit("The extra Ae/AM toolbar row must remain removed.")
     if "let header_h = 40.0;" not in frame or "let header_h = 64.0;" in frame:
         raise SystemExit("The original single-row 40px toolbar was not restored.")
-    if "EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1" not in dock or "Ratio(0.80)" not in dock:
-        raise SystemExit("The original responsive Ae default workspace is missing.")
+    if "FixedSecond(300.0)" not in dock or "FixedFirst(300.0)" not in dock:
+        raise SystemExit("The original Ae fixed-width left/right panel arrangement is missing.")
     if '"AM 竖屏"' not in dock:
         raise SystemExit("AM 竖屏 is not registered in the existing workspace menu.")
     if "ae_workspace_layout_restore_v1" not in app:
