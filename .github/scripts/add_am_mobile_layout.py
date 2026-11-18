@@ -662,7 +662,7 @@ def patch_native_effect_touch_behavior(effectcraft: Path) -> None:
     if resp.double_clicked() {
         *apply = Some(Apply::Effect(e.id.to_string()));
     }"""
-        newClick = """    if resp.clicked() {
+        new_click = """    if resp.clicked() {
         if cfg!(target_os = "android") {
             *apply = Some(Apply::Effect(e.id.to_string()));
         } else {
