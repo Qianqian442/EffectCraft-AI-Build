@@ -642,9 +642,10 @@ def patch_native_effect_touch_behavior(effectcraft: Path) -> None:
         section = source[begin:end]
         old_sense = "    let resp = ui.interact(r.intersect(list), id, if tab { Sense::click_and_drag() } else { Sense::CLICK | Sense::DRAG });"
         new_sense = """    // EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1
-    // Phone taps apply immediately; a click-only row lets PanelScroll own vertical swipes.
-    let touch_device = ui.input(|i| i.has_touch_screen());
-    let row_sense = if touch_device {
+    // Android effect rows are click-only so vertical gestures belong to the panel scroller.
+    // Use the Android target instead of has_touch_screen(): some Android input backends
+    // expose touch as a primary pointer and report has_touch_screen() == false.
+    let row_sense = if cfg!(target_os = "android") {
         Sense::click()
     } else if tab {
         Sense::click_and_drag()
@@ -661,8 +662,8 @@ def patch_native_effect_touch_behavior(effectcraft: Path) -> None:
     if resp.double_clicked() {
         *apply = Some(Apply::Effect(e.id.to_string()));
     }"""
-        new_click = """    if resp.clicked() {
-        if touch_device {
+        newClick = """    if resp.clicked() {
+        if cfg!(target_os = "android") {
             *apply = Some(Apply::Effect(e.id.to_string()));
         } else {
             nav_click(&ctx, app, id);
@@ -679,7 +680,7 @@ def patch_native_effect_touch_behavior(effectcraft: Path) -> None:
 
     widgets_path = effectcraft / "crates/ui-egui/src/widgets.rs"
     widgets = widgets_path.read_text(encoding="utf-8")
-    scroll_marker = "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1"
+    scroll_marker = "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V2"
     if scroll_marker not in widgets:
         old_scroll = """        if ui.rect_contains_pointer(area) {
             offset -= ui.input(|i| i.smooth_scroll_delta.y);
@@ -689,11 +690,13 @@ def patch_native_effect_touch_behavior(effectcraft: Path) -> None:
             offset -= ui.input(|i| i.smooth_scroll_delta.y);
         }
         // EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1
-        // Finger swipes on non-dragging rows/background scroll native effect and parameter lists.
-        // Sliders, curve handles and other active drag widgets keep ownership of their gestures.
+        // EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V2
+        // Android touch is delivered as a primary pointer on some backends. Do not gate
+        // this on has_touch_screen(), or a real finger swipe can be mistaken for a row drag.
+        // Click-only Android effect rows leave vertical movement to this panel scroller.
+        // Active sliders/curve handles still own gestures through dragged_id().
         let touch_pan = ui.input(|i| {
-            i.has_touch_screen()
-                && i.pointer.primary_down()
+            i.pointer.primary_down()
                 && i.pointer.press_origin().is_some_and(|origin| area.contains(origin))
         });
         if touch_pan && ui.ctx().dragged_id().is_none() {
