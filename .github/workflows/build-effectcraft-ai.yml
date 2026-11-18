@@ -707,12 +707,21 @@ jobs:
           python3 build-assets/.github/scripts/add_am_mobile_layout.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
+          HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
+          DOCK_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/dock.rs"
           grep -Fq "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" "$HOME_RS"
-          grep -Fq 'let header_h = 64.0;' "$FRAME_RS"
+          grep -Fq 'let header_h = 40.0;' "$FRAME_RS"
+          ! grep -Fq 'let header_h = 64.0;' "$FRAME_RS"
+          grep -Fq 'let rx = workspace_menu(app, ui, p, rx, cy);' "$HEADER_RS"
+          grep -Fq 'workspace_tabs(app, ui, p, rx, left, cy);' "$HEADER_RS"
+          ! grep -Fq 'EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1' "$HEADER_RS"
+          grep -Fq 'EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1' "$DOCK_RS"
+          grep -Fq 'Ratio(0.80)' "$DOCK_RS"
+          grep -Fq 'Ratio(0.275)' "$DOCK_RS"
           grep -Fq 'self.dock_area(ui, body);' "$FRAME_RS"
           ! grep -Fq 'crate::am_editor::show' "$FRAME_RS"
           ! test -f "$EFFECTCRAFT_DIR/crates/ui-egui/src/am_editor.rs"
-          echo "Verified Ae×am portrait Home and native Ae panels, tools, timeline and export flow."
+          echo "Verified the original Ae single-row toolbar and responsive workspace; AM remains in the original workspace menu."
 
       - name: Keep layout switching in the editing toolbar, not on Home
         env:
@@ -723,11 +732,12 @@ jobs:
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
           HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
           ! grep -Fq "EFFECTCRAFT_HOME_LAYOUT_SURFACE_MENU_V4" "$HOME_RS"
-          grep -Fq "EFFECTCRAFT_NOVA_LAYOUT_MENU_V2" "$HEADER_RS"
-          grep -Fq "ae_layout_mode_label(&app.ui.workspace)" "$HEADER_RS"
-          grep -Fq "popup_menu" "$HEADER_RS"
+          grep -Fq 'let rx = workspace_menu(app, ui, p, rx, cy);' "$HEADER_RS"
+          grep -Fq 'workspace_tabs(app, ui, p, rx, left, cy);' "$HEADER_RS"
+          ! grep -Fq "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" "$HEADER_RS"
+          ! grep -Fq "layout_switch_row(" "$HEADER_RS"
           ! grep -Fq 'Icon::Code, "EffectCraft on GitHub", "help.github"' "$HOME_RS"
-          echo "Verified layout switching is available from the editing toolbar; Home has no separate layout switch."
+          echo "Verified Ae/AM switching uses the existing workspace menu and Home has no extra layout row."
 
       - name: Rename all visible application branding to Ae
         env:
