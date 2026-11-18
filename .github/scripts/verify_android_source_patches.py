@@ -701,6 +701,26 @@ def verify_account_security(root: Path) -> None:
             raise SystemExit(f"Admin account controls are missing: {token}")
     print("Verified server-enforced whitelist, admin add/remove, login/register checks, and ban/unban controls.")
 
+def verify_android_aep_playback_guard(root: Path) -> None:
+    frames = (root / "crates/ui-egui/src/frames.rs").read_text(encoding="utf-8")
+    prefetch = (root / "crates/ui-egui/src/app/prefetch.rs").read_text(encoding="utf-8")
+    tests = (root / "crates/ui-egui/src/frames/tests.rs").read_text(encoding="utf-8")
+    for token in (
+        "EFFECTCRAFT_ANDROID_AEP_PLAYBACK_RESOURCE_GUARD_V1",
+        "const ANDROID_GPU_BUDGET: usize = 256 << 20;",
+        "fn effectcraft_preview_worker_threads(reported: Option<usize>, android: bool) -> usize",
+        "effectcraft_preview_worker_threads(reported_threads, cfg!(target_os = \"android\"))",
+        "effectcraft_preview_gpu_budget(cfg!(target_os = \"android\"))",
+    ):
+        if token not in frames:
+            raise SystemExit(f"Android imported-AEP playback memory guard is missing: {token}")
+    if "EFFECTCRAFT_ANDROID_AEP_PLAYBACK_PREFETCH_GUARD_V1" not in prefetch or "workers.min(2).max(1)" not in prefetch:
+        raise SystemExit("Android imported-AEP playback prefetch is not limited to two workers.")
+    if "fn android_aep_playback_resource_guard_is_tested()" not in tests:
+        raise SystemExit("Android imported-AEP playback scheduling regression tests are missing.")
+    print("Verified Android imported-AEP playback: two frame workers, 256 MiB GPU preview budget, and regression tests.")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -710,6 +730,7 @@ def main() -> None:
         raise SystemExit(f"Generated EffectCraft header source is missing: {header}")
     ensure_dimensions_helper(header)
     verify_android_project_interactions(root, header)
+    verify_android_aep_playback_guard(root)
     memory_helper_count = top_level_function_count(header.read_text(encoding="utf-8"), "effectcraft_export_memory_ok")
     if memory_helper_count != 1:
         raise SystemExit(f"Expected one module-level effectcraft_export_memory_ok helper; found {memory_helper_count}.")
