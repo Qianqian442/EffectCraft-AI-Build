@@ -32,6 +32,18 @@ fn effectcraft_android_video_staging_path(default_output: &str) -> Result<String
     .unwrap_or_else(|_| Err("Android 视频暂存接口发生内部异常，已阻止编辑器崩溃。".to_string()))
 }'''
 
+    # Replace the unguarded staging helper installed by patch_export_dialog.py.
+    # The previous version declared this regex and replacement but never applied them,
+    # leaving JNI exceptions outside the panic guard on the Export-button hot path.
+    if stage_helper.strip() not in header:
+        stage_matches = list(stage_pattern.finditer(header))
+        if len(stage_matches) != 1:
+            raise SystemExit(
+                "Expected exactly one Android video staging helper to harden; "
+                f"found {len(stage_matches)}."
+            )
+        header = stage_pattern.sub(stage_helper, header, count=1)
+
     # Convert synchronous engine panics into ordinary UI errors.
     guard = r'''/// EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1
 /// Convert synchronous export-command panics into ordinary UI errors.
