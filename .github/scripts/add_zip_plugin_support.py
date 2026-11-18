@@ -51,31 +51,31 @@ def patch_manifests(root: Path) -> None:
     )
     if metadata.returncode != 0:
         raise SystemExit(
-            "Cargo could not reconcile the ZIP plug-in dependency lockfile:\\n"
+            "Cargo could not reconcile the ZIP plug-in dependency lockfile:\n"
             + metadata.stdout[-6000:]
         )
 
     source = lock.read_text(encoding="utf-8")
-    headers = list(re.finditer(r"(?m)^\\[\\[package\\]\\]\\s*$", source))
+    headers = list(re.finditer(r"(?m)^\[\[package\]\]\s*$", source))
     engine_range = None
     engine_block = None
     for index, header in enumerate(headers):
         block_start = header.start()
         block_end = headers[index + 1].start() if index + 1 < len(headers) else len(source)
         block = source[block_start:block_end]
-        name = re.search(r'(?m)^name\\s*=\\s*"([^"]+)"\\s*$', block)
+        name = re.search(r'(?m)^name\s*=\s*"([^"]+)"\s*$', block)
         if name and name.group(1) == "effectcraft-engine":
             engine_range = (block_start, block_end)
             engine_block = block
             break
     if engine_range is None or engine_block is None:
-        names = re.findall(r'(?m)^name\\s*=\\s*"(effectcraft[^"]*)"', source)
+        names = re.findall(r'(?m)^name\s*=\s*"(effectcraft[^"]*)"', source)
         raise SystemExit(
             f"Cargo metadata completed, but Cargo.lock still has no effectcraft-engine package; "
             f"lockfile={lock}, related packages={names[:30]}"
         )
 
-    version = re.search(r'(?m)^version\\s*=\\s*"([^"]+)"\\s*$', engine_block)
+    version = re.search(r'(?m)^version\s*=\s*"([^"]+)"\s*$', engine_block)
     if not version:
         raise SystemExit("Could not read effectcraft-engine package version in Cargo.lock")
     engine_version = version.group(1)
@@ -85,7 +85,7 @@ def patch_manifests(root: Path) -> None:
     dependencies_start = engine_block.find("dependencies = [")
     if dependencies_start < 0:
         raise SystemExit("Could not locate effectcraft-engine dependencies in Cargo.lock")
-    dependencies_end = engine_block.find("\\n]", dependencies_start)
+    dependencies_end = engine_block.find("\n]", dependencies_start)
     if dependencies_end < 0:
         raise SystemExit("Could not locate effectcraft-engine dependency list in Cargo.lock")
     dependencies = engine_block[dependencies_start:dependencies_end]
@@ -93,12 +93,12 @@ def patch_manifests(root: Path) -> None:
         if ' "web-time",' in dependencies:
             engine_block = engine_block.replace(
                 ' "web-time",',
-                ' "web-time",\\n "zip 9.1.3",',
+                ' "web-time",\n "zip 9.1.3",',
                 1,
             )
         else:
             insert_at = dependencies_end
-            engine_block = engine_block[:insert_at] + '\\n "zip 9.1.3",' + engine_block[insert_at:]
+            engine_block = engine_block[:insert_at] + '\n "zip 9.1.3",' + engine_block[insert_at:]
         block_start, block_end = engine_range
         source = source[:block_start] + engine_block + source[block_end:]
     lock.write_text(source, encoding="utf-8")
