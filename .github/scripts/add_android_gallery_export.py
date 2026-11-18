@@ -34,7 +34,7 @@ fn with_vm<T>(f: impl FnOnce(&jni::vm::JavaVM) -> Result<T, String>) -> Result<T
 }
 
 #[cfg(target_os = "android")]
-pub(crate) fn staging_path(name: &str) -> Result<String, String> {
+pub fn staging_path(name: &str) -> Result<String, String> {
     let path = with_vm(|vm| {
         vm.attach_current_thread(|env| -> jni::errors::Result<String> {
             let name = env.new_string(name)?;
@@ -59,7 +59,7 @@ pub(crate) fn staging_path(name: &str) -> Result<String, String> {
 }
 
 #[cfg(not(target_os = "android"))]
-pub(crate) fn staging_path(_name: &str) -> Result<String, String> {
+pub fn staging_path(_name: &str) -> Result<String, String> {
     Err("视频暂存路径仅在 Android 应用内可用。".into())
 }
 
@@ -292,22 +292,11 @@ fn saf_video_gallery_stage_path(default: &str) -> Result<Option<String>, String>
         .and_then(|value| value.to_str())
         .filter(|value| !value.is_empty())
         .ok_or_else(|| "视频文件名无效。".to_string())?;
-    let directory = std::env::temp_dir().join("EffectCraftExports");
-    std::fs::create_dir_all(&directory)
-        .map_err(|error| format!("无法创建视频暂存目录：{error}"))?;
-    let original = directory.join(name);
-    if !original.exists() {
-        return Ok(Some(original.to_string_lossy().into_owned()));
-    }
-    let stem = std::path::Path::new(name).file_stem().and_then(|v| v.to_str()).unwrap_or("EffectCraft");
-    let extension = std::path::Path::new(name).extension().and_then(|v| v.to_str()).unwrap_or("mp4");
-    for suffix in 1..1000 {
-        let candidate = directory.join(format!("{stem}_{suffix}.{extension}"));
-        if !candidate.exists() {
-            return Ok(Some(candidate.to_string_lossy().into_owned()));
-        }
-    }
-    Err("视频暂存目录中同名文件过多，请清理后重试。".into())
+    let staged = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        effectcraft_ui_egui::android_gallery::staging_path(name)
+    }))
+    .unwrap_or_else(|_| Err("Android 视频暂存接口发生内部异常。".to_string()))?;
+    Ok(Some(staged))
 }
 '''
     if "fn saf_video_gallery_stage_path(" not in source:
@@ -354,6 +343,11 @@ fn saf_video_gallery_stage_path(default: &str) -> Result<Option<String>, String>
     if new_save not in source:
         source = replace_once(source, old_save, new_save, "Video export SAF routing")
 
+    if "effectcraft_ui_egui::android_gallery::staging_path(name)" not in source:
+        raise SystemExit("Video export staging must use the Android app-private cache bridge.")
+    if 'std::env::temp_dir().join("EffectCraftExports")' in source:
+        raise SystemExit("Video export staging must not use /data/local/tmp on Android 12.")
+
     anchor_vm = "egui_winit::android_activity::set_vm(android_app.vm_as_ptr());"
     gallery_call = anchor_vm + "\n    effectcraft_ui_egui::android_gallery::init_android_gallery_vm(android_app.vm_as_ptr());"
     if "android_gallery::init_android_gallery_vm" not in source:
@@ -386,6 +380,10 @@ def patch_ui(effectcraft: Path) -> None:
         module_source = module_source.replace(
             "pub(crate) fn init_android_gallery_vm(",
             "pub fn init_android_gallery_vm(",
+        )
+        module_source = module_source.replace(
+            "pub(crate) fn staging_path(",
+            "pub fn staging_path(",
         )
         module.write_text(module_source, encoding="utf-8")
 
