@@ -37,9 +37,20 @@ def patch_manifests(root: Path) -> None:
 
     lock = root / "Cargo.lock"
     source = lock.read_text(encoding="utf-8")
-    package_start = source.find('name = "effectcraft-engine"\nversion = "0.21.1"\ndependencies = [')
+    package_start = source.find('name = "effectcraft-engine"\n')
     if package_start < 0:
         raise SystemExit("Could not locate effectcraft-engine package in Cargo.lock")
+    version_start = source.find('version = "', package_start)
+    version_end = source.find('"', version_start + len('version = "'))
+    if version_start < 0 or version_end < 0:
+        raise SystemExit("Could not read effectcraft-engine package version in Cargo.lock")
+    engine_version = source[version_start + len('version = "'):version_end]
+    if engine_version not in ("0.21.1", "0.22.1"):
+        raise SystemExit(f"Unexpected effectcraft-engine package version in Cargo.lock: {engine_version}")
+    dependencies_start = source.find("dependencies = [", version_end)
+    if dependencies_start < 0:
+        raise SystemExit("Could not locate effectcraft-engine dependencies in Cargo.lock")
+    package_start = source.rfind('name = "effectcraft-engine"\n', 0, dependencies_start)
     package_end = source.find("\n]\n", package_start)
     if package_end < 0:
         raise SystemExit("Could not locate effectcraft-engine dependency list in Cargo.lock")
