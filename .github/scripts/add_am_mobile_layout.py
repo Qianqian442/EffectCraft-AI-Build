@@ -522,7 +522,7 @@ def patch_startup_restore(effectcraft: Path) -> None:
         // retain renamed copies so users can still inspect their former custom arrangements.
         const AE_LAYOUT_MIGRATION_KEY: &str = "ae_workspace_layout_restore_v1";
         let already_migrated = app.session.config.as_deref()
-            .and_then(|config| config.read(AE_LAYOUT_MIGRATION_KEY).ok().flatten())
+            .and_then(|config| config.read(AE_LAYOUT_MIGRATION_KEY))
             .as_deref() == Some("done");
         if !already_migrated {{
             if let Some(old_default) = app.ui.saved_workspaces.remove("Default") {{
