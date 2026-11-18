@@ -989,6 +989,7 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("The original workspace tabs must remain unchanged.")
     effects = (effectcraft / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
     widgets = (effectcraft / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
+    frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" not in effects:
         raise SystemExit("AM portrait Effects & Presets must apply an effect on a single tap.")
     if "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" not in widgets:
@@ -1001,8 +1002,7 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
     if '"AM 竖屏"' not in dock:
         raise SystemExit("AM 竖屏 must remain selectable in the original workspace menu.")
     if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in header or "file.importProject" not in header:
-        raise SystemExit("The scrollable top toolbar must retain the unified project-import shortcut and plugin-import button.")
-    frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
+        raise SystemExit("The original toolbar must retain the unified project-import shortcut and plugin-import button.")
     print("Verified the original Ae toolbar and responsive three-column workspace are restored; AM remains in the workspace menu.")
 
 
