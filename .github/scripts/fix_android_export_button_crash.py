@@ -31,7 +31,7 @@ fn effectcraft_android_video_staging_path(default_output: &str) -> Result<String
         crate::android_gallery::staging_path(name)
     }))
     .unwrap_or_else(|_| Err("Android 视频暂存接口发生内部异常，已阻止编辑器崩溃。".to_string()))
-}'''/// EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1
+}'''\n\n    # Convert synchronous engine panics into ordinary UI errors.\n    guard = r'''/// EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1
 /// Convert synchronous export-command panics into ordinary UI errors.
 fn effectcraft_run_export_command(
     app: &mut EffectcraftApp,
@@ -103,11 +103,11 @@ fn effectcraft_run_export_command(
     missing = [item for item in required if item not in header]
     if missing:
         raise SystemExit("Export crash guard incomplete: " + "; ".join(missing))
-    if "crate::android_gallery::staging_path(name)" in header:
-        raise SystemExit("Export button still uses JNI for the staging path.")
+    if "std::env::temp_dir()" in header:
+        raise SystemExit("Export staging must use Android's app-private cache bridge, not /data/local/tmp.")
 
     header_path.write_text(header, encoding="utf-8")
-    print("Guarded export queue setup and moved video staging to the app-private cache without JNI.")
+    print("Guarded export queue setup and staged videos in Android's app-private cache.")
 
 
 if __name__ == "__main__":
