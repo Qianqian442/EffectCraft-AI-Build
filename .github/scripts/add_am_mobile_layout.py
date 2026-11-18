@@ -44,7 +44,7 @@ pub(crate) fn set_workspace_portrait(portrait: bool) {
             }).map_err(|error| error.to_string())
         })();
         if let Err(error) = result {
-            log::warn!("Could not apply EffectCraft workspace orientation: {error}");
+            log::warn!("Could not apply EffectCraft workspace orientation: {{error}}");
         }
     }
     #[cfg(not(target_os = "android"))]
@@ -578,10 +578,10 @@ def patch_startup_restore(effectcraft: Path) -> None:
                 match app.workspace_store.save(Some(config), &app.ui) {{
                     Ok(_) => {{
                         if let Err(error) = config.write(AE_LAYOUT_MIGRATION_KEY, "done") {{
-                            log::warn!("Could not save Ae layout migration marker: {error}");
+                            log::warn!("Could not save Ae layout migration marker: {{error}}");
                         }}
                     }}
-                    Err(error) => log::warn!("Could not persist restored Ae/AM workspaces: {error}"),
+                    Err(error) => log::warn!("Could not persist restored Ae/AM workspaces: {{error}}"),
                 }}
             }}
         }}
