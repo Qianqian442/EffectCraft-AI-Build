@@ -216,11 +216,13 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if stage_start < 0 or stage_end < 0:
         raise SystemExit("The app-private Android export staging helper is missing.")
     stage_helper = header_source[stage_start:stage_end]
-    if "std::env::temp_dir()" not in stage_helper:
-        raise SystemExit("Export staging must use the app-private cache without JNI.")
-    if "crate::android_gallery::staging_path" in stage_helper:
-        raise SystemExit("The Export button still invokes JNI while preparing its staging path.")
-    print("Verified panic-guarded export setup and JNI-free app-private video staging.")
+    if "crate::android_gallery::staging_path(name)" not in stage_helper:
+        raise SystemExit("Export staging must use Android's app-private cache bridge.")
+    if "catch_unwind" not in stage_helper:
+        raise SystemExit("Export staging JNI failures must be converted to visible errors.")
+    if "std::env::temp_dir()" in stage_helper:
+        raise SystemExit("Export staging must not rely on /data/local/tmp on Android 12.")
+    print("Verified panic-guarded export setup and Android app-private cache staging.")
 
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
