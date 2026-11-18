@@ -19,41 +19,19 @@ def main() -> None:
         r"fn effectcraft_android_video_staging_path\(default_output: &str\) -> Result<String, String> \{\n.*?\n\}"
     )
     stage_helper = r'''/// EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1_HELPER
-/// Reserve a private app-cache path without crossing JNI while the Export button is handled.
+/// Ask Android for its real app-private cache path. JNI failures become visible errors,
+/// never a panic during export-button handling (the Activity is kept intact from R8).
 fn effectcraft_android_video_staging_path(default_output: &str) -> Result<String, String> {
     let name = std::path::Path::new(default_output)
         .file_name()
         .and_then(|value| value.to_str())
         .filter(|value| !value.trim().is_empty())
         .unwrap_or("Ae.mp4");
-    let directory = std::env::temp_dir().join("EffectCraftExports");
-    std::fs::create_dir_all(&directory)
-        .map_err(|error| format!("无法创建应用私有视频暂存目录：{error}"))?;
-    let original = directory.join(name);
-    if !original.exists() {
-        return Ok(original.to_string_lossy().into_owned());
-    }
-    let stem = std::path::Path::new(name).file_stem()
-        .and_then(|value| value.to_str()).unwrap_or("Ae");
-    let extension = std::path::Path::new(name).extension()
-        .and_then(|value| value.to_str()).unwrap_or("mp4");
-    for suffix in 1..10000 {
-        let candidate = directory.join(format!("{stem}_{suffix}.{extension}"));
-        if !candidate.exists() {
-            return Ok(candidate.to_string_lossy().into_owned());
-        }
-    }
-    Err("视频暂存目录中同名文件过多，请清理后重试。".into())
-}'''
-    if "crate::android_gallery::staging_path(name)" in header:
-        header, count = stage_pattern.subn(stage_helper, header)
-        if count != 1:
-            raise SystemExit(f"Could not replace JNI staging-path helper (matches={count}).")
-    elif "fn effectcraft_android_video_staging_path(" not in header or "std::env::temp_dir()" not in header:
-        raise SystemExit("Generated Android video staging helper is missing or unexpected.")
-
-    # Convert synchronous engine panics into ordinary UI errors.
-    guard = r'''/// EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        crate::android_gallery::staging_path(name)
+    }))
+    .unwrap_or_else(|_| Err("Android 视频暂存接口发生内部异常，已阻止编辑器崩溃。".to_string()))
+}'''/// EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1
 /// Convert synchronous export-command panics into ordinary UI errors.
 fn effectcraft_run_export_command(
     app: &mut EffectcraftApp,
@@ -115,7 +93,8 @@ fn effectcraft_run_export_command(
 
     required = (
         "EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1_HELPER",
-        "std::env::temp_dir()",
+        "crate::android_gallery::staging_path(name)",
+        "catch_unwind",
         "EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1",
         'match effectcraft_run_export_command(app, &ctx, "renderQueue.add", params) {',
         'effectcraft_run_export_command(app, &ctx, "renderQueue.setOutput",',
