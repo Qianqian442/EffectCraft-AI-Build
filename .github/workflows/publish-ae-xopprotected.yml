@@ -1,0 +1,62 @@
+name: Publish protected Ae APK
+
+on:
+  workflow_run:
+    workflows:
+      - Protect Ae APK with XopProtector
+    types: [completed]
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - name: Download verified Xop-protected APK artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: Ae-XopProtector-Protected-APK
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: release
+
+      - name: Verify protected APK package is present
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="release/ae-0.22.1-xopprotected.apk"
+          test -s "$APK"
+          unzip -tq "$APK"
+          test -s release/xop-protected-sha256.txt
+          test -s release/xop-signer-sha256.txt
+          test -s release/xop-protection-info.txt
+          sha256sum --check release/xop-protected-sha256.txt
+          echo "Verified protected Ae APK artifact for publication."
+
+      - name: Publish protected Ae 0.22.1 APK
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: effectcraft-ai-1160-xop
+          name: Ae 0.22.1 Android APK — XopProtector
+          body: |
+            XopProtector-protected Ae 0.22.1 Android APK.
+            Protection profile: balanced DEX encryption and SAFE eligible native-library protection.
+            Published only after APK structure, signature, package identity and Android 12 ARM64 launch checks passed.
+            The application package and release-signing identity are preserved from Ae build #1160.
+          files: |
+            release/ae-0.22.1-xopprotected.apk
+            release/xop-protected-sha256.txt
+            release/xop-signer-sha256.txt
+            release/xop-protection-info.txt
+            release/XopProtector-LICENSE.txt
+            release/XopProtector-NOTICE.txt
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
