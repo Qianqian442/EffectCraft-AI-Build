@@ -154,6 +154,41 @@ def patch_dock(effectcraft: Path) -> None:
         raise SystemExit("AM portrait workspace was not registered.")
 
 
+
+def patch_default_ae_layout(effectcraft: Path) -> None:
+    """Restore the original Ae three-column workspace proportions across screen sizes."""
+    path = effectcraft / "crates/ui-egui/src/dock.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "// EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1"
+    if marker not in source:
+        old = """        _ => hsplit(
+            FixedSecond(300.0),
+            vsplit(
+                Ratio(0.56),
+                hsplit(FixedFirst(300.0), tabs(&[Project, EffectControls], 0), tabs(&[Composition, Layer], 0)),
+                tabs(&[Timeline, RenderQueue], 0),
+            ),
+            vsplit(FixedFirst(PREVIEW_FRAME), tabs(&[Preview], 0), tabs(&[Properties, Align, Audio, EffectsPresets], 0)),
+        ),"""
+        new = """        // EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1
+        // Keep the original Ae arrangement responsive: Project/Effect Controls on the left,
+        // Composition in the middle, Preview/Properties on the right, Timeline below.
+        _ => hsplit(
+            Ratio(0.80),
+            vsplit(
+                Ratio(0.56),
+                hsplit(Ratio(0.275), tabs(&[Project, EffectControls], 0), tabs(&[Composition, Layer], 0)),
+                tabs(&[Timeline, RenderQueue], 0),
+            ),
+            vsplit(FixedFirst(PREVIEW_FRAME), tabs(&[Preview], 0), tabs(&[Properties, Align, Audio, EffectsPresets], 0)),
+        ),"""
+        source = replace_once(source, old, new, "responsive original Ae default workspace")
+        path.write_text(source, encoding="utf-8")
+    if marker not in path.read_text(encoding="utf-8"):
+        raise SystemExit("The responsive original Ae default workspace was not installed.")
+    print("Restored the original Ae three-column workspace with responsive panel proportions.")
+
+
 def patch_touch_trim_handles(effectcraft: Path) -> None:
     """Reuse an existing phone-sized In/Out handle patch, or add one if absent."""
     path = effectcraft / "crates/ui-egui/src/panels/timeline.rs"
@@ -366,163 +401,25 @@ fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
 
 def patch_workspace_tabs(effectcraft: Path) -> None:
-    """Place the two-mode chooser in a dedicated editing row below the scrollable tools."""
-    path = effectcraft / "crates/ui-egui/src/header.rs"
-    source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1"
-    if marker not in source:
-        responsive_marker = "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1"
-        if responsive_marker in source:
-            source = replace_once(
-                source,
-                "    let scroll_rect = rect;\n",
-                """    // Keep all original tools in the first row; the Ae/AM selector is outside this scroll area.
-    let scroll_rect = Rect::from_min_max(
-        rect.min,
-        pos2(rect.max.x, (rect.min.y + 40.0).min(rect.max.y)),
-    );
-""",
-                "reserve the first row for the original horizontally scrollable toolbar",
-            )
-            responsive_anchor = """        });
+    """Use the original workspace menu; do not add a second toolbar row."""
+    header = (effectcraft / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
+    frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
+    dock = (effectcraft / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
 
-    // EFFECTCRAFT_ANDROID_SINGLE_EXPORT_BUTTON_V1"""
-            responsive_replacement = """        });
+    # The existing » workspace menu already enumerates dock::WORKSPACES.
+    # patch_dock adds AM 竖屏 there, so no extra toolbar control is needed.
+    if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header:
+        raise SystemExit("The original workspace menu is missing from the Ae toolbar.")
+    if "workspace_tabs(app, ui, p, rx, left, cy);" not in header:
+        raise SystemExit("The original workspace tabs are missing from the Ae toolbar.")
+    if '"AM 竖屏"' not in dock:
+        raise SystemExit("AM 竖屏 is not registered in the original workspace menu.")
+    if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" in header or "layout_switch_row(" in header:
+        raise SystemExit("The extra Ae/AM toolbar row must not be present.")
+    if "let header_h = 40.0;" not in frame or "let header_h = 64.0;" in frame:
+        raise SystemExit("The original 40px single-row editor toolbar was not restored.")
+    print("Restored the original single-row Ae toolbar; Ae/AM switching uses the existing workspace menu.")
 
-    // EFFECTCRAFT_NOVA_LAYOUT_MENU_V2
-    // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1
-    // A fixed second row keeps the Ae/AM selector separate from every scrollable tool hitbox.
-    if rect.height() >= 60.0 {
-        let layout_row = Rect::from_min_max(
-            pos2(rect.min.x, rect.min.y + 40.0),
-            rect.max,
-        );
-        let layout_painter = ui.painter().clone();
-        layout_switch_row(app, ui, &layout_painter, layout_row);
-    }
-
-    // EFFECTCRAFT_ANDROID_SINGLE_EXPORT_BUTTON_V1"""
-            source = replace_once(
-                source,
-                responsive_anchor,
-                responsive_replacement,
-                "insert the Ae/AM selector after the scrollable tool row",
-            )
-        else:
-            # Compatibility fallback for a build path that has not installed the responsive header.
-            source = replace_once(
-                source,
-                "    let cy = rect.center().y;\n",
-                "    let cy = rect.min.y + 20.0;\n",
-                "keep the original tools in the first 40px toolbar row",
-            )
-            direct_anchor = "    right_side(app, ui, &p, rect, x, cy);\n"
-            direct_replacement = """    right_side(app, ui, &p, rect, x, cy);
-    // EFFECTCRAFT_NOVA_LAYOUT_MENU_V2
-    // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1
-    if rect.height() >= 60.0 {
-        let layout_row = Rect::from_min_max(pos2(rect.min.x, rect.min.y + 40.0), rect.max);
-        layout_switch_row(app, ui, &p, layout_row);
-    }
-"""
-            source = replace_once(source, direct_anchor, direct_replacement, "add separate editing-only layout row")
-            source = replace_once(
-                source,
-                """    let rx = workspace_menu(app, ui, p, rx, cy);
-    workspace_tabs(app, ui, p, rx, left, cy);""",
-                """    // Keep the existing saved-workspace menu and tabs unchanged.
-    let rx = workspace_menu(app, ui, p, rx, cy);
-    workspace_tabs(app, ui, p, rx, left, cy);""",
-                "preserve the original workspace menu",
-            )
-
-        anchor = "/// The Discord pill and the GitHub and website buttons"
-        code = r'''
-// Show the active Ae/AM mode in a dedicated row below the original tool controls.
-fn ae_layout_mode_label(workspace: &str) -> &'static str {
-    if workspace == "AM 竖屏" { "Ae×am 竖屏布局" } else { "Ae 原布局" }
-}
-
-fn layout_switch_row(app: &mut EffectcraftApp, ui: &mut egui::Ui, p: &egui::Painter, rect: Rect) {
-    let t = app.tokens;
-    let cy = rect.center().y;
-    p.line_segment(
-        [rect.left_top(), rect.right_top()],
-        Stroke::new(1.0, t.separator),
-    );
-    p.text(
-        pos2(rect.min.x + 12.0, cy),
-        Align2::LEFT_CENTER,
-        "编辑布局",
-        Tokens::ui(11.0),
-        t.text_dim,
-    );
-
-    let layout_label = format!("{} ▾", ae_layout_mode_label(&app.ui.workspace));
-    let label_galley = p.layout_no_wrap(layout_label, Tokens::ui(12.0), t.text_dim);
-    let menu_width = (label_galley.size().x + 24.0).clamp(104.0, 148.0);
-    let more = Rect::from_min_max(
-        pos2(rect.max.x - menu_width - 10.0, cy - 11.0),
-        pos2(rect.max.x - 10.0, cy + 11.0),
-    );
-    let mresp = ui.interact(more, egui::Id::new("ae-layout-switch"), Sense::click());
-    p.rect_filled(more, 5.0, if mresp.hovered() { t.hover } else { t.panel_bg });
-    p.galley_with_override_text_color(
-        pos2(
-            more.center().x - label_galley.size().x / 2.0,
-            cy - label_galley.size().y / 2.0,
-        ),
-        label_galley,
-        if mresp.hovered() { t.text } else { t.text_dim },
-    );
-    app.auto.add("header.layoutSwitch", more, "Switch between Ae and AM layouts");
-
-    let current = app.ui.workspace.clone();
-    crate::widgets::context_menu(&mresp, |ui| ws_menu(app, ui, &current));
-    let popup_id = egui::Id::new("ae-layout-switch-popup");
-    if mresp.clicked() {
-        widgets::open_popup(ui, popup_id);
-    }
-    let names = ["Ae 原布局".to_string(), "AM 竖屏布局".to_string()];
-    let selected = if app.ui.workspace == "AM 竖屏" { 1 } else { 0 };
-    if let Some(index) = widgets::popup_menu(
-        ui,
-        popup_id,
-        more.left_bottom() - vec2(140.0, 0.0),
-        &names,
-        Some(selected),
-    ) {
-        app.set_workspace(if index == 1 { "AM 竖屏" } else { "Default" });
-    }
-}
-
-'''
-        if anchor not in source:
-            raise SystemExit("Could not find the header insertion point for the reserved layout row.")
-        source = source.replace(anchor, code + anchor, 1)
-        path.write_text(source, encoding="utf-8")
-
-    patched_header = path.read_text(encoding="utf-8")
-    if marker not in patched_header:
-        raise SystemExit("The dedicated editing-only Ae/AM layout row was not installed.")
-    if "let rx = workspace_menu(app, ui, p, rx, cy);" not in patched_header:
-        raise SystemExit("The original saved-workspace menu must remain available alongside the Ae/AM selector.")
-
-    frame = effectcraft / "crates/ui-egui/src/app/frame.rs"
-    frame_source = frame.read_text(encoding="utf-8")
-    frame_marker = "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1"
-    if frame_marker not in frame_source:
-        frame_source = replace_once(
-            frame_source,
-            "        let header_h = 40.0;\n",
-            "        let header_h = 64.0; // EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1\n",
-            "reserve 24px for the separate editor-only layout row",
-        )
-        frame.write_text(frame_source, encoding="utf-8")
-    if frame_marker not in frame.read_text(encoding="utf-8"):
-        raise SystemExit("The editor header did not reserve a separate row for the layout switch.")
-    print("Added a fixed second row for the Ae/AM selector beneath the responsive toolbar.")
-    print("Kept the original toolbar scrollable and preserved the existing workspace menu.")
 
 def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
@@ -653,7 +550,42 @@ def patch_startup_restore(effectcraft: Path) -> None:
 
     /// Offer the frontend's commands'''
     replacement = f'''        }};
-        let app = app.with_ui_commands();
+        let mut app = app.with_ui_commands();
+
+        // One-time layout migration: discard stale built-in Ae/AM layout overrides and
+        // retain renamed copies so users can still inspect their former custom arrangements.
+        const AE_LAYOUT_MIGRATION_KEY: &str = "ae_workspace_layout_restore_v1";
+        let already_migrated = app.session.config.as_deref()
+            .and_then(|config| config.read(AE_LAYOUT_MIGRATION_KEY).ok().flatten())
+            .as_deref() == Some("done");
+        if !already_migrated {{
+            if let Some(old_default) = app.ui.saved_workspaces.remove("Default") {{
+                let archive = "Default (before Ae layout restore)";
+                if !app.ui.saved_workspaces.contains_key(archive) {{
+                    app.ui.saved_workspaces.insert(archive.to_string(), old_default);
+                }}
+            }}
+            if let Some(old_am) = app.ui.saved_workspaces.remove("{WORKSPACE}") {{
+                let archive = "AM portrait (before Ae layout restore)";
+                if !app.ui.saved_workspaces.contains_key(archive) {{
+                    app.ui.saved_workspaces.insert(archive.to_string(), old_am);
+                }}
+            }}
+            if app.ui.workspace == "Default" || app.ui.workspace == "{WORKSPACE}" {{
+                app.ui.dock = crate::dock::Workspace::new(crate::dock::workspace(&app.ui.workspace));
+            }}
+            if let Some(config) = app.session.config.as_deref() {{
+                match app.workspace_store.save(Some(config), &app.ui) {{
+                    Ok(_) => {{
+                        if let Err(error) = config.write(AE_LAYOUT_MIGRATION_KEY, "done") {{
+                            log::warn!("Could not save Ae layout migration marker: {error}");
+                        }}
+                    }}
+                    Err(error) => log::warn!("Could not persist restored Ae/AM workspaces: {error}"),
+                }}
+            }}
+        }}
+
         // Apply the orientation of the persisted workspace before the first editor frame.
         crate::android_layout::set_workspace_portrait(app.ui.workspace == "{WORKSPACE}");
         app
@@ -1049,22 +981,29 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
     header = (effectcraft / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
     if "export_progress_dialog(app, ui);" not in header:
         raise SystemExit("AM layout patch detected a missing original export UI.")
-    if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" not in header:
-        raise SystemExit("The dedicated Ae/AM layout selector row is missing.")
+    if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" in header or "layout_switch_row(" in header:
+        raise SystemExit("The extra Ae/AM toolbar row must remain removed.")
+    if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header:
+        raise SystemExit("The original workspace menu must remain available for Ae/AM switching.")
+    if "workspace_tabs(app, ui, p, rx, left, cy);" not in header:
+        raise SystemExit("The original workspace tabs must remain unchanged.")
     effects = (effectcraft / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
     widgets = (effectcraft / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" not in effects:
         raise SystemExit("AM portrait Effects & Presets must apply an effect on a single tap.")
     if "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" not in widgets:
         raise SystemExit("AM portrait effect/parameter panels must support finger-drag vertical scrolling.")
-    if "if rect.height() >= 60.0" not in header or "Ae×am 竖屏布局" not in header:
-        raise SystemExit("The layout selector must remain visible on both Home and the editor.")
+    if "let header_h = 40.0;" not in frame or "let header_h = 64.0;" in frame:
+        raise SystemExit("The editor must retain the original single-row 40px toolbar.")
+    dock = (effectcraft / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1" not in dock or "Ratio(0.80)" not in dock:
+        raise SystemExit("The original responsive Ae default workspace was not restored.")
+    if '"AM 竖屏"' not in dock:
+        raise SystemExit("AM 竖屏 must remain selectable in the original workspace menu.")
     if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in header or "file.importProject" not in header:
         raise SystemExit("The scrollable top toolbar must retain the unified project-import shortcut and plugin-import button.")
     frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
-    if "let header_h = 64.0;" not in frame:
-        raise SystemExit("The two-row layout toolbar must remain visible on Home and in the editor.")
-    print("Verified the Ae×am selector and original horizontally-scrollable tools remain available on Home and in the editor.")
+    print("Verified the original Ae toolbar and responsive three-column workspace are restored; AM remains in the workspace menu.")
 
 
 def main() -> None:
@@ -1073,6 +1012,7 @@ def main() -> None:
     if not effectcraft.is_dir() or not builder.is_dir():
         raise SystemExit("EFFECTCRAFT_DIR and ARTCRAFT_DIR must point to checked-out source trees.")
     patch_dock(effectcraft)
+    patch_default_ae_layout(effectcraft)
     patch_touch_trim_handles(effectcraft)
     patch_workspace_selection(effectcraft)
     patch_workspace_morph_transition(effectcraft)
@@ -1084,8 +1024,8 @@ def main() -> None:
     patch_android_layout_module(effectcraft)
     patch_activity(builder)
     verify_import_export_unchanged(effectcraft)
-    print("Added the Ae×am portrait workspace and portrait Home; the selected workspace is restored from workspaces.json on relaunch.")
-    print("AM portrait mode keeps the native Ae Effects & Presets, Effect Controls, timeline, keyframes, curves, puppet and vector tools.")
+    print("Restored the original Ae toolbar and responsive three-column workspace.")
+    print("AM remains a separate portrait workspace, selectable from the original workspace menu; stale built-in layouts are migrated once.")
     print("Project import/share/export routes and project formats were not changed.")
     print("Added release-certificate pin verification and sensor/AM portrait switching for Android.")
     
