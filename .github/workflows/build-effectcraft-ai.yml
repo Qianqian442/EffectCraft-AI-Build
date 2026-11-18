@@ -9,6 +9,7 @@ on:
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - '.github/scripts/patch_export_dialog.py'
       - '.github/scripts/fix_android_export_button_crash.py'
+      - '.github/scripts/fix_android_aep_playback_crash.py'
       - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/bump_ae_version.py'
@@ -110,6 +111,7 @@ jobs:
           python3 -m py_compile \
             .github/scripts/patch_export_dialog.py \
             .github/scripts/fix_android_export_button_crash.py \
+            .github/scripts/fix_android_aep_playback_crash.py \
             .github/scripts/verify_android_source_patches.py \
             .github/scripts/bump_ae_version.py \
             .github/scripts/brand_ae_visible_names.py \
@@ -767,6 +769,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/fix_android_export_button_crash.py
           python3 build-assets/.github/scripts/fix_android_export_button_crash.py
+
+      - name: Protect Android playback of imported desktop AE projects
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/fix_android_aep_playback_crash.py
+          python3 build-assets/.github/scripts/fix_android_aep_playback_crash.py
 
       - name: Verify final Android source patches and repair missing export helper
         env:
