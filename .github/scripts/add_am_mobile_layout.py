@@ -531,15 +531,10 @@ def patch_startup_restore(effectcraft: Path) -> None:
                     app.ui.saved_workspaces.insert(archive.to_string(), old_default);
                 }}
             }}
-            if let Some(old_am) = app.ui.saved_workspaces.remove("{WORKSPACE}") {{
-                let archive = "AM portrait (before Ae layout restore)";
-                if !app.ui.saved_workspaces.contains_key(archive) {{
-                    app.ui.saved_workspaces.insert(archive.to_string(), old_am);
-                }}
+            if app.ui.workspace == "Default" {{
+                app.ui.dock = crate::dock::Workspace::new(crate::dock::workspace("Default"));
             }}
-            if app.ui.workspace == "Default" || app.ui.workspace == "{WORKSPACE}" {{
-                app.ui.dock = crate::dock::Workspace::new(crate::dock::workspace(&app.ui.workspace));
-            }}
+        // The AM portrait workspace is intentionally left untouched: preserve its saved layout.
             if let Some(config) = app.session.config.as_deref() {{
                 match app.workspace_store.save(Some(config), &app.ui) {{
                     Ok(_) => {{
