@@ -198,7 +198,8 @@ jobs:
           grep -Fq 'let rx = workspace_menu(app, ui, p, rx, cy);' effectcraft/crates/ui-egui/src/header.rs
           grep -Fq 'workspace_tabs(app, ui, p, rx, left, cy);' effectcraft/crates/ui-egui/src/header.rs
           grep -Fq 'let header_h = 40.0;' effectcraft/crates/ui-egui/src/app/frame.rs
-          grep -Fq "EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1" effectcraft/crates/ui-egui/src/dock.rs
+          grep -Fq "FixedSecond(300.0)" effectcraft/crates/ui-egui/src/dock.rs
+          grep -Fq "FixedFirst(300.0)" effectcraft/crates/ui-egui/src/dock.rs
           grep -Fq "EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1" effectcraft/crates/ui-egui/src/app/window.rs
           grep -Fq "self.dock_area(ui, body);" effectcraft/crates/ui-egui/src/app/frame.rs
           echo "Verified Ae×am portrait Home and native Ae effects, scrollable parameters, keyframes, curves, puppet, vector and timeline tools."
