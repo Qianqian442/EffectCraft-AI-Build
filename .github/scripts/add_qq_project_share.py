@@ -190,6 +190,23 @@ def patch_activity(builder: Path) -> None:
         "import java.util.zip.ZipEntry;",
         "import java.util.zip.ZipOutputStream;",
     ]
+
+    # The builder Rust bridge checks this count to wake the event loop as soon as
+    # a QQ/Android shared document has finished staging. Keep it paired with intentPoll().
+    pending_marker = "EFFECTCRAFT_ANDROID_INTENT_PENDING_QUEUE_V1"
+    if pending_marker not in source:
+        intent_poll_anchor = """    public String intentPoll() {
+        return intentPaths.poll();
+    }
+"""
+        pending_method = """    // EFFECTCRAFT_ANDROID_INTENT_PENDING_QUEUE_V1
+    public int intentPending() {
+        return intentPaths.size();
+    }
+
+"""
+        source = once(source, intent_poll_anchor, pending_method + intent_poll_anchor,
+                      "Android incoming-project queue pending-count method")
     anchor = "import android.content.Context;\n"
     if "import androidx.core.content.FileProvider;" not in source:
         source = once(source, anchor, anchor + "\n".join(imports) + "\n", "FileProvider and ZIP imports")
@@ -747,7 +764,7 @@ def main() -> None:
         if action not in manifest_generator:
             raise SystemExit(f"Ae incoming project intent filter is missing {action}.")
     activity_source = (builder / "templates/android/SafActivity.java").read_text(encoding="utf-8")
-    for token in ("handleIncomingFiles(getIntent())", "Intent.ACTION_VIEW", "intentPoll"):
+    for token in ("handleIncomingFiles(getIntent())", "Intent.ACTION_VIEW", "intentPoll", "intentPending"):
         if token not in activity_source:
             raise SystemExit(f"Ae incoming file handoff is incomplete: {token}")
     # The QQ destination is now the system Sharesheet opened after Collect Files completes.
