@@ -16,23 +16,23 @@ The AM workspace must own its own:
 - Add Layer browser, effect browser, effect parameter editor, transform/property editor and project/media browser;
 - AM-specific drawers, sheets, dialogs, touch gestures and contextual menus.
 
-The AM surface must **not** render or call Ae UI components such as `DockArea`,
-`crate::panels::show` with Ae `PanelKind` values, Ae `Effects & Presets`,
-Ae `Effect Controls`, Ae `Properties`, Ae `Project` panels, Ae Timeline widgets,
-or Ae viewer chrome as its editing UI. The existing Ae workspace remains untouched and
-continues to use its original panels and layout.
+The AM surface must **not** use Ae's `DockArea`, Ae toolbar, or Ae Timeline as its
+primary editing layout. The restored AM page owns the top bar, preview placement, transport,
+clip timeline and bottom tool navigation. To avoid removing existing capabilities, selected
+native panels are available only as contextual drawers: Effects & Presets, Effect Controls,
+Properties, Project, and the native Timeline panel for detailed keyframe/curve editing. These
+drawers are auxiliary editing surfaces, not the AM page's main layout.
 
-Permitted shared internals are non-UI services: the project/session data model, command engine,
-compositor/rendering backend, footage/media decoding, audio engine, effect implementations where
-they are functionally equivalent, undo history, encoders, and serialization. A shared renderer
-may produce the composition pixels, but AM must provide its own preview surface and AM-oriented
-touch interactions/overlays rather than embedding the Ae viewer panel.
+Permitted shared internals include the project/session model, command engine, compositor and
+rendering backend, media/audio decoding, effect implementations, undo history, encoders and
+serialization. AM uses its own preview placement and touch-oriented clip timeline while calling
+the shared composition renderer. The native Pen and Puppet tools remain selectable from its
+Add Layer drawer.
 
-The current in-tree custom page remains a first pass, not a completed AM editor. The selected
-AbsentMotion source is the intended independent editing surface; until it has been compiled as
-a separate module and launched from the layout switch, the current page must not be presented
-as the final AM layout. Its Ae panel and viewer dependencies remain forbidden during this
-transition.
+The restored in-tree `am_editor.rs` page recreates the earlier AM-style mobile editing layout.
+It is a first-pass AM-inspired editor, not the official Alight Motion application and not a claim
+of complete feature parity. The selected AbsentMotion v5.1.1 source remains a separate future
+integration candidate; it has not been compiled into the current Ae APK.
 
 ## Package size policy
 
