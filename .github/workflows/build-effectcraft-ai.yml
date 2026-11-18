@@ -1502,8 +1502,8 @@ jobs:
           disable-animations: true
           script: |
             set -euo pipefail
-            APK="release/effectcraft-0.21.1.apk"
-            test -s "$APK"
+            APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 5 -type f -name 'effectcraft-0.21.1.apk' -print -quit)"
+            test -n "$APK" && test -s "$APK"
             adb install "$APK"
             adb shell pm path com.artcraft.effectcraft
             adb shell dumpsys package com.artcraft.effectcraft | grep -E "versionCode|versionName"
@@ -1525,8 +1525,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK="release/effectcraft-0.21.1.apk"
-          test -s "$APK"
+          APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 5 -type f -name 'effectcraft-0.21.1.apk' -print -quit)"
+          test -n "$APK" && test -s "$APK"
           stat -c 'APK size: %s bytes' "$APK"
           sha256sum "$APK"
       - name: Publish standalone APK release
