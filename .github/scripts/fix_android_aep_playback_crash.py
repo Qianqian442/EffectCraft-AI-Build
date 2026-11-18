@@ -62,8 +62,9 @@ fn effectcraft_preview_worker_threads(reported: Option<usize>, android: bool) ->
         frames = frames.replace("gpu_budget: GPU_BUDGET,", "gpu_budget: effectcraft_preview_gpu_budget(cfg!(target_os = \"android\")),")
         frames = frames.replace(".min(GPU_BUDGET);", ".min(effectcraft_preview_gpu_budget(cfg!(target_os = \"android\")));")
         frames = frames.replace("c.gpu_budget = GPU_BUDGET;", "c.gpu_budget = effectcraft_preview_gpu_budget(cfg!(target_os = \"android\"));")
-        if "GPU_BUDGET" in frames:
-            raise SystemExit("A stale GPU_BUDGET reference remains after Android budget conversion.")
+        frames = frames.replace('/// Bytes of GPU frames to keep at most ([`GPU_BUDGET`]).', '/// Bytes of GPU frames to keep at most (platform-specific preview budget).')
+        if any(token in frames for token in ('gpu_budget: GPU_BUDGET,', '.min(GPU_BUDGET)', 'c.gpu_budget = GPU_BUDGET;')):
+            raise SystemExit("A stale GPU_BUDGET code reference remains after Android budget conversion.")
         if "effectcraft_preview_gpu_budget(cfg!(target_os = \"android\"))" not in frames:
             raise SystemExit("Android GPU preview budget was not applied at cache initialization.")
         frames_path.write_text(frames, encoding="utf-8")
