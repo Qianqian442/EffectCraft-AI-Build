@@ -12,8 +12,7 @@ def main() -> None:
     header_path = root / "crates/ui-egui/src/header.rs"
     header = header_path.read_text(encoding="utf-8")
 
-    # Do not cross JNI while processing the Export button. Use the same app-private
-    # temporary directory already used by the Android SAF video-save bridge.
+    # Use Android's app-private cache bridge; convert JNI failures into a visible error.
     stage_pattern = re.compile(
         r"(?s)/// EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1_HELPER.*?"
         r"fn effectcraft_android_video_staging_path\(default_output: &str\) -> Result<String, String> \{\n.*?\n\}"
@@ -106,7 +105,10 @@ fn effectcraft_run_export_command(
     missing = [item for item in required if item not in header]
     if missing:
         raise SystemExit("Export crash guard incomplete: " + "; ".join(missing))
-    if "std::env::temp_dir()" in header:
+    stage_start = header.find("fn effectcraft_android_video_staging_path(")
+    stage_end = header.find("\n}", stage_start)
+    stage_source = header[stage_start:stage_end] if stage_start >= 0 and stage_end >= 0 else ""
+    if "std::env::temp_dir()" in stage_source:
         raise SystemExit("Export staging must use Android's app-private cache bridge, not /data/local/tmp.")
 
     header_path.write_text(header, encoding="utf-8")
