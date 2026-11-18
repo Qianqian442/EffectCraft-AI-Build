@@ -10,7 +10,7 @@ use llama_cpp_2::{
 };
 use crate::EffectcraftApp;
 
-const KNOWLEDGE: &str = "EffectCraft 0.21.1 本地操作知识：\n\
+const KNOWLEDGE: &str = "Ae 0.22.1 本地操作知识：\n\
 合成（Composition）：在项目面板新建合成，设置画布宽高、帧率和时长。\n\
 素材导入：使用文件菜单的导入功能，或把视频、图片、音频拖入项目。\n\
 时间轴：把素材放入时间轴图层；移动播放头定位时间；关键帧用于记录属性在不同时间的值。\n\
@@ -141,7 +141,7 @@ fn local_chat(path: &str, history: &[(String, String)]) -> Result<String, String
     let loaded = guard.as_ref().ok_or_else(|| "本地模型尚未加载".to_string())?;
     let model = &loaded.model;
     let manual = KNOWLEDGE.chars().take(3200).collect::<String>();
-    let sys = format!("你是 EffectCraft 0.21.1 中文操作助手。用简体中文回答，优先给出准确菜单路径和分步操作；无依据时明确说不知道，不要编造。\n\nEffectCraft 手册摘录：\n{manual}");
+    let sys = format!("你是 Ae 0.22.1 中文操作助手。用简体中文回答，优先给出准确菜单路径和分步操作；无依据时明确说不知道，不要编造。\n\nEffectCraft 手册摘录：\n{manual}");
     let mut messages = vec![LlamaChatMessage::new("system".into(), sys).map_err(|e| e.to_string())?];
     for (role, content) in history { messages.push(LlamaChatMessage::new(role.clone(), content.clone()).map_err(|e| e.to_string())?); }
     let template = model.chat_template(None).map_err(|e| format!("读取模型对话模板失败：{e}"))?;
