@@ -202,6 +202,26 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if "尚未实现" not in header_source or "AEP/AEPX" not in header_source:
         raise SystemExit("The unavailable desktop AE exporter must be clearly disclosed in the UI.")
     print("Verified the five requested independent project-export buttons and honest AE desktop status.")
+    crash_guard = (
+        "EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1",
+        'match effectcraft_run_export_command(app, &ctx, "renderQueue.add", params) {',
+        'effectcraft_run_export_command(app, &ctx, "renderQueue.setOutput",',
+        'effectcraft_run_export_command(app, &ctx, "renderQueue.setRender",',
+    )
+    missing_guard = [item for item in crash_guard if item not in header_source]
+    if missing_guard:
+        raise SystemExit("Android Export button crash guard is incomplete: " + "; ".join(missing_guard))
+    stage_start = header_source.find("fn effectcraft_android_video_staging_path(")
+    stage_end = header_source.find("\\n}", stage_start)
+    if stage_start < 0 or stage_end < 0:
+        raise SystemExit("The app-private Android export staging helper is missing.")
+    stage_helper = header_source[stage_start:stage_end]
+    if "std::env::temp_dir()" not in stage_helper:
+        raise SystemExit("Export staging must use the app-private cache without JNI.")
+    if "crate::android_gallery::staging_path" in stage_helper:
+        raise SystemExit("The Export button still invokes JNI while preparing its staging path.")
+    print("Verified panic-guarded export setup and JNI-free app-private video staging.")
+
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_FIVE_PROJECT_IMPORT_BUTTONS_V1" in project:

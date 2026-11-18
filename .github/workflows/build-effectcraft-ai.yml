@@ -8,6 +8,7 @@ on:
       - '.github/workflows/build-effectcraft-ai.yml'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - '.github/scripts/patch_export_dialog.py'
+      - '.github/scripts/fix_android_export_button_crash.py'
       - '.github/scripts/add_android_gallery_export.py'
       - '.github/scripts/add_qq_project_share.py'
       - '.github/scripts/bump_ae_version.py'
@@ -108,7 +109,9 @@ jobs:
         run: |
           python3 -m py_compile \
             .github/scripts/patch_export_dialog.py \
+            .github/scripts/fix_android_export_button_crash.py \
             .github/scripts/verify_android_source_patches.py \
+            .github/scripts/bump_ae_version.py \
             .github/scripts/brand_ae_visible_names.py \
             .github/scripts/upgrade_export_preflight.py \
             .github/scripts/integrate_video_ai.py \
@@ -183,14 +186,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: build-assets
-
-      - name: Set app and workspace version to Ae 0.22.1
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/bump_ae_version.py
-          python3 build-assets/.github/scripts/bump_ae_version.py
-          grep -Fq 'version = "0.22.1"' "$EFFECTCRAFT_DIR/Cargo.toml"
 
       - name: Check out pinned native AbsentMotion source
         uses: actions/checkout@v4
@@ -290,6 +285,14 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Set app and workspace version to Ae 0.22.1
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/bump_ae_version.py
+          python3 build-assets/.github/scripts/bump_ae_version.py
+          grep -Fq 'version = "0.22.1"' "$EFFECTCRAFT_DIR/Cargo.toml"
 
       - name: Configure Android shared-storage SAF fallback
         env:
@@ -757,6 +760,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/brand_ae_visible_names.py
           python3 build-assets/.github/scripts/brand_ae_visible_names.py
+
+      - name: Guard the Export button against immediate crashes
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/fix_android_export_button_crash.py
+          python3 build-assets/.github/scripts/fix_android_export_button_crash.py
 
       - name: Verify final Android source patches and repair missing export helper
         env:
@@ -1550,38 +1560,15 @@ jobs:
           profile: pixel_2
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096 -cores 4
-          script: |
-            # android-emulator-runner invokes this input with /bin/sh, not Bash.
-            # Keep the smoke-test script POSIX-compatible; pipefail and [[ ]] fail in dash.
-            set -eu
-            test -n "$AE_APK_PATH" && test -s "$AE_APK_PATH"
-            adb wait-for-device
-            echo "Waiting for Android Package Manager service..."
-            package_ready=false
-            for attempt in $(seq 1 90); do
-              if adb shell service check package 2>/dev/null | grep -q "found"; then
-                package_ready=true
-                break
-              fi
-              sleep 2
-            done
-            if [ "$package_ready" != true ]; then
-              echo "Android Package Manager service did not become ready."
-              adb logcat -d -t 1500 | grep -iE "PackageManager|PackageManagerService|system_server|FATAL EXCEPTION|lowmemorykiller" | tail -n 160 || true
-              exit 1
-            fi
-            adb shell cmd package list packages >/dev/null
-            echo "Package Manager is ready. Installing APK without streaming: $AE_APK_PATH"
-            if ! adb install --no-streaming "$AE_APK_PATH"; then
-              echo "APK installation command failed; collecting Android diagnostics."
-              adb shell service check package || true
-              adb shell dumpsys activity services package || true
-              adb logcat -d -t 2000 | grep -iE "PackageManager|PackageInstaller|installd|system_server|FATAL EXCEPTION|lowmemorykiller|artcraft" | tail -n 220 || true
-              exit 1
-            fi
-            adb shell pm path com.artcraft.effectcraft
-            adb shell dumpsys package com.artcraft.effectcraft | grep -E "versionCode|versionName"
-            echo "Android 12 Package Manager installed Ae successfully."
+          script: >-
+            test -n "$AE_APK_PATH" &&
+            test -s "$AE_APK_PATH" &&
+            adb wait-for-device &&
+            adb shell 'i=0; until service check package 2>/dev/null | grep -q found; do i=$((i+1)); [ "$i" -lt 90 ] || exit 1; sleep 2; done' &&
+            adb install --no-streaming "$AE_APK_PATH" &&
+            adb shell pm path com.artcraft.effectcraft &&
+            adb shell dumpsys package com.artcraft.effectcraft | grep -E "versionCode|versionName" &&
+            echo "Android 12 Package Manager installed Ae 0.22.1 successfully."
 
   publish:
     name: Publish APK download (Android 12 install check passed)
