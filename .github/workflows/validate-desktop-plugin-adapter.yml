@@ -185,10 +185,14 @@ jobs:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: |
           python3 .github/scripts/add_am_mobile_layout.py
-          # Ae×am is a portrait layout for the original Ae editor, not a second clip-editor page.
-          ! grep -Fq "crate::am_editor::show" effectcraft/crates/ui-egui/src/app/frame.rs
-          ! grep -Fq "pub mod am_editor;" effectcraft/crates/ui-egui/src/lib.rs
-          test ! -e effectcraft/crates/ui-egui/src/am_editor.rs
+          python3 .github/scripts/build_am_mobile_editing_page.py
+          # Ae×am uses its own portrait editing shell while retaining the original Ae DockArea.
+          grep -Fq "crate::am_editor::show(self, ui, full);" effectcraft/crates/ui-egui/src/app/frame.rs
+          grep -Fq "pub mod am_editor;" effectcraft/crates/ui-egui/src/lib.rs
+          test -s effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "PanelKind::Timeline" effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "Tool::Pen" effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "Tool::Puppet" effectcraft/crates/ui-egui/src/am_editor.rs
           grep -Fq "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" effectcraft/crates/ui-egui/src/panels/home.rs
           grep -Fq "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" effectcraft/crates/ui-egui/src/panels/effects_presets.rs
           grep -Fq "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" effectcraft/crates/ui-egui/src/widgets.rs
