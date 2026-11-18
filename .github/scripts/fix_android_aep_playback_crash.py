@@ -59,12 +59,12 @@ fn effectcraft_preview_worker_threads(reported: Option<usize>, android: bool) ->
         frames = replace_once(frames, threads_old, threads_new, "Android preview worker count")
 
         # Set the mobile budget at construction, on recovery, and after clearing the cache.
-        frames = frames.replace("gpu_budget: GPU_BUDGET,", "gpu_budget: effectcraft_preview_gpu_budget(cfg!(target_os = \\"android\\")),")
-        frames = frames.replace(".min(GPU_BUDGET);", ".min(effectcraft_preview_gpu_budget(cfg!(target_os = \\"android\\")));")
-        frames = frames.replace("c.gpu_budget = GPU_BUDGET;", "c.gpu_budget = effectcraft_preview_gpu_budget(cfg!(target_os = \\"android\\"));")
+        frames = frames.replace("gpu_budget: GPU_BUDGET,", "gpu_budget: effectcraft_preview_gpu_budget(cfg!(target_os = \"android\")),")
+        frames = frames.replace(".min(GPU_BUDGET);", ".min(effectcraft_preview_gpu_budget(cfg!(target_os = \"android\")));")
+        frames = frames.replace("c.gpu_budget = GPU_BUDGET;", "c.gpu_budget = effectcraft_preview_gpu_budget(cfg!(target_os = \"android\"));")
         if "GPU_BUDGET" in frames:
             raise SystemExit("A stale GPU_BUDGET reference remains after Android budget conversion.")
-        if "effectcraft_preview_gpu_budget(cfg!(target_os = \\"android\\"))" not in frames:
+        if "effectcraft_preview_gpu_budget(cfg!(target_os = \"android\"))" not in frames:
             raise SystemExit("Android GPU preview budget was not applied at cache initialization.")
         frames_path.write_text(frames, encoding="utf-8")
 
@@ -106,9 +106,9 @@ fn android_aep_playback_resource_guard_is_tested() {
     final_tests = tests_path.read_text(encoding="utf-8")
     final_prefetch = prefetch_path.read_text(encoding="utf-8")
     required = (
-        "effectcraft_preview_worker_threads(reported_threads, cfg!(target_os = \\"android\\"))",
+        "effectcraft_preview_worker_threads(reported_threads, cfg!(target_os = \"android\"))",
         "const ANDROID_GPU_BUDGET: usize = 256 << 20;",
-        "effectcraft_preview_gpu_budget(cfg!(target_os = \\"android\\"))",
+        "effectcraft_preview_gpu_budget(cfg!(target_os = \"android\"))",
     )
     for token in required:
         if token not in final_frames:
