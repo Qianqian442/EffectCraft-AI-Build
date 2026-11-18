@@ -55,7 +55,7 @@ def patch_manifest_generator(builder: Path) -> None:
             # application/* MIME fallback for desktop AE files so the receiver is listed,
             # then let the existing staged-file importer validate the real filename.
             aep_fallback_marker = "EFFECTCRAFT_OPEN_AEP_MIME_FALLBACK"
-            if not any(item.get("_effectcraft_marker") == aep_fallback_marker for item in filters):
+            if not any(str(item.get("_effectcraft_marker", "")).startswith(aep_fallback_marker + "_") for item in filters):
                 for scheme in ("content", "file"):
                     filters.append({
                         "_effectcraft_marker": aep_fallback_marker + "_" + scheme,
