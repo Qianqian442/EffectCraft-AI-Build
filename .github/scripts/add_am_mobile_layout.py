@@ -155,40 +155,6 @@ def patch_dock(effectcraft: Path) -> None:
 
 
 
-def patch_default_ae_layout(effectcraft: Path) -> None:
-    """Restore the original Ae three-column workspace proportions across screen sizes."""
-    path = effectcraft / "crates/ui-egui/src/dock.rs"
-    source = path.read_text(encoding="utf-8")
-    marker = "// EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1"
-    if marker not in source:
-        old = """        _ => hsplit(
-            FixedSecond(300.0),
-            vsplit(
-                Ratio(0.56),
-                hsplit(FixedFirst(300.0), tabs(&[Project, EffectControls], 0), tabs(&[Composition, Layer], 0)),
-                tabs(&[Timeline, RenderQueue], 0),
-            ),
-            vsplit(FixedFirst(PREVIEW_FRAME), tabs(&[Preview], 0), tabs(&[Properties, Align, Audio, EffectsPresets], 0)),
-        ),"""
-        new = """        // EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1
-        // Keep the original Ae arrangement responsive: Project/Effect Controls on the left,
-        // Composition in the middle, Preview/Properties on the right, Timeline below.
-        _ => hsplit(
-            Ratio(0.80),
-            vsplit(
-                Ratio(0.56),
-                hsplit(Ratio(0.275), tabs(&[Project, EffectControls], 0), tabs(&[Composition, Layer], 0)),
-                tabs(&[Timeline, RenderQueue], 0),
-            ),
-            vsplit(FixedFirst(PREVIEW_FRAME), tabs(&[Preview], 0), tabs(&[Properties, Align, Audio, EffectsPresets], 0)),
-        ),"""
-        source = replace_once(source, old, new, "responsive original Ae default workspace")
-        path.write_text(source, encoding="utf-8")
-    if marker not in path.read_text(encoding="utf-8"):
-        raise SystemExit("The responsive original Ae default workspace was not installed.")
-    print("Restored the original Ae three-column workspace with responsive panel proportions.")
-
-
 def patch_touch_trim_handles(effectcraft: Path) -> None:
     """Reuse an existing phone-sized In/Out handle patch, or add one if absent."""
     path = effectcraft / "crates/ui-egui/src/panels/timeline.rs"
@@ -997,8 +963,8 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
     if "let header_h = 40.0;" not in frame or "let header_h = 64.0;" in frame:
         raise SystemExit("The editor must retain the original single-row 40px toolbar.")
     dock = (effectcraft / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1" not in dock or "Ratio(0.80)" not in dock:
-        raise SystemExit("The original responsive Ae default workspace was not restored.")
+    if "FixedSecond(300.0)" not in dock or "FixedFirst(300.0)" not in dock:
+        raise SystemExit("The original Ae fixed-width left/right panel arrangement was changed.")
     if '"AM 竖屏"' not in dock:
         raise SystemExit("AM 竖屏 must remain selectable in the original workspace menu.")
     if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in header or "file.importProject" not in header:
@@ -1012,7 +978,6 @@ def main() -> None:
     if not effectcraft.is_dir() or not builder.is_dir():
         raise SystemExit("EFFECTCRAFT_DIR and ARTCRAFT_DIR must point to checked-out source trees.")
     patch_dock(effectcraft)
-    patch_default_ae_layout(effectcraft)
     patch_touch_trim_handles(effectcraft)
     patch_workspace_selection(effectcraft)
     patch_workspace_morph_transition(effectcraft)
