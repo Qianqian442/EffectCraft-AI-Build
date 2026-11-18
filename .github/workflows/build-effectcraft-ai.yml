@@ -59,7 +59,6 @@ on:
       - '.github/scripts/add_effect_controls_crash_guard.py'
       - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/scripts/add_am_mobile_layout.py'
-      - '.github/scripts/build_am_mobile_editing_page.py'
       - '.github/scripts/add_am_brand_label.py'
       - '.github/scripts/add_home_layout_switch.py'
       - '.github/scripts/patch_absentmotion_external_navigation.py'
@@ -137,7 +136,6 @@ jobs:
             .github/scripts/add_effect_controls_crash_guard.py \
             .github/scripts/add_am_style_undo_redo.py \
             .github/scripts/add_am_mobile_layout.py \
-            .github/scripts/build_am_mobile_editing_page.py \
             .github/scripts/add_am_brand_label.py \
             .github/scripts/add_home_layout_switch.py \
             .github/scripts/pin_android_signing_certificate.py \
@@ -705,14 +703,11 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_am_mobile_layout.py
           python3 build-assets/.github/scripts/add_am_mobile_layout.py
-          python3 -m py_compile build-assets/.github/scripts/build_am_mobile_editing_page.py
-          python3 build-assets/.github/scripts/build_am_mobile_editing_page.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
           HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
           DOCK_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/dock.rs"
           LIB_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/lib.rs"
-          AM_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/am_editor.rs"
           grep -Fq "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" "$HOME_RS"
           grep -Fq 'let header_h = 40.0;' "$FRAME_RS"
           ! grep -Fq 'let header_h = 64.0;' "$FRAME_RS"
@@ -722,14 +717,9 @@ jobs:
           grep -Fq 'FixedSecond(300.0)' "$DOCK_RS"
           grep -Fq 'FixedFirst(300.0)' "$DOCK_RS"
           grep -Fq 'self.dock_area(ui, body);' "$FRAME_RS"
-          grep -Fq 'crate::am_editor::show(self, ui, full);' "$FRAME_RS"
-          grep -Fq 'pub mod am_editor;' "$LIB_RS"
-          grep -Fq 'fn tool_drawer' "$AM_RS"
-          grep -Fq 'am-mobile-trim' "$AM_RS"
-          grep -Fq 'PanelKind::Timeline' "$AM_RS"
-          grep -Fq 'Tool::Pen' "$AM_RS"
-          grep -Fq 'Tool::Puppet' "$AM_RS"
-          echo "Verified the original Ae workspace and the restored independent AM portrait editor with native keyframe/tool drawers."
+          ! grep -Fq 'crate::am_editor::show(self, ui, full);' "$FRAME_RS"
+          ! grep -Fq 'pub mod am_editor;' "$LIB_RS"
+          echo "Verified Ae and AM both use the original native DockArea and native Timeline; no second AM editor/timeline is injected."
 
       - name: Keep layout switching in the editing toolbar, not on Home
         env:
