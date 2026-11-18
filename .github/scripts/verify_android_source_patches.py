@@ -212,7 +212,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if missing_guard:
         raise SystemExit("Android Export button crash guard is incomplete: " + "; ".join(missing_guard))
     stage_start = header_source.find("fn effectcraft_android_video_staging_path(")
-    stage_end = header_source.find("\\n}", stage_start)
+    stage_end = header_source.find("\n}", stage_start)
     if stage_start < 0 or stage_end < 0:
         raise SystemExit("The app-private Android export staging helper is missing.")
     stage_helper = header_source[stage_start:stage_end]
