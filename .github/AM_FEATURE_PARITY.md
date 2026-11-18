@@ -18,10 +18,11 @@ The AM workspace must own its own:
 
 The AM surface must **not** use Ae's `DockArea`, Ae toolbar, or Ae Timeline as its
 primary editing layout. The restored AM page owns the top bar, preview placement, transport,
-clip timeline and bottom tool navigation. To avoid removing existing capabilities, selected
-native panels are available only as contextual drawers: Effects & Presets, Effect Controls,
-Properties, Project, and the native Timeline panel for detailed keyframe/curve editing. These
-drawers are auxiliary editing surfaces, not the AM page's main layout.
+clip timeline and bottom tool navigation. To avoid removing existing capabilities, Effects & Presets, Effect Controls,
+Properties and Project can be exposed as contextual drawers. The current native Ae Timeline
+drawer is only a temporary access path; it does **not** satisfy the AM-style keyframe/curve
+requirement and must not be treated as the completed AM keyframe editor. AM needs its own
+touch-first keyframe/property tracks, keyframe operations, easing presets and curve editor.
 
 Permitted shared internals include the project/session model, command engine, compositor and
 rendering backend, media/audio decoding, effect implementations, undo history, encoders and
@@ -69,8 +70,8 @@ source when distributing modified binaries.
 | Multi-layer media | Graphics, image, video and audio layers; reorder, select, hide, lock, solo and mute | Partial |
 | Vector editing | Shapes, custom vector/freehand paths, Bézier handles, fills, strokes and multi-border | Not complete |
 | Effect catalogue | AM effect IDs, every parameter, defaults, ranges, units, enums and presets; no silent drops | Not complete |
-| Keyframes | Every supported property can be keyed; keyframe selection, moving, duplication, deletion and interpolation editing | Not complete |
-| Easing and curves | AM presets plus custom Bézier, step and other easing curves; import/export round-trip | Not complete |
+| Keyframes | AM-style per-property keyframe tracks with touch selection, add/move/duplicate/delete and interpolation editing; do not reuse the Ae Timeline UI as the AM interface | Not complete |
+| Easing and curves | AM-style easing presets plus touch-editable Bézier/step curves and value graph; import/export round-trip | Not complete |
 | Parent/child and rigging | Parenting, nested groups, joint links and transform inheritance | Not complete |
 | Camera | Camera pan/zoom, focus blur, fog, animated camera parameters | Not complete |
 | Groups and masks | Nested group editing, clipping, mask paths/modes and animated masks | Not complete |
