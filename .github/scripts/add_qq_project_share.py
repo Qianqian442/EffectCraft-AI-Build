@@ -90,6 +90,64 @@ def patch_manifest_generator(builder: Path) -> None:
         source = once(source, intent_anchor, intent_code, "incoming project format intent filters")
     if "EFFECTCRAFT_OPEN_AEP_MIME_FALLBACK" not in source:
         raise SystemExit("Desktop AE content-URI MIME fallback was not added to the manifest generator")
+    # EFFECTCRAFT_OPEN_IMPORTABLE_PROJECTS_V2: make every project-importable document
+    # selectable from QQ's "Open with another app", regardless of provider URI shape.
+    # A content:// URI may hide the display filename and may have no MIME type at all.
+    if "EFFECTCRAFT_OPEN_IMPORTABLE_PROJECTS_V2" not in source:
+        manifest_anchor = (
+            '    for activity in activities:\\n'
+            '        # ndk-build2 defaults the name to "" (an unset android:name); every app the builder\\n'
+        )
+        open_any = r'''    # EFFECTCRAFT_OPEN_IMPORTABLE_PROJECTS_V2
+    # QQ and other providers often use opaque content:// URIs. The URI path can be
+    # /document/123 rather than the visible filename, and the MIME type may be absent.
+    # Register both typed and typeless file-open filters with no path restriction; the
+    # normal import inbox validates the staged display name and supported project format.
+    if android_meta.get("package") == "com.artcraft.effectcraft":
+        for activity in activities:
+            filters = activity.setdefault("intent_filter", [])
+            open_filters = (
+                ("EFFECTCRAFT_OPEN_ANY_CONTENT_NO_MIME", "android.intent.action.VIEW",
+                 [{"scheme": "content"}]),
+                ("EFFECTCRAFT_OPEN_ANY_FILE_NO_MIME", "android.intent.action.VIEW",
+                 [{"scheme": "file"}]),
+                ("EFFECTCRAFT_OPEN_ANY_CONTENT_MIME", "android.intent.action.VIEW",
+                 [{"scheme": "content", "mime_type": "*/*"}]),
+                ("EFFECTCRAFT_OPEN_ANY_FILE_MIME", "android.intent.action.VIEW",
+                 [{"scheme": "file", "mime_type": "*/*"}]),
+                ("EFFECTCRAFT_SEND_ANY_MIME", "android.intent.action.SEND",
+                 [{"mime_type": "*/*"}]),
+                ("EFFECTCRAFT_SEND_MULTIPLE_ANY_MIME", "android.intent.action.SEND_MULTIPLE",
+                 [{"mime_type": "*/*"}]),
+            )
+            for marker_filter, action, data in open_filters:
+                if any(item.get("_effectcraft_marker") == marker_filter for item in filters):
+                    continue
+                filters.append({
+                    "_effectcraft_marker": marker_filter,
+                    "actions": [action],
+                    "categories": [
+                        "android.intent.category.DEFAULT",
+                        "android.intent.category.BROWSABLE",
+                    ] if action == "android.intent.action.VIEW" else [
+                        "android.intent.category.DEFAULT",
+                    ],
+                    "data": data,
+                })
+
+'''
+        if manifest_anchor not in source:
+            raise SystemExit("Could not find the generated Android activity loop for generic project open filters")
+        source = source.replace(manifest_anchor, open_any + manifest_anchor, 1)
+    for required_marker in (
+        "EFFECTCRAFT_OPEN_IMPORTABLE_PROJECTS_V2",
+        "EFFECTCRAFT_OPEN_ANY_CONTENT_NO_MIME",
+        "EFFECTCRAFT_OPEN_ANY_CONTENT_MIME",
+        "EFFECTCRAFT_SEND_ANY_MIME",
+        "EFFECTCRAFT_SEND_MULTIPLE_ANY_MIME",
+    ):
+        if required_marker not in source:
+            raise SystemExit("Missing generic Android project-open filter: " + required_marker)
     marker = "EFFECTCRAFT_SHARE_FILEPROVIDER_V1"
     if marker not in source:
         anchor = '    lines.append("    </application>")\n'
