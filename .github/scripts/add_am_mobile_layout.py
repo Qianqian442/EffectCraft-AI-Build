@@ -140,8 +140,10 @@ def patch_dock(effectcraft: Path) -> None:
             f'''        // AM-style portrait workspace: viewer at the top; Timeline, the original
         // Effects & Presets browser, Effect Controls, Properties and Project share the
         // lower tab group so every built-in EffectCraft effect remains available.
+        // Portrait AM workspace: keep the preview in the upper 42% and give the
+        // native Timeline the lower 58%, directly below the viewer/transport.
         "{WORKSPACE}" => vsplit(
-            Ratio(0.58),
+            Ratio(0.42),
             tabs(&[Composition, Layer], 0),
             tabs(&[Timeline, EffectsPresets, EffectControls, Properties, Project], 0),
         ),
