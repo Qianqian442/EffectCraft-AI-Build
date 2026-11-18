@@ -552,14 +552,12 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     header = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
     home = (root / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
     lib = (root / "crates/ui-egui/src/lib.rs").read_text(encoding="utf-8")
-    am_editor = (root / "crates/ui-egui/src/am_editor.rs").read_text(encoding="utf-8")
-    if "self.dock_area(ui, body);" not in frame or "crate::am_editor::show(self, ui, full);" not in frame:
-        raise SystemExit("The independent AM editor route or original Ae DockArea is missing.")
-    if "pub mod am_editor;" not in lib:
-        raise SystemExit("The independent AM editing module is not registered.")
-    for token in ("PanelKind::Timeline", "am.drawer.keyframes", "Tool::Pen", "Tool::Puppet", "am-mobile-trim"):
-        if token not in am_editor:
-            raise SystemExit(f"AM editor is missing a native feature bridge: {token}")
+    # Ae×am must reuse the same native DockArea and native Timeline as Ae.
+    # A second hand-written AM clip editor is intentionally not part of this build.
+    if "self.dock_area(ui, body);" not in frame:
+        raise SystemExit("The original native Ae/AM DockArea is missing.")
+    if "crate::am_editor::show(self, ui, full);" in frame or "pub mod am_editor;" in lib:
+        raise SystemExit("A duplicate independent AM editor/timeline was unexpectedly injected.")
     if "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" not in header:
         raise SystemExit("The original horizontally swipeable Ae toolbar is missing.")
     if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header:
@@ -585,6 +583,7 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         f'"{workspace}"',
         "tabs(&[Composition, Layer], 0)",
         "tabs(&[Timeline, EffectsPresets, EffectControls, Properties, Project], 0)",
+        "Ratio(0.42)",
     ):
         if token not in dock:
             raise SystemExit(f"AM portrait workspace is missing a required panel/layout element: {token}")
@@ -612,7 +611,7 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     ):
         if token not in java:
             raise SystemExit(f"Android startup integrity/orientation guard is missing: {token}")
-    print("Verified the independent AM portrait page, native keyframe/curve drawer, vector/puppet tools, two-way sensor switching and workspace persistence.")
+    print("Verified AM uses the original native DockArea and Timeline, with portrait panel split, touch trim handles, two-way sensor switching and workspace persistence.")
     # Ae×am intentionally reuses the original native Ae Effects & Presets panel (no duplicate AM clip-editor page).
     # Its registry's all() function combines built-in effects with every successfully registered plug-in;
     # the ordinary Effect Controls panel then exposes each registered EffectSpec's real typed parameters.
