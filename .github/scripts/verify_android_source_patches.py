@@ -631,6 +631,15 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
             raise SystemExit(f"Runnable plug-in effect API is missing: {token}")
     if "PanelScroll::begin" not in effect_controls:
         raise SystemExit("Native Effect Controls must display the real scrollable parameter panel.")
+    widgets = (root / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
+    scroll_marker = "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V2"
+    if scroll_marker not in widgets or "pointer.primary_down()" not in widgets:
+        raise SystemExit("AM effect drawer is missing Android primary-pointer finger scrolling.")
+    scroll_start = widgets.index(scroll_marker)
+    scroll_end = widgets.find('let gutter: Gutter', scroll_start)
+    scroll_block = widgets[scroll_start:scroll_end if scroll_end >= 0 else None]
+    if "has_touch_screen()" in scroll_block:
+        raise SystemExit("AM Android finger scrolling must not depend on has_touch_screen() capability detection.")
     print("Verified Ae×am uses the native effects browser, built-in and registered plug-in effects, real effect.apply and scrollable Effect Controls.")
     print("Verified Android release-signer guard is installed in the generated Activity template.")
 
