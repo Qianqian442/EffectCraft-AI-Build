@@ -724,7 +724,7 @@ jobs:
           grep -Fq 'self.dock_area(ui, body);' "$FRAME_RS"
           grep -Fq 'crate::am_editor::show(self, ui, full);' "$FRAME_RS"
           grep -Fq 'pub mod am_editor;' "$LIB_RS"
-          grep -Fq 'am_mobile_tool_drawer' "$AM_RS"
+          grep -Fq 'fn tool_drawer' "$AM_RS"
           grep -Fq 'am-mobile-trim' "$AM_RS"
           grep -Fq 'PanelKind::Timeline' "$AM_RS"
           grep -Fq 'Tool::Pen' "$AM_RS"
