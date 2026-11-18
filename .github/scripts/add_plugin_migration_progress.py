@@ -513,9 +513,17 @@ def main() -> None:
     # The APK workflow uses Cargo.lock with --locked; record the UI crate's new ZIP dependency.
     lock_path = root / "Cargo.lock"
     lock_source = lock_path.read_text(encoding="utf-8")
-    package_start = lock_source.find('name = "effectcraft-ui-egui"\nversion = "0.21.1"\ndependencies = [')
+    package_start = lock_source.find('name = "effectcraft-ui-egui"\n')
     if package_start < 0:
         raise SystemExit("Could not locate effectcraft-ui-egui in Cargo.lock")
+    package_version_start = lock_source.find('version = "', package_start)
+    package_version_end = lock_source.find('"', package_version_start + len('version = "'))
+    if package_version_start < 0 or package_version_end < 0:
+        raise SystemExit("Could not read effectcraft-ui-egui version in Cargo.lock")
+    package_dependencies_start = lock_source.find("dependencies = [", package_version_end)
+    if package_dependencies_start < 0:
+        raise SystemExit("Could not locate effectcraft-ui-egui dependency list in Cargo.lock")
+    package_start = lock_source.rfind('name = "effectcraft-ui-egui"\n', 0, package_dependencies_start)
     package_end = lock_source.find("\n]\n", package_start)
     if package_end < 0:
         raise SystemExit("Could not locate effectcraft-ui-egui dependency list in Cargo.lock")
