@@ -94,10 +94,9 @@ def patch_manifest_generator(builder: Path) -> None:
     # selectable from QQ's "Open with another app", regardless of provider URI shape.
     # A content:// URI may hide the display filename and may have no MIME type at all.
     if "EFFECTCRAFT_OPEN_IMPORTABLE_PROJECTS_V2" not in source:
-        manifest_anchor = (
-            '    for activity in activities:\\n'
-            '        # ndk-build2 defaults the name to "" (an unset android:name); every app the builder\\n'
-        )
+        manifest_anchor = """    for activity in activities:
+        # ndk-build2 defaults the name to "" (an unset android:name); every app the builder
+"""
         open_any = r'''    # EFFECTCRAFT_OPEN_IMPORTABLE_PROJECTS_V2
     # QQ and other providers often use opaque content:// URIs. The URI path can be
     # /document/123 rather than the visible filename, and the MIME type may be absent.
