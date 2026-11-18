@@ -1,4 +1,4 @@
-name: Protect Ae APK with XopProtector (test only)
+name: Protect Ae APK with XopProtector
 
 on:
   push:
@@ -82,7 +82,11 @@ jobs:
           path.write_text(source, encoding="utf-8")
           if windows_path in source:
               raise SystemExit("Windows-only path still remains in the CI settings file.")
-          print("Removed the upstream developer-local Windows SDK candidate for this Linux CI checkout.")
+          properties = Path("gradle.properties")
+          property_lines = properties.read_text(encoding="utf-8").splitlines()
+          property_lines = [line for line in property_lines if not line.lstrip().startswith("unimp.sdk.libs=")]
+          properties.write_text("\n".join(property_lines) + "\n", encoding="utf-8")
+          print("Removed the local Windows SDK setting; optional UniMP host is disabled in Linux CI.")
           PY
 
       - name: Install Android SDK, NDK and CMake for Xop shell
@@ -108,7 +112,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew --no-daemon :packer:jar exportShellFiles
+          ./gradlew --no-daemon -Punimp.sdk.libs= :packer:jar exportShellFiles
           test -s executable/shell-files/dex/classes.dex
           test -s executable/shell-files/libs/arm64-v8a/libprotector.so
           test -s executable/shell-files/libs/arm64-v8a/libshadowhook.so
@@ -128,7 +132,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 5 -type f -name 'effectcraft-0.21.1.apk' -print -quit)"
+          APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 5 -type f -name 'effectcraft-0.22.1.apk' -print -quit)"
           test -n "$APK" && test -s "$APK"
           KEYSTORE="artcraft/keys/artcraft-builder.jks"
           PASSWORD_FILE="artcraft/keys/.keystore-password"
@@ -156,8 +160,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          INPUT_APK="$GITHUB_WORKSPACE/release/effectcraft-0.21.1.apk"
-          OUTPUT_APK="$GITHUB_WORKSPACE/release/ae-xopprotected-test.apk"
+          INPUT_APK="$GITHUB_WORKSPACE/release/effectcraft-0.22.1.apk"
+          OUTPUT_APK="$GITHUB_WORKSPACE/release/ae-0.22.1-xopprotected.apk"
           KEYSTORE="$GITHUB_WORKSPACE/artcraft/keys/artcraft-builder.jks"
           KEY_PASSWORD="$(<"$GITHUB_WORKSPACE/artcraft/keys/.keystore-password")"
           PACKER_JAR="$(find "$GITHUB_WORKSPACE/xop/packer/build/libs" -maxdepth 1 -type f -name 'protector-packer-*.jar' -print -quit)"
@@ -190,9 +194,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          INPUT_APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 5 -type f -name 'effectcraft-0.21.1.apk' -print -quit)"
-          test -n "$APK" && test -s "$APK"
-          OUTPUT_APK="release/ae-xopprotected-test.apk"
+          INPUT_APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 5 -type f -name 'effectcraft-0.22.1.apk' -print -quit)"
+          test -n "$INPUT_APK" && test -s "$INPUT_APK"
+          OUTPUT_APK="release/ae-0.22.1-xopprotected.apk"
           AAPT="$ANDROID_HOME/build-tools/35.0.0/aapt"
           APK_SIGNER="$ANDROID_HOME/build-tools/35.0.0/apksigner"
           ZIPALIGN="$ANDROID_HOME/build-tools/35.0.0/zipalign"
@@ -234,9 +238,9 @@ jobs:
       - name: Upload Xop-protected APK as a test artifact only
         uses: actions/upload-artifact@v4
         with:
-          name: Ae-XopProtector-Protected-Test
+          name: Ae-XopProtector-Protected-APK
           path: |
-            release/ae-xopprotected-test.apk
+            release/ae-0.22.1-xopprotected.apk
             release/xop-protected-sha256.txt
             release/xop-signer-sha256.txt
             release/xop-protection-info.txt
@@ -255,7 +259,7 @@ jobs:
       - name: Download Xop-protected test APK
         uses: actions/download-artifact@v4
         with:
-          name: Ae-XopProtector-Protected-Test
+          name: Ae-XopProtector-Protected-APK
           path: release
 
       - name: Install and launch on Android 12 ARM64
@@ -269,7 +273,7 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -euo pipefail
-            APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 4 -type f -name 'ae-xopprotected-test.apk' -print -quit)"
+            APK="$(find "$GITHUB_WORKSPACE/release" -maxdepth 4 -type f -name 'ae-0.22.1-xopprotected.apk' -print -quit)"
             echo "Workspace: $GITHUB_WORKSPACE"
             find "$GITHUB_WORKSPACE/release" -maxdepth 4 -type f -printf '%p (%s bytes)\\n' || true
             test -n "$APK" && test -s "$APK"
