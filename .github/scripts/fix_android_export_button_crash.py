@@ -31,7 +31,7 @@ fn effectcraft_android_video_staging_path(default_output: &str) -> Result<String
         crate::android_gallery::staging_path(name)
     }))
     .unwrap_or_else(|_| Err("Android 视频暂存接口发生内部异常，已阻止编辑器崩溃。".to_string()))
-}
+}'''
 
     # Convert synchronous engine panics into ordinary UI errors.
     guard = r'''/// EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1
