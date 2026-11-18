@@ -179,6 +179,11 @@ jobs:
           ref: v0.21.1
           path: artcraft/source/effectcraft
 
+      - name: Check out project branding assets
+        uses: actions/checkout@v4
+        with:
+          path: build-assets
+
       - name: Set app and workspace version to Ae 0.22.1
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
@@ -186,11 +191,6 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/bump_ae_version.py
           python3 build-assets/.github/scripts/bump_ae_version.py
           grep -Fq 'version = "0.22.1"' "$EFFECTCRAFT_DIR/Cargo.toml"
-
-      - name: Check out project branding assets
-        uses: actions/checkout@v4
-        with:
-          path: build-assets
 
       - name: Check out pinned native AbsentMotion source
         uses: actions/checkout@v4
