@@ -555,8 +555,20 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         raise SystemExit("AM layout must keep using the original Ae DockArea, not a replacement clip editor.")
     if "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" not in header:
         raise SystemExit("The original horizontally swipeable Ae toolbar is missing.")
-    if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" not in header or "if rect.height() >= 60.0" not in header:
-        raise SystemExit("Ae×am layout selector must be visible on Home and in the editor.")
+    if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header:
+        raise SystemExit("The original Ae workspace menu is missing.")
+    if "workspace_tabs(app, ui, p, rx, left, cy);" not in header:
+        raise SystemExit("The original Ae workspace tabs are missing.")
+    if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" in header or "layout_switch_row(" in header:
+        raise SystemExit("The extra Ae/AM toolbar row must remain removed.")
+    if "let header_h = 40.0;" not in frame or "let header_h = 64.0;" in frame:
+        raise SystemExit("The original single-row 40px toolbar was not restored.")
+    if "EFFECTCRAFT_ANDROID_AE_DEFAULT_LAYOUT_RESTORE_V1" not in dock or "Ratio(0.80)" not in dock:
+        raise SystemExit("The original responsive Ae default workspace is missing.")
+    if '"AM 竖屏"' not in dock:
+        raise SystemExit("AM 竖屏 is not registered in the existing workspace menu.")
+    if "ae_workspace_layout_restore_v1" not in app:
+        raise SystemExit("The one-time saved Ae/AM workspace migration is missing.")
     if "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" not in home:
         raise SystemExit("Ae×am portrait Home is missing.")
     bridge = (root / "crates/ui-egui/src/android_layout.rs").read_text(encoding="utf-8")
