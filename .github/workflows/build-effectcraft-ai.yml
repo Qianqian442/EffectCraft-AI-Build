@@ -1062,7 +1062,7 @@ jobs:
               if required not in source:
                   raise SystemExit(f"Android generator hardening was not applied: {required}")
           path.write_text(source)
-          grep -Fq '-keep class com.artcraft.effectcraft.EffectCraftActivity { *; }' "$GENERATOR"
+          grep -Fq -- '-keep class com.artcraft.effectcraft.EffectCraftActivity { *; }' "$GENERATOR"
           print("Configured V1/V2/V3 signing, R8 obfuscation, protected EffectCraftActivity JNI bridge and monotonic versionCode.")
           PY
 
