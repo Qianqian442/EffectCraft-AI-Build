@@ -49,6 +49,23 @@ def patch_manifest_generator(builder: Path) -> None:
                             "path_pattern": r".*\." + extension,
                         }],
                     })
+            # QQ's "open with another app" commonly sends a content:// URI whose
+            # opaque provider path does not end in .aep/.aepx. Android cannot match the
+            # displayed filename against pathPattern in that case. Keep the narrow
+            # application/* MIME fallback for desktop AE files so the receiver is listed,
+            # then let the existing staged-file importer validate the real filename.
+            aep_fallback_marker = "EFFECTCRAFT_OPEN_AEP_MIME_FALLBACK"
+            if not any(item.get("_effectcraft_marker") == aep_fallback_marker for item in filters):
+                for scheme in ("content", "file"):
+                    filters.append({
+                        "_effectcraft_marker": aep_fallback_marker + "_" + scheme,
+                        "actions": ["android.intent.action.VIEW"],
+                        "categories": [
+                            "android.intent.category.DEFAULT",
+                            "android.intent.category.BROWSABLE",
+                        ],
+                        "data": [{"scheme": scheme, "mime_type": "application/*"}],
+                    })
             send_marker = "EFFECTCRAFT_SEND_PROJECT_MIME_TYPES"
             if not any(item.get("_effectcraft_marker") == send_marker for item in filters):
                 filters.append({
@@ -71,6 +88,8 @@ def patch_manifest_generator(builder: Path) -> None:
 '''
     if "EFFECTCRAFT_OPEN_PROJECT_" not in source:
         source = once(source, intent_anchor, intent_code, "incoming project format intent filters")
+    if "EFFECTCRAFT_OPEN_AEP_MIME_FALLBACK" not in source:
+        raise SystemExit("Desktop AE content-URI MIME fallback was not added to the manifest generator")
     marker = "EFFECTCRAFT_SHARE_FILEPROVIDER_V1"
     if marker not in source:
         anchor = '    lines.append("    </application>")\n'
