@@ -701,6 +701,23 @@ def verify_account_security(root: Path) -> None:
             raise SystemExit(f"Admin account controls are missing: {token}")
     print("Verified server-enforced whitelist, admin add/remove, login/register checks, and ban/unban controls.")
 
+def verify_android_export_frame_scheduling(root: Path) -> None:
+    pipeline = (root / "crates/export/src/pipeline.rs").read_text(encoding="utf-8")
+    tests = pipeline[pipeline.find("#[cfg(test)]"):]
+    required = (
+        "EFFECTCRAFT_ANDROID_EXPORT_FRAME_SCHEDULING_V1",
+        "pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Option<usize>",
+        'cpu_inflight_for_platform(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref(), cfg!(target_os = "android"))',
+        "android_export_defaults_to_one_in_flight_frame_without_overriding_explicit_settings",
+    )
+    for token in required:
+        if token not in pipeline:
+            raise SystemExit(f"Android export scheduling protection is incomplete: {token}")
+    if "cpu_inflight_for_platform(None, true), Some(1)" not in tests or "cpu_inflight_for_platform(None, false), None" not in tests:
+        raise SystemExit("Android/desktop export scheduling regression assertions are missing.")
+    print("Verified Android export frame scheduling: one frame in flight by default; explicit setting overrides and desktop behavior are preserved.")
+
+
 def verify_android_aep_media_relink(root: Path) -> None:
     relink = (root / "crates/engine/src/cmd/relink.rs").read_text(encoding="utf-8")
     frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
@@ -754,6 +771,7 @@ def main() -> None:
     verify_android_project_interactions(root, header)
     verify_android_aep_playback_guard(root)
     verify_android_aep_media_relink(root)
+    verify_android_export_frame_scheduling(root)
     memory_helper_count = top_level_function_count(header.read_text(encoding="utf-8"), "effectcraft_export_memory_ok")
     if memory_helper_count != 1:
         raise SystemExit(f"Expected one module-level effectcraft_export_memory_ok helper; found {memory_helper_count}.")
