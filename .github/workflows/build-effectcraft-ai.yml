@@ -34,6 +34,7 @@ on:
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/enable_android_missing_footage_relink.py'
       - '.github/scripts/harden_android_export_frame_scheduling.py'
+      - '.github/scripts/auto_prompt_aep_missing_media_relink.py'
       - '.github/scripts/integrate_p2p_bridge.py'
       - 'admin-app/app/src/main/**'
       - 'p2p-bridge/**'
@@ -136,6 +137,7 @@ jobs:
             .github/scripts/configure_android_storage_fallback.py \
             .github/scripts/enable_android_missing_footage_relink.py \
             .github/scripts/harden_android_export_frame_scheduling.py \
+            .github/scripts/auto_prompt_aep_missing_media_relink.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_ae_dual_project_import.py \
             .github/scripts/add_five_project_import_buttons.py \
@@ -577,6 +579,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_ae_dual_project_import.py
           python3 build-assets/.github/scripts/add_ae_dual_project_import.py
+
+      - name: Offer media relinking after desktop AE project import
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/auto_prompt_aep_missing_media_relink.py
+          python3 build-assets/.github/scripts/auto_prompt_aep_missing_media_relink.py
 
       - name: Add Simplified Chinese, Puppet shortcut, project grouping and single-item keyframes
         env:
