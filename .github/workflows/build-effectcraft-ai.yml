@@ -32,6 +32,7 @@ on:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/configure_android_storage_fallback.py'
+      - '.github/scripts/enable_android_missing_footage_relink.py'
       - '.github/scripts/integrate_p2p_bridge.py'
       - 'admin-app/app/src/main/**'
       - 'p2p-bridge/**'
@@ -132,6 +133,7 @@ jobs:
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
             .github/scripts/add_bottom_left_media_import.py \
             .github/scripts/configure_android_storage_fallback.py \
+            .github/scripts/enable_android_missing_footage_relink.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_ae_dual_project_import.py \
             .github/scripts/add_five_project_import_buttons.py \
@@ -300,6 +302,13 @@ jobs:
         env:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: python3 ${{ github.workspace }}/build-assets/.github/scripts/configure_android_storage_fallback.py
+
+      - name: Enable safe Android relinking of imported AEP footage
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/enable_android_missing_footage_relink.py
+          python3 build-assets/.github/scripts/enable_android_missing_footage_relink.py
 
       - name: Integrate encrypted P2P startup into the main Android Activity
         env:
