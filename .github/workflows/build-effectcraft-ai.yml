@@ -33,6 +33,7 @@ on:
       - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/enable_android_missing_footage_relink.py'
+      - '.github/scripts/harden_android_export_frame_scheduling.py'
       - '.github/scripts/integrate_p2p_bridge.py'
       - 'admin-app/app/src/main/**'
       - 'p2p-bridge/**'
@@ -134,6 +135,7 @@ jobs:
             .github/scripts/add_bottom_left_media_import.py \
             .github/scripts/configure_android_storage_fallback.py \
             .github/scripts/enable_android_missing_footage_relink.py \
+            .github/scripts/harden_android_export_frame_scheduling.py \
             .github/scripts/add_project_import_formats.py \
             .github/scripts/add_ae_dual_project_import.py \
             .github/scripts/add_five_project_import_buttons.py \
@@ -309,6 +311,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/enable_android_missing_footage_relink.py
           python3 build-assets/.github/scripts/enable_android_missing_footage_relink.py
+
+      - name: Stabilize Android export frame scheduling
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/harden_android_export_frame_scheduling.py
+          python3 build-assets/.github/scripts/harden_android_export_frame_scheduling.py
 
       - name: Integrate encrypted P2P startup into the main Android Activity
         env:
