@@ -701,6 +701,28 @@ def verify_account_security(root: Path) -> None:
             raise SystemExit(f"Admin account controls are missing: {token}")
     print("Verified server-enforced whitelist, admin add/remove, login/register checks, and ban/unban controls.")
 
+def verify_android_aep_media_relink(root: Path) -> None:
+    relink = (root / "crates/engine/src/cmd/relink.rs").read_text(encoding="utf-8")
+    frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
+    required = (
+        "EFFECTCRAFT_ANDROID_PRIMARY_STORAGE_RELINK_V1",
+        "fn folder_relink_supported(wasm32: bool) -> bool",
+        'folder_relink_supported(cfg!(target_arch = "wasm32"))',
+        "Android: primary shared storage only",
+        "ENTRY_LIMIT: usize = 100_000",
+        "compatible(old, &f)",
+        "accepted.len() == 1",
+        "file.relinkFootage",
+        "fn android_native_folder_relink_is_enabled_but_web_is_not()",
+    )
+    for token in required:
+        if token not in relink:
+            raise SystemExit(f"Android AEP missing-media relinking is incomplete: {token}")
+    if '"file.relinkFootage" => ("folder", Ask::Folder),' not in frontend:
+        raise SystemExit("Android AEP relinking is not wired to the native folder picker.")
+    print("Verified Android AEP media relinking: primary-storage folder picker, unique-name and compatible-metadata matching, duplicate protection, and native-platform regression tests.")
+
+
 def verify_android_aep_playback_guard(root: Path) -> None:
     frames = (root / "crates/ui-egui/src/frames.rs").read_text(encoding="utf-8")
     prefetch = (root / "crates/ui-egui/src/app/prefetch.rs").read_text(encoding="utf-8")
@@ -731,6 +753,7 @@ def main() -> None:
     ensure_dimensions_helper(header)
     verify_android_project_interactions(root, header)
     verify_android_aep_playback_guard(root)
+    verify_android_aep_media_relink(root)
     memory_helper_count = top_level_function_count(header.read_text(encoding="utf-8"), "effectcraft_export_memory_ok")
     if memory_helper_count != 1:
         raise SystemExit(f"Expected one module-level effectcraft_export_memory_ok helper; found {memory_helper_count}.")
