@@ -74,7 +74,7 @@ fn stored_file_name(path: &str) -> Option<&str> {
     test_marker = "fn android_native_folder_relink_is_enabled_but_web_is_not()"
     if test_marker not in source:
         test_anchor = r"""    #[test]
-    fn moved_roots_and_remaps() {"""
+    fn recursive_relink_preserves_interpretation_and_supports_undo_redo() {"""
         test_replacement = r"""    #[test]
     fn android_native_folder_relink_is_enabled_but_web_is_not() {
         assert!(folder_relink_supported(false), "Android and desktop use native filesystems");
@@ -89,7 +89,7 @@ fn stored_file_name(path: &str) -> Option<&str> {
     }
 
     #[test]
-    fn moved_roots_and_remaps() {"""
+    fn recursive_relink_preserves_interpretation_and_supports_undo_redo() {"""
         source = replace_once(source, test_anchor, test_replacement, "Android relink path regression tests")
 
     required = (
