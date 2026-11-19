@@ -22,6 +22,17 @@ def main() -> None:
 
     marker = "EFFECTCRAFT_ANDROID_PRIMARY_STORAGE_RELINK_V1"
     if marker not in source:
+    source = replace_once(
+        "parent.join(Path::new(file).file_name()?)",
+        "parent.join(stored_file_name(file)?)",
+        "cross-platform image-sequence basename",
+    )
+    source = replace_once(
+        "let name = Path::new(&old.path).file_name().and_then(std::ffi::OsStr::to_str).unwrap_or(\"\");",
+        "let name = stored_file_name(&old.path).unwrap_or(\"\");",
+        "cross-platform imported AEP media basename",
+    )
+
         source = replace_once(
             source,
             """fn enabled(_: &Session) -> std::result::Result<(), String> {
@@ -35,11 +46,16 @@ fn folder_relink_supported(wasm32: bool) -> bool {
 }
 
 fn enabled(_: &Session) -> std::result::Result<(), String> {
-        'folder_relink_supported(cfg!(target_arch = "wasm32"))',
+    if folder_relink_supported(cfg!(target_arch = "wasm32")) {
         Ok(())
     } else {
         Err("folder relinking requires a native filesystem".into())
     }
+}
+
+/// AEP files imported on Android may still contain Windows drive paths.
+fn stored_file_name(path: &str) -> Option<&str> {
+    path.rsplit(['/', '\\']).find(|part| !part.is_empty())
 }""",
             "native/Android relink platform gate",
         )
@@ -55,12 +71,15 @@ fn enabled(_: &Session) -> std::result::Result<(), String> {
         raise SystemExit("Android primary-storage relinking marker was not inserted.")
     required = (
         "fn folder_relink_supported(wasm32: bool) -> bool",
-        "folder_relink_supported(cfg!(target_arch = \\"wasm32\\"))",
+        'folder_relink_supported(cfg!(target_arch = "wasm32"))',
         "Android: primary shared storage only",
         "ENTRY_LIMIT: usize = 100_000",
         "if ty.is_dir()",
         "compatible(old, &f)",
         "accepted.len() == 1",
+        "fn stored_file_name(path: &str) -> Option<&str>",
+        "parent.join(stored_file_name(file)?)",
+        "let name = stored_file_name(&old.path).unwrap_or(\"\");",
     )
     for token in required:
         if token not in source:
@@ -77,6 +96,13 @@ fn enabled(_: &Session) -> std::result::Result<(), String> {
     fn android_native_folder_relink_is_enabled_but_web_is_not() {
         assert!(folder_relink_supported(false), "Android and desktop use native filesystems");
         assert!(!folder_relink_supported(true), "browser filesystem is not a native folder");
+    }
+
+    #[test]
+    fn aep_windows_media_paths_match_file_names_on_android() {
+        assert_eq!(stored_file_name(r"D:\Work\Job\media\clip.mp4"), Some("clip.mp4"));
+        assert_eq!(stored_file_name("/storage/emulated/0/Movies/clip.mp4"), Some("clip.mp4"));
+        assert_eq!(stored_file_name(r"D:\Work\Job\frames\shot_0001.png"), Some("shot_0001.png"));
     }
 
     #[test]
