@@ -47,7 +47,7 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
         source = replace_once(source, helper_anchor, helper, "Android export CPU frame scheduling helper")
 
         old = "Inflight { gpu: self.gpu_cap(), cpu: cpu_inflight(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref()) }"
-        new = "Inflight { gpu: self.gpu_cap(), cpu: cpu_inflight_for_platform(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref(), cfg!(target_os = \\"android\\")) }"
+        new = 'Inflight { gpu: self.gpu_cap(), cpu: cpu_inflight_for_platform(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref(), cfg!(target_os = "android")) }'
         source = replace_once(source, old, new, "Android export frame cap integration")
 
         test_anchor = """    /// Dither may round a colour up while alpha rounds down; premultiplied colour stays at or
