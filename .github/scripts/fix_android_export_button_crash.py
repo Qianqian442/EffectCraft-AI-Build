@@ -124,48 +124,6 @@ fn effectcraft_run_export_command(
         raise SystemExit("Export staging must use Android's app-private cache bridge, not /data/local/tmp.")
 
 
-    # Prevent the Android render worker from starving the UI thread. This is a
-    # scheduling safeguard, not a render-feature or frame-rate cap.
-    render_queue_path = root / "crates/engine/src/render_queue.rs"
-    render_queue = render_queue_path.read_text(encoding="utf-8")
-    priority_helper = r'''/// EFFECTCRAFT_ANDROID_RENDER_WORKER_BACKGROUND_PRIORITY_V1
-/// Let Android keep the editor/UI responsive while a CPU-heavy export is running.
-#[cfg(target_os = "android")]
-fn effectcraft_set_android_render_thread_priority() {
-    unsafe extern "C" {
-        fn gettid() -> i32;
-        fn setpriority(which: i32, who: u32, priority: i32) -> i32;
-    }
-    let tid = unsafe { gettid() };
-    if tid > 0 {
-        // PRIO_PROCESS=0; nice=8 yields to the interactive editor without suspending export.
-        let result = unsafe { setpriority(0, tid as u32, 8) };
-        if result != 0 {
-            log::warn!("Could not lower Android render worker priority for tid={tid}.");
-        }
-    }
-}
-
-#[cfg(not(target_os = "android"))]
-fn effectcraft_set_android_render_thread_priority() {}
-'''
-    priority_marker = "EFFECTCRAFT_ANDROID_RENDER_WORKER_BACKGROUND_PRIORITY_V1"
-    if priority_marker not in render_queue:
-        render_anchor = "pub struct RenderJob {"
-        if render_queue.count(render_anchor) != 1:
-            raise SystemExit("Expected exactly one RenderJob declaration for Android worker priority patch.")
-        render_queue = render_queue.replace(render_anchor, priority_helper + "\n" + render_anchor, 1)
-    thread_anchor = '.name("render-queue".into())\n                .spawn(move || {'
-    thread_call = thread_anchor + "\n                    effectcraft_set_android_render_thread_priority();"
-    if "effectcraft_set_android_render_thread_priority();" not in render_queue:
-        if render_queue.count(thread_anchor) != 1:
-            raise SystemExit("Expected exactly one native render worker thread spawn.")
-        render_queue = render_queue.replace(thread_anchor, thread_call, 1)
-    if priority_marker not in render_queue or "effectcraft_set_android_render_thread_priority();" not in render_queue:
-        raise SystemExit("Android render worker priority patch is incomplete.")
-
-    render_queue_path.write_text(render_queue, encoding="utf-8")
-
     # The previous preflight allowed a 1080p export with only about 472 MiB
     # reported as available RAM. Complex compositions need much more headroom
     # for decoded footage, layer buffers, compositing and encoder staging.
@@ -213,7 +171,7 @@ fn effectcraft_set_android_render_thread_priority() {}
         raise SystemExit("Export memory preflight hardening incomplete: " + "; ".join(missing_runtime))
 
     header_path.write_text(header, encoding="utf-8")
-    print("Guarded export setup, lowered Android render-worker scheduling priority, increased export RAM preflight, and staged videos in app-private cache.")
+    print("Guarded export setup and Android gallery staging; retained export RAM preflight without unsafe thread-priority FFI.")
 
 
 if __name__ == "__main__":
