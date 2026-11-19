@@ -718,6 +718,19 @@ def verify_android_export_frame_scheduling(root: Path) -> None:
     print("Verified Android export frame scheduling: one frame in flight by default; explicit setting overrides and desktop behavior are preserved.")
 
 
+def verify_aep_post_import_media_prompt(root: Path) -> None:
+    aep = (root / "crates/engine/src/cmd/aep.rs").read_text(encoding="utf-8")
+    for token in (
+        "EFFECTCRAFT_AEP_AUTO_PROMPT_MISSING_MEDIA_RELINK_V1",
+        "let prompt_media_relink = !res.report.missing_footage.is_empty();",
+        'command: "file.relinkFootage".into(),',
+        "params: json!({}),",
+    ):
+        if token not in aep:
+            raise SystemExit(f"AEP import does not offer missing-media relinking: {token}")
+    print("Verified AEP import automatically offers the existing relink-folder picker when external media is missing.")
+
+
 def verify_android_aep_media_relink(root: Path) -> None:
     relink = (root / "crates/engine/src/cmd/relink.rs").read_text(encoding="utf-8")
     frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
@@ -771,6 +784,7 @@ def main() -> None:
     verify_android_project_interactions(root, header)
     verify_android_aep_playback_guard(root)
     verify_android_aep_media_relink(root)
+    verify_aep_post_import_media_prompt(root)
     verify_android_export_frame_scheduling(root)
     memory_helper_count = top_level_function_count(header.read_text(encoding="utf-8"), "effectcraft_export_memory_ok")
     if memory_helper_count != 1:
