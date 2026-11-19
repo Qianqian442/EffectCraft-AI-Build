@@ -154,9 +154,9 @@ fn effectcraft_set_android_render_thread_priority() {}
         render_anchor = "pub struct RenderJob {"
         if render_queue.count(render_anchor) != 1:
             raise SystemExit("Expected exactly one RenderJob declaration for Android worker priority patch.")
-        render_queue = render_queue.replace(render_anchor, priority_helper + "\\n" + render_anchor, 1)
-    thread_anchor = '.name("render-queue".into())\\n                .spawn(move || {'
-    thread_call = thread_anchor + "\\n                    effectcraft_set_android_render_thread_priority();"
+        render_queue = render_queue.replace(render_anchor, priority_helper + "\n" + render_anchor, 1)
+    thread_anchor = '.name("render-queue".into())\n                .spawn(move || {'
+    thread_call = thread_anchor + "\n                    effectcraft_set_android_render_thread_priority();"
     if "effectcraft_set_android_render_thread_priority();" not in render_queue:
         if render_queue.count(thread_anchor) != 1:
             raise SystemExit("Expected exactly one native render worker thread spawn.")
