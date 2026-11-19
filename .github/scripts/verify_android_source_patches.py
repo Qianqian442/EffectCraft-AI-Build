@@ -742,6 +742,10 @@ def verify_android_aep_media_relink(root: Path) -> None:
         "ENTRY_LIMIT: usize = 100_000",
         "compatible(old, &f)",
         "accepted.len() == 1",
+        "fn stored_file_name(path: &str) -> Option<&str>",
+        "parent.join(stored_file_name(file)?)",
+        'let name = stored_file_name(&old.path).unwrap_or("");',
+        "aep_windows_media_paths_match_file_names_on_android",
         "file.relinkFootage",
         "fn android_native_folder_relink_is_enabled_but_web_is_not()",
     )
