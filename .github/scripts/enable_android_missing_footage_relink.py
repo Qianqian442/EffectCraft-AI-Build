@@ -35,7 +35,7 @@ fn folder_relink_supported(wasm32: bool) -> bool {
 }
 
 fn enabled(_: &Session) -> std::result::Result<(), String> {
-    if folder_relink_supported(cfg!(target_arch = "wasm32")) {
+        'folder_relink_supported(cfg!(target_arch = "wasm32"))',
         Ok(())
     } else {
         Err("folder relinking requires a native filesystem".into())
