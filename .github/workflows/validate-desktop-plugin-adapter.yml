@@ -9,6 +9,7 @@ on:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/add_home_plugin_manager_remove_about.py'
+      - '.github/scripts/add_effect_plugin_uninstall.py'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
@@ -65,6 +66,7 @@ jobs:
             .github/scripts/add_plugin_migration_progress.py \
             .github/scripts/add_home_lan_account_gate.py \
             .github/scripts/add_home_plugin_manager_remove_about.py \
+            .github/scripts/add_effect_plugin_uninstall.py \
             .github/scripts/install_ai_plugin_bridge.py \
             .github/scripts/add_curve_quick_access.py \
             .github/scripts/add_startup_attribution_notice.py \
@@ -84,6 +86,7 @@ jobs:
           python3 .github/scripts/add_plugin_import_button.py
           python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
+          python3 .github/scripts/add_effect_plugin_uninstall.py
           python3 .github/scripts/add_plugin_migration_progress.py
           python3 .github/scripts/add_home_lan_account_gate.py
           # The dedicated advanced desktop plug-in migration entry must be visible in Ae.
@@ -118,6 +121,13 @@ jobs:
           grep -Fq '不计入原生插件移植成功数量' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq '自动选优结果' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq '没有真实运行并通过硬性测试的电脑原生插件转译方案' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          # The plug-in manager can delete app-owned user modules, but built-in modules are protected.
+          grep -Fq 'ui.button("删除")' effectcraft/crates/ui-egui/src/account.rs
+          grep -Fq 'effect.plugins.unload' effectcraft/crates/ui-egui/src/account.rs
+          grep -Fq 'pub fn unregister_plugin(id: &str)' effectcraft/crates/effects/src/plugin.rs
+          grep -Fq '"effect.plugins.unload"' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq '"can_delete": can_delete' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'BUILTIN_EFFECT_MODULES' effectcraft/crates/engine/src/cmd/effect.rs
 
       - name: Apply the AI and export toolbar base patch used by the APK build
         env:
