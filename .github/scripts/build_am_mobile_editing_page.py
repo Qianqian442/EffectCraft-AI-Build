@@ -1403,7 +1403,7 @@ def patch_frame(root: Path) -> None:
     )
 
     old_header = "        header::show(self, ui, header);\n"
-    new_header = "        // AM draws its own top bar; do not render the Ae toolbar on the AM page.\n        if self.ui.workspace != \"AM 竖屏\" || self.ui.start_screen {\n            header::show(self, ui, header);\n        }\n"
+    new_header = "        // AM Home and the AM editor own their own headers; never draw the Ae toolbar in AM mode.\n        if self.ui.workspace != \"AM 竖屏\" {\n            header::show(self, ui, header);\n        }\n"
     source = replace_once(source, old_header, new_header, "skip the Ae toolbar in AM mode")
 
     source = replace_once(
@@ -1424,9 +1424,10 @@ def patch_frame(root: Path) -> None:
     # keep Home's 40 px header and avoid an extra dead strip when the user returns to Home.
     source = source.replace(
         "let header_h = if self.ui.start_screen { 40.0 } else { 64.0 };",
-        "let header_h = 40.0;",
+        "let header_h = if self.ui.workspace == \"AM 竖屏\" { 0.0 } else { 40.0 };",
     )
-    source = source.replace("let header_h = 64.0;", "let header_h = 40.0;")
+    source = source.replace("let header_h = 64.0;", "let header_h = if self.ui.workspace == \"AM 竖屏\" { 0.0 } else { 40.0 };")
+    source = source.replace("let header_h = 40.0;", "let header_h = if self.ui.workspace == \"AM 竖屏\" { 0.0 } else { 40.0 };")
     path.write_text(source, encoding="utf-8")
     if MARKER not in path.read_text(encoding="utf-8"):
         raise SystemExit("The independent AM editor route was not installed.")
