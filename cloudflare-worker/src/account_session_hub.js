@@ -20,21 +20,35 @@ function constantTimeEqual(a, b) {
   return diff === 0;
 }
 
-async function passwordHash(password, salt = crypto.getRandomValues(new Uint8Array(16))) {
+// 210000 was the original Cloudflare password format. Keep it readable so
+// existing users can log in after the CPU-budget-safe 100000-round change.
+// Successful legacy logins are transparently upgraded by the account Worker.
+const SUPPORTED_PASSWORD_ITERATIONS = new Set([100000, 210000]);
+
+async function derivePasswordHash(password, salt, iterations) {
   const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
   const bits = await crypto.subtle.deriveBits(
-    { name: "PBKDF2", salt, iterations: PASSWORD_ITERATIONS, hash: "SHA-256" },
+    { name: "PBKDF2", salt, iterations, hash: "SHA-256" },
     key,
     256
   );
-  return "pbkdf2-sha256$" + PASSWORD_ITERATIONS + "$" + bytesToB64Url(salt) + "$" + bytesToB64Url(new Uint8Array(bits));
+  return "pbkdf2-sha256$" + iterations + "$" + bytesToB64Url(salt) + "$" + bytesToB64Url(new Uint8Array(bits));
+}
+
+async function passwordHash(password, salt = crypto.getRandomValues(new Uint8Array(16))) {
+  return derivePasswordHash(password, salt, PASSWORD_ITERATIONS);
 }
 
 async function verifyPassword(password, stored) {
   try {
     const parts = String(stored || "").split("$");
-    if (parts.length !== 4 || parts[0] !== "pbkdf2-sha256" || Number(parts[1]) !== PASSWORD_ITERATIONS) return false;
-    const actual = await passwordHash(password, b64UrlToBytes(parts[2]));
+    const iterations = Number(parts[1]);
+    if (parts.length !== 4 || parts[0] !== "pbkdf2-sha256" ||
+        !SUPPORTED_PASSWORD_ITERATIONS.has(iterations)) return false;
+    const salt = b64UrlToBytes(parts[2]);
+    const expected = b64UrlToBytes(parts[3]);
+    if (salt.length !== 16 || expected.length !== 32) return false;
+    const actual = await derivePasswordHash(password, salt, iterations);
     return constantTimeEqual(encoder.encode(actual), encoder.encode(stored));
   } catch (_) {
     return false;
