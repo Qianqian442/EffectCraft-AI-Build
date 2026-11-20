@@ -162,6 +162,8 @@ pub(crate) fn reconstruct_pe(bytes: &[u8]) -> Result<Value, String> {
     let mut indirect_branches = 0usize;
     let mut leaders = BTreeSet::new();
     let mut section_reports = Vec::new();
+    let mut instruction_ir = Vec::new();
+    let mut block_starts = Vec::new();
     let mut truncated = false;
 
     for section in sections.iter().filter(|s| s.characteristics & 0x2000_0000 != 0 && s.raw_size > 0) {
@@ -181,9 +183,33 @@ pub(crate) fn reconstruct_pe(bytes: &[u8]) -> Result<Value, String> {
                 truncated = true;
                 break;
             }
+            let instruction_offset = decoder.position();
             let instruction = decoder.decode();
             local_instructions += 1;
             instruction_count += 1;
+            if !instruction.is_invalid() && instruction_ir.len() < 50_000 {
+                let flow_name = format!("{:?}", instruction.flow_control());
+                let branch_target = if matches!(
+                    instruction.flow_control(),
+                    FlowControl::ConditionalBranch
+                        | FlowControl::UnconditionalBranch
+                        | FlowControl::IndirectBranch
+                        | FlowControl::Call
+                        | FlowControl::IndirectCall
+                ) {
+                    Some(format!("0x{:x}", instruction.near_branch_target()))
+                } else {
+                    None
+                };
+                instruction_ir.push(json!({
+                    "ip": format!("0x{:x}", instruction.ip()),
+                    "mnemonic": format!("{:?}", instruction.mnemonic()),
+                    "flow": flow_name,
+                    "branch_target": branch_target,
+                    "size": instruction.len(),
+                    "section": section.name,
+                }));
+            }
             if instruction.is_invalid() {
                 invalid_instructions += 1;
                 continue;
@@ -234,6 +260,7 @@ pub(crate) fn reconstruct_pe(bytes: &[u8]) -> Result<Value, String> {
     }
 
     let block_count = leaders.len();
+    block_starts.extend(leaders.iter().take(10_000).map(|address| format!("0x{address:x}")));
     let notes = if truncated {
         "instruction cap reached; analysis is partial, not a complete rebuild"
     } else {
@@ -259,6 +286,8 @@ pub(crate) fn reconstruct_pe(bytes: &[u8]) -> Result<Value, String> {
         "exported_symbol_count": export_count,
         "exported_symbols": exported_symbols,
         "sections": section_reports,
+        "instruction_ir": instruction_ir,
+        "basic_block_starts": block_starts,
         "truncated": truncated,
         "status": "static_ir_recovered_not_native_recompiled",
         "notes": notes,
