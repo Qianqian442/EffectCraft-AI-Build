@@ -835,6 +835,7 @@ def patch_toolbar(root: Path) -> None:
     # The menu no longer imports a separate DeepSeek APK/ZIP. It now only imports effect
     # plug-ins; the embedded DeepSeek model manager is opened from the AI assistant itself.
     state_with_advanced_ai = "    let mut import_wasm = false;\n    let mut import_desktop_advanced = false;\n    let mut import_ai = false;\n"
+    state_with_advanced_no_ai = "    let mut import_wasm = false;\n    let mut import_desktop_advanced = false;\n"
     state_with_ai = "    let mut import_wasm = false;\n    let mut import_ai = false;\n"
     state_without_ai = "    let mut import_wasm = false;\n"
     if state_with_advanced_ai in source:
@@ -844,6 +845,14 @@ def patch_toolbar(root: Path) -> None:
             "toolbar import state",
         )
         keep_ai_flag = True
+        keep_advanced_flag = True
+    elif state_with_advanced_no_ai in source:
+        source = replace_once(
+            source, state_with_advanced_no_ai,
+            state_with_advanced_no_ai + "    let mut import_script = false;\n    let mut import_panel = false;\n",
+            "toolbar import state",
+        )
+        keep_ai_flag = False
         keep_advanced_flag = True
     elif state_with_ai in source:
         source = replace_once(
