@@ -48,7 +48,7 @@ impl MigrationMode {
             Self::CpuTranslation => "指令转译优先（Box64 / Box86 / FEX / QEMU）",
             Self::ForceCompatibility => "强制兼容（运行库 / 接口 / 画面 / 渲染回退）",
             Self::AggressivePort => "暴力移植 / 重构（源码重编译 + 二进制分析）",
-            Self::ManualBackend => "手动选择转译后端",
+            Self::ManualBackend => "手动查看并指定转译后端",
         }
     }
 
@@ -58,7 +58,7 @@ impl MigrationMode {
             Self::CpuTranslation => "优先尝试适用的 CPU 指令动态转译路线；不兼容的系统 API 或插件宿主接口仍必须单独适配。",
             Self::ForceCompatibility => "逐项尝试可选宿主接口、运行库、像素格式、CPU 特性和 CPU/串行渲染回退；不伪造必需接口。",
             Self::AggressivePort => "优先源码 ARM64 重编译；无源码时进行指令/控制流分析并重建效果逻辑。需要原插件功能的参考输入与回归测试。",
-            Self::ManualBackend => "由你根据插件格式和架构选择候选后端；不兼容的路线会标记为不可用，未实测的路线不会显示为成功。",
+            Self::ManualBackend => "分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；目前尚未集成可执行后端，指定只记录选择意向，不会谎称已经转译。",
         }
     }
 }
@@ -270,7 +270,9 @@ fn result_summary(scan: &ScanReport, value: &Value, mode: MigrationMode) -> (Str
     }
     if let Some(items) = value.get("desktop_native_metadata").and_then(Value::as_array) {
         let mut shown = 0usize;
-        for item in items.iter().take(8) {
+        // Show every detected native plug-in and every candidate route; do not hide
+        // additional routes behind a short preview limit.
+        for item in items.iter() {
             let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑插件");
             let binary_format = item.get("binary_format").and_then(Value::as_str).unwrap_or("原生文件");
             let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("架构未知");
@@ -294,7 +296,7 @@ fn result_summary(scan: &ScanReport, value: &Value, mode: MigrationMode) -> (Str
                     let names = routes.iter().filter_map(|route| route.get("backend").and_then(Value::as_str))
                         .collect::<Vec<_>>().join(" → ");
                     lines.push(format!("候选路线顺序（逐个试跑后比较）：{names}。"));
-                    for route in routes.iter().take(8) {
+                    for route in routes.iter() {
                         let backend = route.get("backend").and_then(Value::as_str).unwrap_or("候选后端");
                         let status = route.get("status").and_then(Value::as_str).unwrap_or("未执行");
                         let score = route.get("score").and_then(Value::as_f64);
@@ -398,6 +400,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.label(format!("发现 {native_count} 个 .aex / .dll / .ofx 等原生插件文件。"));
                         ui.add_space(4.0);
                         ui.label("选择本次电脑插件移植方式；可按需切换，不会强制固定使用某一种转译器。");
+                        ui.label("扫描完成后，结果页会展示检测到的每个插件的全部适用路线，不省略候选项。");
                         ui.radio_value(mode, MigrationMode::AutoBest, MigrationMode::AutoBest.label());
                         ui.radio_value(mode, MigrationMode::CpuTranslation, MigrationMode::CpuTranslation.label());
                         ui.radio_value(mode, MigrationMode::ForceCompatibility, MigrationMode::ForceCompatibility.label());
