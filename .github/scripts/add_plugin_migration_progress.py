@@ -227,6 +227,12 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
             let binary_format = item.get("binary_format").and_then(Value::as_str).unwrap_or("原生文件");
             let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("架构未知");
             lines.push(format!("原生文件 [{file}]：{binary_format} / {architecture}"));
+            let backend = item.get("translation_backend").and_then(Value::as_str).unwrap_or("未确定");
+            let target = item.get("target_abi").and_then(Value::as_str).unwrap_or("ARM64 / arm64-v8a");
+            let status = item.get("translation_status").and_then(Value::as_str).unwrap_or("尚未执行 CPU 转译");
+            let host = item.get("host_adapter").and_then(Value::as_str).unwrap_or("需适配插件宿主接口");
+            lines.push(format!("CPU 转译路线：{backend} → {target}；{status}。"));
+            lines.push(format!("插件宿主桥接：{host}。"));
             let strings = item.get("strings").and_then(Value::as_array)
                 .map(|values| values.iter().filter_map(Value::as_str).take(8).collect::<Vec<_>>().join(" | "))
                 .unwrap_or_default();
@@ -261,8 +267,13 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
         lines.push(format!("详细报告：{report}"));
     }
     if !success {
-        lines.insert(1, "没有安装任何可运行的兼容插件；仅保存原始文件不算移植成功。".into());
-        ("移植失败".into(), lines.join("\n"), false)
+        if scan.native_count > 0 {
+            lines.insert(1, "架构分析已完成，但当前版本尚未执行 x86/x64 → ARM64 动态转译；原始插件已保留，不能视为已移植。".into());
+            ("已分析，待转译".into(), lines.join("\n"), false)
+        } else {
+            lines.insert(1, "没有安装任何可运行的兼容插件；仅保存素材或脚本文件不算移植成功。".into());
+            ("移植失败".into(), lines.join("\n"), false)
+        }
     } else if native_unmatched > 0 || errors > 0 || skipped > 0 {
         ("移植部分完成".into(), lines.join("\n"), true)
     } else {
@@ -301,11 +312,11 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.heading("检测到需要移植的电脑版插件");
                         ui.label(format!("发现 {native_count} 个 .aex / .dll / .ofx 等原生插件文件。"));
                         ui.add_space(4.0);
-                        ui.label("点击开始后会扫描压缩包、检查安全性，并安装 EffectCraft 能兼容的模块或替代效果。无法兼容的原生插件会保留原件，不会伪装成已移植。 ");
+                        ui.label("点击开始后会扫描文件、识别 Windows/Linux 与 x86/x64 架构，并给出转译到 Android ARM64 的候选路线。当前版本会安装已支持的模块/替代效果并保留原件；尚未接入的原生转译运行时不会被误报为已移植。");
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
                             if ui.button("取消").clicked() { cancel = true; }
-                            if ui.button("开始移植").clicked() { start = true; }
+                            if ui.button("开始分析").clicked() { start = true; }
                         });
                     });
                 if start { action = Some(Action::Start(path.clone())); }
