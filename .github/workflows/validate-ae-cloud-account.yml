@@ -30,6 +30,9 @@ jobs:
         with:
           node-version: "22"
 
+      - name: Test legacy and current password hashes on the new crypto class
+        run: node .github/scripts/test_cloudflare_password_compat.mjs
+
       - name: Bundle Worker and validate Wrangler bindings
         working-directory: cloudflare-worker
         run: npx --yes wrangler@4 deploy --dry-run --outdir /tmp/ae-cloud-account-dry-run
