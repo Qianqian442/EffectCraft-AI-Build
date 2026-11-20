@@ -834,15 +834,25 @@ def patch_toolbar(root: Path) -> None:
 
     # The menu no longer imports a separate DeepSeek APK/ZIP. It now only imports effect
     # plug-ins; the embedded DeepSeek model manager is opened from the AI assistant itself.
+    state_with_advanced_ai = "    let mut import_wasm = false;\n    let mut import_desktop_advanced = false;\n    let mut import_ai = false;\n"
     state_with_ai = "    let mut import_wasm = false;\n    let mut import_ai = false;\n"
     state_without_ai = "    let mut import_wasm = false;\n"
-    if state_with_ai in source:
+    if state_with_advanced_ai in source:
+        source = replace_once(
+            source, state_with_advanced_ai,
+            state_with_advanced_ai + "    let mut import_script = false;\n    let mut import_panel = false;\n",
+            "toolbar import state",
+        )
+        keep_ai_flag = True
+        keep_advanced_flag = True
+    elif state_with_ai in source:
         source = replace_once(
             source, state_with_ai,
             state_with_ai + "    let mut import_script = false;\n    let mut import_panel = false;\n",
             "toolbar import state",
         )
         keep_ai_flag = True
+        keep_advanced_flag = False
     elif state_without_ai in source:
         source = replace_once(
             source, state_without_ai,
@@ -850,6 +860,7 @@ def patch_toolbar(root: Path) -> None:
             "toolbar import state",
         )
         keep_ai_flag = False
+        keep_advanced_flag = False
     else:
         raise SystemExit("Could not locate the WASM plug-in import state in the toolbar.")
 
@@ -867,7 +878,13 @@ def patch_toolbar(root: Path) -> None:
 '''
     source = replace_once(source, wasm_button, wasm_button + script_buttons, "desktop script menu item")
 
-    if keep_ai_flag:
+    if keep_advanced_flag and keep_ai_flag:
+        old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced && !import_ai;\n"
+        new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced && !import_ai && !import_script && !import_panel;\n"
+    elif keep_advanced_flag:
+        old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced;\n"
+        new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced && !import_script && !import_panel;\n"
+    elif keep_ai_flag:
         old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai;\n"
         new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai && !import_script && !import_panel;\n"
     else:
