@@ -410,15 +410,19 @@ public final class MainActivity extends Activity {
         usernameInput.setText("admin");
         page.addView(usernameInput);
         page.addView(text("管理员密码", 13, true));
-        passwordInput = field("输入本机管理员密码；首次设置输入新密码", true);
+        passwordInput = field(isCloudflareMode() ? "输入云端管理员密码" : "输入本机管理员密码；首次设置输入新密码", true);
         page.addView(passwordInput);
         loginButton = button("登录管理后台");
         page.addView(loginButton, new LinearLayout.LayoutParams(-1, dp(52)));
-        loginStatus = text("请输入管理员密码；本机注册人数为 0 时，首次登录会采用本次输入密码。", 12, false);
+        loginStatus = text(isCloudflareMode()
+            ? "请输入 Cloudflare 账号服务的管理员密码。"
+            : "请输入管理员密码；本机注册人数为 0 时，首次登录会采用本次输入密码。", 12, false);
         loginStatus.setTextColor(Color.rgb(95, 103, 115));
         page.addView(loginStatus, new LinearLayout.LayoutParams(-1, dp(36)));
         loginButton.setOnClickListener(v -> doAdminLogin());
-        page.addView(text("管理员账号固定为 admin。本机尚无注册账号时，首次登录会将本次输入的密码保存为管理员密码；注册账号后不再允许通过此入口重设。", 12, false));
+        page.addView(text(isCloudflareMode()
+            ? "管理员账号固定为 admin。此模式与主 APK 共用云端账号库；管理员密码由云端部署配置管理。"
+            : "管理员账号固定为 admin。本机尚无注册账号时，首次登录会将本次输入的密码保存为管理员密码；注册账号后不再允许通过此入口重设。", 12, false));
         setRoot(page);
         if (firstAdminPassword != null) {
             String password = firstAdminPassword;
