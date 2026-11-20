@@ -413,22 +413,7 @@ async function adminUsers(request, env, url) {
   let result;
   let count;
   if (query) {
-    const like = "%" + query.replace(/[%_\\]/g, "\\async function adminUsers(request, env, url) {
-  await readToken(env, request, "admin");
-  const query = (url.searchParams.get("q") || "").trim().toLowerCase().slice(0, 80);
-  let result;
-  if (query) {
     const like = "%" + query.replace(/[%_\\]/g, "\\$&") + "%";
-    result = await env.DB.prepare(
-      "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts WHERE qq LIKE ? ESCAPE '\\' OR lower(wechat) LIKE ? ESCAPE '\\' OR lower(name) LIKE ? ESCAPE '\\' ORDER BY created_at DESC LIMIT 500"
-    ).bind(like, like, like).all();
-  } else {
-    result = await env.DB.prepare(
-      "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts ORDER BY created_at DESC LIMIT 500"
-    ).all();
-  }
-  return response({ users: result.results || [] });
-}") + "%";
     const where = " WHERE qq LIKE ? ESCAPE '\\' OR lower(wechat) LIKE ? ESCAPE '\\' OR lower(name) LIKE ? ESCAPE '\\'";
     result = await env.DB.prepare(
       "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts" + where + " ORDER BY created_at DESC LIMIT 500"
@@ -449,6 +434,7 @@ async function adminUsers(request, env, url) {
     account_source: "Cloudflare D1 shared account database"
   });
 }
+
 async function adminUser(request, env, id) {
   await readToken(env, request, "admin");
   const row = await env.DB.prepare(
