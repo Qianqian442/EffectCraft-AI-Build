@@ -632,8 +632,8 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     ):
         if token not in am_editor:
             raise SystemExit(f"Independent AM editor is missing a required mobile editing feature: {token}")
-    if 'if self.ui.workspace != "AM 竖屏" || self.ui.start_screen {' not in frame:
-        raise SystemExit("The Ae toolbar is not hidden while the independent AM editor is active.")
+    if 'if self.ui.workspace != "AM 竖屏" {' not in frame:
+        raise SystemExit("The Ae toolbar must be hidden on both the AM Home and AM editor.")
     if "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" not in header:
         raise SystemExit("The original horizontally swipeable Ae toolbar is missing.")
     if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header:
@@ -642,8 +642,8 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         raise SystemExit("The original Ae workspace tabs are missing.")
     if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" in header or "layout_switch_row(" in header:
         raise SystemExit("The extra Ae/AM toolbar row must remain removed.")
-    if "let header_h = 40.0;" not in frame or "let header_h = 64.0;" in frame:
-        raise SystemExit("The original single-row 40px toolbar was not restored.")
+    if 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };' not in frame:
+        raise SystemExit("AM Home must own its header area while Ae retains its original 40px header.")
     if "FixedSecond(300.0)" not in dock or "FixedFirst(300.0)" not in dock:
         raise SystemExit("The original Ae fixed-width left/right panel arrangement is missing.")
     if '"AM 竖屏"' not in dock:
