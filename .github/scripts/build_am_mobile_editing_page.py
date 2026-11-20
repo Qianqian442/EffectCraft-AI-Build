@@ -251,27 +251,25 @@ fn am_group_selected_layers(app: &mut EffectcraftApp, ctx: &egui::Context) {
         .filter(|layer| layer.name.starts_with("组 "))
         .count() + 1;
     let name = format!("组 {next_group}");
-    // A native Null parent makes a real layer group. Parent compensation retains each
-    // child's world transform; engine.batch makes creation + parenting one undo step.
-    let result = app.session.execute("engine.batch", json!({
-        "steps": [
-            {"command": "layer.newNull", "params": {"name": name}},
-            {"command": "layer.setParent", "params": {
-                "layers": ids,
-                "parent": "$1.layer",
-                "compensate": true
-            }}
-        ]
+    // Native Pre-compose creates an editable nested composition group in one undo step.
+    // "move" carries the selected source layers and their keyframes into the group rather
+    // than flattening them; keeping the full comp duration avoids changing clip timing.
+    let result = app.session.execute("layer.precompose", json!({
+        "layers": ids,
+        "name": name,
+        "mode": "move",
+        "adjustDuration": false,
+        "open": false
     }));
     match result {
-        Ok(_) => {
+        Ok(value) => {
             let grouped = ids.len();
-            let root = app.session.state.selected_layers.first().map(|layer| layer.0);
+            let root = value.get("layer").and_then(|value| value.as_u64());
             am_exit_multi_select(ctx);
             if let Some(root) = root {
                 am_open_layer_actions(ctx, root);
             }
-            app.ui.status = format!("已将 {grouped} 个图层编组，画面位置保持不变。");
+            app.ui.status = format!("已将 {grouped} 个图层合成为可编辑组，素材和关键帧已保留。");
         }
         Err(error) => app.ui.status = format!("编组失败：{error}"),
     }
@@ -433,6 +431,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             });
         }
         if !multi_mode
+            && chip_response.hovered()
             && pointer_down
             && let Some(started) = ui.ctx().data(|d| d.get_temp::<f64>(press_id))
             && pointer_time - started >= AM_LONG_PRESS_SECONDS
@@ -1028,8 +1027,7 @@ def verify(root: Path) -> None:
         "am-mobile-layer-select",
         "AM_LONG_PRESS_SECONDS",
         "am_group_selected_layers",
-        "engine.batch",
-        "layer.setParent",
+        "layer.precompose",
         "layer_action_drawer",
         "颜色和填充",
         "边框和阴影",
