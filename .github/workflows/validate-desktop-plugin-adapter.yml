@@ -96,6 +96,10 @@ jobs:
           grep -Fq '强制兼容 / 暴力移植子方案（全部展示）' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq '该选择目前记录为优先路线，不代表已执行转译或已安装。' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq 'AI 插件和模型请前往模型管理' effectcraft/crates/ui-egui/src/header.rs
+          # AI plugin/model package import and model download belong to the dedicated model manager.
+          grep -Fq '导入 AI 插件包 ZIP' android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt
+          grep -Fq '直接下载 DeepSeek 本地模型' android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt
+          grep -Fq 'effectcraft-ai-model-plugin' android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt
           # Route plans must remain explicit and must never be reported as executed by metadata scanning.
           grep -Fq 'fn native_translation_trials(' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'fn forced_compatibility_profiles(' effectcraft/crates/engine/src/cmd/effect.rs
