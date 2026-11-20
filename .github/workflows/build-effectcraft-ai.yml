@@ -32,6 +32,11 @@ on:
       - '.github/scripts/add_zip_plugin_support.py'
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/scripts/add_windows_runtime_ui.py'
+      - '.github/scripts/integrate_windows_compat_runtime.py'
+      - '.github/scripts/package_windows_runtime_assets.py'
+      - '.github/scripts/windows_compat_android.rs'
+      - 'windows-compat/**'
       - '.github/scripts/add_qq_plugin_import_support.py'
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/enable_android_missing_footage_relink.py'
@@ -92,6 +97,138 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build-box64-box32:
+    name: Build Android ARM64 Box64 with 32-bit x86 ELF support
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    steps:
+      - name: Check out EffectCraft runtime source and Bionic patches
+        uses: actions/checkout@v4
+      - name: Check out pinned Box64 source
+        uses: actions/checkout@v4
+        with:
+          repository: ptitSeb/box64
+          ref: 6441fcfaeb69487039b0fd8cfb948c9e3f18c3d6
+          path: third_party/box64
+          submodules: recursive
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build make python3 wget unzip file zstd
+      - name: Install Android NDK r26b
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -O "$RUNNER_TEMP/android-ndk.zip"
+          unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
+      - name: Patch Box64 for Android Bionic and BOX32
+        run: |
+          python3 windows-compat/tools/patch_box64_obstack_compat.py third_party/box64
+          python3 windows-compat/tools/patch_box64_signal32_bionic.py third_party/box64
+          python3 windows-compat/tools/patch_box64_threads32_bionic.py third_party/box64
+          python3 windows-compat/tools/patch_box64_resolver_bionic.py third_party/box64
+          python3 windows-compat/tools/patch_box64_netdb_r_bionic.py third_party/box64
+          python3 windows-compat/tools/patch_box64_posix_spawn_bionic.py third_party/box64
+          python3 windows-compat/tools/patch_box64_box32_alloc_bionic.py third_party/box64
+      - name: Configure Box64 for Android ARM64 with BOX32
+        run: |
+          NDK_COMPILER="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android31-clang"
+          cmake -S third_party/box64 -B build/box64-box32-android-arm64 -G Ninja \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_C_COMPILER="$NDK_COMPILER" \
+            -DANDROID=1 -DARM64=1 -DARM_DYNAREC=1 -DBAD_SIGNAL=1 \
+            -DBOX32=ON -DBOX32_BINFMT=OFF \
+            -DNO_CONF_INSTALL=ON -DNO_LIB_INSTALL=ON \
+            -DCMAKE_INSTALL_PREFIX="$PWD/stage/box64-box32"
+      - name: Compile and package Box64 BOX32
+        run: |
+          set -euo pipefail
+          cmake --build build/box64-box32-android-arm64 --parallel 2
+          test -s build/box64-box32-android-arm64/box64
+          grep -R -Fq 'BOX32' build/box64-box32-android-arm64/CMakeCache.txt
+          mkdir -p stage/box64-box32/usr/bin artifacts
+          install -m 0755 build/box64-box32-android-arm64/box64 stage/box64-box32/usr/bin/box64
+          cp third_party/box64/LICENSE stage/box64-box32/BOX64-LICENSE
+          tar --zstd -cf artifacts/box64-box32-android-arm64.tar.zst -C stage/box64-box32 .
+          sha256sum artifacts/box64-box32-android-arm64.tar.zst > artifacts/box64-box32-android-arm64.tar.zst.sha256
+          file build/box64-box32-android-arm64/box64
+      - name: Upload Box64 BOX32 Android ARM64 runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Box64-BOX32-Android-ARM64
+          path: artifacts/*
+          retention-days: 30
+
+  build-aex-host:
+    name: Build and smoke-test x64 and x86 Windows AEX hosts
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      - name: Check out EffectCraft runtime sources
+        uses: actions/checkout@v4
+      - name: Check out pinned aexlo implementation and license
+        uses: actions/checkout@v4
+        with:
+          repository: potistudio/aexlo
+          ref: 32c3fe399bc7d2deb3e5f9a02c627db50d8e7ff9
+          path: third_party/aexlo
+      - name: Set up x64 and x86 Windows Rust targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc, i686-pc-windows-msvc
+      - name: Build isolated x64 and x86 AEX host workers
+        shell: pwsh
+        run: |
+          cargo generate-lockfile --manifest-path windows-compat/aexlo-host/Cargo.toml
+          cargo build --locked --release --target x86_64-pc-windows-msvc --manifest-path windows-compat/aexlo-host/Cargo.toml
+          cargo build --locked --release --target i686-pc-windows-msvc --manifest-path windows-compat/aexlo-host/Cargo.toml
+          cargo build --release --target x86_64-pc-windows-msvc --manifest-path third_party/aexlo/examples/plugins/noise/Cargo.toml
+          cargo build --release --target i686-pc-windows-msvc --manifest-path third_party/aexlo/examples/plugins/noise/Cargo.toml
+          if (!(Test-Path "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe")) { throw "x64 AEX host worker was not produced" }
+          if (!(Test-Path "windows-compat/aexlo-host/target/i686-pc-windows-msvc/release/effectcraft-aex-host.exe")) { throw "x86 AEX host worker was not produced" }
+          if (!(Test-Path "third_party/aexlo/target/x86_64-pc-windows-msvc/release/aexlo_demo_noise.dll")) { throw "x64 AEX sample was not produced" }
+          if (!(Test-Path "third_party/aexlo/target/i686-pc-windows-msvc/release/aexlo_demo_noise.dll")) { throw "x86 AEX sample was not produced" }
+      - name: Smoke-test both host architectures and CPU frame rendering
+        shell: pwsh
+        run: |
+          function Test-AexHost([string]$Arch, [string]$HostPath, [string]$PluginPath) {
+            $dir = Join-Path $PWD "host-test-$Arch"
+            New-Item -ItemType Directory -Force $dir | Out-Null
+            $plugin = Join-Path $dir "sample-$Arch.aex"
+            Copy-Item $PluginPath $plugin
+            $inputPng = (Resolve-Path "third_party/aexlo/fixtures/input.png").Path
+            $outputPng = Join-Path $dir "render-$Arch.png"
+            $request = @{ cmd="render"; input_png=$inputPng; output_png=$outputPng; frame=0; fps=30 } | ConvertTo-Json -Compress
+            $inputFile = Join-Path $dir "requests.jsonl"
+            @($request, '{"cmd":"quit"}') | Set-Content -Encoding ascii $inputFile
+            $stdout = Join-Path $dir "stdout.jsonl"
+            $stderr = Join-Path $dir "stderr.log"
+            $process = Start-Process -FilePath (Resolve-Path $HostPath).Path -ArgumentList @($plugin) -NoNewWindow -Wait -PassThru -RedirectStandardInput $inputFile -RedirectStandardOutput $stdout -RedirectStandardError $stderr
+            if ($process.ExitCode -ne 0) { Get-Content $stderr -ErrorAction SilentlyContinue; throw "$Arch AEX host exited with $($process.ExitCode)" }
+            $lines = Get-Content $stdout
+            if ($lines.Count -lt 2) { throw "$Arch host did not return metadata and render output" }
+            $info = $lines[0] | ConvertFrom-Json
+            $render = $lines[1] | ConvertFrom-Json
+            if (-not $info.ok) { throw "$Arch sample AEX load failed: $($lines[0])" }
+            if (-not $render.ok) { throw "$Arch sample AEX render failed: $($lines[1])" }
+            if (-not (Test-Path $outputPng)) { throw "$Arch host reported success but PNG output is missing" }
+            Write-Host "$Arch AEX host smoke test passed: $($info.about), $($render.width)x$($render.height)"
+          }
+          Test-AexHost "x64" "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe" "third_party/aexlo/target/x86_64-pc-windows-msvc/release/aexlo_demo_noise.dll"
+          Test-AexHost "x86" "windows-compat/aexlo-host/target/i686-pc-windows-msvc/release/effectcraft-aex-host.exe" "third_party/aexlo/target/i686-pc-windows-msvc/release/aexlo_demo_noise.dll"
+      - name: Package isolated AEX hosts and upstream license
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force artifacts/x64, artifacts/x86 | Out-Null
+          Copy-Item "windows-compat/aexlo-host/target/x86_64-pc-windows-msvc/release/effectcraft-aex-host.exe" "artifacts/x64/effectcraft-aex-host.exe"
+          Copy-Item "windows-compat/aexlo-host/target/i686-pc-windows-msvc/release/effectcraft-aex-host.exe" "artifacts/x86/effectcraft-aex-host.exe"
+          Copy-Item "third_party/aexlo/LICENSE" "artifacts/x64/AEXLO-MIT-LICENSE"
+      - name: Upload tested Windows AEX hosts
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-AE-Host-Binaries
+          path: artifacts/*
+          retention-days: 30
+
   validate-main-workflow:
     name: Validate shared Android/P2P integration
     uses: ./.github/workflows/validate-main-workflow.yml
@@ -160,10 +297,22 @@ jobs:
             .github/scripts/add_am_brand_label.py \
             .github/scripts/add_home_layout_switch.py \
             .github/scripts/pin_android_signing_certificate.py \
-            .github/scripts/add_open_source_craft_plugins.py
+            .github/scripts/add_open_source_craft_plugins.py \
+            .github/scripts/add_windows_runtime_ui.py \
+            .github/scripts/integrate_windows_compat_runtime.py \
+            .github/scripts/package_windows_runtime_assets.py \
+            windows-compat/tools/patch_box64_obstack_compat.py \
+            windows-compat/tools/patch_box64_signal32_bionic.py \
+            windows-compat/tools/patch_box64_threads32_bionic.py \
+            windows-compat/tools/patch_box64_resolver_bionic.py \
+            windows-compat/tools/patch_box64_netdb_r_bionic.py \
+            windows-compat/tools/patch_box64_posix_spawn_bionic.py \
+            windows-compat/tools/patch_box64_box32_alloc_bionic.py \
+            windows-compat/tools/pe_audit.py
+          bash windows-compat/android-runtime/exec-bridge/tests/run_host_tests.sh
 
   build:
-    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat]
+    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-aex-host]
     # Keep the main APK account client on direct HTTPS to the configured Cloudflare account server; do not route account traffic through P2P or public proxies.
     name: Build Ae 0.22.1 with AI and existing features
     runs-on: ubuntu-22.04
@@ -203,6 +352,18 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: build-assets
+
+      - name: Download Box64 BOX32 Android ARM64 runtime
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-Box64-BOX32-Android-ARM64
+          path: runtime-artifacts/box32
+
+      - name: Download tested Windows x64/x86 AEX host workers
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-AE-Host-Binaries
+          path: runtime-artifacts/aex-hosts
 
       - name: Check out pinned native AbsentMotion source
         uses: actions/checkout@v4
@@ -583,6 +744,25 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_plugin_migration_progress.py
           python3 build-assets/.github/scripts/add_plugin_migration_progress.py
+
+      - name: Integrate Android ARM64 Wine/Proton, Box64 BOX32 and FEXCore runtime
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: |
+          set -euo pipefail
+          python3 -m py_compile build-assets/.github/scripts/add_windows_runtime_ui.py build-assets/.github/scripts/integrate_windows_compat_runtime.py build-assets/.github/scripts/package_windows_runtime_assets.py
+          python3 build-assets/.github/scripts/add_windows_runtime_ui.py
+          python3 build-assets/.github/scripts/integrate_windows_compat_runtime.py
+          python3 build-assets/.github/scripts/package_windows_runtime_assets.py \
+            --box32-dir "$GITHUB_WORKSPACE/runtime-artifacts/box32" \
+            --x64-host-dir "$GITHUB_WORKSPACE/runtime-artifacts/aex-hosts/x64" \
+            --x86-host-dir "$GITHUB_WORKSPACE/runtime-artifacts/aex-hosts/x86" \
+            --assets-dir "$EFFECTCRAFT_DIR/assets" \
+            --bridge-java "$ARTCRAFT_DIR/templates/windows-compat-java/com/artcraft/effectcraft/WindowsCompatAndroidBridge.java"
+          grep -Fq 'EFFECTCRAFT_ANDROID_WINDOWS_COMPAT_RUNTIME_V1' "$ARTCRAFT_DIR/templates/android/SafActivity.java"
+          grep -Fq 'init_android_windows_compat_bridge' "$ARTCRAFT_DIR/lib/build-common.sh"
+          grep -Fq 'libeffectcraft-exec.so' "$ARTCRAFT_DIR/lib/build-common.sh"
 
       - name: Route QQ downloads to the plug-in importer and QQ receive folder
         env:
@@ -1002,6 +1182,24 @@ jobs:
           sdkmanager --install "platform-tools" "platforms;android-35" "platforms;android-36" "build-tools;35.0.0" "ndk;27.2.12479018" "ndk;29.0.13113456" "cmake;3.31.6"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
           echo "NDK_HOME=$ANDROID_HOME/ndk/27.2.12479018" >> "$GITHUB_ENV"
+
+      - name: Build Android ARM64 Bionic exec bridge for Wine/Hangover children
+        shell: bash
+        run: |
+          set -euo pipefail
+          NDK="$ANDROID_NDK_HOME"
+          cmake -S build-assets/windows-compat/android-runtime/exec-bridge \
+            -B windows-compat-exec-build \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=arm64-v8a \
+            -DANDROID_PLATFORM=android-26 \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build windows-compat-exec-build --parallel 2
+          LIB="windows-compat-exec-build/libeffectcraft-exec.so"
+          test -s "$LIB"
+          mkdir -p artcraft/templates/windows-compat-native/arm64-v8a
+          install -m 0755 "$LIB" artcraft/templates/windows-compat-native/arm64-v8a/libeffectcraft-exec.so
+          file artcraft/templates/windows-compat-native/arm64-v8a/libeffectcraft-exec.so
 
       - name: Install cargo-ndk
         shell: bash
