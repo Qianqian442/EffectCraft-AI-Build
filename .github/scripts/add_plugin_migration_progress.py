@@ -238,7 +238,17 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
                     let names = routes.iter().filter_map(|route| route.get("backend").and_then(Value::as_str))
                         .collect::<Vec<_>>().join(" → ");
                     lines.push(format!("候选路线顺序（逐个试跑后比较）：{names}。"));
-                    lines.push("当前候选后端尚未实际执行；需要先完成对应运行时和插件宿主桥接。".into());
+                    for route in routes.iter().take(8) {
+                        let backend = route.get("backend").and_then(Value::as_str).unwrap_or("候选后端");
+                        let status = route.get("status").and_then(Value::as_str).unwrap_or("未执行");
+                        let score = route.get("score").and_then(Value::as_f64);
+                        if let Some(score) = score {
+                            lines.push(format!("试跑结果 {backend}：{status}；完整度评分 {:.1}/100。", score));
+                        } else {
+                            lines.push(format!("试跑结果 {backend}：{status}；尚无实测评分。"));
+                        }
+                    }
+                    lines.push("只有实际运行并通过硬性测试的候选路线，才允许进入自动导入排名。".into());
                 }
             }
             if let Some(profiles) = item.get("forced_compatibility_profiles").and_then(Value::as_array) {
