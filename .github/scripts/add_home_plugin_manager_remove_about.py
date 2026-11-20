@@ -202,15 +202,15 @@ def remove_about_ui(root: Path) -> None:
         "/// The decorative Ae brand mark and the Home button; returns the x after them.",
     )
     about_click_pattern = re.compile(
-        r'(?m)^    let bresp = ui\\.interact\\(brand, egui::Id::unique\\("brand"\\), Sense::click\\(\\)\\);\\n'
-        r'    app\\.auto\\.add_response\\("header\\.about", &bresp, "[^"]+"\\);\\n'
-        r'    widgets::focus_outline\\(ui, &bresp, &t\\);\\n'
-        r'    if bresp\\.on_hover_text\\(tr\\("[^"]+"\\)\\)\\.clicked\\(\\) \\{\\n'
-        r'        app\\.dialog = Some\\(Dialog::About\\);\\n'
-        r'    \\}\\n'
+        r'(?m)^    let bresp = ui\.interact\(brand, egui::Id::unique\("brand"\), Sense::click\(\)\);\n'
+        r'    app\.auto\.add_response\("header\.about", &bresp, "[^"]+"\);\n'
+        r'    widgets::focus_outline\(ui, &bresp, &t\);\n'
+        r'    if bresp\.on_hover_text\(tr\("[^"]+"\)\)\.clicked\(\) \{\n'
+        r'        app\.dialog = Some\(Dialog::About\);\n'
+        r'    \}\n'
     )
     source, about_click_count = about_click_pattern.subn(
-        "    // The logo is decorative; the former About click target and dialog are removed.\\n",
+        "    // The logo is decorative; the former About click target and dialog are removed.\n",
         source,
         count=1,
     )
@@ -258,7 +258,7 @@ def remove_about_ui(root: Path) -> None:
     engine_menus = root / "crates/engine/src/menus.rs"
     source = engine_menus.read_text(encoding="utf-8")
     source, removed_about_entries = re.subn(
-        r'(?m)^  (?:\\[!mac\\] )?About (?:EffectCraft|Ae)\\.\\.\\. \\| app\\.about\\n',
+        r'(?m)^  (?:\[!mac\] )?About (?:EffectCraft|Ae)\.\.\. \| app\.about\n',
         "",
         source,
     )
