@@ -507,7 +507,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 ctx.request_repaint_after(Duration::from_millis(100));
                 if let Some(result) = received { action = Some(Action::Scanned(path.clone(), *mode, result)); }
             }
-            ImportState::RouteSelection { title, message: _, success: _, groups, selected_routes } => {
+            ImportState::RouteSelection { title, message, success, groups, selected_routes } => {
                 let mut open = true;
                 let mut confirm = false;
                 let screen = ctx.content_rect();
@@ -571,7 +571,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     action = Some(Action::RoutesConfirmed(
                         title.clone(),
                         message.clone(),
-                        false,
+                        *success,
                         groups.clone(),
                         selected_routes.clone(),
                     ));
@@ -668,20 +668,20 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         Some(Action::Promote(title, message, success)) => app.plugin_import = Some(ImportState::Result { title, message, success }),
         Some(Action::RoutesConfirmed(title, message, success, groups, selected_routes)) => {
             let mut final_message = message;
-            final_message.push_str("\\n\\n本次路线选择记录：");
+            final_message.push_str("\n\n本次路线选择记录：");
             for (index, group) in groups.iter().enumerate() {
                 let selected = selected_routes.get(index).map(String::as_str).unwrap_or("");
                 if selected.is_empty() {
                     if let Some(best) = group.routes.iter().find(|route| route.status == "passed" && route.score.is_some()) {
-                        final_message.push_str(&format!("\\n{}：自动优选为 {}（实测 {:.1}/100）。", group.file, best.backend, best.score.unwrap_or_default()));
+                        final_message.push_str(&format!("\n{}：自动优选为 {}（实测 {:.1}/100）。", group.file, best.backend, best.score.unwrap_or_default()));
                     } else {
-                        final_message.push_str(&format!("\\n{}：选择自动优选；等待可执行后端完成真实试跑后再决定。", group.file));
+                        final_message.push_str(&format!("\n{}：选择自动优选；等待可执行后端完成真实试跑后再决定。", group.file));
                     }
                 } else if let Some(route) = group.routes.iter().find(|route| route.id == selected) {
-                    final_message.push_str(&format!("\\n{}：你指定了 {}；当前状态：{}。", group.file, route.backend, route.status));
+                    final_message.push_str(&format!("\n{}：你指定了 {}；当前状态：{}。", group.file, route.backend, route.status));
                     final_message.push_str("该选择目前记录为优先路线，不代表已执行转译或已安装。");
                 } else {
-                    final_message.push_str(&format!("\\n{}：已记录手动路线选择。", group.file));
+                    final_message.push_str(&format!("\n{}：已记录手动路线选择。", group.file));
                 }
             }
             app.plugin_import = Some(ImportState::Result { title, message: final_message, success });
