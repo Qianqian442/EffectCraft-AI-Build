@@ -140,7 +140,7 @@ def patch_workspace_selection(effectcraft: Path) -> None:
     source = path.read_text(encoding="utf-8")
     marker = f'        self.ui.workspace = name.to_string();\n'
     call = f'''        self.ui.workspace = name.to_string();
-        // EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V2
+        // EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1
         crate::android_layout::set_workspace_portrait(name == "{WORKSPACE}");
 '''
     source = replace_once(source, marker, call, "workspace orientation and animated transition update")
