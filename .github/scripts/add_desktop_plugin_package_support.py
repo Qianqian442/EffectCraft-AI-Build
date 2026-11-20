@@ -37,6 +37,62 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     const MAX_ASSET_BYTES: u64 = 32 * 1024 * 1024;
     const MAX_NATIVE_BYTES: u64 = 64 * 1024 * 1024;
 
+    // Score only candidates that have actually run and passed every mandatory gate.
+    // Unexecuted candidates retain a null score and can never be auto-selected.
+    fn trial_metric(route: &Value, key: &str) -> f64 {
+        route.get("metrics")
+            .and_then(|metrics| metrics.get(key))
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
+            .clamp(0.0, 100.0)
+    }
+
+    fn rank_desktop_native_trials(metadata: &mut [Value]) {
+        const REQUIRED_GATES: [&str; 8] = [
+            "binary_load",
+            "host_api_coverage",
+            "parameter_roundtrip",
+            "preview_render",
+            "final_render",
+            "cancellation",
+            "stability",
+            "license_ok",
+        ];
+        for plugin in metadata.iter_mut() {
+            let mut best: Option<(f64, Value)> = None;
+            if let Some(routes) = plugin.get_mut("candidate_routes").and_then(Value::as_array_mut) {
+                for route in routes.iter_mut() {
+                    let executed = route.get("translation_executed").and_then(Value::as_bool) == Some(true);
+                    let passed = route.get("status").and_then(Value::as_str) == Some("passed");
+                    let gates_passed = route.get("hard_gates").is_some_and(|gates| {
+                        REQUIRED_GATES.iter().all(|key| gates.get(*key).and_then(Value::as_bool) == Some(true))
+                    });
+                    if !executed || !passed || !gates_passed {
+                        route["score"] = Value::Null;
+                        continue;
+                    }
+                    let score =
+                        trial_metric(route, "host_api_coverage") * 0.20
+                        + trial_metric(route, "parameter_animation_coverage") * 0.15
+                        + trial_metric(route, "render_correctness") * 0.20
+                        + trial_metric(route, "feature_coverage") * 0.15
+                        + trial_metric(route, "visual_fidelity") * 0.15
+                        + trial_metric(route, "stability") * 0.10
+                        + trial_metric(route, "performance") * 0.05;
+                    route["score"] = json!(score);
+                    if best.as_ref().is_none_or(|(best_score, _)| score > *best_score) {
+                        best = Some((score, route.clone()));
+                    }
+                }
+            }
+            if let Some((score, selected)) = best {
+                plugin["selected_route"] = selected;
+                plugin["trial_score"] = json!(score);
+                plugin["trial_execution_status"] = json!("passed");
+            }
+        }
+    }
+
     // Extract visible ASCII and UTF-16LE strings without loading or executing the binary.
     // AE PiPL resources carry effect names, categories and match-name identifiers; plug-in
     // binaries may also retain parameter labels and UI text as readable strings.
@@ -666,6 +722,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         }
     }
 
+    // Automatically rank tested routes; current unexecuted plans receive no score and no selection.
+    rank_desktop_native_trials(&mut native_metadata);
     let compatibility_match_count = native_mappings.len();
     let compatibility_summary = native_mappings.iter().map(|item| {
         format!(
@@ -686,10 +744,17 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let route_names = item.get("candidate_routes").and_then(Value::as_array)
             .map(|routes| routes.iter().filter_map(|route| route.get("backend").and_then(Value::as_str)).collect::<Vec<_>>().join(" → "))
             .unwrap_or_default();
+        let selected_backend = item.get("selected_route")
+            .and_then(|route| route.get("backend"))
+            .and_then(Value::as_str)
+            .unwrap_or("暂无通过硬性测试的方案");
+        let trial_score = item.get("trial_score").and_then(Value::as_f64);
+        let selected_summary = trial_score.map(|score| format!("；实测最佳：{selected_backend}，完整度 {:.1}/100", score))
+            .unwrap_or_else(|| "；尚无实测最佳方案，不能自动导入原生插件".into());
         let force_count = item.get("forced_compatibility_profiles").and_then(Value::as_array).map_or(0, |profiles| profiles.len());
         let readable_text_count = item.get("readable_text_count")
             .and_then(Value::as_u64).unwrap_or(0);
-        format!("\n[{file}] {format} / {architecture}；首选路线：{backend} → {target}；候选顺序：{route_names}；状态：{status}；宿主接口：{host}；强制兼容方案：{force_count} 项（当前仅生成计划，尚未执行）；已提取 {readable_text_count} 条可读信息（原始文字仅用于内部匹配，不在界面中显示）")
+        format!("\n[{file}] {format} / {architecture}；首选路线：{backend} → {target}；候选顺序：{route_names}{selected_summary}；状态：{status}；宿主接口：{host}；强制兼容方案：{force_count} 项（当前仅生成计划，尚未执行）；已提取 {readable_text_count} 条可读信息（原始文字仅用于内部匹配，不在界面中显示）")
     }).collect::<Vec<_>>().join("\n");
     let mut install_result = json!({
         "installed": installed_wasm,
