@@ -205,24 +205,24 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     crash_guard = (
         "EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1",
         'match effectcraft_run_export_command(app, &ctx, "renderQueue.add", params) {',
-        'effectcraft_run_export_command(app, &ctx, "renderQueue.setOutput",',
         'effectcraft_run_export_command(app, &ctx, "renderQueue.setRender",',
     )
     missing_guard = [item for item in crash_guard if item not in header_source]
     if missing_guard:
         raise SystemExit("Android Export button crash guard is incomplete: " + "; ".join(missing_guard))
-    stage_start = header_source.find("fn effectcraft_android_video_staging_path(")
-    stage_end = header_source.find("\n}", stage_start)
-    if stage_start < 0 or stage_end < 0:
-        raise SystemExit("The app-private Android export staging helper is missing.")
-    stage_helper = header_source[stage_start:stage_end]
-    if "crate::android_gallery::staging_path(name)" not in stage_helper:
-        raise SystemExit("Export staging must use Android's app-private cache bridge.")
-    if "catch_unwind" not in stage_helper:
-        raise SystemExit("Export staging JNI failures must be converted to visible errors.")
-    if "std::env::temp_dir()" in stage_helper:
-        raise SystemExit("Export staging must not rely on /data/local/tmp on Android 12.")
-    print("Verified panic-guarded export setup and Android app-private cache staging.")
+
+    export_start = header_source.find("fn export_dialog(")
+    export_end = header_source.find("fn export_progress_dialog(", export_start)
+    if export_start < 0 or export_end < 0:
+        raise SystemExit("The centered export dialog or Render Queue progress dialog is missing.")
+    quick_export = header_source[export_start:export_end]
+    if '"renderQueue.add"' not in quick_export or '"renderQueue.render"' not in quick_export:
+        raise SystemExit("Quick video export is not routed through the native Render Queue.")
+    if "effectcraft_android_video_staging_path" in quick_export or '"renderQueue.setOutput"' in quick_export:
+        raise SystemExit("Quick video export must use the Render Queue's resolved output path without a staging override.")
+    if "EFFECTCRAFT_ANDROID_EXPORT_START_PANIC_GUARD_V1" not in quick_export:
+        raise SystemExit("Synchronous Render Queue startup must remain panic guarded.")
+    print("Verified video export writes directly through the Render Queue; Gallery publication is only post-render.")
 
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")

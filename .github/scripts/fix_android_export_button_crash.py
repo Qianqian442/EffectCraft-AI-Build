@@ -12,38 +12,6 @@ def main() -> None:
     header_path = root / "crates/ui-egui/src/header.rs"
     header = header_path.read_text(encoding="utf-8")
 
-    # Use Android's app-private cache bridge; convert JNI failures into a visible error.
-    stage_pattern = re.compile(
-        r"(?s)/// EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1_HELPER.*?"
-        r"fn effectcraft_android_video_staging_path\(default_output: &str\) -> Result<String, String> \{\n.*?\n\}"
-    )
-    stage_helper = r'''/// EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1_HELPER
-/// Ask Android for its real app-private cache path. JNI failures become visible errors,
-/// never a panic during export-button handling (the Activity is kept intact from R8).
-fn effectcraft_android_video_staging_path(default_output: &str) -> Result<String, String> {
-    let name = std::path::Path::new(default_output)
-        .file_name()
-        .and_then(|value| value.to_str())
-        .filter(|value| !value.trim().is_empty())
-        .unwrap_or("Ae.mp4");
-    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        crate::android_gallery::staging_path(name)
-    }))
-    .unwrap_or_else(|_| Err("Android 视频暂存接口发生内部异常，已阻止编辑器崩溃。".to_string()))
-}'''
-
-    # Replace the unguarded staging helper installed by patch_export_dialog.py.
-    # The previous version declared this regex and replacement but never applied them,
-    # leaving JNI exceptions outside the panic guard on the Export-button hot path.
-    if stage_helper.strip() not in header:
-        stage_matches = list(stage_pattern.finditer(header))
-        if len(stage_matches) != 1:
-            raise SystemExit(
-                "Expected exactly one Android video staging helper to harden; "
-                f"found {len(stage_matches)}."
-            )
-        header = stage_pattern.sub(stage_helper, header, count=1)
-
     # Convert synchronous engine panics into ordinary UI errors.
     guard = r'''/// EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1
 /// Convert synchronous export-command panics into ordinary UI errors.
@@ -106,23 +74,15 @@ fn effectcraft_run_export_command(
         header = header.replace(old_poll, new_poll, 1)
 
     required = (
-        "EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1_HELPER",
-        "crate::android_gallery::staging_path(name)",
-        "catch_unwind",
         "EFFECTCRAFT_ANDROID_EXPORT_COMMAND_PANIC_GUARD_V1",
         'match effectcraft_run_export_command(app, &ctx, "renderQueue.add", params) {',
-        'effectcraft_run_export_command(app, &ctx, "renderQueue.setOutput",',
         'effectcraft_run_export_command(app, &ctx, "renderQueue.setRender",',
     )
     missing = [item for item in required if item not in header]
     if missing:
         raise SystemExit("Export crash guard incomplete: " + "; ".join(missing))
-    stage_start = header.find("fn effectcraft_android_video_staging_path(")
-    stage_end = header.find("\n}", stage_start)
-    stage_source = header[stage_start:stage_end] if stage_start >= 0 and stage_end >= 0 else ""
-    if "std::env::temp_dir()" in stage_source:
-        raise SystemExit("Export staging must use Android's app-private cache bridge, not /data/local/tmp.")
-
+    if "effectcraft_android_video_staging_path" in header:
+        raise SystemExit("Quick video export must not override the Render Queue output with a staging path.")
 
     # The previous preflight allowed a 1080p export with only about 472 MiB
     # reported as available RAM. Complex compositions need much more headroom
@@ -171,7 +131,7 @@ fn effectcraft_run_export_command(
         raise SystemExit("Export memory preflight hardening incomplete: " + "; ".join(missing_runtime))
 
     header_path.write_text(header, encoding="utf-8")
-    print("Guarded export setup and Android gallery staging; retained export RAM preflight without unsafe thread-priority FFI.")
+    print("Guarded direct Render Queue video export; Android Gallery publication remains a post-render step.")
 
 
 if __name__ == "__main__":
