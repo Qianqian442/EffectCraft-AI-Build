@@ -32,10 +32,42 @@ const MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
 const SCAN_PROGRESS_MAX: usize = 9_000;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MigrationMode {
+    AutoBest,
+    CpuTranslation,
+    ForceCompatibility,
+    AggressivePort,
+    ManualBackend,
+}
+
+impl MigrationMode {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::AutoBest => "自动比较并选择完整度最高的方案",
+            Self::CpuTranslation => "指令转译优先（Box64 / Box86 / FEX / QEMU）",
+            Self::ForceCompatibility => "强制兼容（运行库 / 接口 / 画面 / 渲染回退）",
+            Self::AggressivePort => "暴力移植 / 重构（源码重编译 + 二进制分析）",
+            Self::ManualBackend => "手动选择转译后端",
+        }
+    }
+
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::AutoBest => "逐个测试适用路线，按功能完整度、画质、参数/关键帧和稳定性评分，自动选择最高分且通过硬性测试的方案。",
+            Self::CpuTranslation => "优先尝试适用的 CPU 指令动态转译路线；不兼容的系统 API 或插件宿主接口仍必须单独适配。",
+            Self::ForceCompatibility => "逐项尝试可选宿主接口、运行库、像素格式、CPU 特性和 CPU/串行渲染回退；不伪造必需接口。",
+            Self::AggressivePort => "优先源码 ARM64 重编译；无源码时进行指令/控制流分析并重建效果逻辑。需要原插件功能的参考输入与回归测试。",
+            Self::ManualBackend => "由你根据插件格式和架构选择候选后端；不兼容的路线会标记为不可用，未实测的路线不会显示为成功。",
+        }
+    }
+}
+
 pub(crate) enum ImportState {
-    Confirm { path: String, native_count: usize },
+    Confirm { path: String, native_count: usize, mode: MigrationMode },
     Running {
         path: String,
+        mode: MigrationMode,
         progress: Arc<AtomicUsize>,
         receiver: Receiver<Result<ScanReport, String>>,
     },
@@ -111,11 +143,12 @@ pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool 
     app.plugin_import = Some(ImportState::Confirm {
         path: import_path.0,
         native_count: import_path.1,
+        mode: MigrationMode::AutoBest,
     });
     true
 }
 
-fn spawn_scan(path: String) -> ImportState {
+fn spawn_scan(path: String, mode: MigrationMode) -> ImportState {
     let progress = Arc::new(AtomicUsize::new(0));
     let worker_progress = Arc::clone(&progress);
     let worker_path = path.clone();
@@ -124,7 +157,7 @@ fn spawn_scan(path: String) -> ImportState {
         let result = scan_archive(&worker_path, &worker_progress);
         let _ = sender.send(result);
     });
-    ImportState::Running { path, progress, receiver }
+    ImportState::Running { path, mode, progress, receiver }
 }
 
 /// Read and validate the actual ZIP entries off the UI thread. The progress value measures
@@ -193,7 +226,7 @@ fn value_count(value: &Value, key: &str) -> usize {
     value.get(key).and_then(Value::as_array).map_or(0, |items| items.len())
 }
 
-fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
+fn result_summary(scan: &ScanReport, value: &Value, mode: MigrationMode) -> (String, String, bool) {
     let wasm = value_count(value, "loaded");
     let wat = value.get("wat_result").map_or(0, |item| value_count(item, "loaded"));
     let panels = value_count(value, "panels");
@@ -216,7 +249,12 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
     let installed = wasm + wat + panels + scripts;
     let success = installed > 0 || native_translated > 0;
 
-    let mut lines = vec![format!("已扫描 {} 个文件，共 {:.1} MB。", scan.file_count, scan.total_bytes as f64 / (1024.0 * 1024.0))];
+    let mut lines = vec![
+        format!("本次选择的移植方式：{}。", mode.label()),
+        format!("已扫描 {} 个文件，共 {:.1} MB。", scan.file_count, scan.total_bytes as f64 / (1024.0 * 1024.0)),
+    ];
+    lines.push(format!("方式说明：{}", mode.description()));
+    lines.push("注意：当前构建已加入方式选择和报告记录；Box64/Box86/FEX/QEMU/Wine 的实际运行时试跑、后端手动切换和暴力二进制重建引擎尚未集成，不会伪称已执行。".into());
     lines.push(format!("可用模块：WASM {wasm} 个、WAT {wat} 个、AE 面板 {panels} 个、脚本 {scripts} 个。"));
     if assets > 0 { lines.push(format!("另行保存素材/源码 {assets} 个。")); }
     if matched > 0 {
@@ -331,9 +369,9 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
 /// Draw the draggable confirmation, live progress, and final OK windows.
 pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
     enum Action {
-        Start(String),
+        Start(String, MigrationMode),
         Cancel,
-        Scanned(String, Result<ScanReport, String>),
+        Scanned(String, MigrationMode, Result<ScanReport, String>),
         Close,
         Promote(String, String, bool),
     }
@@ -341,7 +379,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
 
     if let Some(state) = app.plugin_import.as_mut() {
         match state {
-            ImportState::Confirm { path, native_count } => {
+            ImportState::Confirm { path, native_count, mode } => {
                 let mut open = true;
                 let mut start = false;
                 let mut cancel = false;
@@ -359,17 +397,25 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.heading("检测到需要移植的电脑版插件");
                         ui.label(format!("发现 {native_count} 个 .aex / .dll / .ofx 等原生插件文件。"));
                         ui.add_space(4.0);
-                        ui.label("点击开始后会扫描文件、识别 Windows/Linux 与 x86/x64 架构，并给出转译到 Android ARM64 的候选路线。当前版本会安装已支持的模块/替代效果并保留原件；尚未接入的原生转译运行时不会被误报为已移植。");
+                        ui.label("选择本次电脑插件移植方式；可按需切换，不会强制固定使用某一种转译器。");
+                        ui.radio_value(mode, MigrationMode::AutoBest, MigrationMode::AutoBest.label());
+                        ui.radio_value(mode, MigrationMode::CpuTranslation, MigrationMode::CpuTranslation.label());
+                        ui.radio_value(mode, MigrationMode::ForceCompatibility, MigrationMode::ForceCompatibility.label());
+                        ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
+                        ui.radio_value(mode, MigrationMode::ManualBackend, MigrationMode::ManualBackend.label());
+                        ui.small(mode.description());
+                        ui.add_space(6.0);
+                        ui.label("当前版本会分析架构、列出路线并保留原件；尚未接入的运行时/宿主接口会显示待实现，不会伪报成功。");
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
                             if ui.button("取消").clicked() { cancel = true; }
-                            if ui.button("开始分析").clicked() { start = true; }
+                            if ui.button("按此方式开始").clicked() { start = true; }
                         });
                     });
-                if start { action = Some(Action::Start(path.clone())); }
+                if start { action = Some(Action::Start(path.clone(), *mode)); }
                 else if cancel || !open { action = Some(Action::Cancel); }
             }
-            ImportState::Running { path, progress, receiver } => {
+            ImportState::Running { path, mode, progress, receiver } => {
                 let fraction = (progress.load(Ordering::Acquire).min(SCAN_PROGRESS_MAX) as f32) / 10_000.0;
                 let percent = (fraction * 100.0).round() as u32;
                 let mut received = None;
@@ -393,7 +439,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.small("进度根据实际读取和解压的文件数据更新；完成扫描后会安装兼容模块。");
                     });
                 ctx.request_repaint_after(Duration::from_millis(100));
-                if let Some(result) = received { action = Some(Action::Scanned(path.clone(), result)); }
+                if let Some(result) = received { action = Some(Action::Scanned(path.clone(), *mode, result)); }
             }
             ImportState::ProgressComplete { title: _, message: _, success: _, since } => {
                 let screen = ctx.content_rect();
@@ -445,9 +491,9 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
     }
 
     match action {
-        Some(Action::Start(path)) => app.plugin_import = Some(spawn_scan(path)),
+        Some(Action::Start(path, mode)) => app.plugin_import = Some(spawn_scan(path, mode)),
         Some(Action::Cancel | Action::Close) => app.plugin_import = None,
-        Some(Action::Scanned(path, result)) => match result {
+        Some(Action::Scanned(path, mode, result)) => match result {
             Err(error) => {
                 app.plugin_import = Some(ImportState::Result { title: "移植失败".into(), message: error, success: false });
             }
@@ -462,7 +508,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 }
                 match import_result {
                     Ok(value) => {
-                        let (title, message, success) = result_summary(&scan, &value);
+                        let (title, message, success) = result_summary(&scan, &value, mode);
                         if success {
                             app.plugin_import = Some(ImportState::ProgressComplete { title, message, success, since: Instant::now() });
                         } else {
