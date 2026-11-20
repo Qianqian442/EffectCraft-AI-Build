@@ -89,6 +89,13 @@ jobs:
           grep -Fq '结果页会展示检测到的每个插件的全部适用路线' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq 'for item in items.iter()' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq 'for route in routes.iter()' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          # The post-scan screen exposes every route, permits automatic or per-plugin manual selection,
+          # and shows every forced-compatibility/aggressive-port profile without truncating the list.
+          grep -Fq '选择自动优选或手动指定路线' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'ui.radio_value(choice, route.id.clone(), label)' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '强制兼容 / 暴力移植子方案（全部展示）' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '该选择目前记录为优先路线，不代表已执行转译或已安装。' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'AI 插件和模型请前往模型管理' effectcraft/crates/ui-egui/src/header.rs
           # Route plans must remain explicit and must never be reported as executed by metadata scanning.
           grep -Fq 'fn native_translation_trials(' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'fn forced_compatibility_profiles(' effectcraft/crates/engine/src/cmd/effect.rs
