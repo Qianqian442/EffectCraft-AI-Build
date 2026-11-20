@@ -211,11 +211,13 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if missing_guard:
         raise SystemExit("Android Export button crash guard is incomplete: " + "; ".join(missing_guard))
 
+    # The export patch appends the progress popup before the setup dialog.
+    # Validate both definitions independently instead of assuming source order.
     export_start = header_source.find("fn export_dialog(")
-    export_end = header_source.find("fn export_progress_dialog(", export_start)
-    if export_start < 0 or export_end < 0:
+    progress_start = header_source.find("fn export_progress_dialog(")
+    if export_start < 0 or progress_start < 0:
         raise SystemExit("The centered export dialog or Render Queue progress dialog is missing.")
-    quick_export = header_source[export_start:export_end]
+    quick_export = header_source[export_start:]
     if '"renderQueue.add"' not in quick_export or '"renderQueue.render"' not in quick_export:
         raise SystemExit("Quick video export is not routed through the native Render Queue.")
     if "effectcraft_android_video_staging_path" in quick_export or '"renderQueue.setOutput"' in quick_export:
