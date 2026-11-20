@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/scripts/add_plugin_import_button.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - 'docs/android-arm64-desktop-plugin-compatibility.md'
 
@@ -83,6 +84,11 @@ jobs:
           # The dedicated advanced desktop plug-in migration entry must be visible in Ae.
           grep -Fq '电脑插件高级移植（自动比较完整度 + 强制兼容）' effectcraft/crates/ui-egui/src/header.rs
           grep -Fq '未实测的路线不会标记为成功' effectcraft/crates/ui-egui/src/header.rs
+          ! grep -Fq '导入 DeepSeek 本地模型包（ZIP）' effectcraft/crates/ui-egui/src/header.rs
+          ! grep -Fq 'import_ai' effectcraft/crates/ui-egui/src/header.rs
+          grep -Fq '结果页会展示检测到的每个插件的全部适用路线' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'for item in items.iter()' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'for route in routes.iter()' effectcraft/crates/ui-egui/src/plugin_migration.rs
           # Route plans must remain explicit and must never be reported as executed by metadata scanning.
           grep -Fq 'fn native_translation_trials(' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'fn forced_compatibility_profiles(' effectcraft/crates/engine/src/cmd/effect.rs
