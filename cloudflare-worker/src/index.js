@@ -1,6 +1,7 @@
 import { AccountSessionHub } from "./account_session_hub.js";
 import { NodeNetworkHub } from "./node_network_hub.js";
-export { AccountSessionHub, NodeNetworkHub };
+import { PasswordCryptoHub } from "./password_crypto_hub.js";
+export { AccountSessionHub, NodeNetworkHub, PasswordCryptoHub };
 
 const encoder = new TextEncoder();
 const JSON_HEADERS = {
@@ -90,16 +91,16 @@ async function publicWhitelist(request, env) {
 }
 
 async function passwordCryptoRequest(env, path, body) {
-  if (!env.ACCOUNT_SESSIONS) {
-    console.error("password-crypto-binding-missing");
+  if (!env.PASSWORD_CRYPTO) {
+    console.error("password-crypto-v2-binding-missing");
     throw new HttpError(503, "密码计算服务尚未就绪，请稍后重试", {
       code: "password_service_unavailable"
     });
   }
   try {
-    const id = env.ACCOUNT_SESSIONS.idFromName("__ae_password_crypto__");
-    const stub = env.ACCOUNT_SESSIONS.get(id);
-    const res = await stub.fetch("https://account-session.internal" + path, {
+    const id = env.PASSWORD_CRYPTO.idFromName("__ae_password_crypto_v2__");
+    const stub = env.PASSWORD_CRYPTO.get(id);
+    const res = await stub.fetch("https://password-crypto.internal" + path, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body)
@@ -150,8 +151,11 @@ async function passwordHash(env, password) {
   if (!result.hash) throw new Error("密码哈希计算失败");
   return result.hash;
 }
+async function verifyPasswordDetailed(env, password, stored) {
+  return passwordCryptoRequest(env, "/password/verify", { password, stored });
+}
 async function verifyPassword(env, password, stored) {
-  const result = await passwordCryptoRequest(env, "/password/verify", { password, stored });
+  const result = await verifyPasswordDetailed(env, password, stored);
   return result.valid === true;
 }
 async function signingKey(secret) {
@@ -685,13 +689,21 @@ async function route(request, env) {
         return fail(503, "密码验证自检失败", { code: "password_verify_failed", stage });
       }
       stage = "legacy_password_verify";
-      const legacyPasswordVerified = await verifyPassword(
+      const legacyResult = await verifyPasswordDetailed(
         env,
         "Legacy-Credential-Check-2026!",
         "pbkdf2-sha256$210000$ABEiM0RVZneImaq7zN3u_w$uGMyIVWFJs6SvUbo81u_YADCCXkd_SdvDP5269iMbQI"
       );
+      const legacyPasswordVerified = legacyResult.valid === true;
       if (!legacyPasswordVerified) {
-        return fail(503, "旧版账号密码兼容自检失败", { code: "legacy_password_verify_failed", stage });
+        return fail(503, "旧版账号密码兼容自检失败", {
+          code: "legacy_password_verify_failed",
+          stage,
+          reason: String(legacyResult.reason || "verification_returned_false"),
+          iteration_count: 210000,
+          error_name: String(legacyResult.error_name || ""),
+          error_message: String(legacyResult.error_message || "")
+        });
       }
       return response({
         ok: true,
@@ -726,10 +738,10 @@ async function route(request, env) {
       const connected = Number(probe && probe.connected) === 1;
       let passwordService = false;
       try {
-        if (env.ACCOUNT_SESSIONS) {
-          const id = env.ACCOUNT_SESSIONS.idFromName("__ae_password_crypto_health__");
-          const stub = env.ACCOUNT_SESSIONS.get(id);
-          const passwordProbe = await stub.fetch("https://account-session.internal/health");
+        if (env.PASSWORD_CRYPTO) {
+          const id = env.PASSWORD_CRYPTO.idFromName("__ae_password_crypto_v2_health__");
+          const stub = env.PASSWORD_CRYPTO.get(id);
+          const passwordProbe = await stub.fetch("https://password-crypto.internal/health");
           if (passwordProbe.ok) {
             const result = await passwordProbe.json();
             passwordService = result && result.ok === true;
