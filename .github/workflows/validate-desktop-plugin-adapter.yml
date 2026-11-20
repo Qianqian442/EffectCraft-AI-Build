@@ -8,6 +8,8 @@ on:
     paths:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/scripts/add_home_plugin_manager_remove_about.py'
+      - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - 'docs/android-arm64-desktop-plugin-compatibility.md'
@@ -61,6 +63,8 @@ jobs:
             .github/scripts/add_zip_plugin_support.py \
             .github/scripts/add_desktop_plugin_package_support.py \
             .github/scripts/add_plugin_migration_progress.py \
+            .github/scripts/add_home_lan_account_gate.py \
+            .github/scripts/add_home_plugin_manager_remove_about.py \
             .github/scripts/install_ai_plugin_bridge.py \
             .github/scripts/add_curve_quick_access.py \
             .github/scripts/add_startup_attribution_notice.py \
@@ -81,6 +85,7 @@ jobs:
           python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
           python3 .github/scripts/add_plugin_migration_progress.py
+          python3 .github/scripts/add_home_lan_account_gate.py
           # The dedicated advanced desktop plug-in migration entry must be visible in Ae.
           grep -Fq '电脑插件高级移植（自动比较完整度 + 强制兼容）' effectcraft/crates/ui-egui/src/header.rs
           grep -Fq '未实测的路线不会标记为成功' effectcraft/crates/ui-egui/src/header.rs
@@ -247,6 +252,25 @@ jobs:
           grep -Fq "EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1" effectcraft/crates/ui-egui/src/app/window.rs
           grep -Fq "self.dock_area(ui, body);" effectcraft/crates/ui-egui/src/app/frame.rs
           echo "Verified Ae×am portrait Home and native Ae effects, scrollable parameters, keyframes, curves, puppet, vector and timeline tools."
+
+      - name: Validate Home plug-in management and remove About Ae
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: |
+          python3 .github/scripts/add_home_plugin_manager_remove_about.py
+          ACCOUNT_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
+          DIALOGS_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/dialogs.rs"
+          FRONTEND_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/menus/frontend.rs"
+          MENUS_RS="$EFFECTCRAFT_DIR/crates/engine/src/menus.rs"
+          grep -Fq 'ui.button("账号管理")' "$ACCOUNT_RS"
+          grep -Fq 'ui.button("插件管理")' "$ACCOUNT_RS"
+          grep -Fq 'effect.plugins.list' "$ACCOUNT_RS"
+          ! grep -Fq 'header.about' "$HEADER_RS"
+          ! grep -Fq 'Dialog::About' "$DIALOGS_RS"
+          ! grep -Fq '"app.about"' "$FRONTEND_RS"
+          ! grep -Fq 'app.about' "$MENUS_RS"
+          echo "Verified Home plug-in management is beside account management and About Ae is removed."
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft
