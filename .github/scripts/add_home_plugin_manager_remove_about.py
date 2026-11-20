@@ -20,26 +20,28 @@ def replace_once(source: str, old: str, new: str, label: str) -> str:
 
 PLUGIN_MANAGER_FN = r'''
 // EFFECTCRAFT_HOME_PLUGIN_MANAGER_V1
-/// Home-page plug-in manager. Lists the engine's registered effects and routes supported
-/// effect/desktop plug-in files through the existing, sandboxed importer.
+/// Home-page plug-in manager: lists registered effects and supports deletion of user-installed modules.
 fn show_home_plugin_manager(app: &mut EffectcraftApp, ctx: &egui::Context, open: &mut bool) {
     let cache_id = Id::new("effectcraft-home-plugin-manager-cache");
+    let delete_id = Id::new("effectcraft-home-plugin-delete-confirm");
     let mut data = ctx.data(|d| d.get_temp::<Value>(cache_id).unwrap_or(Value::Null));
+    let mut delete_pending = ctx.data(|d| d.get_temp::<Option<(String, String)>>(delete_id).unwrap_or(None));
     let mut refresh = data.is_null();
     let mut import_effects = false;
     let mut import_desktop = false;
+    let mut request_delete: Option<(String, String)> = None;
 
     egui::Window::new("主页插件管理")
         .id(Id::new("effectcraft-home-plugin-manager-window"))
         .order(Order::Foreground)
-        .default_size((430.0, 500.0))
+        .default_size((440.0, 510.0))
         .min_size((300.0, 260.0))
         .movable(true)
         .collapsible(false)
         .resizable(true)
         .open(open)
         .show(ctx, |ui| {
-            ui.label("查看 Ae 当前已加载的效果插件，并从这里导入新的插件。");
+            ui.label("查看已加载的效果插件。用户安装的插件可以删除，Ae 内置插件会受到保护。");
             ui.horizontal_wrapped(|ui| {
                 if ui.button("导入效果插件").clicked() {
                     import_effects = true;
@@ -69,8 +71,18 @@ fn show_home_plugin_manager(app: &mut EffectcraftApp, ctx: &egui::Context, open:
                         Some(items) if !items.is_empty() => {
                             for plugin in items {
                                 ui.group(|ui| {
-                                    let name = plugin.get("name").and_then(Value::as_str).unwrap_or("未命名插件");
-                                    ui.strong(name);
+                                    ui.horizontal(|ui| {
+                                        let name = plugin.get("name").and_then(Value::as_str).unwrap_or("未命名插件");
+                                        ui.strong(name);
+                                        if plugin.get("can_delete").and_then(Value::as_bool) == Some(true) {
+                                            if ui.button("删除").clicked() {
+                                                let id = plugin.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+                                                request_delete = Some((id, name.to_string()));
+                                            }
+                                        } else {
+                                            ui.small("内置 / 受保护");
+                                        }
+                                    });
                                     if let Some(id) = plugin.get("id").and_then(Value::as_str) {
                                         ui.small(format!("ID：{id}"));
                                     }
@@ -78,8 +90,10 @@ fn show_home_plugin_manager(app: &mut EffectcraftApp, ctx: &egui::Context, open:
                                     let version = plugin.get("version").and_then(Value::as_str).unwrap_or("未知版本");
                                     let author = plugin.get("author").and_then(Value::as_str).unwrap_or("未知作者");
                                     ui.small(format!("分类：{category}  ·  版本：{version}  ·  作者：{author}"));
-                                    if let Some(source) = plugin.get("source").and_then(Value::as_str) {
-                                        ui.small(format!("来源：{source}"));
+                                    if plugin.get("can_delete").and_then(Value::as_bool) == Some(true) {
+                                        ui.small("来源：Ae 私有插件目录");
+                                    } else {
+                                        ui.small("来源：内置或非 Ae 私有插件文件");
                                     }
                                     if let Some(description) = plugin.get("description").and_then(Value::as_str) {
                                         if !description.is_empty() {
@@ -99,20 +113,56 @@ fn show_home_plugin_manager(app: &mut EffectcraftApp, ctx: &egui::Context, open:
                 });
             }
             ui.separator();
-            ui.small("AI 插件包导入和本地模型下载统一在 AI 助手的“模型管理”中进行；这里不提供 AI 插件 ZIP 入口。");
-            ui.small("电脑原生插件会先进行架构分析和路线选择；未通过真实转译与渲染测试的文件不会被标记为已移植。");
+            ui.small("删除用户插件会从 Ae 私有插件目录移除文件并卸载运行时。内置插件不可删除。");
+            ui.small("已有工程中使用该插件的效果将暂时无法渲染；重新导入同一插件后可以恢复。删除不会清除你原本从电脑或其他位置选择的源文件。");
+            ui.small("AI 插件包导入和本地模型下载统一在 AI 助手的“模型管理”中进行。");
         });
 
-    if refresh {
-        data = match app.session.execute("effect.plugins.list", json!({})) {
-            Ok(value) => value,
-            Err(error) => json!({"error": error.to_string(), "plugins": []}),
-        };
+    if let Some(target) = request_delete {
+        delete_pending = Some(target);
     }
+
+    if let Some((id, name)) = delete_pending.clone() {
+        let mut confirm_open = true;
+        let mut confirm_delete = false;
+        let mut cancel_delete = false;
+        egui::Window::new("删除插件确认")
+            .id(Id::new("effectcraft-home-plugin-delete-dialog"))
+            .order(Order::Foreground)
+            .collapsible(false)
+            .resizable(false)
+            .movable(true)
+            .open(&mut confirm_open)
+            .show(ctx, |ui| {
+                ui.strong(format!("确定删除插件“{name}”吗？"));
+                ui.label("删除后，现有工程中使用它的效果将暂时无法渲染。");
+                ui.label("只删除 Ae 私有插件副本，不会删除你最初从电脑或其他位置选择的源文件。");
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    if ui.button("取消").clicked() { cancel_delete = true; }
+                    if ui.button("确认删除").clicked() { confirm_delete = true; }
+                });
+            });
+        if confirm_delete {
+            match app.session.execute("effect.plugins.unload", json!({"id": id, "confirmed": true})) {
+                Ok(_) => {
+                    app.ui.status = format!("已删除插件：{name}");
+                    data = Value::Null;
+                    refresh = true;
+                }
+                Err(error) => app.ui.status = error.to_string(),
+            }
+            delete_pending = None;
+        } else if cancel_delete || !confirm_open {
+            delete_pending = None;
+        }
+    }
+
     if import_effects || import_desktop {
         match crate::menus::invoke(app, ctx, "effect.plugins.load", json!({})) {
             Ok(_) => {
                 data = Value::Null;
+                refresh = true;
                 app.ui.status = if import_desktop {
                     "已打开电脑插件导入；将进入架构分析和高级移植路线选择。".into()
                 } else {
@@ -122,7 +172,16 @@ fn show_home_plugin_manager(app: &mut EffectcraftApp, ctx: &egui::Context, open:
             Err(error) => app.ui.status = error,
         }
     }
-    ctx.data_mut(|d| d.insert_temp(cache_id, data));
+    if refresh {
+        data = match app.session.execute("effect.plugins.list", json!({})) {
+            Ok(value) => value,
+            Err(error) => json!({"error": error.to_string(), "plugins": []}),
+        };
+    }
+    ctx.data_mut(|d| {
+        d.insert_temp(cache_id, data);
+        d.insert_temp(delete_id, delete_pending);
+    });
 }
 '''
 
