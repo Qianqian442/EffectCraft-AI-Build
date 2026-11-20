@@ -12,6 +12,8 @@ on:
       - '.github/scripts/add_effect_plugin_uninstall.py'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_plugin_import_button.py'
+      - '.github/scripts/add_qq_plugin_import_support.py'
+      - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - 'docs/android-arm64-desktop-plugin-compatibility.md'
 
@@ -64,6 +66,7 @@ jobs:
             .github/scripts/add_zip_plugin_support.py \
             .github/scripts/add_desktop_plugin_package_support.py \
             .github/scripts/add_plugin_migration_progress.py \
+            .github/scripts/add_qq_plugin_import_support.py \
             .github/scripts/add_home_lan_account_gate.py \
             .github/scripts/add_home_plugin_manager_remove_about.py \
             .github/scripts/add_effect_plugin_uninstall.py \
@@ -82,12 +85,20 @@ jobs:
       - name: Apply the same plug-in patches used by the APK build
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: |
           python3 .github/scripts/add_plugin_import_button.py
           python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
           python3 .github/scripts/add_effect_plugin_uninstall.py
           python3 .github/scripts/add_plugin_migration_progress.py
+          python3 .github/scripts/add_qq_plugin_import_support.py
+          grep -Fq 'pub mod plugin_migration;' effectcraft/crates/ui-egui/src/lib.rs
+          grep -Fq 'looks_like_plugin_archive' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'safRequestPluginOpen' artcraft/templates/android/SafActivity.java
+          grep -Fq 'Tencent/QQfile_recv' artcraft/templates/android/SafActivity.java
+          grep -Fq 'pick_plugin_open_blocking_worker' artcraft/templates/android/saf_bridge.rs
+          grep -Fq 'saf_open_plugin_paths' artcraft/lib/build-common.sh
           python3 .github/scripts/add_home_lan_account_gate.py
           # The dedicated advanced desktop plug-in migration entry must be visible in Ae.
           grep -Fq '电脑插件高级移植（自动比较完整度 + 强制兼容）' effectcraft/crates/ui-egui/src/header.rs
