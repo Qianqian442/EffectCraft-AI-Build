@@ -164,10 +164,33 @@ pub(crate) fn start_windows_compat_aex_test(source_path: &str) -> Result<String,
         )
         build_common.write_text(common, encoding="utf-8")
 
-    print("Integrated the experimental Windows runtime Java sources and Android dependencies.")
-    print("Added app-private runtime installation APIs and initialized the JNI bridge.")
-    print("The runtime installer downloads pinned Wine/Proton assets and installs the embedded, SHA-256-pinned BOX32 binary.")
-    print("No claim of actual Windows PE/AEX execution is made by this integration step.")
+    native_anchor = '''fi
+
+GRADLE_JDK="$(find_gradle_jdk || true)"
+'''
+    native_block = '''fi
+
+# EFFECTCRAFT_ANDROID_WINDOWS_COMPAT_NATIVE_V1
+if [[ "$APP" == "effectcraft" ]]; then
+    WINDOWS_COMPAT_NATIVE_SOURCE="$ROOT/templates/windows-compat-native/arm64-v8a/libeffectcraft-exec.so"
+    [[ -s "$WINDOWS_COMPAT_NATIVE_SOURCE" ]] || fail "The ARM64 Windows compatibility exec bridge is missing."
+    mkdir -p "$ANDROID_DIR/jniLibs/arm64-v8a"
+    install -m 0755 "$WINDOWS_COMPAT_NATIVE_SOURCE" "$ANDROID_DIR/jniLibs/arm64-v8a/libeffectcraft-exec.so"
+    echo "  -> installed the Android ARM64 Bionic exec interception bridge"
+fi
+
+GRADLE_JDK="$(find_gradle_jdk || true)"
+'''
+    if "EFFECTCRAFT_ANDROID_WINDOWS_COMPAT_NATIVE_V1" not in common:
+        common = replace_once(
+            common, native_anchor, native_block,
+            "Android Bionic exec bridge copy hook"
+        )
+        build_common.write_text(common, encoding="utf-8")
+
+    print("Integrated the app-private Windows runtime manager, Java/JNI bridge and Wine/Proton/FEXCore/Box64 orchestration.")
+    print("The Android ARM64 Bionic exec interception library is copied into jniLibs after cargo-ndk completes.")
+    print("Runtime downloads are checksum-verified; AEX execution is only reported after the isolated host returns a successful render response.")
 
 
 if __name__ == "__main__":
