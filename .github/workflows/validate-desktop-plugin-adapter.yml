@@ -265,7 +265,7 @@ jobs:
           ! grep -Fq "layout_switch_row(" effectcraft/crates/ui-egui/src/header.rs
           grep -Fq 'let rx = workspace_menu(app, ui, p, rx, cy);' effectcraft/crates/ui-egui/src/header.rs
           grep -Fq 'workspace_tabs(app, ui, p, rx, left, cy);' effectcraft/crates/ui-egui/src/header.rs
-          grep -Fq 'let header_h = 40.0;' effectcraft/crates/ui-egui/src/app/frame.rs
+          grep -Fq 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };' effectcraft/crates/ui-egui/src/app/frame.rs
           grep -Fq "FixedSecond(300.0)" effectcraft/crates/ui-egui/src/dock.rs
           grep -Fq "FixedFirst(300.0)" effectcraft/crates/ui-egui/src/dock.rs
           grep -Fq "EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1" effectcraft/crates/ui-egui/src/app/window.rs
