@@ -108,7 +108,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                     app.ui.status = "正在打开电脑插件文件选择器…".into();
                 }
                 popup.label("高级移植会识别电脑插件架构，列出适用的 ARM64 转译路线和强制兼容方案。");
-                popup.label("只有实际运行并通过测试的方案才能标记为已移植；当前未接入的后端会明确显示待实现。");
+                popup.label("未实测的路线不会标记为成功；尚未接入的执行后端会明确显示待实现。");
                 popup.label(".aex / .dll / .ofx / .8bf / .prm 等电脑插件可选单文件或 ZIP；.aep / .aepx 是工程文件，请用“导入工程”。");
                 if popup.button("关闭").clicked() {
                     close_menu = true;
