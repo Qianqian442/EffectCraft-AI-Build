@@ -29,7 +29,21 @@ The target phone architecture is Android ARM64 / arm64-v8a. CPU translation is n
 | [Ghidra](https://github.com/NationalSecurityAgency/ghidra) | PE/ELF/Mach-O analysis | Deep static disassembly, decompilation, import/export analysis and control-flow recovery | Large developer/offline analysis tool, not an automatic on-device converter |
 | [Remill](https://github.com/lifting-bits/remill) | x86/amd64 machine code | Lift instructions to LLVM IR to assist deeper binary analysis/reimplementation | Building a complete binary translator still needs ABI, OS and runtime work |
 
-### Ordered trial policy
+### Ae migration choices
+
+The desktop plug-in import flow offers five selectable strategies:
+
+1. **Automatic best route:** compare every applicable runtime route and select the highest measured completeness score among candidates that pass all mandatory gates.
+2. **CPU translation first:** prioritize the compatible Box64/Box86, FEX or QEMU path for the detected architecture.
+3. **Forced compatibility:** test optional host/API shims, runtime versions, pixel-format adaptation, CPU feature fallback and CPU/serial render fallback.
+4. **Aggressive port / reconstruction:** rebuild from source for ARM64 when possible; otherwise analyze and reconstruct the effect under legally usable interfaces.
+5. **Manual route review:** show every applicable backend for every detected native plug-in, its prerequisites, current measured status and any failed gates. The user can inspect and specify a preferred route; no route is presented as runnable until its worker and host adapter are integrated and its tests pass.
+
+The migration result page must show **all** applicable candidates for **all** detected plug-ins; it must not truncate the candidate list to a short preview. The default selection is automatic best route, but users can choose another strategy. There is no mandatory fixed preference for Box64.
+
+AI model/plugin ZIP import and model downloads are handled exclusively from **模型管理**. The general **导入插件** menu is reserved for effects and desktop plug-ins and must not contain an AI import item.
+
+## Ordered trial policy
 
 The route planner records the following order; a route may run only when its exact prerequisites are available.
 
@@ -114,6 +128,8 @@ The worker must never load arbitrary desktop plug-in binaries inside Ae's main A
 The importer now:
 - detects Windows PE and Linux ELF architecture;
 - assigns format-specific candidate routes in deterministic order;
+- exposes automatic-best, CPU-translation, forced-compatibility, aggressive-port and manual-review strategy choices in Ae;
+- lists every candidate route for every detected native plug-in in the migration report;
 - records each route as not_run_runtime_not_integrated with translation_executed=false;
 - records proposed aggressive compatibility profiles;
 - preserves native desktop plug-ins separately from runnable WASM/WAT/script modules;
