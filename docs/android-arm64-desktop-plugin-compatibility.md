@@ -25,7 +25,8 @@ The target phone architecture is Android ARM64 / arm64-v8a. CPU translation is n
 | [QEMU user-mode](https://www.qemu.org/docs/master/user/) | Linux user-mode x86/i386 | Slow reference/compatibility candidate and diagnostic cross-check | Runs foreign-architecture Linux user programs; it is not a direct Windows PE loader |
 | [Winlator](https://github.com/winebox64/winlator) | Android + Wine + Box86/Box64 | Reference for packaging the Android guest runtime | Demonstrates general Windows applications on Android, not Ae plug-in host compatibility |
 | [OpenFX](https://github.com/AcademySoftwareFoundation/openfx) | OFX plug-in ABI | First plug-in host API to implement in the worker | OFX host implementation is still required |
-| [Ghidra](https://github.com/NationalSecurityAgency/ghidra) | PE/ELF/Mach-O analysis | Static disassembly, import/export analysis, control-flow and metadata recovery | Analysis aid, not an automatic functional converter |
+| [Capstone](https://github.com/capstone-engine/capstone) | x86/x86-64 and ARM64 instruction decoding | Lightweight native Android disassembly to inspect instruction families and build a static triage report | Disassembles instructions; does not itself translate or port a plug-in |
+| [Ghidra](https://github.com/NationalSecurityAgency/ghidra) | PE/ELF/Mach-O analysis | Deep static disassembly, decompilation, import/export analysis and control-flow recovery | Large developer/offline analysis tool, not an automatic on-device converter |
 | [Remill](https://github.com/lifting-bits/remill) | x86/amd64 machine code | Lift instructions to LLVM IR to assist deeper binary analysis/reimplementation | Building a complete binary translator still needs ABI, OS and runtime work |
 
 ### Ordered trial policy
@@ -95,7 +96,8 @@ This is a deeper fallback after ordinary routes fail. It is not permission to bl
 - **Render profile:** try CPU fallback, GPU forwarding disabled, serial rendering, and ordered frame calls when the plug-in's threading behavior is incompatible.
 - **CPU profile:** mask unsupported optional CPU extensions and test lower feature levels; never pretend unavailable instructions are supported.
 - **Source rebuild:** when source is provided or available under valid terms, recompile for Android ARM64 with NDK/Clang and replace platform-specific APIs.
-- **Binary reconstruction:** use Ghidra to inspect imports/exports, resources, strings, control flow and parameter metadata. Remill may lift supported machine instructions into LLVM IR for analysis. Reimplement the effect algorithm as native ARM64 or a sandboxed WASM module, then compare it against reference frames.
+- **On-device triage:** use Capstone's native Android library to disassemble x86/x86-64 instructions and record unsupported instruction families, imports and call targets. Capstone is a disassembler, not an emulator or translator.
+- **Deep binary reconstruction:** use Ghidra during engineering/offline analysis to inspect imports/exports, resources, strings, control flow and parameter metadata. Remill may lift supported machine instructions into LLVM IR for further analysis. Reimplement the effect algorithm as native ARM64 or a sandboxed WASM module, then compare it against reference frames. Ghidra is not intended to be bundled into the normal phone APK.
 
 "Force compatibility" must not disable security checks, bypass activation/licensing/DRM, silently stub required host APIs, or import a binary that has not passed the render tests. A compatibility recreation must be labeled as an Android recreation, not the original vendor plug-in.
 
@@ -126,7 +128,7 @@ Not yet implemented:
 
 ## License / redistribution
 
-Preserve upstream notices. Box64/Box86/FEX use MIT-style permissive terms; Wine is LGPL-2.1-or-later; QEMU is GPL-2.0 with per-file exceptions; OpenFX is BSD-3-Clause; Ghidra and Remill use Apache-2.0. Before shipping, audit the exact pinned source revision, all transitive libraries, modified-source publication obligations and notices. Do not bundle a binary without verifying its license.
+Preserve upstream notices. Box64/Box86/FEX use MIT-style permissive terms; Wine is LGPL-2.1-or-later; QEMU is GPL-2.0 with per-file exceptions; OpenFX and Capstone use BSD licenses; Ghidra and Remill use Apache-2.0. Before shipping, audit the exact pinned source revision, all transitive libraries, modified-source publication obligations and notices. Do not bundle a binary without verifying its license.
 
 ## Sources
 
@@ -138,4 +140,5 @@ Preserve upstream notices. Box64/Box86/FEX use MIT-style permissive terms; Wine 
 - Winlator Android integration reference: https://github.com/winebox64/winlator
 - OpenFX: https://github.com/AcademySoftwareFoundation/openfx
 - Ghidra: https://github.com/NationalSecurityAgency/ghidra
+- Capstone: https://github.com/capstone-engine/capstone
 - Remill: https://github.com/lifting-bits/remill
