@@ -3,6 +3,13 @@ name: Validate desktop plug-in compatibility adapter
 on:
   workflow_call:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/workflows/validate-desktop-plugin-adapter.yml'
+      - 'docs/android-arm64-desktop-plugin-compatibility.md'
 
 concurrency:
   group: desktop-plugin-adapter-validation-${{ github.ref }}
@@ -73,6 +80,12 @@ jobs:
           python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
           python3 .github/scripts/add_plugin_migration_progress.py
+          # Route plans must remain explicit and must never be reported as executed by metadata scanning.
+          grep -Fq 'fn native_translation_trials(' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'fn forced_compatibility_profiles(' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq '"candidate_routes": candidate_routes' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq '"translation_executed": false' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'not_run_runtime_not_integrated' effectcraft/crates/engine/src/cmd/effect.rs
 
       - name: Apply the AI and export toolbar base patch used by the APK build
         env:
