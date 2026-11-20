@@ -187,6 +187,349 @@ fn select_layer(app: &mut EffectcraftApp, id: u64) {
 const AM_MULTI_MODE_ID: &str = "am-mobile-multi-select-mode";
 const AM_MULTI_IDS_ID: &str = "am-mobile-multi-select-ids";
 const AM_ACTIVE_LAYER_ID: &str = "am-mobile-active-layer";
+
+const AM_EFFECT_BROWSER_OPEN_ID: &str = "am-mobile-effect-browser-open";
+const AM_EFFECT_CATEGORY_ID: &str = "am-mobile-effect-browser-category";
+const AM_EFFECT_DETAIL_ID: &str = "am-mobile-effect-browser-detail";
+const AM_EFFECT_SOURCE_LAYER_ID: &str = "am-mobile-effect-source-layer";
+
+// EFFECTCRAFT_AM_EFFECT_BROWSER_V1
+fn am_open_effect_browser(ctx: &egui::Context, layer_id: Option<u64>) {
+    ctx.data_mut(|d| {
+        d.insert_temp(Id::new(AM_EFFECT_BROWSER_OPEN_ID), true);
+        d.insert_temp(Id::new(AM_EFFECT_SOURCE_LAYER_ID), layer_id);
+        d.remove::<String>(Id::new(AM_EFFECT_CATEGORY_ID));
+        d.remove::<String>(Id::new(AM_EFFECT_DETAIL_ID));
+    });
+}
+
+fn am_effect_browser_is_open(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(Id::new(AM_EFFECT_BROWSER_OPEN_ID))).unwrap_or(false)
+}
+
+fn am_effect_matches(spec: &effectcraft_engine::effects::EffectSpec, query: &str) -> bool {
+    query.is_empty()
+        || effectcraft_engine::effects::name_matches(spec, query)
+        || crate::i18n::effects::matches(spec.id, spec.name, query)
+        || spec.category.to_lowercase().contains(query)
+        || crate::i18n::effects::category(spec.category).to_lowercase().contains(query)
+}
+
+fn am_effect_preview(p: &egui::Painter, rect: Rect, spec: &effectcraft_engine::effects::EffectSpec) {
+    let hash = spec.id.bytes().fold(2166136261u32, |a, b| (a ^ b as u32).wrapping_mul(16777619));
+    let c1 = Color32::from_rgb(42 + (hash & 0x3f) as u8, 82 + ((hash >> 7) & 0x5f) as u8, 115 + ((hash >> 13) & 0x7f) as u8);
+    let c2 = Color32::from_rgb(115 + ((hash >> 3) & 0x7f) as u8, 74 + ((hash >> 11) & 0x6f) as u8, 138 + ((hash >> 17) & 0x65) as u8);
+    p.rect_filled(rect, 7.0, Color32::from_rgb(25, 31, 49));
+    let inner = rect.shrink(5.0);
+    p.rect_filled(inner, 5.0, c1);
+    let center = inner.center();
+    let radius = inner.width().min(inner.height()) * 0.29;
+    p.circle_filled(center, radius, c2);
+    p.circle_stroke(center, radius * 0.72, Stroke::new(1.5, Color32::from_rgb(220, 226, 242)));
+    for i in 0..4 {
+        let x = inner.min.x + inner.width() * (i as f32 + 0.5) / 4.0;
+        let y = inner.min.y + inner.height() * (i as f32 + 0.5) / 4.0;
+        p.line_segment(
+            [pos2(x, inner.min.y + 3.0), pos2(x, inner.max.y - 3.0)],
+            Stroke::new(0.7, Color32::from_rgba_premultiplied(235, 239, 255, 90)),
+        );
+        p.line_segment(
+            [pos2(inner.min.x + 3.0, y), pos2(inner.max.x - 3.0, y)],
+            Stroke::new(0.7, Color32::from_rgba_premultiplied(235, 239, 255, 90)),
+        );
+    }
+    p.text(
+        pos2(inner.min.x + 5.0, inner.min.y + 5.0),
+        Align2::LEFT_TOP,
+        "FX",
+        Tokens::semibold(8.0),
+        Color32::from_rgb(245, 247, 255),
+    );
+}
+
+fn am_effect_card(
+    app: &mut EffectcraftApp,
+    ui: &mut egui::Ui,
+    p: &egui::Painter,
+    rect: Rect,
+    spec: &'static effectcraft_engine::effects::EffectSpec,
+) {
+    let preview = Rect::from_min_size(rect.min, vec2(rect.width(), rect.height() - 27.0));
+    am_effect_preview(p, preview, spec);
+    let name = crate::i18n::effects::name(spec.id, spec.name);
+    p.with_clip_rect(rect).text(
+        pos2(rect.center().x, preview.max.y + 13.0),
+        Align2::CENTER_CENTER,
+        name,
+        Tokens::ui(10.0),
+        app.tokens.text,
+    );
+    let response = ui.interact(rect, Id::new(("am-effect-card", spec.id)), Sense::click());
+    app.auto.add(&format!("am.effects.item.{}", spec.id), rect, spec.name);
+    if response.clicked() {
+        ui.ctx().data_mut(|d| d.insert_temp(Id::new(AM_EFFECT_DETAIL_ID), spec.id.to_string()));
+    }
+}
+
+fn am_effect_grid(
+    app: &mut EffectcraftApp,
+    ui: &mut egui::Ui,
+    p: &egui::Painter,
+    list: Rect,
+    y: &mut f32,
+    specs: Vec<&'static effectcraft_engine::effects::EffectSpec>,
+) {
+    let columns = 3usize;
+    let gap = 8.0;
+    let card_w = ((list.width() - 16.0 - gap * 2.0) / columns as f32).max(1.0);
+    let card_h = 111.0;
+    for (index, spec) in specs.into_iter().enumerate() {
+        let col = index % columns;
+        let row = index / columns;
+        let r = Rect::from_min_size(
+            pos2(list.min.x + 8.0 + col as f32 * (card_w + gap), *y + row as f32 * (card_h + 8.0)),
+            vec2(card_w, card_h),
+        );
+        if r.max.y >= list.min.y && r.min.y <= list.max.y {
+            am_effect_card(app, ui, p, r, spec);
+        }
+    }
+    // The number of rows controls the scrollable content height.
+    let count = specs_count_hint_placeholder();
+    let _ = count;
+}
+
+fn am_effect_category_card(
+    app: &mut EffectcraftApp,
+    ui: &mut egui::Ui,
+    p: &egui::Painter,
+    rect: Rect,
+    category: &'static str,
+    count: usize,
+) {
+    let seed = category.bytes().fold(0u32, |a, b| a.wrapping_mul(31).wrapping_add(b as u32));
+    let left = Color32::from_rgb(38 + (seed & 0x5f) as u8, 56 + ((seed >> 8) & 0x5f) as u8, 88 + ((seed >> 16) & 0x7f) as u8);
+    let right = Color32::from_rgb(70 + ((seed >> 3) & 0x7f) as u8, 42 + ((seed >> 11) & 0x6f) as u8, 116 + ((seed >> 19) & 0x6f) as u8);
+    p.rect_filled(rect, 6.0, left);
+    for i in 0..5 {
+        let x = rect.min.x + rect.width() * i as f32 / 4.0;
+        p.line_segment(
+            [pos2(x, rect.min.y + 4.0), pos2(rect.max.x - (x - rect.min.x), rect.max.y - 4.0)],
+            Stroke::new(1.0, right),
+        );
+    }
+    p.rect_filled(
+        Rect::from_min_size(pos2(rect.min.x + 7.0, rect.max.y - 27.0), vec2(rect.width() - 14.0, 21.0)),
+        4.0,
+        Color32::from_rgba_premultiplied(10, 13, 24, 190),
+    );
+    p.text(
+        pos2(rect.center().x, rect.max.y - 16.0),
+        Align2::CENTER_CENTER,
+        format!("{}  ·  {}", crate::i18n::effects::category(category), count),
+        Tokens::semibold(10.0),
+        Color32::WHITE,
+    );
+    let response = ui.interact(rect, Id::new(("am-effect-category", category)), Sense::click());
+    app.auto.add(&format!("am.effects.category.{category}"), rect, category);
+    if response.clicked() {
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(Id::new(AM_EFFECT_CATEGORY_ID), category.to_string());
+            d.remove::<String>(Id::new(AM_EFFECT_DETAIL_ID));
+        });
+    }
+}
+
+fn am_apply_effect_from_browser(app: &mut EffectcraftApp, ctx: &egui::Context, effect_id: &str) {
+    let target = ctx.data(|d| d.get_temp::<Option<u64>>(Id::new(AM_EFFECT_SOURCE_LAYER_ID))).flatten()
+        .or_else(|| app.session.state.selected_layers.first().map(|id| id.0));
+    let Some(layer_id) = target else {
+        app.ui.status = "请先选择一个图层，再添加效果。".into();
+        return;
+    };
+    let name = effectcraft_engine::effects::find(effect_id)
+        .map(|spec| crate::i18n::effects::name(spec.id, spec.name))
+        .unwrap_or_else(|| effect_id.to_string());
+    if let Err(error) = app.session.execute("layer.select", json!({"layer": layer_id})) {
+        app.ui.status = format!("无法选择目标图层：{error}");
+        return;
+    }
+    match app.session.execute("effect.apply", json!({"effect": effect_id, "layers": [layer_id]})) {
+        Err(error) => app.ui.status = format!("添加效果失败：{error}"),
+        Ok(applied) => {
+            crate::panels::effects_presets::push_recent(&mut app.ui.effects_recent, effect_id);
+            crate::panels::effect_controls::choose_files_after_apply(app, &applied);
+            app.ui.focused = PanelKind::EffectControls;
+            app.ui.status = format!("已添加效果：{name}");
+            ctx.data_mut(|d| {
+                d.remove::<bool>(Id::new(AM_EFFECT_BROWSER_OPEN_ID));
+                d.remove::<String>(Id::new(AM_EFFECT_DETAIL_ID));
+                d.remove::<String>(Id::new(AM_EFFECT_CATEGORY_ID));
+                d.remove::<Option<u64>>(Id::new(AM_EFFECT_SOURCE_LAYER_ID));
+                d.insert_temp(Id::new("am-mobile-tool-drawer"), "controls".to_string());
+                d.remove::<u64>(Id::new(AM_ACTIVE_LAYER_ID));
+            });
+        }
+    }
+}
+
+fn am_effect_detail_sheet(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, effect_id: &str) {
+    let Some(spec) = effectcraft_engine::effects::find(effect_id) else {
+        ui.ctx().data_mut(|d| d.remove::<String>(Id::new(AM_EFFECT_DETAIL_ID)));
+        return;
+    };
+    let t = app.tokens;
+    let p = ui.painter().with_clip_rect(rect);
+    p.rect_filled(rect, 0.0, Color32::from_rgba_premultiplied(0, 0, 0, 150));
+    let height = (rect.height() * 0.46).clamp(250.0, 430.0);
+    let sheet = Rect::from_min_size(pos2(rect.min.x, rect.max.y - height), vec2(rect.width(), height));
+    p.rect_filled(sheet, 12.0, t.panel_bg);
+    p.line_segment([sheet.left_top(), sheet.right_top()], Stroke::new(1.0, t.separator));
+
+    let close_rect = Rect::from_min_size(pos2(sheet.min.x + 13.0, sheet.min.y + 10.0), vec2(32.0, 30.0));
+    let close = ui.put(close_rect, egui::Button::new("×").min_size(close_rect.size()));
+    app.auto.add_response("am.effects.detail.close", &close, "关闭效果详情");
+    if close.clicked() {
+        ui.ctx().data_mut(|d| d.remove::<String>(Id::new(AM_EFFECT_DETAIL_ID)));
+    }
+
+    let preview = Rect::from_min_size(pos2(sheet.min.x + 18.0, sheet.min.y + 52.0), vec2(116.0, 104.0));
+    am_effect_preview(&p, preview, spec);
+    let name = crate::i18n::effects::name(spec.id, spec.name);
+    p.text(pos2(preview.max.x + 13.0, preview.min.y + 9.0), Align2::LEFT_TOP, name, Tokens::semibold(16.0), t.text);
+    p.text(
+        pos2(preview.max.x + 13.0, preview.min.y + 36.0),
+        Align2::LEFT_TOP,
+        crate::i18n::effects::category(spec.category),
+        Tokens::ui(11.0),
+        t.text_dim,
+    );
+    let mut meta = format!("{} 个可调参数", spec.params.len());
+    if spec.gpu { meta.push_str("  ·  GPU"); }
+    if spec.float { meta.push_str("  ·  32位"); }
+    p.text(pos2(preview.max.x + 13.0, preview.min.y + 59.0), Align2::LEFT_TOP, meta, Tokens::ui(10.0), t.text_dim);
+    p.text(
+        pos2(sheet.min.x + 18.0, preview.max.y + 13.0),
+        Align2::LEFT_TOP,
+        "添加后可在效果参数面板中调节数值、设置关键帧并编辑曲线。",
+        Tokens::ui(10.5),
+        t.text,
+    );
+
+    let action_y = sheet.max.y - 58.0;
+    let star_rect = Rect::from_min_size(pos2(sheet.min.x + 18.0, action_y), vec2(52.0, 42.0));
+    let favorite = app.session.prefs.is_effect_favorite(spec.id);
+    let star = ui.put(star_rect, egui::Button::new(if favorite { "★" } else { "☆" }).min_size(star_rect.size()));
+    app.auto.add_response("am.effects.detail.favorite", &star, "收藏效果");
+    if star.clicked() {
+        app.session.prefs.toggle_effect_favorite(spec.id);
+        app.session.save_prefs();
+    }
+    let add_rect = Rect::from_min_size(
+        pos2(star_rect.max.x + 10.0, action_y),
+        vec2((sheet.width() - 46.0 - star_rect.width()).max(80.0), 42.0),
+    );
+    let add = ui.put(add_rect, egui::Button::new("＋ 标准设置").min_size(add_rect.size()));
+    app.auto.add_response("am.effects.detail.apply", &add, "添加效果标准设置");
+    if add.clicked() {
+        am_apply_effect_from_browser(app, ui.ctx(), effect_id);
+    }
+}
+
+fn am_effect_browser(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    let ctx = ui.ctx().clone();
+    let t = app.tokens;
+    let p = ui.painter().with_clip_rect(rect);
+    p.rect_filled(rect, 0.0, t.app_bg);
+
+    let header = Rect::from_min_size(rect.min, vec2(rect.width(), 44.0));
+    p.rect_filled(header, 0.0, t.header_bg);
+    p.line_segment([header.left_bottom(), header.right_bottom()], Stroke::new(1.0, t.separator));
+    let category = ctx.data(|d| d.get_temp::<String>(Id::new(AM_EFFECT_CATEGORY_ID)));
+    let left = Rect::from_min_size(pos2(header.min.x + 6.0, header.min.y + 5.0), vec2(34.0, 34.0));
+    let back = ui.put(left, egui::Button::new(if category.is_some() { "‹" } else { "×" }).min_size(left.size()));
+    app.auto.add_response("am.effects.back", &back, "返回效果分类");
+    if back.clicked() {
+        if category.is_some() {
+            ctx.data_mut(|d| d.remove::<String>(Id::new(AM_EFFECT_CATEGORY_ID)));
+        } else {
+            ctx.data_mut(|d| {
+                d.remove::<bool>(Id::new(AM_EFFECT_BROWSER_OPEN_ID));
+                d.remove::<String>(Id::new(AM_EFFECT_DETAIL_ID));
+                d.remove::<Option<u64>>(Id::new(AM_EFFECT_SOURCE_LAYER_ID));
+            });
+        }
+    }
+    let title = category.as_deref().map(crate::i18n::effects::category).unwrap_or("效果浏览器");
+    p.text(pos2(header.center().x, header.center().y), Align2::CENTER_CENTER, title, Tokens::semibold(14.0), t.text);
+
+    let search_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, header.max.y + 8.0), vec2(rect.width() - 20.0, 32.0));
+    let mut query = app.ui.effects_search.clone();
+    let search = ui.put(
+        search_rect,
+        egui::TextEdit::singleline(&mut query).hint_text("搜索效果").font(Tokens::ui(11.0)),
+    );
+    app.ui.effects_search = query.clone();
+    app.auto.add_response("am.effects.search", &search, "搜索效果");
+
+    let body = Rect::from_min_max(pos2(rect.min.x + 4.0, search_rect.max.y + 5.0), rect.max);
+    let mut scroll = crate::widgets::PanelScroll::begin(ui, Id::new("am-effect-browser-scroll"), body);
+    let list = scroll.content;
+    let lp = ui.painter().with_clip_rect(list);
+    let normalized = query.trim().to_lowercase();
+    let all = effectcraft_engine::effects::all();
+    let mut y = list.min.y - scroll.offset;
+
+    if !normalized.is_empty() {
+        let results: Vec<_> = all.into_iter().filter(|spec| am_effect_matches(spec, &normalized)).collect();
+        lp.text(pos2(list.min.x + 8.0, y + 10.0), Align2::LEFT_CENTER, format!("搜索结果  ·  {}", results.len()), Tokens::semibold(11.0), t.text);
+        y += 24.0;
+        let start = y;
+        let count = results.len();
+        am_effect_grid(app, ui, &lp, list, &mut y, results);
+        y = start + ((count + 2) / 3) as f32 * 119.0 + 8.0;
+    } else if let Some(category_name) = category.as_deref() {
+        let results: Vec<_> = all.into_iter().filter(|spec| spec.category == category_name).collect();
+        let start = y;
+        let count = results.len();
+        am_effect_grid(app, ui, &lp, list, &mut y, results);
+        y = start + ((count + 2) / 3) as f32 * 119.0 + 8.0;
+    } else {
+        let recent: Vec<_> = app.ui.effects_recent.iter().filter_map(|id| effectcraft_engine::effects::find(id)).take(3).collect();
+        let featured = if recent.is_empty() { all.iter().copied().take(3).collect::<Vec<_>>() } else { recent };
+        lp.text(pos2(list.min.x + 8.0, y + 8.0), Align2::LEFT_CENTER, "常用效果", Tokens::semibold(11.0), t.text);
+        y += 20.0;
+        let featured_count = featured.len();
+        let start = y;
+        am_effect_grid(app, ui, &lp, list, &mut y, featured);
+        y = start + ((featured_count + 2) / 3) as f32 * 119.0 + 12.0;
+
+        lp.text(pos2(list.min.x + 8.0, y + 8.0), Align2::LEFT_CENTER, "效果分类", Tokens::semibold(11.0), t.text);
+        y += 22.0;
+        let categories = effectcraft_engine::effects::categories();
+        let gap = 7.0;
+        let cols = 2usize;
+        let w = ((list.width() - 20.0 - gap) / cols as f32).max(1.0);
+        let h = 82.0;
+        for (index, cat) in categories.iter().enumerate() {
+            let count = all.iter().filter(|spec| spec.category == **cat).count();
+            let r = Rect::from_min_size(
+                pos2(list.min.x + 10.0 + (index % cols) as f32 * (w + gap), y + (index / cols) as f32 * (h + gap)),
+                vec2(w, h),
+            );
+            if r.max.y >= list.min.y && r.min.y <= list.max.y {
+                am_effect_category_card(app, ui, &lp, r, cat, count);
+            }
+        }
+        y += ((categories.len() + 1) / 2) as f32 * (h + gap) + 8.0;
+    }
+    let content_height = (y + scroll.offset - list.min.y).max(list.height());
+    scroll.end(ui, &mut app.auto, "am.effects.browser.scroll", content_height, &t);
+
+    if let Some(detail) = ctx.data(|d| d.get_temp::<String>(Id::new(AM_EFFECT_DETAIL_ID))) {
+        am_effect_detail_sheet(app, ui, rect, &detail);
+    }
+}
 const AM_LONG_PRESS_SECONDS: f64 = 0.48;
 
 // EFFECTCRAFT_AM_LONG_PRESS_LAYER_GROUPING_V1
@@ -663,7 +1006,7 @@ fn bottom_tools(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) -> () {
         if response.clicked() {
             match action {
                 "add" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "add".to_string())); }
-                "effects" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "effects".to_string())); }
+                "effects" => { let layer = app.session.state.selected_layers.first().map(|id| id.0); am_open_effect_browser(ui.ctx(), layer); }
                 "controls" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "controls".to_string())); }
                 "properties" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "properties".to_string())); }
                 "project" => { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "project".to_string())); }
@@ -677,7 +1020,7 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let id = Id::new("am-mobile-tool-drawer");
     let Some(kind) = ui.ctx().data(|d| d.get_temp::<String>(id)) else { return };
     let panel = match kind.as_str() {
-        "effects" | "presets" => Some(PanelKind::EffectsPresets),
+        "presets" => Some(PanelKind::EffectsPresets),
         "properties" | "blend" | "transform" => Some(PanelKind::Properties),
         "controls" | "fill" | "border" | "shape" => Some(PanelKind::EffectControls),
         "project" => Some(PanelKind::Project),
@@ -874,7 +1217,7 @@ fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, 
         app.auto.add_response(&format!("am.layer.category.{kind}"), &response, label);
         if response.clicked() {
             // Keep AM_ACTIVE_LAYER_ID so closing the category drawer returns to this sheet.
-            ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), kind.to_string()));
+            if kind == "effects" { am_open_effect_browser(ui.ctx(), Some(layer_id)); } else { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), kind.to_string())); }
         }
     }
 }
@@ -904,6 +1247,12 @@ fn am_bottom_sheet_progress(ctx: &egui::Context, key: Option<String>) -> f32 {
 }
 
 pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+    if am_effect_browser_is_open(ui.ctx()) {
+        am_effect_browser(app, ui, rect);
+        crate::header::export_dialog(app, ui);
+        crate::header::export_progress_dialog(app, ui);
+        return;
+    }
     let t = app.tokens;
     ui.painter().rect_filled(rect, 0.0, t.app_bg);
 
@@ -949,6 +1298,8 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let sheet_h = if let Some(kind) = drawer_kind.as_deref() {
         if kind == "keyframes" {
             (rect.height() * 0.68).clamp(260.0, 500.0).min(timeline_rect.height().max(220.0))
+        } else if kind == "controls" {
+            (rect.height() * 0.56).clamp(250.0, 440.0).min(timeline_rect.height().max(220.0))
         } else {
             (rect.height() * 0.42).clamp(180.0, 340.0).min(timeline_rect.height().max(140.0))
         }
@@ -1103,6 +1454,13 @@ def verify(root: Path) -> None:
         "编辑形状",
         "预设",
         "效果",
+        "EFFECTCRAFT_AM_EFFECT_BROWSER_V1",
+        "效果浏览器",
+        "am_effect_browser",
+        "am_effect_detail_sheet",
+        "am_apply_effect_from_browser",
+        "标准设置",
+        "effect.apply",
     ):
         if token not in module:
             raise SystemExit(f"Independent AM editor module missing feature: {token}")
