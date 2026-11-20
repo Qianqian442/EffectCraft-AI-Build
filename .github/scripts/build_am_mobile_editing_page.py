@@ -8,7 +8,8 @@ from pathlib import Path
 
 
 MARKER = "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1"
-MODULE = r'''//! Independent Alight Motion-inspired phone editing page.
+MODULE = r'''//! EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1
+//! Independent Alight Motion-inspired phone editing page.
 //! This module intentionally does not call the Ae dock tree or the Ae Timeline renderer.
 //! It reuses the shared composition renderer and engine commands, while owning the mobile
 //! editing layout, multi-layer clip tracks, transport, quick actions and bottom tool drawer.
@@ -183,6 +184,99 @@ fn select_layer(app: &mut EffectcraftApp, id: u64) {
     }
 }
 
+const AM_MULTI_MODE_ID: &str = "am-mobile-multi-select-mode";
+const AM_MULTI_IDS_ID: &str = "am-mobile-multi-select-ids";
+const AM_ACTIVE_LAYER_ID: &str = "am-mobile-active-layer";
+const AM_LONG_PRESS_SECONDS: f64 = 0.48;
+
+// EFFECTCRAFT_AM_LONG_PRESS_LAYER_GROUPING_V1
+fn am_multi_select_enabled(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(Id::new(AM_MULTI_MODE_ID))).unwrap_or(false)
+}
+
+fn am_multi_selected_ids(ctx: &egui::Context) -> Vec<u64> {
+    ctx.data(|d| d.get_temp::<Vec<u64>>(Id::new(AM_MULTI_IDS_ID))).unwrap_or_default()
+}
+
+fn am_toggle_multi_selected(app: &mut EffectcraftApp, ctx: &egui::Context, id: u64) {
+    let mut ids = am_multi_selected_ids(ctx);
+    if let Some(index) = ids.iter().position(|selected| *selected == id) {
+        ids.remove(index);
+    } else {
+        ids.push(id);
+    }
+    ctx.data_mut(|d| d.insert_temp(Id::new(AM_MULTI_IDS_ID), ids.clone()));
+    let selected = app.session.active_comp()
+        .map(|comp| comp.layers.iter()
+            .filter(|layer| ids.contains(&layer.id.0))
+            .map(|layer| layer.id)
+            .collect())
+        .unwrap_or_default();
+    app.session.state.selected_layers = selected;
+    app.session.state.selected_props.clear();
+    app.session.state.selected_keys.clear();
+}
+
+fn am_open_layer_actions(ctx: &egui::Context, id: u64) {
+    ctx.data_mut(|d| {
+        d.insert_temp(Id::new(AM_ACTIVE_LAYER_ID), id);
+        d.remove::<String>(Id::new("am-mobile-tool-drawer"));
+    });
+}
+
+fn am_exit_multi_select(ctx: &egui::Context) {
+    ctx.data_mut(|d| {
+        d.remove::<bool>(Id::new(AM_MULTI_MODE_ID));
+        d.remove::<Vec<u64>>(Id::new(AM_MULTI_IDS_ID));
+    });
+}
+
+fn am_group_selected_layers(app: &mut EffectcraftApp, ctx: &egui::Context) {
+    let mut ids = am_multi_selected_ids(ctx);
+    ids.sort_unstable();
+    ids.dedup();
+    if ids.len() < 2 {
+        app.ui.status = "至少选择两个图层后才能编组。".into();
+        return;
+    }
+    let Some(comp) = app.session.active_comp() else {
+        app.ui.status = "当前没有打开的合成。".into();
+        return;
+    };
+    if comp.layers.iter().any(|layer| ids.contains(&layer.id.0) && layer.switches.locked) {
+        app.ui.status = "所选图层中包含已锁定图层，请先解锁再编组。".into();
+        return;
+    }
+    let next_group = comp.layers.iter()
+        .filter(|layer| layer.name.starts_with("组 "))
+        .count() + 1;
+    let name = format!("组 {next_group}");
+    // A native Null parent makes a real layer group. Parent compensation retains each
+    // child's world transform; engine.batch makes creation + parenting one undo step.
+    let result = app.session.execute("engine.batch", json!({
+        "steps": [
+            {"command": "layer.newNull", "params": {"name": name}},
+            {"command": "layer.setParent", "params": {
+                "layers": ids,
+                "parent": "$1.layer",
+                "compensate": true
+            }}
+        ]
+    }));
+    match result {
+        Ok(_) => {
+            let grouped = ids.len();
+            let root = app.session.state.selected_layers.first().map(|layer| layer.0);
+            am_exit_multi_select(ctx);
+            if let Some(root) = root {
+                am_open_layer_actions(ctx, root);
+            }
+            app.ui.status = format!("已将 {grouped} 个图层编组，画面位置保持不变。");
+        }
+        Err(error) => app.ui.status = format!("编组失败：{error}"),
+    }
+}
+
 fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let t = app.tokens;
     let p = ui.painter().with_clip_rect(rect);
@@ -288,7 +382,10 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         if row.max.y < content.min.y || row.min.y > content.max.y {
             continue;
         }
-        let selected = app.session.state.selected_layers.contains(&layer.id);
+        let multi_mode = am_multi_select_enabled(ui.ctx());
+        let multi_ids = am_multi_selected_ids(ui.ctx());
+        let selected = app.session.state.selected_layers.contains(&layer.id)
+            || multi_ids.contains(&layer.id.0);
         let row_bg = if selected { t.row_selected } else if index % 2 == 0 { t.panel_bg } else { t.app_bg };
         p.rect_filled(row.intersect(content), 0.0, row_bg);
         p.line_segment([row.left_bottom(), row.right_bottom()], Stroke::new(1.0, t.separator.gamma_multiply(0.45)));
@@ -305,7 +402,67 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 app.ui.status = error.to_string();
             }
         }
-        let name_rect = Rect::from_min_max(pos2(row.min.x + 25.0, row.min.y), pos2(row.min.x + label_w, row.max.y));
+
+        // The small square at the left of the AM layer row is its multi-select control.
+        // Holding it for 0.48 s enters selection mode; further taps add/remove layers.
+        let chip_rect = Rect::from_min_size(pos2(row.min.x + 27.0, row.min.y + 9.0), vec2(14.0, 14.0));
+        let chip_response = ui.interact(
+            chip_rect,
+            Id::new(("am-mobile-layer-select", layer.id.0)),
+            Sense::click(),
+        );
+        p.rect_filled(chip_rect, 3.0, if selected { t.accent } else { Color32::from_rgb(73, 157, 165) });
+        if selected {
+            p.rect_stroke(chip_rect.expand(2.0), 4.0, Stroke::new(1.3, t.text), StrokeKind::Outside);
+        }
+        app.auto.add_response(
+            &format!("am.timeline.group-select.{}", layer.id.0),
+            &chip_response,
+            "长按进入多选；点按选择图层",
+        );
+        let press_id = Id::new(("am-mobile-layer-long-press-start", layer.id.0));
+        let fired_id = Id::new(("am-mobile-layer-long-press-fired", layer.id.0));
+        let pointer_time = ui.input(|i| i.time);
+        let pointer_pressed = ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
+        let pointer_down = ui.input(|i| i.pointer.button_down(egui::PointerButton::Primary));
+        let pointer_released = ui.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
+        if chip_response.hovered() && pointer_pressed {
+            ui.ctx().data_mut(|d| {
+                d.insert_temp(press_id, pointer_time);
+                d.insert_temp(fired_id, false);
+            });
+        }
+        if !multi_mode
+            && pointer_down
+            && let Some(started) = ui.ctx().data(|d| d.get_temp::<f64>(press_id))
+            && pointer_time - started >= AM_LONG_PRESS_SECONDS
+        {
+            ui.ctx().data_mut(|d| d.insert_temp(Id::new(AM_MULTI_MODE_ID), true));
+            am_toggle_multi_selected(app, ui.ctx(), layer.id.0);
+            ui.ctx().data_mut(|d| d.insert_temp(fired_id, true));
+            ui.ctx().data_mut(|d| d.remove::<f64>(press_id));
+            ui.ctx().request_repaint();
+        }
+        if chip_response.clicked() {
+            let long_press_fired = ui.ctx().data(|d| d.get_temp::<bool>(fired_id)).unwrap_or(false);
+            if long_press_fired {
+                ui.ctx().data_mut(|d| d.remove::<bool>(fired_id));
+            } else if am_multi_select_enabled(ui.ctx()) {
+                am_toggle_multi_selected(app, ui.ctx(), layer.id.0);
+            } else {
+                select_layer(app, layer.id.0);
+                am_open_layer_actions(ui.ctx(), layer.id.0);
+            }
+        }
+        if pointer_released {
+            ui.ctx().data_mut(|d| {
+                d.remove::<f64>(press_id);
+                if !chip_response.clicked() {
+                    d.remove::<bool>(fired_id);
+                }
+            });
+        }
+        let name_rect = Rect::from_min_max(pos2(row.min.x + 45.0, row.min.y), pos2(row.min.x + label_w, row.max.y));
         p.with_clip_rect(name_rect).text(
             name_rect.shrink2(vec2(3.0, 0.0)).left_center(),
             Align2::LEFT_CENTER,
@@ -315,7 +472,12 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         );
         let name_response = ui.interact(name_rect, Id::new(("am-mobile-layer-name", layer.id.0)), Sense::click());
         if name_response.clicked() {
-            select_layer(app, layer.id.0);
+            if am_multi_select_enabled(ui.ctx()) {
+                am_toggle_multi_selected(app, ui.ctx(), layer.id.0);
+            } else {
+                select_layer(app, layer.id.0);
+                am_open_layer_actions(ui.ctx(), layer.id.0);
+            }
         }
         app.auto.add_response(&format!("am.timeline.layer.{}", layer.id.0), &name_response, "选择图层");
 
@@ -343,7 +505,12 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let body_resp = ui.interact(bar, Id::new(("am-mobile-clip", layer.id.0)), Sense::click_and_drag());
         app.auto.add_response(&format!("am.timeline.clip.{}", layer.id.0), &body_resp, "拖动片段移动图层");
         if body_resp.clicked() {
-            select_layer(app, layer.id.0);
+            if am_multi_select_enabled(ui.ctx()) {
+                am_toggle_multi_selected(app, ui.ctx(), layer.id.0);
+            } else {
+                select_layer(app, layer.id.0);
+                am_open_layer_actions(ui.ctx(), layer.id.0);
+            }
         }
         let move_id = Id::new(("am-mobile-move-state", layer.id.0));
         if body_resp.drag_started() {
@@ -420,8 +587,46 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     ui.ctx().data_mut(|d| d.insert_temp(view_id, view));
 }
 
-fn bottom_tools(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
+fn bottom_tools(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) -> () {
     let t = app.tokens;
+    if am_multi_select_enabled(ui.ctx()) {
+        let ids = am_multi_selected_ids(ui.ctx());
+        let p = ui.painter().with_clip_rect(rect);
+        p.rect_filled(rect, 0.0, t.header_bg);
+        p.line_segment([rect.left_top(), rect.right_top()], Stroke::new(1.0, t.separator));
+        let actions = [("退出多选", "cancel"), ("编组", "group"), ("清空选择", "clear")];
+        let width = rect.width() / actions.len() as f32;
+        for (index, (label, action)) in actions.into_iter().enumerate() {
+            let r = Rect::from_min_size(
+                pos2(rect.min.x + index as f32 * width + 4.0, rect.min.y + 5.0),
+                vec2((width - 8.0).max(1.0), rect.height() - 10.0),
+            );
+            let enabled = action != "group" || ids.len() >= 2;
+            let response = ui.add_enabled_ui(enabled, |child| {
+                child.put(r, egui::Button::new(label).min_size(r.size()))
+            }).inner;
+            app.auto.add_response(&format!("am.multi.{action}"), &response, label);
+            if response.clicked() {
+                match action {
+                    "group" => am_group_selected_layers(app, ui.ctx()),
+                    "clear" => {
+                        ui.ctx().data_mut(|d| d.insert_temp(Id::new(AM_MULTI_IDS_ID), Vec::<u64>::new()));
+                        app.session.state.selected_layers.clear();
+                        app.session.state.selected_props.clear();
+                    }
+                    "cancel" => {
+                        am_exit_multi_select(ui.ctx());
+                        app.session.state.selected_layers.clear();
+                        app.session.state.selected_props.clear();
+                    }
+                    _ => {}
+                }
+            }
+        }
+        p.text(pos2(rect.center().x, rect.min.y + 2.0), Align2::CENTER_TOP,
+            format!("已选择 {} 个图层", ids.len()), Tokens::ui(9.0), t.text_dim);
+        return;
+    }
     let p = ui.painter().with_clip_rect(rect);
     p.rect_filled(rect, 0.0, t.header_bg);
     p.line_segment([rect.left_top(), rect.right_top()], Stroke::new(1.0, t.separator));
@@ -456,9 +661,9 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let id = Id::new("am-mobile-tool-drawer");
     let Some(kind) = ui.ctx().data(|d| d.get_temp::<String>(id)) else { return };
     let panel = match kind.as_str() {
-        "effects" => Some(PanelKind::EffectsPresets),
-        "properties" => Some(PanelKind::Properties),
-        "controls" => Some(PanelKind::EffectControls),
+        "effects" | "presets" => Some(PanelKind::EffectsPresets),
+        "properties" | "blend" | "transform" => Some(PanelKind::Properties),
+        "controls" | "fill" | "border" | "shape" => Some(PanelKind::EffectControls),
         "project" => Some(PanelKind::Project),
         "keyframes" => Some(PanelKind::Timeline),
         "add" => None,
@@ -473,6 +678,12 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let title = match kind.as_str() {
         "add" => "添加图层",
         "effects" => "效果",
+        "presets" => "预设",
+        "fill" => "颜色和填充",
+        "border" => "边框和阴影",
+        "blend" => "混合和不透明度",
+        "transform" => "移动和转换",
+        "shape" => "编辑形状",
         "controls" => "变换 / 效果控件",
         "properties" => "属性",
         "project" => "项目",
@@ -551,6 +762,107 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     }
 }
 
+fn am_layer_quick_action(app: &mut EffectcraftApp, layer_id: u64, action: &str) {
+    let (stretch, audio) = app.session.active_comp()
+        .and_then(|comp| comp.layers.iter().find(|layer| layer.id.0 == layer_id))
+        .map(|layer| (layer.stretch, layer.switches.audio))
+        .unwrap_or((100.0, true));
+    let result = match action {
+        "speed" => {
+            let next = if (stretch - 100.0).abs() < 0.5 { 200.0 }
+                else if (stretch - 200.0).abs() < 0.5 { 50.0 }
+                else { 100.0 };
+            app.session.execute("layer.timeStretch", json!({"layers": [layer_id], "percent": next}))
+                .map(|_| format!("播放速度已切换为 {:.2}×", 100.0 / next))
+        }
+        "trim_in" => app.session.execute("layer.timing", json!({"layers": [layer_id], "op": "trimInToTime"}))
+            .map(|_| "已将入点裁剪到播放头".to_string()),
+        "trim_out" => app.session.execute("layer.timing", json!({"layers": [layer_id], "op": "trimOutToTime"}))
+            .map(|_| "已将出点裁剪到播放头".to_string()),
+        "reverse" => app.session.execute("layer.timeReverse", json!({"layers": [layer_id]}))
+            .map(|_| "已反转图层播放方向".to_string()),
+        "mute" => app.session.execute("layer.setSwitch", json!({
+            "layers": [layer_id], "switch": "audio", "value": !audio
+        })).map(|_| if audio { "图层音频已静音" } else { "图层音频已恢复" }.to_string()),
+        _ => return,
+    };
+    match result {
+        Ok(message) => app.ui.status = message,
+        Err(error) => app.ui.status = format!("操作失败：{error}"),
+    }
+}
+
+fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, layer_id: u64) {
+    let Some(layer_name) = app.session.active_comp()
+        .and_then(|comp| comp.layers.iter().find(|layer| layer.id.0 == layer_id))
+        .map(|layer| layer.name.clone()) else {
+        ui.ctx().data_mut(|d| d.remove::<u64>(Id::new(AM_ACTIVE_LAYER_ID)));
+        return;
+    };
+    let t = app.tokens;
+    let p = ui.painter().with_clip_rect(rect);
+    p.rect_filled(rect, 10.0, t.panel_bg);
+    let header = Rect::from_min_size(rect.min, vec2(rect.width(), 32.0));
+    p.line_segment([header.left_bottom(), header.right_bottom()], Stroke::new(1.0, t.separator));
+    p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, layer_name, Tokens::semibold(11.0), t.text);
+
+    let close_rect = Rect::from_min_size(pos2(header.max.x - 34.0, header.min.y + 2.0), vec2(30.0, 28.0));
+    let close = ui.put(close_rect, egui::Button::new("×").min_size(close_rect.size()));
+    app.auto.add_response("am.layer.actions.close", &close, "关闭图层操作");
+    if close.clicked() {
+        ui.ctx().data_mut(|d| d.remove::<u64>(Id::new(AM_ACTIVE_LAYER_ID)));
+        return;
+    }
+
+    // Quick actions use existing engine commands, not mock buttons.
+    let quick = [
+        ("速度", "speed"),
+        ("裁入", "trim_in"),
+        ("裁出", "trim_out"),
+        ("反向", "reverse"),
+        ("静音", "mute"),
+    ];
+    let gap = 3.0;
+    let quick_w = ((rect.width() - 16.0 - gap * 4.0) / 5.0).max(1.0);
+    for (index, (label, action)) in quick.into_iter().enumerate() {
+        let r = Rect::from_min_size(
+            pos2(rect.min.x + 8.0 + index as f32 * (quick_w + gap), header.max.y + 5.0),
+            vec2(quick_w, 31.0),
+        );
+        let response = ui.put(r, egui::Button::new(label).min_size(r.size()));
+        app.auto.add_response(&format!("am.layer.quick.{action}"), &response, label);
+        if response.clicked() {
+            am_layer_quick_action(app, layer_id, action);
+        }
+    }
+
+    let cards = [
+        ("颜色和填充", "fill"),
+        ("边框和阴影", "border"),
+        ("混合和不透明度", "blend"),
+        ("移动和转换", "transform"),
+        ("编辑形状", "shape"),
+        ("预设", "presets"),
+        ("效果", "effects"),
+    ];
+    let start_y = header.max.y + 43.0;
+    for (index, (label, kind)) in cards.into_iter().enumerate() {
+        let (column, row, columns) = if index < 3 { (index, 0, 3) } else { (index - 3, 1, 4) };
+        let card_gap = 5.0;
+        let card_w = ((rect.width() - 16.0 - card_gap * (columns - 1) as f32) / columns as f32).max(1.0);
+        let r = Rect::from_min_size(
+            pos2(rect.min.x + 8.0 + column as f32 * (card_w + card_gap), start_y + row as f32 * 57.0),
+            vec2(card_w, 52.0),
+        );
+        let response = ui.put(r, egui::Button::new(label).min_size(r.size()));
+        app.auto.add_response(&format!("am.layer.category.{kind}"), &response, label);
+        if response.clicked() {
+            // Keep AM_ACTIVE_LAYER_ID so closing the category drawer returns to this sheet.
+            ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), kind.to_string()));
+        }
+    }
+}
+
 pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let t = app.tokens;
     ui.painter().rect_filled(rect, 0.0, t.app_bg);
@@ -594,6 +906,12 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         };
         let drawer_rect = Rect::from_min_max(pos2(rect.min.x, timeline_rect.max.y - drawer_h), pos2(rect.max.x, bottom_rect.min.y));
         tool_drawer(app, ui, drawer_rect);
+    } else if !am_multi_select_enabled(ui.ctx())
+        && let Some(layer_id) = ui.ctx().data(|d| d.get_temp::<u64>(Id::new(AM_ACTIVE_LAYER_ID)))
+    {
+        let drawer_h = (rect.height() * 0.44).clamp(220.0, 360.0).min(timeline_rect.height().max(180.0));
+        let drawer_rect = Rect::from_min_max(pos2(rect.min.x, timeline_rect.max.y - drawer_h), pos2(rect.max.x, bottom_rect.min.y));
+        layer_action_drawer(app, ui, drawer_rect, layer_id);
     }
 
     // Export uses the existing encoder, queue and confirmation/progress state.
@@ -705,6 +1023,21 @@ def verify(root: Path) -> None:
         "Tool::Puppet",
         "照片/视频",
         "木偶弯曲",
+        "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1",
+        "EFFECTCRAFT_AM_LONG_PRESS_LAYER_GROUPING_V1",
+        "am-mobile-layer-select",
+        "AM_LONG_PRESS_SECONDS",
+        "am_group_selected_layers",
+        "engine.batch",
+        "layer.setParent",
+        "layer_action_drawer",
+        "颜色和填充",
+        "边框和阴影",
+        "混合和不透明度",
+        "移动和转换",
+        "编辑形状",
+        "预设",
+        "效果",
     ):
         if token not in module:
             raise SystemExit(f"Independent AM editor module missing feature: {token}")
