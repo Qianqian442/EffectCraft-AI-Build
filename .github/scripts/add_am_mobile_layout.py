@@ -13,8 +13,7 @@ from pathlib import Path
 
 WORKSPACE = "AM 竖屏"
 MARKER = "EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1"
-JAVA_MARKER = "EFFECTCRAFT_ANDROID_AM_ORIENTATION_AND_SIGNER_GUARD_V1"
-SIGNER_PLACEHOLDER = "__EFFECTCRAFT_SIGNING_CERT_SHA256__"
+JAVA_MARKER = "EFFECTCRAFT_ANDROID_AM_ORIENTATION_ONLY_V2"
 
 
 def replace_once(source: str, old: str, new: str, label: str) -> str:
@@ -57,61 +56,17 @@ pub(crate) fn set_workspace_portrait(portrait: bool) {
 
 JAVA_IMPORTS = (
     "import android.content.pm.ActivityInfo;",
-    "import android.content.pm.Signature;",
-    "import android.widget.Toast;",
-    "import java.security.MessageDigest;",
 )
 
 JAVA_BRIDGE = r'''
-    // EFFECTCRAFT_ANDROID_AM_ORIENTATION_AND_SIGNER_GUARD_V1
+    // EFFECTCRAFT_ANDROID_AM_ORIENTATION_ONLY_V2
     private static volatile __CLASS__ workspaceOrientationActivity;
-    // Replaced by the build after the persistent release keystore is available.
-    private static final String EXPECTED_SIGNING_CERT_SHA256 = "__EFFECTCRAFT_SIGNING_CERT_SHA256__";
-
-    private boolean verifyReleaseSigningCertificate() {
-        if (EXPECTED_SIGNING_CERT_SHA256 == null
-                || EXPECTED_SIGNING_CERT_SHA256.length() != 64
-                || EXPECTED_SIGNING_CERT_SHA256.startsWith("__")) {
-            Log.e(TAG, "Release signing certificate pin was not embedded.");
-            return false;
-        }
-        try {
-            android.content.pm.PackageInfo info;
-            Signature[] signers;
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                info = getPackageManager().getPackageInfo(
-                    getPackageName(), PackageManager.GET_SIGNING_CERTIFICATES);
-                if (info.signingInfo == null) return false;
-                signers = info.signingInfo.getApkContentsSigners();
-            } else {
-                // Compatibility for older supported Android versions.
-                info = getPackageManager().getPackageInfo(
-                    getPackageName(), PackageManager.GET_SIGNATURES);
-                signers = info.signatures;
-            }
-            if (signers == null || signers.length == 0) return false;
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            for (Signature signer : signers) {
-                byte[] bytes = digest.digest(signer.toByteArray());
-                StringBuilder hex = new StringBuilder(bytes.length * 2);
-                for (byte value : bytes) {
-                    hex.append(String.format(java.util.Locale.ROOT, "%02X", value & 0xff));
-                }
-                if (EXPECTED_SIGNING_CERT_SHA256.equals(hex.toString())) return true;
-            }
-        } catch (Throwable error) {
-            Log.e(TAG, "Could not verify the Ae release signing certificate.", error);
-        }
-        Log.e(TAG, "APK signer mismatch: the package may have been modified or re-signed.");
-        return false;
-    }
 
     public static void setWorkspacePortrait(boolean portrait) {
         __CLASS__ activity = workspaceOrientationActivity;
         if (activity == null) return;
         activity.runOnUiThread(() -> {
             try {
-                // Freeform/desktop windows must remain resizable and must not be forced upright.
                 if (activity.isDesktopOrFreeform()) return;
                 activity.setRequestedOrientation(
                     portrait ? ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
@@ -158,251 +113,15 @@ def patch_dock(effectcraft: Path) -> None:
 
 
 def patch_touch_trim_handles(effectcraft: Path) -> None:
-    """Reuse an existing phone-sized In/Out handle patch, or add one if absent."""
-    path = effectcraft / "crates/ui-egui/src/panels/timeline.rs"
-    source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1"
-    existing_marker = "EFFECTCRAFT_ANDROID_TOUCH_TRIM_HANDLES_V1"
-    if marker in source:
-        return
-    # add_bottom_left_media_import.py runs earlier in this same build and already
-    # widens the In/Out hit zones and paints a visible Out-edge grip. Reuse that
-    # implementation instead of trying to replace the upstream 4/5-point constants
-    # a second time. This preserves the existing duration-drag interaction.
-    if existing_marker in source:
-        required = (
-            "const TRIM_OUTSIDE: f32 = 18.0;",
-            "const TRIM_INSIDE: f32 = 12.0;",
-            "let grip = Rect::from_center_size(bar.right_center(), vec2(4.0, grip_height));",
-        )
-        missing = [item for item in required if item not in source]
-        if missing:
-            raise SystemExit("Existing AM timeline trim-handle patch is incomplete: " + "; ".join(missing))
-        # The final source verifier checks this AM-specific marker to make sure the
-        # AM workspace retains the same touch-ready duration handle. Add a Rust comment
-        # beside the shared implementation; do not duplicate or alter its hit zones.
-        source = source.replace(
-            existing_marker,
-            existing_marker + "\n// EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1",
-            1,
-        )
-        path.write_text(source, encoding="utf-8")
-        print("Reusing the existing enlarged In/Out hit zones and visible right-edge handle.")
-        return
-    old = """const TRIM_OUTSIDE: f32 = 4.0;
-const TRIM_INSIDE: f32 = 5.0;"""
-    new = """// EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1
-// Keep desktop hit targets unchanged; expand the existing In/Out trim zones for touch.
-#[cfg(target_os = "android")]
-const TRIM_OUTSIDE: f32 = 12.0;
-#[cfg(not(target_os = "android"))]
-const TRIM_OUTSIDE: f32 = 4.0;
-#[cfg(target_os = "android")]
-const TRIM_INSIDE: f32 = 14.0;
-#[cfg(not(target_os = "android"))]
-const TRIM_INSIDE: f32 = 5.0;"""
-    source = replace_once(source, old, new, "AM touch-friendly layer trim handles")
-    path.write_text(source, encoding="utf-8")
-
-
-
-def patch_am_native_effect_browser(effectcraft: Path) -> None:
-    """Render the existing Ae effect registry in an AM-style category/effect browser."""
-    path = effectcraft / "crates/ui-egui/src/panels/effects_presets.rs"
-    source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_V1"
-    if marker in source:
-        return
-    anchor = "pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {"
-    code = r'''
-// EFFECTCRAFT_AM_NATIVE_EFFECT_BROWSER_V1
-// AM presentation only: every item comes from the native Ae effect registry and is
-// applied through the same effect.apply command as the standard Effects & Presets panel.
-fn show_am_native(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
-    let t = app.tokens;
-    let ctx = ui.ctx().clone();
-    let search_rect = Rect::from_min_size(rect.min + vec2(10.0, 8.0), vec2((rect.width() - 20.0).max(80.0), 30.0));
-    let mut query = app.ui.effects_search.clone();
-    let search_hint = tr("Search effects");
-    let search = widgets::search_field(ui, search_rect, &mut query, search_hint, &t);
-    a11y::text_input(&search, search_hint, &query);
-    app.ui.effects_search = query.clone();
-    let query_lower = query.trim().to_lowercase();
-    let category_id = egui::Id::new("am-native-effect-browser-category");
-    let selected_category: Option<String> = ctx.data(|d| d.get_temp(category_id));
-    // EFFECTCRAFT_AM_IMPORTED_PLUGIN_EFFECTS_V1
-    // effects::all() includes both built-in Ae effects and all successfully registered
-    // API-v1 plug-ins. Keep a dedicated shortcut for imported runnable plug-ins as well.
-    const IMPORTED_PLUGINS_CATEGORY: &str = "__EFFECTCRAFT_IMPORTED_PLUGINS__";
-    let registry = effectcraft_engine::effects::all();
-    let plugin_effects = effectcraft_engine::effects::plugin::plugins();
-    let categories = effectcraft_engine::effects::categories();
-    let list_rect = Rect::from_min_max(
-        pos2(rect.min.x + 6.0, search_rect.max.y + 6.0),
-        pos2(rect.max.x - 6.0, rect.max.y - 6.0),
-    );
-    let mut apply_id: Option<String> = None;
-
-    // The search box stays fixed while the category/effect list scrolls vertically.
-    // drag_to_scroll makes a finger swipe work on Android as well as a mouse wheel.
-    ui.allocate_ui_at_rect(list_rect, |list_host| {
-        egui::ScrollArea::vertical()
-            .id_salt("am-native-effect-browser-scroll")
-            .auto_shrink([false, false])
-            .drag_to_scroll(true)
-            .show(list_host, |list_ui| {
-                list_ui.set_width(list_rect.width());
-                if selected_category.is_none() && !plugin_effects.is_empty() {
-                    let label = format!("已导入插件效果\\n{} 个可用效果", plugin_effects.len());
-                    if list_ui.add_sized(
-                        vec2(list_rect.width(), 44.0),
-                        egui::Button::new(label),
-                    ).clicked() {
-                        ctx.data_mut(|d| d.insert_temp(category_id, IMPORTED_PLUGINS_CATEGORY.to_string()));
-                    }
-                    list_ui.add_space(8.0);
-                }
-                if let Some(category) = selected_category.as_deref() {
-                    list_ui.horizontal(|row| {
-                        if row.add_sized(vec2(44.0, 34.0), egui::Button::new("‹")).clicked() {
-                            ctx.data_mut(|d| d.remove::<String>(category_id));
-                        }
-                        if category == IMPORTED_PLUGINS_CATEGORY {
-                            row.label("已导入插件效果");
-                        } else {
-                            row.label(crate::i18n::effects::category(category));
-                        }
-                    });
-                    list_ui.add_space(8.0);
-                    let matching: Vec<_> = if category == IMPORTED_PLUGINS_CATEGORY {
-                        plugin_effects.iter().copied()
-                            .filter(|effect| {
-                                query_lower.is_empty()
-                                    || effectcraft_engine::effects::name_matches(effect, &query_lower)
-                                    || crate::i18n::effects::matches(effect.id, effect.name, &query_lower)
-                            })
-                            .collect()
-                    } else {
-                        registry.iter()
-                            .filter(|effect| effect.category == category)
-                            .filter(|effect| {
-                                query_lower.is_empty()
-                                    || effectcraft_engine::effects::name_matches(effect, &query_lower)
-                                    || crate::i18n::effects::matches(effect.id, effect.name, &query_lower)
-                            })
-                            .collect()
-                    };
-                    let gap = 8.0;
-                    let col_w = ((list_ui.available_width() - gap) / 2.0).max(90.0);
-                    list_ui.columns(2, |columns| {
-                        for (index, effect) in matching.iter().enumerate() {
-                            let column = index % 2;
-                            let response = columns[column].add_sized(
-                                vec2(col_w, 66.0),
-                                egui::Button::new(crate::i18n::effects::name(effect.id, effect.name)),
-                            );
-                            if response.clicked() {
-                                apply_id = Some(effect.id.to_string());
-                            }
-                            columns[column].add_space(gap);
-                        }
-                    });
-                    if matching.is_empty() {
-                        list_ui.label(tr("No matching effects"));
-                    }
-                } else {
-                    let mut visible: Vec<&str> = categories.into_iter().filter(|category| {
-                        registry.iter().any(|effect| effect.category == *category
-                            && (query_lower.is_empty()
-                                || effectcraft_engine::effects::name_matches(effect, &query_lower)
-                                || crate::i18n::effects::matches(effect.id, effect.name, &query_lower)))
-                    }).collect();
-                    visible.sort_by_key(|category| category.to_lowercase());
-                    let gap = 8.0;
-                    let col_w = ((list_ui.available_width() - gap) / 2.0).max(90.0);
-                    list_ui.columns(2, |columns| {
-                        for (index, category) in visible.iter().enumerate() {
-                            let column = index % 2;
-                            let count = registry.iter().filter(|effect| effect.category == *category).count();
-                            let label = format!("{}\n{} effects", crate::i18n::effects::category(category), count);
-                            if columns[column].add_sized(vec2(col_w, 82.0), egui::Button::new(label)).clicked() {
-                                ctx.data_mut(|d| d.insert_temp(category_id, (*category).to_string()));
-                            }
-                            columns[column].add_space(gap);
-                        }
-                    });
-                    if visible.is_empty() {
-                        list_ui.label(tr("No matching effects"));
-                    }
-                }
-            });
-    });
-
-    if let Some(id) = apply_id {
-        if app.session.state.selected_layers.is_empty() {
-            app.ui.status = "Select a layer to apply to".into();
-        } else {
-            match app.session.execute("effect.apply", serde_json::json!({"effect": id})) {
-                Err(error) => app.ui.status = error.to_string(),
-                Ok(applied) => {
-                    push_recent(&mut app.ui.effects_recent, &id);
-                    // Switch to the parameter panel after the effect has really been added.
-                    // Do not reset focus back to the browser in the same frame.
-                    app.show_panel(crate::dock::PanelKind::EffectControls);
-                    crate::panels::effect_controls::choose_files_after_apply(app, &applied);
-                }
-            }
-        }
-    }
-}
-
-'''
-    if anchor not in source:
-        raise SystemExit("AM native effect browser insertion point was not found.")
-    source = source.replace(anchor, code + anchor, 1)
-    source = source.replace(
-        anchor,
-        anchor + '\n    if app.ui.workspace == "AM 竖屏" {\n        show_am_native(app, ui, rect);\n        return;\n    }',
-        1,
-    )
-    path.write_text(source, encoding="utf-8")
-
-
-def patch_workspace_tabs(effectcraft: Path) -> None:
-    """Use the original workspace menu; do not add a second toolbar row."""
-    header = (effectcraft / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
-    frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
-    dock = (effectcraft / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
-
-    # The existing » workspace menu already enumerates dock::WORKSPACES.
-    # patch_dock adds AM 竖屏 there, so no extra toolbar control is needed.
-    if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header:
-        raise SystemExit("The original workspace menu is missing from the Ae toolbar.")
-    if "workspace_tabs(app, ui, p, rx, left, cy);" not in header:
-        raise SystemExit("The original workspace tabs are missing from the Ae toolbar.")
-    if '"AM 竖屏"' not in dock:
-        raise SystemExit("AM 竖屏 is not registered in the original workspace menu.")
-    if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" in header or "layout_switch_row(" in header:
-        raise SystemExit("The extra Ae/AM toolbar row must not be present.")
-    if "let header_h = 40.0;" not in frame or "let header_h = 64.0;" in frame:
-        raise SystemExit("The original 40px single-row editor toolbar was not restored.")
-    print("Restored the original single-row Ae toolbar; Ae/AM switching uses the existing workspace menu.")
-
+    """Do not patch the shared Ae timeline: AM owns its own clip-edge handles."""
+    print("AM clip-edge handles are implemented in the independent AM editor; shared Ae Timeline is untouched.")
 
 def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
     source = path.read_text(encoding="utf-8")
     marker = f'        self.ui.workspace = name.to_string();\n'
-    call = f'''        let previous_workspace = self.ui.workspace.clone();
-        // Only animate transitions to or from the AM editing workspace.
-        self.workspace_transition = if previous_workspace != name
-            && (previous_workspace == "{WORKSPACE}" || name == "{WORKSPACE}") {{
-            Some((self.now, if name == "{WORKSPACE}" {{ 1.0 }} else {{ -1.0 }}))
-        }} else {{
-            None
-        }};
-        self.ui.workspace = name.to_string();
-        // EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1
+    call = f'''        self.ui.workspace = name.to_string();
+        // EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V2
         crate::android_layout::set_workspace_portrait(name == "{WORKSPACE}");
 '''
     source = replace_once(source, marker, call, "workspace orientation and animated transition update")
@@ -410,154 +129,12 @@ def patch_workspace_selection(effectcraft: Path) -> None:
 
 
 def patch_workspace_morph_transition(effectcraft: Path) -> None:
-    """Keep the native workspace switch; tint the live panel/control edges blue during it."""
-    lib = effectcraft / "crates/ui-egui/src/lib.rs"
-    source = lib.read_text(encoding="utf-8")
-    field_anchor = "pub struct EffectcraftApp {\n    pub session: Session,\n"
-    field_patch = "pub struct EffectcraftApp {\n    pub(crate) workspace_transition: Option<(f64, f32)>,\n    pub session: Session,\n"
-    if "workspace_transition: Option<(f64, f32)>" not in source:
-        source = replace_once(source, field_anchor, field_patch, "AM workspace color-transition state field")
-        lib.write_text(source, encoding="utf-8")
-
-    app = effectcraft / "crates/ui-egui/src/app.rs"
-    source = app.read_text(encoding="utf-8")
-    app_anchor = "        EffectcraftApp {\n            session,\n"
-    app_patch = "        EffectcraftApp {\n            workspace_transition: None,\n            session,\n"
-    if "workspace_transition: None" not in source:
-        source = replace_once(source, app_anchor, app_patch, "AM workspace color-transition state initialization")
-        app.write_text(source, encoding="utf-8")
-
-    frame = effectcraft / "crates/ui-egui/src/app/frame.rs"
-    source = frame.read_text(encoding="utf-8")
-    # The dock switches to the selected layout normally. No added slide, scale, detached
-    # animation layer, or replacement transition is applied to the editor page.
-    draw_marker = "EFFECTCRAFT_AM_WORKSPACE_MORPH_TRANSITION_V1"
-    if draw_marker in source:
-        begin = source.index("        // " + draw_marker)
-        end = source.index("        #[cfg(not(target_arch = \"wasm32\"))]\n        prefs_live::dropped_files", begin)
-        source = source[:begin] + "        self.dock_area(ui, body);\n" + source[end:]
-    else:
-        if "        self.dock_area(ui, body);\n" not in source:
-            raise SystemExit("Original dock render call for AM workspace was not found.")
-
-    end_anchor = "        self.draw_toast(ui, full, lift);\n"
-    edge_patch = r'''        self.draw_toast(ui, full, lift);
-        // EFFECTCRAFT_AM_NOVA_LAYOUT_TRACE_V2
-        // Preserve the native dock reflow. Trace the real panel and control borders in
-        // sequence, as Nova's "building layout" transition does; do not slide/scale pages.
-        if let Some((started, _direction)) = self.workspace_transition {
-            let progress = (((self.now - started).max(0.0) as f32) / 0.72).clamp(0.0, 1.0);
-            if progress < 1.0 {
-                let blue = egui::Color32::from_rgba_unmultiplied(42, 150, 255, 235);
-                let painter = ui.painter();
-                let mut rects: Vec<egui::Rect> = self.dock_rects.iter().map(|(_, rect)| *rect).collect();
-                for element in &self.auto.elements {
-                    let [x, y, w, h] = element.rect;
-                    let rect = egui::Rect::from_min_size(egui::pos2(x, y), egui::vec2(w, h));
-                    if rect.intersects(full) && w > 8.0 && h > 8.0 {
-                        rects.push(rect);
-                    }
-                }
-                let count = rects.len().max(1);
-                for (index, rect) in rects.iter().enumerate() {
-                    if !rect.intersects(full) {
-                        continue;
-                    }
-                    // Stagger each real panel slightly so the layout appears to assemble.
-                    let local = (progress * 1.28 - index as f32 / count as f32 * 0.28).clamp(0.0, 1.0);
-                    let mut remaining = (rect.width() * 2.0 + rect.height() * 2.0) * local;
-                    let edges = [
-                        (rect.left_top(), rect.right_top()),
-                        (rect.right_top(), rect.right_bottom()),
-                        (rect.right_bottom(), rect.left_bottom()),
-                        (rect.left_bottom(), rect.left_top()),
-                    ];
-                    for (from, to) in edges {
-                        let length = (to - from).length();
-                        if remaining <= 0.0 || length <= 0.0 {
-                            break;
-                        }
-                        let fraction = (remaining / length).clamp(0.0, 1.0);
-                        painter.line_segment(
-                            [from, from + (to - from) * fraction],
-                            egui::Stroke::new(1.8, blue),
-                        );
-                        remaining -= length;
-                    }
-                }
-                painter.text(
-                    full.center_top() + egui::vec2(0.0, 18.0),
-                    egui::Align2::CENTER_CENTER,
-                    "正在切换布局…",
-                    egui::FontId::proportional(12.0),
-                    blue,
-                );
-                ctx.request_repaint_after(std::time::Duration::from_millis(16));
-            } else {
-                self.workspace_transition = None;
-            }
-        }
-'''
-    if "EFFECTCRAFT_AM_BLUE_WORKSPACE_SWITCH_EDGES_V1" not in source:
-        source = replace_once(source, end_anchor, edge_patch, "blue edges during native AM workspace switch")
-    frame.write_text(source, encoding="utf-8")
-
+    """Retired: AM must not paint transition overlays over the Ae workspace."""
+    print("No workspace-wide transition overlay is installed; Ae rendering remains unchanged.")
 
 def patch_startup_restore(effectcraft: Path) -> None:
-    path = effectcraft / "crates/ui-egui/src/app.rs"
-    source = path.read_text(encoding="utf-8")
-    source = replace_once(
-        source,
-        "        EffectcraftApp {\n",
-        "        let app = EffectcraftApp {\n",
-        "workspace restore startup binding",
-    )
-    tail = '''        }
-        .with_ui_commands()
-    }
-
-    /// Offer the frontend's commands'''
-    replacement = f'''        }};
-        let mut app = app.with_ui_commands();
-
-        // One-time layout migration: discard stale built-in Ae/AM layout overrides and
-        // retain renamed copies so users can still inspect their former custom arrangements.
-        const AE_LAYOUT_MIGRATION_KEY: &str = "ae_workspace_layout_restore_v1";
-        let already_migrated = app.session.config.as_deref()
-            .and_then(|config| config.read(AE_LAYOUT_MIGRATION_KEY))
-            .as_deref() == Some("done");
-        if !already_migrated {{
-            if let Some(old_default) = app.ui.saved_workspaces.remove("Default") {{
-                let archive = "Default (before Ae layout restore)";
-                if !app.ui.saved_workspaces.contains_key(archive) {{
-                    app.ui.saved_workspaces.insert(archive.to_string(), old_default);
-                }}
-            }}
-            if app.ui.workspace == "Default" {{
-                app.ui.dock = crate::dock::Workspace::new(crate::dock::workspace("Default"));
-            }}
-        // The AM portrait workspace is intentionally left untouched: preserve its saved layout.
-            if let Some(config) = app.session.config.as_deref() {{
-                match app.workspace_store.save(Some(config), &app.ui) {{
-                    Ok(_) => {{
-                        if let Err(error) = config.write(AE_LAYOUT_MIGRATION_KEY, "done") {{
-                            log::warn!("Could not save Ae layout migration marker: {{error}}");
-                        }}
-                    }}
-                    Err(error) => log::warn!("Could not persist restored Ae/AM workspaces: {{error}}"),
-                }}
-            }}
-        }}
-
-        // Apply the orientation of the persisted workspace before the first editor frame.
-        crate::android_layout::set_workspace_portrait(app.ui.workspace == "{WORKSPACE}");
-        app
-    }}
-
-    /// Offer the frontend's commands'''
-    source = replace_once(source, tail, replacement, "restored workspace orientation")
-    path.write_text(source, encoding="utf-8")
-
+    """Retired: AM setup must not migrate or rewrite the user's saved Ae workspace."""
+    print("Saved Ae workspace state is not migrated or rewritten by the AM patch.")
 
 def patch_android_layout_module(effectcraft: Path) -> None:
     ui = effectcraft / "crates/ui-egui/src"
@@ -589,115 +166,56 @@ def patch_android_layout_module(effectcraft: Path) -> None:
 def patch_activity(builder: Path) -> None:
     path = builder / "templates/android/SafActivity.java"
     source = path.read_text(encoding="utf-8")
-    if JAVA_MARKER not in source:
-        imports = "".join(item + "\n" for item in JAVA_IMPORTS if item not in source)
+    if "EFFECTCRAFT_ANDROID_AM_ORIENTATION_ONLY_V2" not in source:
+        imports = "".join(item + "\\n" for item in JAVA_IMPORTS if item not in source)
         if imports:
-            source = replace_once(
-                source,
-                "import android.content.pm.PackageManager;\n",
-                "import android.content.pm.PackageManager;\n" + imports,
-                "AM orientation and signer Java imports",
-            )
-        class_anchor = "public final class __CLASS__ extends NativeActivity {\n"
-        source = replace_once(
-            source,
-            class_anchor,
-            class_anchor + JAVA_BRIDGE + "\n",
-            "AM orientation and signer Java bridge",
-        )
+            source = replace_once(source, "import android.content.pm.PackageManager;\\n",
+                                  "import android.content.pm.PackageManager;\\n" + imports,
+                                  "AM orientation-only Java import")
+        class_anchor = "public final class __CLASS__ extends NativeActivity {\\n"
+        source = replace_once(source, class_anchor, class_anchor + JAVA_BRIDGE + "\\n",
+                              "AM orientation-only Java bridge")
         create_anchor = '''    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 '''
         create_patch = '''    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         workspaceOrientationActivity = this;
-        if (!verifyReleaseSigningCertificate()) {
-            Toast.makeText(this,
-                "Ae 安装包签名验证失败，可能已被篡改或重新打包，请重新获取官方安装包。",
-                Toast.LENGTH_LONG).show();
-            finish();
-            android.os.Process.killProcess(android.os.Process.myPid());
-            return;
-        }
 '''
-        source = replace_once(source, create_anchor, create_patch, "Android startup signer verification")
-        destroy_anchor = "    protected void onDestroy() {\n"
+        source = replace_once(source, create_anchor, create_patch, "AM orientation Activity registration")
+        destroy_anchor = "    protected void onDestroy() {\\n"
         destroy_patch = '''    protected void onDestroy() {
         if (workspaceOrientationActivity == this) workspaceOrientationActivity = null;
 '''
-        source = replace_once(source, destroy_anchor, destroy_patch, "Android orientation Activity cleanup")
+        source = replace_once(source, destroy_anchor, destroy_patch, "AM orientation Activity cleanup")
     path.write_text(source, encoding="utf-8")
-    if JAVA_MARKER not in source or SIGNER_PLACEHOLDER not in source:
-        raise SystemExit("Android portrait/signer Activity bridge was not fully installed.")
-
+    if "EFFECTCRAFT_ANDROID_AM_ORIENTATION_ONLY_V2" not in source:
+        raise SystemExit("AM orientation-only bridge was not installed.")
+    if "verifyReleaseSigningCertificate" in source or "EXPECTED_SIGNING_CERT_SHA256" in source:
+        raise SystemExit("The AM patch must not add an app-launch signing gate that changes Ae startup.")
 
 def patch_native_effect_touch_behavior(effectcraft: Path) -> None:
-    """Make the original Effects & Presets panel usable with phone touch gestures."""
-    panel = effectcraft / "crates/ui-egui/src/panels/effects_presets.rs"
-    source = panel.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1"
-    if marker not in source:
-        begin = source.find("fn effect_row(")
-        end = source.find("fn preset_row(", begin)
-        if begin < 0 or end < 0:
-            raise SystemExit("Could not locate the native Effects & Presets effect-row handler.")
-        section = source[begin:end]
-        old_sense = "    let resp = ui.interact(r.intersect(list), id, if tab { Sense::click_and_drag() } else { Sense::CLICK | Sense::DRAG });"
-        new_sense = """    // EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1
-    // Android effect rows are click-only so vertical gestures belong to the panel scroller.
-    // Use the Android target instead of has_touch_screen(): some Android input backends
-    // expose touch as a primary pointer and report has_touch_screen() == false.
-    let row_sense = if cfg!(target_os = "android") {
-        Sense::click()
-    } else if tab {
-        Sense::click_and_drag()
-    } else {
-        Sense::CLICK | Sense::DRAG
-    };
-    let resp = ui.interact(r.intersect(list), id, row_sense);"""
-        if old_sense not in section:
-            raise SystemExit("Native effect rows changed; refusing to patch the wrong gesture handler.")
-        section = section.replace(old_sense, new_sense, 1)
-        old_click = """    if resp.clicked() {
-        nav_click(&ctx, app, id);
-    }
-    if resp.double_clicked() {
-        *apply = Some(Apply::Effect(e.id.to_string()));
-    }"""
-        new_click = """    if resp.clicked() {
-        if cfg!(target_os = "android") {
-            *apply = Some(Apply::Effect(e.id.to_string()));
-        } else {
-            nav_click(&ctx, app, id);
-        }
-    }
-    if resp.double_clicked() {
-        *apply = Some(Apply::Effect(e.id.to_string()));
-    }"""
-        if old_click not in section:
-            raise SystemExit("Native effect-row tap handler changed; refusing an unsafe partial patch.")
-        section = section.replace(old_click, new_click, 1)
-        source = source[:begin] + section + source[end:]
-        panel.write_text(source, encoding="utf-8")
+    """Retired: the native Ae effect list and rows are not altered by AM layout."""
+    print("AM uses its own effect browser; the native Ae Effects & Presets panel is untouched.")
 
+def patch_am_scoped_panel_touch_scroll(effectcraft: Path) -> None:
+    """Enable finger scrolling only while an AM-owned drawer is being rendered."""
     widgets_path = effectcraft / "crates/ui-egui/src/widgets.rs"
-    widgets = widgets_path.read_text(encoding="utf-8")
-    scroll_marker = "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V2"
-    if scroll_marker not in widgets:
-        old_scroll = """        if ui.rect_contains_pointer(area) {
+    source = widgets_path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1"
+    if marker not in source:
+        old = """        if ui.rect_contains_pointer(area) {
             offset -= ui.input(|i| i.smooth_scroll_delta.y);
         }
         let gutter: Gutter = ui.data(|d| d.get_temp(id.with("gutter"))).unwrap_or_default();"""
-        new_scroll = """        if ui.rect_contains_pointer(area) {
+        new = """        if ui.rect_contains_pointer(area) {
             offset -= ui.input(|i| i.smooth_scroll_delta.y);
         }
-        // EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1
-        // EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V2
-        // Android touch is delivered as a primary pointer on some backends. Do not gate
-        // this on has_touch_screen(), or a real finger swipe can be mistaken for a row drag.
-        // Click-only Android effect rows leave vertical movement to this panel scroller.
-        // Active sliders/curve handles still own gestures through dragged_id().
-        let touch_pan = ui.input(|i| {
+        // EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1
+        let am_touch_draw_context = ui.ctx().data(|d| {
+            d.get_temp::<bool>(egui::Id::new("EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1")).unwrap_or(false)
+        });
+        let touch_pan = am_touch_draw_context && ui.input(|i| {
             i.pointer.primary_down()
                 && i.pointer.press_origin().is_some_and(|origin| area.contains(origin))
         });
@@ -709,69 +227,13 @@ def patch_native_effect_touch_behavior(effectcraft: Path) -> None:
             }
         }
         let gutter: Gutter = ui.data(|d| d.get_temp(id.with("gutter"))).unwrap_or_default();"""
-        widgets = replace_once(widgets, old_scroll, new_scroll, "native PanelScroll finger gesture")
-        widgets_path.write_text(widgets, encoding="utf-8")
-
+        source = replace_once(source, old, new, "AM-scoped PanelScroll finger gesture")
+        widgets_path.write_text(source, encoding="utf-8")
+    print("Installed touch scrolling scoped to the AM drawer context; Ae panels do not enable it.")
 
 def patch_project_import_shortcut(effectcraft: Path) -> None:
-    """Expose the unified project importer beside the existing plug-in import entry."""
-    path = effectcraft / "crates/ui-egui/src/header.rs"
-    source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1"
-    if marker in source:
-        return
-    # The plug-in shortcut may be injected by a different validation/build path.
-    # Reuse the UI variable of the exact toolbar row: scroll_ui in the mobile scroller,
-    # ui in the desktop/validation header before the responsive wrapper is installed.
-    lines = source.splitlines(keepends=True)
-    insert_at = None
-    ui_var = "ui"
-    indent = "    "
-    anchors = (
-        ("let x = plugin_import_button(app, scroll_ui,", "scroll_ui", "            "),
-        ("let x = brand_and_home(app, scroll_ui,", "scroll_ui", "            "),
-        ("let x = plugin_import_button(app, ui,", "ui", "    "),
-        ("let x = brand_and_home(app, ui,", "ui", "    "),
-    )
-    for wanted, selected_ui, selected_indent in anchors:
-        offset = 0
-        for line in lines:
-            if wanted in line:
-                insert_at = offset + len(line)
-                ui_var = selected_ui
-                indent = selected_indent
-                break
-            offset += len(line)
-        if insert_at is not None:
-            break
-    if insert_at is None:
-        raise SystemExit("Could not locate a toolbar anchor for the unified project-import shortcut.")
-    source = source[:insert_at] + indent + f"let x = project_import_button(app, {ui_var}, x, cy);\n" + source[insert_at:]
-    helper_anchor = "/// The tool slots (with group separators after camera tools and pan-behind); returns the x after them.\n"
-    button = r'''
-// EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1
-/// A single-tap shortcut to the original unified project importer.
-fn project_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy: f32) -> f32 {
-    let rect = Rect::from_min_size(pos2(x, cy - 13.0), vec2(76.0, 26.0));
-    let response = ui
-        .put(rect, egui::Button::new("导入工程"))
-        .on_hover_text("导入 Ae、AM、NV、CapCut 或 Ae 自有工程");
-    app.auto.add_response("header.importProject", &response, "导入工程");
-    widgets::focus_outline(ui, &response, &app.tokens);
-    if response.clicked()
-        && let Err(error) = crate::menus::invoke(app, ui.ctx(), "file.importProject", json!({}))
-    {
-        app.ui.status = error;
-    }
-    x + 82.0
-}
-
-'''
-    if helper_anchor not in source:
-        raise SystemExit("Could not locate the toolbar helper insertion point for the project-import shortcut.")
-    source = source.replace(helper_anchor, button + helper_anchor, 1)
-    path.write_text(source, encoding="utf-8")
-
+    """Retired: project import is exposed on the AM Home, not injected into Ae's toolbar."""
+    print("The AM patch does not add, resize, or rearrange any Ae toolbar button.")
 
 def patch_home_surface(effectcraft: Path) -> None:
     """Give AM mode a portrait Home while keeping the same native Ae project actions."""
@@ -810,14 +272,12 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
     let gap = 9.0;
     let card_top = rect.min.y + 78.0;
     let card_w = ((rect.width() - pad * 2.0 - gap) / 2.0).max(76.0);
-    let card_h = 46.0;
-    let actions: [(&str, &str); 6] = [
+    let card_h = 50.0;
+    let actions: [(&str, &str); 4] = [
         ("新建合成", "app.newComp"),
         ("打开工程", "file.open"),
         ("导入工程", "file.importProject"),
         ("导入素材", "file.import"),
-        ("模板", "am.home.templates"),
-        ("教程", "am.home.learn"),
     ];
     let mut commands: Vec<(&'static str, serde_json::Value)> = Vec::new();
     for (index, (label, command)) in actions.iter().enumerate() {
@@ -837,14 +297,6 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
         app.auto.add_response(&format!("am.home.{}", command), &response, label);
         if response.clicked() {
             match *command {
-                "am.home.templates" => {
-                    app.ui.home_templates = true;
-                    app.ui.home_learn = false;
-                }
-                "am.home.learn" => {
-                    app.ui.home_learn = true;
-                    app.ui.home_templates = false;
-                }
                 "file.import" => commands.push(("file.import", json!({"picturesAndVideos": true}))),
                 "app.newComp" | "file.open" | "file.importProject" => {
                     commands.push((*command, json!({})));
@@ -855,7 +307,7 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
     }
 
     let edit_rect = Rect::from_min_size(
-        pos2(rect.min.x + pad, card_top + 3.0 * (card_h + gap) + 2.0),
+        pos2(rect.min.x + pad, card_top + 2.0 * (card_h + gap) + 2.0),
         vec2((rect.width() - pad * 2.0).max(60.0), 38.0),
     );
     let edit = ui.put(
@@ -953,13 +405,13 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("The original workspace menu must remain available for Ae/AM switching.")
     if "workspace_tabs(app, ui, p, rx, left, cy);" not in header:
         raise SystemExit("The original workspace tabs must remain unchanged.")
-    effects = (effectcraft / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
     widgets = (effectcraft / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
     frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" not in effects:
-        raise SystemExit("AM portrait Effects & Presets must apply an effect on a single tap.")
-    if "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" not in widgets:
-        raise SystemExit("AM portrait effect/parameter panels must support finger-drag vertical scrolling.")
+    if "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1" not in widgets:
+        raise SystemExit("AM drawers must have AM-scoped finger scrolling.")
+    native_effects = (effectcraft / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" in native_effects:
+        raise SystemExit("AM patch must not change the native Ae effect-row behavior.")
     if "let header_h = 40.0;" not in frame or "let header_h = 64.0;" in frame:
         raise SystemExit("The editor must retain the original single-row 40px toolbar.")
     dock = (effectcraft / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
@@ -967,9 +419,13 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("The original Ae fixed-width left/right panel arrangement was changed.")
     if '"AM 竖屏"' not in dock:
         raise SystemExit("AM 竖屏 must remain selectable in the original workspace menu.")
-    if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in header or "file.importProject" not in header:
-        raise SystemExit("The original toolbar must retain the unified project-import shortcut and plugin-import button.")
-    print("Verified the original Ae toolbar and responsive three-column workspace are restored; AM remains in the workspace menu.")
+    if "file.importProject" not in (effectcraft / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8"):
+        raise SystemExit("AM Home must retain the local unified project-import action.")
+    if "模板" in home or "教程" in home or "云端" in home or "cloud" in home.lower():
+        raise SystemExit("AM Home must not expose cloud, server-backed templates, or tutorials.")
+    if "workspace_transition" in frame:
+        raise SystemExit("AM patch must not add a workspace transition overlay to the Ae frame.")
+    print("Verified the AM Home uses local project/media actions only and the Ae toolbar remains unchanged.")
 
 
 def main() -> None:
@@ -978,13 +434,9 @@ def main() -> None:
     if not effectcraft.is_dir() or not builder.is_dir():
         raise SystemExit("EFFECTCRAFT_DIR and ARTCRAFT_DIR must point to checked-out source trees.")
     patch_dock(effectcraft)
-    patch_touch_trim_handles(effectcraft)
     patch_workspace_selection(effectcraft)
-    patch_workspace_morph_transition(effectcraft)
     patch_workspace_tabs(effectcraft)
-    patch_native_effect_touch_behavior(effectcraft)
-    patch_project_import_shortcut(effectcraft)
-    patch_startup_restore(effectcraft)
+    patch_am_scoped_panel_touch_scroll(effectcraft)
     patch_home_surface(effectcraft)
     patch_android_layout_module(effectcraft)
     patch_activity(builder)
