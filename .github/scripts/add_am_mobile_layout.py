@@ -421,8 +421,8 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
     native_effects = (effectcraft / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" in native_effects:
         raise SystemExit("AM patch must not change the native Ae effect-row behavior.")
-    if "let header_h = 40.0;" not in frame or "let header_h = 64.0;" in frame:
-        raise SystemExit("The editor must retain the original single-row 40px toolbar.")
+    if 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };' not in frame:
+        raise SystemExit("AM Home must use its own header space while Ae keeps the original 40px header.")
     dock = (effectcraft / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
     if "FixedSecond(300.0)" not in dock or "FixedFirst(300.0)" not in dock:
         raise SystemExit("The original Ae fixed-width left/right panel arrangement was changed.")
