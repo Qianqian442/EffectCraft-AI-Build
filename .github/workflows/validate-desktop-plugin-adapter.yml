@@ -121,9 +121,7 @@ jobs:
           grep -Fq '不计入原生插件移植成功数量' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq '自动选优结果' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq '没有真实运行并通过硬性测试的电脑原生插件转译方案' effectcraft/crates/ui-egui/src/plugin_migration.rs
-          # The plug-in manager can delete app-owned user modules, but built-in modules are protected.
-          grep -Fq 'ui.button("删除")' effectcraft/crates/ui-egui/src/account.rs
-          grep -Fq 'effect.plugins.unload' effectcraft/crates/ui-egui/src/account.rs
+          # The engine exposes safe unloading and only marks app-owned user modules deletable.
           grep -Fq 'pub fn unregister_plugin(id: &str)' effectcraft/crates/effects/src/plugin.rs
           grep -Fq '"effect.plugins.unload"' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq '"can_delete": can_delete' effectcraft/crates/engine/src/cmd/effect.rs
@@ -273,9 +271,12 @@ jobs:
           DIALOGS_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/dialogs.rs"
           FRONTEND_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/menus/frontend.rs"
           MENUS_RS="$EFFECTCRAFT_DIR/crates/engine/src/menus.rs"
+          grep -Fq 'ui.horizontal(|ui|' "$ACCOUNT_RS"
           grep -Fq 'ui.button("账号管理")' "$ACCOUNT_RS"
           grep -Fq 'ui.button("插件管理")' "$ACCOUNT_RS"
           grep -Fq 'effect.plugins.list' "$ACCOUNT_RS"
+          grep -Fq 'ui.button("删除")' "$ACCOUNT_RS"
+          grep -Fq 'effect.plugins.unload' "$ACCOUNT_RS"
           ! grep -Fq 'header.about' "$HEADER_RS"
           ! grep -Fq 'Dialog::About' "$DIALOGS_RS"
           ! grep -Fq '"app.about"' "$FRONTEND_RS"
