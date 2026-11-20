@@ -45,6 +45,7 @@ on:
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/add_home_plugin_manager_remove_about.py'
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/add_account_whitelist_local_cache.py'
       - '.github/scripts/hide_account_security_details.py'
@@ -131,6 +132,7 @@ jobs:
             .github/scripts/install_ai_plugin_bridge.py \
             .github/scripts/integrate_deepseek_single_apk.py \
             .github/scripts/add_plugin_import_button.py \
+            .github/scripts/add_home_plugin_manager_remove_about.py \
             .github/scripts/fix_viewer_drag_selection.py \
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
             .github/scripts/add_bottom_left_media_import.py \
@@ -789,6 +791,26 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/brand_ae_visible_names.py
           python3 build-assets/.github/scripts/brand_ae_visible_names.py
+
+      - name: Add Home plug-in management and remove About Ae
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_home_plugin_manager_remove_about.py
+          python3 build-assets/.github/scripts/add_home_plugin_manager_remove_about.py
+          ACCOUNT_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
+          DIALOGS_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/dialogs.rs"
+          FRONTEND_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/menus/frontend.rs"
+          MENUS_RS="$EFFECTCRAFT_DIR/crates/engine/src/menus.rs"
+          grep -Fq 'ui.button("账号管理")' "$ACCOUNT_RS"
+          grep -Fq 'ui.button("插件管理")' "$ACCOUNT_RS"
+          grep -Fq 'effect.plugins.list' "$ACCOUNT_RS"
+          ! grep -Fq 'header.about' "$HEADER_RS"
+          ! grep -Fq 'Dialog::About' "$DIALOGS_RS"
+          ! grep -Fq '"app.about"' "$FRONTEND_RS"
+          ! grep -Fq 'app.about' "$MENUS_RS"
+          echo "Verified Home plug-in management is beside account management and About Ae is removed."
 
       - name: Guard the Export button against immediate crashes
         env:
