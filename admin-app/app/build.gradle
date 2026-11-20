@@ -1,4 +1,4 @@
-// Trigger a fresh standalone admin APK build; no application behavior changed.
+// Trigger a fresh standalone admin APK build; no application behavior changed. Cloud account API now uses single-call password migration.
 plugins {
     id "com.android.application"
 }
