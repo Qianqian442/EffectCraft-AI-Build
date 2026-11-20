@@ -332,6 +332,22 @@ async function login(request, env) {
     "SELECT * FROM accounts WHERE qq = ? OR lower(wechat) = lower(?) LIMIT 1"
   ).bind(identifier, identifier).first();
   if (!row || !(await verifyPassword(env, password, row.password_hash))) return fail(401, "QQ号/微信号或密码错误");
+
+  // Migrate pre-2026-11-15 password hashes only after a successful check.
+  // The original 210000-round PBKDF2 format remains valid; the current
+  // 100000-round format is used for new and upgraded accounts.
+  if (String(row.password_hash || "").startsWith("pbkdf2-sha256$210000$")) {
+    try {
+      const upgradedHash = await passwordHash(env, password);
+      await env.DB.prepare(
+        "UPDATE accounts SET password_hash = ? WHERE id = ? AND password_hash = ?"
+      ).bind(upgradedHash, row.id, row.password_hash).run();
+    } catch (error) {
+      console.error("legacy-password-upgrade-failed", String(error && error.message ? error.message : error));
+      // A temporary migration write failure must not lock out a correctly
+      // authenticated user; the old hash remains readable on the next login.
+    }
+  }
   const banned = await ensureNotBanned(env.DB, row);
   if (banned) return fail(423, "账号已被封禁", banned);
   return response(await authResult(env, row, "user", 30 * 24 * 60 * 60));
@@ -395,6 +411,12 @@ async function adminUsers(request, env, url) {
   await readToken(env, request, "admin");
   const query = (url.searchParams.get("q") || "").trim().toLowerCase().slice(0, 80);
   let result;
+  let count;
+  if (query) {
+    const like = "%" + query.replace(/[%_\\]/g, "\\async function adminUsers(request, env, url) {
+  await readToken(env, request, "admin");
+  const query = (url.searchParams.get("q") || "").trim().toLowerCase().slice(0, 80);
+  let result;
   if (query) {
     const like = "%" + query.replace(/[%_\\]/g, "\\$&") + "%";
     result = await env.DB.prepare(
@@ -406,6 +428,26 @@ async function adminUsers(request, env, url) {
     ).all();
   }
   return response({ users: result.results || [] });
+}") + "%";
+    const where = " WHERE qq LIKE ? ESCAPE '\\' OR lower(wechat) LIKE ? ESCAPE '\\' OR lower(name) LIKE ? ESCAPE '\\'";
+    result = await env.DB.prepare(
+      "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts" + where + " ORDER BY created_at DESC LIMIT 500"
+    ).bind(like, like, like).all();
+    count = await env.DB.prepare("SELECT COUNT(*) AS total FROM accounts" + where).bind(like, like, like).first();
+  } else {
+    result = await env.DB.prepare(
+      "SELECT id, COALESCE(qq, '') AS qq, COALESCE(wechat, '') AS wechat, name, avatar_url, created_at, banned_until, ban_reason FROM accounts ORDER BY created_at DESC LIMIT 500"
+    ).all();
+    count = await env.DB.prepare("SELECT COUNT(*) AS total FROM accounts").first();
+  }
+  const latest = await env.DB.prepare("SELECT MAX(created_at) AS latest_created_at FROM accounts").first();
+  return response({
+    users: result.results || [],
+    total_count: Number(count && count.total || 0),
+    loaded_count: (result.results || []).length,
+    latest_created_at: latest && latest.latest_created_at || "",
+    account_source: "Cloudflare D1 shared account database"
+  });
 }
 async function adminUser(request, env, id) {
   await readToken(env, request, "admin");
