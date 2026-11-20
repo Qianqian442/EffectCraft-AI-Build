@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Add an explicit, truthful Windows x86/x64 runtime preparation action to the AE import dialog."""
+"""Add a real, user-triggered Android Windows runtime install and AEX smoke-test UI."""
 from __future__ import annotations
-
 import os
 from pathlib import Path
 
-MARKER = "EFFECTCRAFT_ANDROID_WINDOWS_RUNTIME_SETUP_UI_V1"
-
+MARKER = "EFFECTCRAFT_ANDROID_WINDOWS_RUNTIME_SETUP_UI_V2"
 
 def once(source: str, old: str, new: str, label: str) -> str:
     if new in source:
@@ -15,7 +13,6 @@ def once(source: str, old: str, new: str, label: str) -> str:
     if count != 1:
         raise SystemExit(f"{label}: expected exactly one insertion point, found {count}")
     return source.replace(old, new, 1)
-
 
 def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
@@ -29,125 +26,62 @@ def main() -> None:
 
     source = once(
         source,
-        "    Confirm { path: String, native_count: usize },\n",
-        "    Confirm { path: String, native_count: usize },\n"
+        "    Confirm { path: String, native_count: usize, mode: MigrationMode },\n",
+        "    Confirm { path: String, native_count: usize, mode: MigrationMode },\n"
         "    // " + MARKER + "\n"
-        "    RuntimeSetup { path: String, native_count: usize, request_id: String, status: String },\n",
-        "runtime setup state variant",
+        "    RuntimeSetup { path: String, native_count: usize, mode: MigrationMode, request_id: String, status: String },\n",
+        "runtime setup state",
     )
-
-    action_anchor = """        Start(String),
-        Cancel,
-"""
-    action_replacement = """        Start(String),
-        PrepareRuntime(String, usize),
-        TestAexPlugin(String),
-        ReturnToConfirm(String, usize),
-        Cancel,
-"""
-    source = once(source, action_anchor, action_replacement, "runtime UI actions")
-
-    confirm_state_anchor = """                let mut start = false;
-                let mut cancel = false;
-"""
-    confirm_state_replacement = """                let mut start = false;
-                let mut cancel = false;
-                let mut prepare_runtime = false;
-"""
-    source = once(source, confirm_state_anchor, confirm_state_replacement, "runtime prepare button state")
-
-    button_anchor = """                        ui.horizontal(|ui| {
+    source = once(
+        source,
+        "        Start(String, MigrationMode),\n        Cancel,\n",
+        "        Start(String, MigrationMode),\n"
+        "        PrepareRuntime(String, usize, MigrationMode),\n"
+        "        TestAexPlugin(String),\n"
+        "        BackToConfirm(String, usize, MigrationMode),\n"
+        "        Cancel,\n",
+        "runtime UI actions",
+    )
+    source = once(
+        source,
+        "                let mut start = false;\n                let mut cancel = false;\n",
+        "                let mut start = false;\n"
+        "                let mut cancel = false;\n"
+        "                let mut prepare_runtime = false;\n",
+        "runtime setup button state",
+    )
+    source = once(
+        source,
+        """                        ui.horizontal(|ui| {
                             if ui.button("取消").clicked() { cancel = true; }
-                            if ui.button("开始移植").clicked() { start = true; }
+                            if ui.button("按此方式开始").clicked() { start = true; }
                         });
-"""
-    button_replacement = """                        ui.horizontal(|ui| {
+""",
+        """                        ui.horizontal(|ui| {
                             if ui.button("取消").clicked() { cancel = true; }
-                            if ui.button("开始移植").clicked() { start = true; }
+                            if ui.button("按此方式开始").clicked() { start = true; }
                         });
                         ui.add_space(6.0);
-                        if ui.button("准备 Windows x86/x64 兼容环境（实验）").clicked() {
+                        if ui.button("安装 Windows 兼容运行环境").clicked() {
                             prepare_runtime = true;
                         }
-                        ui.small("此操作只安装 Windows 兼容运行环境；不代表当前 .aex 插件已经通过 Android 真机执行验证。");
-"""
-    source = once(source, button_anchor, button_replacement, "runtime prepare button")
+                        ui.small("首次安装会下载并校验 Wine/Proton、Box64、FEXCore 运行组件，文件保存在 Ae 私有目录。");
+""",
+        "runtime setup button",
+    )
+    source = once(
+        source,
+        '                if start { action = Some(Action::Start(path.clone(), *mode)); }\n                else if cancel || !open { action = Some(Action::Cancel); }',
+        '                if start { action = Some(Action::Start(path.clone(), *mode)); }\n'
+        '                else if prepare_runtime { action = Some(Action::PrepareRuntime(path.clone(), *native_count, *mode)); }\n'
+        '                else if cancel || !open { action = Some(Action::Cancel); }',
+        "runtime setup action dispatch from confirmation",
+    )
 
-    old_claim = '                        ui.label("点击开始后会扫描压缩包、检查安全性，并安装 EffectCraft 能兼容的模块或替代效果。无法兼容的原生插件会保留原件，不会伪装成已移植。 ");'
-    new_claim = '                        ui.label("点击开始后会扫描压缩包、检查安全性，并安装当前 EffectCraft 能兼容的模块或替代效果。原生 .aex/.dll/.ofx 还需要通过 Windows 兼容运行环境逐项验证。");'
-    source = once(source, old_claim, new_claim, "desktop plugin compatibility claim")
+    poll_anchor = "    let mut action: Option<Action> = None;\n\n    if let Some(state) = app.plugin_import.as_mut() {\n"
+    poll_code = """    let mut action: Option<Action> = None;
 
-    confirm_action_anchor = """                if start { action = Some(Action::Start(path.clone())); }
-                else if cancel || !open { action = Some(Action::Cancel); }
-            }
-            ImportState::Running"""
-    confirm_action_replacement = """                if start { action = Some(Action::Start(path.clone())); }
-                else if prepare_runtime { action = Some(Action::PrepareRuntime(path.clone(), *native_count)); }
-                else if cancel || !open { action = Some(Action::Cancel); }
-            }
-            ImportState::RuntimeSetup { path, native_count, request_id, status } => {
-                let mut open = true;
-                let mut return_to_import = false;
-                let mut test_plugin = false;
-                let ready = status.starts_with("READY:") || status.starts_with("EXIT:0");
-                let failed = status.starts_with("ERROR:")
-                    || (status.starts_with("EXIT:") && !status.starts_with("EXIT:0"));
-                let screen = ctx.content_rect();
-                egui::Window::new("Windows x86/x64 兼容运行环境")
-                    .id(Id::new("effectcraft-windows-runtime-setup"))
-                    .order(Order::Foreground)
-                    .movable(true)
-                    .collapsible(false)
-                    .resizable(false)
-                    .default_width(350.0)
-                    .default_pos(pos2(screen.center().x - 175.0, screen.center().y - 95.0))
-                    .open(&mut open)
-                    .show(ctx, |ui| {
-                        if !ready && !failed {
-                            ui.horizontal(|ui| {
-                                ui.spinner();
-                                ui.label("正在准备 Android ARM64 Windows 兼容运行环境…");
-                            });
-                        } else if ready {
-                            ui.heading("兼容运行环境已安装");
-                        } else {
-                            ui.heading("兼容运行环境安装失败");
-                        }
-                        ui.label(status.as_str());
-                        if status.starts_with("READY:") {
-                            ui.add_space(6.0);
-                            ui.small("宿主已安装。下面可以对当前导入包中的第一个 .aex 文件做一次隔离运行测试；测试通过也不代表所有插件功能均兼容。");
-                        } else if status.starts_with("EXIT:") {
-                            ui.small("进程退出码只表示宿主进程的结束状态；仍需核对日志和实际渲染输出。");
-                        }
-                        if ready {
-                            ui.add_space(8.0);
-                            if ui.button("测试当前导入包中的第一个 AEX 插件").clicked() {
-                                test_plugin = true;
-                            }
-                        }
-                        ui.add_space(8.0);
-                        if ui.button("返回插件移植").clicked() { return_to_import = true; }
-                    });
-                if test_plugin {
-                    action = Some(Action::TestAexPlugin(path.clone()));
-                } else if return_to_import || !open {
-                    action = Some(Action::ReturnToConfirm(path.clone(), *native_count));
-                } else if !ready && !failed {
-                    ctx.request_repaint_after(Duration::from_millis(250));
-                }
-                let _ = request_id;
-            }
-            ImportState::Running"""
-    source = once(source, confirm_action_anchor, confirm_action_replacement, "runtime setup dialog")
-
-    poll_anchor = """    let mut action: Option<Action> = None;
-
-    if let Some(state) = app.plugin_import.as_mut() {
-"""
-    poll_replacement = """    let mut action: Option<Action> = None;
-
-    // Poll the Java installer without blocking the egui frame thread.
+    // Poll the real Java-side runtime installer/host worker without blocking the egui frame.
     let runtime_request = match app.plugin_import.as_ref() {
         Some(ImportState::RuntimeSetup { request_id, .. }) if !request_id.is_empty() => Some(request_id.clone()),
         _ => None,
@@ -170,22 +104,80 @@ def main() -> None:
 
     if let Some(state) = app.plugin_import.as_mut() {
 """
-    source = once(source, poll_anchor, poll_replacement, "runtime status polling")
+    source = once(source, poll_anchor, poll_code, "Windows runtime status polling")
 
-    action_anchor = """    match action {
-        Some(Action::Start(path)) => app.plugin_import = Some(spawn_scan(path)),
+    running_anchor = "            ImportState::Running { path, mode, progress, receiver } => {\n"
+    runtime_arm = """            ImportState::RuntimeSetup { path, native_count, mode, request_id: _, status } => {
+                let mut open = true;
+                let mut test_plugin = false;
+                let mut back = false;
+                let ready = status.starts_with("READY:");
+                let finished = ready || status.starts_with("EXIT:") || status.starts_with("ERROR:");
+                let screen = ctx.content_rect();
+                egui::Window::new("Windows x86/x64 兼容运行环境")
+                    .id(Id::new("effectcraft-windows-runtime-setup"))
+                    .order(Order::Foreground)
+                    .movable(true)
+                    .collapsible(false)
+                    .resizable(false)
+                    .default_width(350.0)
+                    .default_pos(pos2(screen.center().x - 175.0, screen.center().y - 100.0))
+                    .open(&mut open)
+                    .show(ctx, |ui| {
+                        if !finished {
+                            ui.horizontal(|ui| {
+                                ui.spinner();
+                                ui.label("正在安装或测试 Windows 兼容运行环境…");
+                            });
+                        } else if ready {
+                            ui.heading("Windows 兼容运行环境已安装");
+                        } else if status.starts_with("EXIT:0") {
+                            ui.heading("AEX 样本运行与帧渲染通过");
+                        } else {
+                            ui.heading("运行环境或 AEX 测试未通过");
+                        }
+                        ui.add_space(4.0);
+                        egui::ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
+                            ui.label(status.as_str());
+                        });
+                        if ready {
+                            ui.add_space(6.0);
+                            ui.label(format!("当前导入包检测到 {native_count} 个原生插件文件。"));
+                            ui.small("测试会提取首个 AEX 文件，在独立 Wine/Proton 宿主进程中读取参数并执行一次 CPU PNG 帧渲染。通过只证明该样本测试通过。");
+                            if ui.button("测试当前导入包中的第一个 AEX 插件").clicked() {
+                                test_plugin = true;
+                            }
+                        }
+                        ui.add_space(8.0);
+                        if ui.button("返回移植方式选择").clicked() { back = true; }
+                    });
+                if test_plugin {
+                    action = Some(Action::TestAexPlugin(path.clone()));
+                } else if back || !open {
+                    action = Some(Action::BackToConfirm(path.clone(), *native_count, *mode));
+                } else if !finished {
+                    ctx.request_repaint_after(Duration::from_millis(250));
+                }
+            }
 """
-    action_replacement = """    match action {
-        Some(Action::PrepareRuntime(path, native_count)) => {
+    source = once(source, running_anchor, runtime_arm + running_anchor, "Windows runtime setup window")
+
+    dispatch_anchor = """        Some(Action::Start(path, mode)) => {
+            app.ui.status = "已开始扫描电脑插件；正在识别架构和可用路线…".into();
+            app.plugin_import = Some(spawn_scan(path, mode));
+        }
+"""
+    dispatch_replacement = """        Some(Action::PrepareRuntime(path, native_count, mode)) => {
             match crate::start_windows_compat_runtime_install() {
                 Ok(request_id) => {
+                    app.ui.status = "正在安装 Android ARM64 Windows 兼容运行环境…".into();
                     app.plugin_import = Some(ImportState::RuntimeSetup {
-                        path, native_count, request_id, status: "INSTALLING".into(),
+                        path, native_count, mode, request_id, status: "INSTALLING".into(),
                     });
                 }
                 Err(error) => {
                     app.plugin_import = Some(ImportState::RuntimeSetup {
-                        path, native_count, request_id: String::new(),
+                        path, native_count, mode, request_id: String::new(),
                         status: format!("ERROR: {error}"),
                     });
                 }
@@ -198,7 +190,7 @@ def main() -> None:
                         app.plugin_import.as_mut()
                     {
                         *current = request_id;
-                        *status = "RUNNING: 正在启动架构匹配的 AEX 宿主…".into();
+                        *status = "RUNNING: 正在提取并启动匹配架构的 AEX 宿主…".into();
                     }
                 }
                 Err(error) => {
@@ -208,17 +200,32 @@ def main() -> None:
                 }
             }
         }
-        Some(Action::ReturnToConfirm(path, native_count)) => {
-            app.plugin_import = Some(ImportState::Confirm { path, native_count });
+        Some(Action::BackToConfirm(path, native_count, mode)) => {
+            app.plugin_import = Some(ImportState::Confirm { path, native_count, mode });
         }
-        Some(Action::Start(path)) => app.plugin_import = Some(spawn_scan(path)),
+        Some(Action::Start(path, mode)) => {
+            app.ui.status = "已开始扫描电脑插件；正在识别架构和可用路线…".into();
+            app.plugin_import = Some(spawn_scan(path, mode));
+        }
 """
-    source = once(source, action_anchor, action_replacement, "runtime UI action dispatch")
+    source = once(source, dispatch_anchor, dispatch_replacement, "Windows runtime action handling")
+
+    # The migration route report now refers to the real runtime manager and says exactly what was exercised.
+    source = source.replace(
+        'ui.small("说明：本版本可查看并保存你的路线偏好；Box64/Box86、FEX、QEMU、Wine 的实际执行器及插件宿主桥接尚未集成，未实测路线不会被标记为已移植。");',
+        'ui.small("Android 已接入 Bionic + Wine/Proton、Box64/BOX32 与 ARM64EC FEXCore 的安装和隔离 AEX 样本测试入口；独立 Box86/QEMU 路线仍为候选，不会冒充已通过测试。");'
+    )
+    source = source.replace(
+        'lines.push("注意：当前构建已加入方式选择和报告记录；Box64/Box86/FEX/QEMU/Wine 的实际运行时试跑、后端手动切换和暴力二进制重建引擎尚未集成，不会伪称已执行。".into());',
+        'lines.push("注意：Android 运行时现可安装 Wine/Proton、Box64/BOX32 与 ARM64EC FEXCore，并对单个 AEX 样本执行隔离加载和 CPU 帧渲染测试；独立 Box86/QEMU 与自动二进制重建仍需单独验证。".into());'
+    )
+    source = source.replace(
+        'app.ui.status = "已记录各插件的路线选择；尚未接入的转译执行器不会被标记为已完成。".into();',
+        'app.ui.status = "已记录各插件路线；只有隔离 AEX 样本完成加载、帧渲染和正常退出才会显示测试通过。".into();'
+    )
 
     path.write_text(source, encoding="utf-8")
-    print("Added a draggable Windows compatibility runtime setup window to the existing AE migration flow.")
-    print("The UI polls real installer state and explicitly warns that runtime installation is not proof of AEX execution.")
-
+    print("Added user-triggered Wine/Proton + Box64/FEXCore runtime installation and isolated AEX smoke-test UI.")
 
 if __name__ == "__main__":
     main()
