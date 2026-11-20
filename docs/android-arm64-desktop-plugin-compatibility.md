@@ -1,98 +1,141 @@
-# Android ARM64 desktop plug-in binary compatibility
+# Desktop plug-in to Android ARM64: sequential trials and aggressive compatibility
 
-**Status: engineering workstream; not a shipped translator.** This document records the selected open-source stack and the implementation boundary for running desktop plug-ins on Android ARM64. The source importer may identify the CPU architecture and report a candidate route, but that must never be presented as successful translation or execution.
+**Status: route planning is implemented in the import analysis; execution backends and plug-in host workers are not yet integrated.** Every route is currently recorded as not_run_runtime_not_integrated. This is deliberate: CPU architecture detection or a filename match is not proof of a working port.
 
 ## Goal
 
-Accept a desktop plug-in package on an Android phone, identify its operating-system format and CPU architecture, preserve the original binary, and—where a compatible runtime and host adapter exist—run it through a sandboxed compatibility worker and expose its effect controls/rendering to Ae.
+When a user imports a desktop plug-in on Android, Ae should:
+1. Preserve the original binary unchanged.
+2. Identify OS format, CPU architecture, plug-in format and host ABI.
+3. Build the applicable route list and try those routes one by one, not all at once.
+4. Run every candidate against the same test project, footage, parameter values and reference frames in an isolated copy.
+5. Compare load/feature/render completeness, visual fidelity, stability and performance.
+6. Import the highest-scoring candidate only if it passes mandatory correctness and stability gates. If none passes, retain the original and report the best partial result without marking it runnable.
 
-The phone target is **Android ARM64 (arm64-v8a / AArch64)**. "x86 to ARM64 translation" here means **dynamic translation at runtime**. The original x86/x86-64 plug-in is not rewritten into a new ARM64 .aex/.ofx file. Box64/Box86 translate guest CPU instructions as the plug-in executes.
+The target phone architecture is Android ARM64 / arm64-v8a. CPU translation is normally dynamic at runtime; it does not rewrite the desktop plug-in into an ARM64 .aex/.ofx file.
 
-## Open-source components selected
+## Open-source routes to compare
 
-Pinned references are recorded for reproducible integration. Update them only through a reviewed dependency update.
-
-| Component | Upstream / pinned revision | License | Role |
+| Route | Guest format | Proposed role | Caveats |
 |---|---|---|---|
-| Box64 | [ptitSeb/box64](https://github.com/ptitSeb/box64) — 3e5a0b5988435843a9a28534c08e97a2d34ed698 | MIT | x86-64 Linux guest execution and ARM64 dynamic recompiler |
-| Box86 | [ptitSeb/box86](https://github.com/ptitSeb/box86) — bb716a2a6576cc06da811bf55e31e2f6f03b7596 | MIT | 32-bit x86 Linux guest support when a 32-bit ARM guest userspace is available |
-| Wine | [wine-mirror/wine](https://github.com/wine-mirror/wine) — 76f8e9479548cbc5bdb8b3bd499e4768e7c25078 | LGPL-2.1-or-later | Windows PE loader and Windows API compatibility; it is not a CPU translator |
-| OpenFX | [AcademySoftwareFoundation/openfx](https://github.com/AcademySoftwareFoundation/openfx) — 4249fe1b590a7e65caf4b1e4693b6b53220703f5 | BSD-3-Clause | First host API target for compatible OFX effects |
-| FEX (fallback/reference) | [FEX-Emu/FEX](https://github.com/FEX-Emu/FEX) — 031d6d1edeb68ea1a224f1c4aebac0c0b342f438 | MIT | Alternative x86/x86-64-on-AArch64 Linux user-mode translator; not the primary Android integration |
-| Remill (analysis only) | [lifting-bits/remill](https://github.com/lifting-bits/remill) | Apache-2.0 | Static instruction lifting to LLVM bitcode for research/analysis, not a drop-in general PE recompiler |
+| [Box64](https://github.com/ptitSeb/box64) | x86-64 Linux userland | Main Android x86-64 dynamic translation candidate | Needs compatible guest libraries and host ABI; not a Windows loader |
+| [Box86](https://github.com/ptitSeb/box86) | 32-bit x86 Linux userland | 32-bit x86 candidate where a matching 32-bit guest userland is available | Not a substitute for Wine or a plug-in host |
+| [Wine](https://github.com/wine-mirror/wine) | Windows PE / Windows API | Loads Windows plug-ins and implements Windows APIs | Does not translate CPU instructions; pair with a compatible translator |
+| [FEX](https://github.com/FEX-Emu/FEX) | 32/64-bit x86 Linux userland | Alternative translator to compare against Box64/Box86 | Requires an appropriate Linux guest rootfs; upstream documents a Linux ARM64 environment and kernel prerequisites |
+| [QEMU user-mode](https://www.qemu.org/docs/master/user/) | Linux user-mode x86/i386 | Slow reference/compatibility candidate and diagnostic cross-check | Runs foreign-architecture Linux user programs; it is not a direct Windows PE loader |
+| [Winlator](https://github.com/winebox64/winlator) | Android + Wine + Box86/Box64 | Reference for packaging the Android guest runtime | Demonstrates general Windows applications on Android, not Ae plug-in host compatibility |
+| [OpenFX](https://github.com/AcademySoftwareFoundation/openfx) | OFX plug-in ABI | First plug-in host API to implement in the worker | OFX host implementation is still required |
+| [Ghidra](https://github.com/NationalSecurityAgency/ghidra) | PE/ELF/Mach-O analysis | Static disassembly, import/export analysis, control-flow and metadata recovery | Analysis aid, not an automatic functional converter |
+| [Remill](https://github.com/lifting-bits/remill) | x86/amd64 machine code | Lift instructions to LLVM IR to assist deeper binary analysis/reimplementation | Building a complete binary translator still needs ABI, OS and runtime work |
 
-The Android packaging model is informed by [Winlator](https://github.com/winebox64/winlator), which demonstrates Wine plus Box86/Box64 on Android. Box64 upstream also documents Wine64 use, the need for Box86 for many 32-bit components, an experimental Wine WOW64 alternative, and Android/Termux/Winlator-glibc build profiles. These are upstream capabilities, not evidence that Ae has already bundled or validated the runtime.
+### Ordered trial policy
 
-## Execution routes
+The route planner records the following order; a route may run only when its exact prerequisites are available.
 
-| Input | Candidate route | Important remaining requirement |
-|---|---|---|
-| Windows PE x86-64 (.aex, Windows .ofx, .dll) | Wine64 loads PE code inside an x86-64 guest; Box64 translates x86-64 instructions to ARM64 | Windows API, guest root filesystem, plug-in host ABI, graphics/runtime dependencies |
-| Windows PE x86 (32-bit) | Wine32 + Box86 with a 32-bit ARM guest userspace; alternatively Wine WOW64 + Box64/Box32 only after compatibility testing | 32-bit guest libraries and host ABI; Box32/WOW64 path is experimental |
-| Linux ELF x86-64 | Box64 | glibc guest environment, shared-library dependencies, plug-in host ABI |
-| Linux ELF x86 | Box86 | 32-bit guest userspace and plug-in host ABI |
-| ARM64 PE/ELF | Native ARM64 CPU path where the OS loader/ABI supports it | Windows/Linux ABI and plug-in host ABI still need adaptation |
-| macOS Mach-O | No automatic Android execution route | Requires source-based port or a clean reimplementation; macOS frameworks cannot be assumed available on Android |
+| Input file | Ordered candidate execution routes |
+|---|---|
+| Windows PE x86-64 (.aex, Windows .ofx, .dll) | Wine64 + Box64 → Wine64 + FEX (Linux guest / kernel prerequisites) → Wine64 + QEMU x86_64-user (slow reference) |
+| Windows PE x86 (32-bit) | Wine32 + Box86 → Wine WOW64 + Box64 (experimental) → Wine32 + FEX i386 → Wine32 + QEMU i386-user |
+| Linux ELF x86-64 | Box64 → FEX → QEMU x86_64-user |
+| Linux ELF x86 | Box86 → FEX i386 → QEMU i386-user |
+| Windows/Linux ARM64 | Native ARM64 loader path, subject to OS and plug-in ABI |
+| macOS Mach-O | No direct Android execution route; static analysis + source rebuild or clean reimplementation |
 
-The translator and Windows compatibility layer are separate responsibilities:
-- **Box64/Box86 translate guest CPU instructions.**
-- **Wine loads Windows PE binaries and implements Windows APIs.**
-- **The plug-in host adapter implements the application-specific ABI expected by the plug-in.**
-All three are needed for a Windows desktop plug-in to become usable in Ae.
+For Windows plug-ins, FEX/QEMU candidates mean running a Wine guest in a compatible Linux guest environment—not passing the PE file directly to a Linux user-mode emulator. QEMU user-mode is mainly a slow reference route. A route is skipped, not failed, when its kernel, rootfs, guest libraries or ABI prerequisites are missing.
 
-## Host integration strategy
+## Sequential trial harness and result comparison
 
-### First target: OpenFX
+Each route must run in its own disposable guest snapshot and must not share writable plug-in state with the next candidate. Use no network by default, a private rootfs, bounded memory/CPU, timeouts, restricted filesystem access, bounded IPC buffers, and force-stop cleanup.
 
-OpenFX is a C-based plug-in API with an open BSD-3-Clause specification and headers. Its C ABI makes it a much more realistic first host bridge than a proprietary C++ plug-in interface.
+Every candidate receives identical deterministic tests:
 
-Implement a separate x86-64 Wine-side OFX host worker which:
-1. discovers an OFX binary and calls its standard plug-in entry points;
-2. implements the minimum required OFX property, image-effect, parameter, memory, message and image suites;
-3. exposes only the supported CPU render context at first;
-4. exchanges bounded image buffers and parameter values with the native ARM64 Ae process over a versioned IPC/shared-memory protocol;
-5. maps OFX parameters to Ae effect controls and keyframes through Ae's normal property system.
+1. Binary and dependency load; plug-in entry point discovery.
+2. Instance creation, required host API suite discovery and clean teardown.
+3. Parameter count, IDs, defaults, ranges, UI controls and animated parameter round-trip.
+4. Preview and final render on the same image frames and settings.
+5. Alpha, color space, channel order, row stride, bit depth, edge modes and multi-input behavior.
+6. Keyframes, frame-time behavior, temporal history and random-access frames where supported.
+7. Cancellation, repeated renders, memory growth, crash isolation and recovery.
+8. Output comparison against desktop reference renders at identical resolution, time and settings.
+9. Render time and peak memory on the target device.
 
-Start with a small test plug-in built from the upstream OpenFX examples. Do not claim arbitrary OFX compatibility until the plug-in passes discovery, instance creation, parameter round-trip, preview render, final render, cancellation, and teardown tests.
+Suggested score (0–100):
 
-### Separate, later target: Adobe After Effects .aex
+| Dimension | Weight |
+|---|---:|
+| Required host/API coverage and successful discovery | 20 |
+| Parameter/control coverage and animation | 15 |
+| Preview + final render correctness | 20 |
+| Feature completeness (multi-input, temporal, GPU where applicable) | 15 |
+| Visual fidelity against desktop reference | 15 |
+| Stability, cancellation, repeatability and cleanup | 10 |
+| Performance and peak memory | 5 |
 
-An .aex is not an OFX plug-in. It expects Adobe After Effects SDK suites, selectors, parameter semantics, and other host services. Box64 plus Wine can address CPU and Windows API compatibility but **cannot create the Adobe host API**.
+The score is reported only when the candidate has real measured results. Unknown or untested capabilities are unknown, not treated as supported. A candidate cannot win by producing an attractive single frame if it lacks required effects, parameter controls, temporal behavior or stable final export.
 
-AEX support therefore requires a separately designed, clean-room Adobe host compatibility layer, built only against legally available interface documentation/SDK materials. It must not copy proprietary Adobe implementation code. Start with a narrow set of effects and host callbacks; unknown suites or GPU-only effects must be reported as unsupported rather than silently ignored.
+Hard gates before automatic import:
+- no crash or memory corruption in the test suite;
+- all required host APIs for the claimed feature set are implemented;
+- parameter and keyframe behavior round-trips;
+- final render and cancellation pass;
+- no silent substitution of missing required APIs;
+- plugin authorization and license checks are not bypassed.
 
-Generic Windows .dll, Photoshop .8bf, and Premiere .prm files each need their own host/API adapter. A DLL filename alone does not tell Ae how to call it.
+If every route fails a hard gate, Ae preserves the source and exposes only the analysis report or an explicitly labeled compatibility recreation.
 
-## Ae integration contract
+## Aggressive port / forced compatibility mode
 
-- Keep original desktop binaries unchanged in Plug-ins/Desktop-Originals/.
-- Keep WASM/WAT and JavaScript plug-ins on their existing native Ae import/load paths. Do not route them through Wine.
-- Record detected file format, architecture, selected CPU translator, target ABI, host adapter requirement, and runtime status in the import report.
-- Current metadata status must remain translation_executed = false until the runtime and host worker actually execute and pass tests.
-- Never load an untrusted desktop binary into the Ae Android process. Run it in an isolated worker with a private guest filesystem, no network by default, strict memory/CPU limits, bounded shared-memory buffers, request timeouts, and a force-stop path.
-- Reject malformed binaries and archives before handing them to any loader. Keep existing archive size/entry limits.
-- Do not treat a filename/string match to a built-in effect as binary translation. Such a match is an Android compatibility recreation, not the original desktop plug-in.
+This is a deeper fallback after ordinary routes fail. It is not permission to blindly execute unknown code or lie to the plug-in about required APIs.
 
-## Implementation phases and acceptance gates
+### Compatibility profiles to test, one at a time
 
-1. **Architecture-aware intake (current code change):** recognize PE/ELF architecture, assign an explicit Box64/Box86 candidate route, identify the required plug-in host adapter, preserve the source, and show that execution is not yet active.
-2. **ARM64 x86-64 runtime proof:** build/pin Box64 for the selected Android guest environment; package a minimal glibc/guest userspace and Wine64 as a separate optional runtime component; test a known x86-64 Windows test executable on at least one Android ARM64 device. This is not yet a plug-in test.
-3. **OFX host proof:** load an OpenFX sample through Wine + Box64 in the isolated worker, render a known frame, round-trip parameters, and verify cancellation/teardown. Only then enable import as a runnable OFX plug-in.
-4. **32-bit x86:** add Box86/Wine32 with a verified 32-bit guest userspace, or evaluate Box64 + Wine WOW64/Box32 separately. Do not advertise it before real tests.
-5. **AEX host compatibility:** implement and test Adobe-specific host callbacks separately; expand effect coverage in measured increments.
-6. **GPU/advanced effects:** add GPU bridges, temporal frames, multiple image inputs, tracking and other host capabilities only when an effect requires them and they pass regression tests.
+- **Legacy OS/runtime profile:** test supported Windows API levels and install only legally redistributable VC runtime / .NET dependencies.
+- **Host API profile:** negotiate optional suites; provide clearly bounded shims only for optional callbacks. Missing required callbacks are a failure.
+- **Pixel format profile:** try RGBA/BGRA, supported bit depths, premultiplied/straight alpha and row-stride conversion.
+- **Render profile:** try CPU fallback, GPU forwarding disabled, serial rendering, and ordered frame calls when the plug-in's threading behavior is incompatible.
+- **CPU profile:** mask unsupported optional CPU extensions and test lower feature levels; never pretend unavailable instructions are supported.
+- **Source rebuild:** when source is provided or available under valid terms, recompile for Android ARM64 with NDK/Clang and replace platform-specific APIs.
+- **Binary reconstruction:** use Ghidra to inspect imports/exports, resources, strings, control flow and parameter metadata. Remill may lift supported machine instructions into LLVM IR for analysis. Reimplement the effect algorithm as native ARM64 or a sandboxed WASM module, then compare it against reference frames.
 
-## License and distribution checks
+"Force compatibility" must not disable security checks, bypass activation/licensing/DRM, silently stub required host APIs, or import a binary that has not passed the render tests. A compatibility recreation must be labeled as an Android recreation, not the original vendor plug-in.
 
-Ship each third-party license and notices with the corresponding optional runtime. Wine is LGPL-2.1-or-later; source and modification notices must be supplied as required. Preserve the MIT notices for Box64/Box86 and the BSD-3-Clause notice for OpenFX. Record exact source revisions and build flags in every runtime release. The plug-in binary itself remains the user's supplied software; Ae must not bypass plug-in activation/licensing checks.
+## Host API work is separate from CPU translation
 
-## References
+- **OFX:** first target because the OpenFX API has a C ABI and public specification. Build a separate Wine-side OFX host worker and bridge its parameters/images to Ae through versioned IPC/shared memory.
+- **Adobe AEX:** not OFX. It requires a separate Adobe After Effects SDK host adapter for suites, selectors, parameter semantics and callbacks. Box64 + Wine alone cannot provide Adobe's host.
+- **Photoshop .8bf / Premiere .prm / arbitrary DLL:** each needs its own host adapter; a DLL is not a plug-in standard by itself.
 
-- [Box64 README](https://github.com/ptitSeb/box64/blob/main/README.md)
-- [Box64 Wine guide](https://github.com/ptitSeb/box64/blob/main/docs/WINE.md)
-- [Box64 Android/Termux/Winlator-glibc build options](https://github.com/ptitSeb/box64/blob/main/docs/COMPILE.md)
-- [Box86 README](https://github.com/ptitSeb/box86/blob/master/docs/README.md)
-- [Winlator for Android](https://github.com/winebox64/winlator)
-- [Wine README and license](https://github.com/wine-mirror/wine)
-- [OpenFX API and license](https://github.com/AcademySoftwareFoundation/openfx)
-- [Remill machine-code lifting](https://github.com/lifting-bits/remill)
+The worker must never load arbitrary desktop plug-in binaries inside Ae's main Android process.
+
+## Current source implementation status
+
+The importer now:
+- detects Windows PE and Linux ELF architecture;
+- assigns format-specific candidate routes in deterministic order;
+- records each route as not_run_runtime_not_integrated with translation_executed=false;
+- records proposed aggressive compatibility profiles;
+- preserves native desktop plug-ins separately from runnable WASM/WAT/script modules;
+- reports that architecture analysis and a proposed route are not a successful port.
+
+Not yet implemented:
+- packaging Box64/Box86/FEX/QEMU and Wine guest runtimes in Ae;
+- per-route isolated workers and actual sequential execution;
+- the real score calculation from measured results;
+- OpenFX host worker and Adobe AEX host compatibility;
+- phone hardware validation.
+
+## License / redistribution
+
+Preserve upstream notices. Box64/Box86/FEX use MIT-style permissive terms; Wine is LGPL-2.1-or-later; QEMU is GPL-2.0 with per-file exceptions; OpenFX is BSD-3-Clause; Ghidra and Remill use Apache-2.0. Before shipping, audit the exact pinned source revision, all transitive libraries, modified-source publication obligations and notices. Do not bundle a binary without verifying its license.
+
+## Sources
+
+- Box64: https://github.com/ptitSeb/box64
+- Box86: https://github.com/ptitSeb/box86
+- Wine: https://github.com/wine-mirror/wine
+- FEX: https://github.com/FEX-Emu/FEX
+- QEMU user-mode docs: https://www.qemu.org/docs/master/user/
+- Winlator Android integration reference: https://github.com/winebox64/winlator
+- OpenFX: https://github.com/AcademySoftwareFoundation/openfx
+- Ghidra: https://github.com/NationalSecurityAgency/ghidra
+- Remill: https://github.com/lifting-bits/remill
