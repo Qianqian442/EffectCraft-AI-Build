@@ -576,12 +576,34 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     header = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
     home = (root / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
     lib = (root / "crates/ui-egui/src/lib.rs").read_text(encoding="utf-8")
-    # Ae×am must reuse the same native DockArea and native Timeline as Ae.
-    # A second hand-written AM clip editor is intentionally not part of this build.
+    # AM editing must route to its own touch-first page. The original DockArea
+    # remains available as the fallback for Ae mode; it must not render in AM editing mode.
     if "self.dock_area(ui, body);" not in frame:
-        raise SystemExit("The original native Ae/AM DockArea is missing.")
-    if "crate::am_editor::show(self, ui, full);" in frame or "pub mod am_editor;" in lib:
-        raise SystemExit("A duplicate independent AM editor/timeline was unexpectedly injected.")
+        raise SystemExit("The original Ae DockArea is missing from the Ae fallback path.")
+    am_editor_path = root / "crates/ui-egui/src/am_editor.rs"
+    if (
+        "crate::am_editor::show(self, ui, full);" not in frame
+        or 'self.ui.workspace == "AM 竖屏" && !self.ui.start_screen' not in frame
+        or "pub mod am_editor;" not in lib
+        or not am_editor_path.is_file()
+    ):
+        raise SystemExit("AM mode is still routed to the Ae DockArea instead of the independent AM editor.")
+    am_editor = am_editor_path.read_text(encoding="utf-8")
+    for token in (
+        "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1",
+        "fn top_bar",
+        "fn transport",
+        "fn draw_timeline",
+        "fn bottom_tools",
+        "fn tool_drawer",
+        "am.drawer.keyframes",
+        "Tool::Pen",
+        "Tool::Puppet",
+    ):
+        if token not in am_editor:
+            raise SystemExit(f"Independent AM editor is missing a required mobile editing feature: {token}")
+    if 'if self.ui.workspace != "AM 竖屏" || self.ui.start_screen {' not in frame:
+        raise SystemExit("The Ae toolbar is not hidden while the independent AM editor is active.")
     if "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" not in header:
         raise SystemExit("The original horizontally swipeable Ae toolbar is missing.")
     if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header:
