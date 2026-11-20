@@ -154,6 +154,7 @@ jobs:
             .github/scripts/add_effect_controls_crash_guard.py \
             .github/scripts/add_am_style_undo_redo.py \
             .github/scripts/add_am_mobile_layout.py \
+            .github/scripts/build_am_mobile_editing_page.py \
             .github/scripts/add_am_brand_label.py \
             .github/scripts/add_home_layout_switch.py \
             .github/scripts/pin_android_signing_certificate.py \
@@ -775,18 +776,24 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_am_style_undo_redo.py
           python3 build-assets/.github/scripts/add_am_style_undo_redo.py
 
-      - name: Add Ae×am portrait layout while retaining the native Ae editor
+      - name: Add independent AM portrait editor while preserving native Ae editor
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_am_mobile_layout.py
           python3 build-assets/.github/scripts/add_am_mobile_layout.py
+          # The main APK must install the same independent AM editor already compiled
+          # by the dedicated integration validation workflow; rotating the Ae DockArea
+          # is not an AM editing page.
+          python3 -m py_compile build-assets/.github/scripts/build_am_mobile_editing_page.py
+          python3 build-assets/.github/scripts/build_am_mobile_editing_page.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
           HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
           DOCK_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/dock.rs"
           LIB_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/lib.rs"
+          AM_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/am_editor.rs"
           grep -Fq "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" "$HOME_RS"
           grep -Fq 'let header_h = 40.0;' "$FRAME_RS"
           ! grep -Fq 'let header_h = 64.0;' "$FRAME_RS"
@@ -796,9 +803,11 @@ jobs:
           grep -Fq 'FixedSecond(300.0)' "$DOCK_RS"
           grep -Fq 'FixedFirst(300.0)' "$DOCK_RS"
           grep -Fq 'self.dock_area(ui, body);' "$FRAME_RS"
-          ! grep -Fq 'crate::am_editor::show(self, ui, full);' "$FRAME_RS"
-          ! grep -Fq 'pub mod am_editor;' "$LIB_RS"
-          echo "Verified Ae and AM both use the original native DockArea and native Timeline; no second AM editor/timeline is injected."
+          grep -Fq 'if self.ui.workspace == "AM 竖屏" && !self.ui.start_screen {' "$FRAME_RS"
+          grep -Fq 'crate::am_editor::show(self, ui, full);' "$FRAME_RS"
+          grep -Fq 'pub mod am_editor;' "$LIB_RS"
+          grep -Fq 'EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1' "$AM_RS"
+          echo "Verified AM routes to its own portrait editor while the original Ae DockArea remains intact."
 
       - name: Keep layout switching in the editing toolbar, not on Home
         env:
