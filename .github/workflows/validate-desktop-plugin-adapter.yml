@@ -80,7 +80,7 @@ jobs:
             .github/scripts/add_chroma_key_effect.py \
             .github/scripts/configure_android_storage_fallback.py \
             .github/scripts/add_am_mobile_layout.py \
-            .github/scripts/build_am_mobile_editing_page.py
+            .github/scripts/build_am_mobile_editing_page.py \
             .github/scripts/add_windows_runtime_ui.py \
             .github/scripts/integrate_windows_compat_runtime.py \
             .github/scripts/integrate_binary_reconstruction.py \
