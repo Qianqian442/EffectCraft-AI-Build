@@ -134,7 +134,7 @@ fn managed_plugin_source(s: &Session, source: &str) -> Option<std::path::PathBuf
 }
 
 /// Persist a user-selected module in Ae's private folder; never delete the user's original file.
-fn persist_plugin_module(s: &Session, source: &str, bytes: &[u8]) -> Result<(String, bool), String> {
+fn persist_plugin_module(s: &Session, source: &str, bytes: &[u8]) -> std::result::Result<(String, bool), String> {
     let extension = std::path::Path::new(source).extension().and_then(|value| value.to_str()).unwrap_or("");
     if !extension.eq_ignore_ascii_case("wasm") && !extension.eq_ignore_ascii_case("wat") {
         return Ok((source.to_string(), false));
