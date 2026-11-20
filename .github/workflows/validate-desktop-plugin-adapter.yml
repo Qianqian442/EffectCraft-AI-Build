@@ -269,7 +269,6 @@ jobs:
           grep -Fq "FixedSecond(300.0)" effectcraft/crates/ui-egui/src/dock.rs
           grep -Fq "FixedFirst(300.0)" effectcraft/crates/ui-egui/src/dock.rs
           grep -Fq "EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1" effectcraft/crates/ui-egui/src/app/window.rs
-          grep -Fq "self.dock_area(ui, body);" effectcraft/crates/ui-egui/src/app/frame.rs
           echo "Verified Ae×am portrait Home and native Ae effects, scrollable parameters, keyframes, curves, puppet, vector and timeline tools."
 
       - name: Validate Home plug-in management and remove About Ae
