@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Add the AM portrait workspace and Android orientation / release-signer guard.
+"""Add a separate AM portrait workspace and orientation-only Android bridge.
 
 This patch intentionally changes only workspace presentation and the Android Activity
 host bridge. It does not edit project import routing, archive staging, project serializers,
