@@ -605,7 +605,21 @@ def patch_builder(builder: Path) -> None:
             .and_then(|value| value.to_str())
             .unwrap_or_default()
             .to_ascii_lowercase();
-        let import_command = if matches!(extension.as_str(), "aep" | "aepx") {
+        // QQ may pass a content:// URI for a downloaded plug-in. By the time the
+        // Activity stages it, its real display filename (and extension) is preserved here.
+        let is_plugin_archive = extension == "zip"
+            && effectcraft_ui_egui::plugin_migration::looks_like_plugin_archive(path);
+        let import_command = if is_plugin_archive
+            || matches!(extension.as_str(),
+                "wasm" | "wat" | "aex" | "dll" | "ofx" | "so" | "dylib"
+                | "plugin" | "bundle" | "prm" | "8bf")
+        {
+            Some("effect.plugins.load")
+        } else if extension == "jsx" {
+            Some("file.installScriptUIPanel")
+        } else if extension == "js" {
+            Some("file.installScript")
+        } else if matches!(extension.as_str(), "aep" | "aepx") {
             Some("file.importAep")
         } else if matches!(extension.as_str(), "zip" | "nv" | "xml" | "alight" | "json") {
             Some("file.importProject")
