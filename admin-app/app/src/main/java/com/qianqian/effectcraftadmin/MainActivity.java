@@ -672,21 +672,32 @@ public final class MainActivity extends Activity {
                 showLogin();
                 return;
             }
-            showUsers(result.optJSONArray("users"));
+            JSONArray users = result.optJSONArray("users");
+            int totalCount = result.optInt("total_count", users == null ? 0 : users.length());
+            String latestCreatedAt = result.optString("latest_created_at", "");
+            String accountSource = result.optString("account_source",
+                isCloudflareMode() ? "Cloudflare D1 云端共享账号库" : "管理员手机本机 SQLite 账号库");
+            showUsers(users, totalCount, latestCreatedAt, accountSource);
         });
     }
 
-    private void showUsers(JSONArray users) {
+    private void showUsers(JSONArray users, int totalCount, String latestCreatedAt, String accountSource) {
         LinearLayout page = column();
         LinearLayout top = new LinearLayout(this);
         top.setOrientation(LinearLayout.HORIZONTAL);
         top.setGravity(Gravity.CENTER_VERTICAL);
-        TextView title = text("账号管理 · 共 " + (users == null ? 0 : users.length()) + " 个账号", 22, true);
+        TextView title = text("账号管理 · 共 " + totalCount + " 个账号", 22, true);
         top.addView(title, new LinearLayout.LayoutParams(0, dp(48), 1));
         Button refresh = button("刷新");
         top.addView(refresh);
         refresh.setOnClickListener(v -> loadUsers(searchInput == null ? "" : searchInput.getText().toString()));
         page.addView(top);
+        String latestLabel = latestCreatedAt == null || latestCreatedAt.isEmpty()
+            ? "尚无注册记录" : "最近注册：" + latestCreatedAt;
+        page.addView(text("数据源：" + accountSource + "  ·  " + latestLabel, 11, false));
+        if (users != null && users.length() < totalCount) {
+            page.addView(text("当前显示最近 " + users.length() + " 个账号，共 " + totalCount + " 个；可使用搜索定位账号。", 11, false));
+        }
         addGlobalNodePanel(page);
         addWhitelistPanel(page);
         searchInput = field("搜索 QQ号 / 微信号 / 名字", false);
