@@ -672,8 +672,10 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         raise SystemExit("Switching away from AM does not restore sensor orientation.")
     if "workspace: ui.workspace.clone()" not in store or "ui.workspace = self.workspace" not in store:
         raise SystemExit("The active workspace name is not persisted/restored with workspaces.json.")
-    if "android_layout::set_workspace_portrait" not in app or "setWorkspacePortrait" not in bridge:
-        raise SystemExit("The Android Activity orientation bridge is not connected.")
+    if "set_workspace_portrait" not in window or "setWorkspacePortrait" not in bridge:
+        raise SystemExit("The AM selection-only Android orientation bridge is not connected.")
+    if "android_layout::set_workspace_portrait" in app:
+        raise SystemExit("AM must not change the default Ae app-start orientation.")
     if 'jni = "0.22"' not in ui_cargo:
         raise SystemExit("The Android JNI dependency for orientation switching is missing.")
 
