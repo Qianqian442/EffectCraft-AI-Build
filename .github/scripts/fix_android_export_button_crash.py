@@ -45,8 +45,18 @@ fn effectcraft_run_export_command(
         header,
         count=1,
     )
-    if output_count != 1 and 'effectcraft_run_export_command(app, &ctx, "renderQueue.setOutput",' not in header:
-        raise SystemExit("Export button renderQueue.setOutput call was not guarded.")
+    # The current Android export deliberately keeps the Render Queue's own output path.
+    # Do not require a setOutput command when no such override exists; that old check
+    # contradicted the direct-render path and blocked builds even though no call was present.
+    if output_count != 1:
+        has_guarded_output = 'effectcraft_run_export_command(app, &ctx, "renderQueue.setOutput",' in header
+        has_unguarded_output = re.search(
+            r'crate::menus::invoke\(\\s*app,\\s*&ctx,\\s*"renderQueue\\.setOutput"', header
+        ) is not None
+        if has_unguarded_output and not has_guarded_output:
+            raise SystemExit("A renderQueue.setOutput override exists but is not panic-guarded.")
+        if not has_guarded_output:
+            print("No renderQueue.setOutput override exists; native Render Queue output remains unchanged.")
 
     header, set_render_count = re.subn(
         r'crate::menus::invoke\(\s*app,\s*&ctx,\s*"renderQueue\.setRender",',
