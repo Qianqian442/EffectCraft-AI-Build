@@ -108,6 +108,10 @@ const BUILTIN_EFFECT_MODULES: &[&str] = &[
     "ec_sapphire_glint.wasm", "ec_sapphire_rays.wasm", "ec_sapphire_halftone.wasm",
     "ec_sapphire_pixelsort.wasm", "ec_rsmb_motion_blur.wasm", "ec_looks_studio.wasm",
     "ec_sapphire_textureflux.wasm",
+    "craft_glow.wasm", "craft_chromatic.wasm", "craft_camera_shake.wasm",
+    "craft_displacer.wasm", "craft_halftone_dither.wasm", "craft_vhs_glitch.wasm",
+    "craft_pixel_sort.wasm", "craft_anamorphic_flare.wasm",
+    "craft_motion_blur_curves.wasm", "craft_reveal.wasm",
 ];
 
 /// Only user WASM/WAT modules stored directly in Ae's app-owned Plug-ins folder can be deleted.
