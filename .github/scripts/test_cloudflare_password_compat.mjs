@@ -22,6 +22,27 @@ const legacyValid = await post("/password/verify", {
 });
 assert.equal(legacyValid.valid, true, "210000-round accounts must remain verifiable");
 
+const migratedLegacy = await post("/password/verify", {
+  password: LEGACY_PASSWORD,
+  stored: LEGACY_HASH,
+  upgrade_legacy: true
+});
+assert.equal(migratedLegacy.valid, true, "legacy account verification must succeed");
+assert.match(migratedLegacy.upgraded_hash, /^pbkdf2-sha256\\$100000\\$/, "legacy migration must create a current hash in the same call");
+const migratedLegacyValid = await post("/password/verify", {
+  password: LEGACY_PASSWORD,
+  stored: migratedLegacy.upgraded_hash
+});
+assert.equal(migratedLegacyValid.valid, true, "migrated legacy hash must verify");
+
+const wrongLegacyMigration = await post("/password/verify", {
+  password: "incorrect",
+  stored: LEGACY_HASH,
+  upgrade_legacy: true
+});
+assert.equal(wrongLegacyMigration.valid, false);
+assert.equal(wrongLegacyMigration.upgraded_hash, undefined, "wrong passwords must not produce replacement hashes");
+
 const legacyInvalid = await post("/password/verify", {
   password: "not-the-legacy-password",
   stored: LEGACY_HASH
@@ -35,5 +56,19 @@ const freshValid = await post("/password/verify", {
   stored: fresh.hash
 });
 assert.equal(freshValid.valid, true, "new 100000-round hashes must remain verifiable");
+
+const changedPassword = "New-Password-2026!";
+const passwordChange = await post("/password/verify", {
+  password: LEGACY_PASSWORD,
+  stored: fresh.hash,
+  new_password: changedPassword
+});
+assert.equal(passwordChange.valid, true, "current password must be checked before password replacement");
+assert.match(passwordChange.replacement_hash, /^pbkdf2-sha256\\$100000\\$/);
+const changedPasswordValid = await post("/password/verify", {
+  password: changedPassword,
+  stored: passwordChange.replacement_hash
+});
+assert.equal(changedPasswordValid.valid, true, "replacement password hash must verify");
 
 console.log("PASS: legacy 210000-round accounts, current 100000-round accounts, and incorrect passwords are handled correctly.");
