@@ -95,7 +95,7 @@ jobs:
           grep -Fq 'native_translated' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq '不计入原生插件移植成功数量' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq '自动选优结果' effectcraft/crates/ui-egui/src/plugin_migration.rs
-          grep -Fq '暂无真实运行并通过硬性测试' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '没有真实运行并通过硬性测试的电脑原生插件转译方案' effectcraft/crates/ui-egui/src/plugin_migration.rs
 
       - name: Apply the AI and export toolbar base patch used by the APK build
         env:
