@@ -76,6 +76,11 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     widgets::focus_outline(ui, &response, &app.tokens);
     if response.clicked() {
         menu_open = !menu_open;
+        app.ui.status = if menu_open {
+            "已打开插件导入菜单；请选择要导入的插件类型。".into()
+        } else {
+            "已关闭插件导入菜单。".into()
+        };
     }
 
     let mut import_wasm = false;
@@ -96,28 +101,35 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                 popup.label("选择插件类型");
                 if popup.button("导入效果插件包（支持 .wasm、.wat、.zip）").clicked() {
                     import_wasm = true;
+                    app.ui.status = "正在打开效果插件文件选择器…".into();
                 }
                 if popup.button("电脑插件高级移植（自动比较完整度 + 强制兼容）").clicked() {
                     import_desktop_advanced = true;
+                    app.ui.status = "正在打开电脑插件文件选择器…".into();
                 }
                 popup.label("高级移植会识别电脑插件架构，列出适用的 ARM64 转译路线和强制兼容方案。");
                 popup.label("只有实际运行并通过测试的方案才能标记为已移植；当前未接入的后端会明确显示待实现。");
                 popup.label(".aex / .dll / .ofx / .8bf / .prm 等电脑插件可选单文件或 ZIP；.aep / .aepx 是工程文件，请用“导入工程”。");
                 if popup.button("关闭").clicked() {
                     close_menu = true;
+                    app.ui.status = "已关闭插件导入菜单。".into();
                 }
             });
         menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced;
     }
     ui.ctx().data_mut(|d| d.insert_temp(menu_id, menu_open));
 
-    if (import_wasm || import_desktop_advanced)
-        && let Err(error) = crate::menus::invoke(app, ui.ctx(), "effect.plugins.load", json!({}))
-    {
-        app.ui.status = error;
-    }
-    if import_desktop_advanced {
-        app.ui.status = "已打开电脑插件高级移植选择器：将分析架构、转译候选、宿主接口和强制兼容方案；未实测的路线不会标记为成功。".into();
+    if import_wasm || import_desktop_advanced {
+        match crate::menus::invoke(app, ui.ctx(), "effect.plugins.load", json!({})) {
+            Ok(_) => {
+                app.ui.status = if import_desktop_advanced {
+                    "已打开电脑插件文件选择器；选择电脑插件文件或 ZIP 后进入架构分析和移植路线页面。".into()
+                } else {
+                    "已打开效果插件文件选择器；可在 QQfile_recv、Download 或 Documents 中选择插件。".into()
+                };
+            }
+            Err(error) => app.ui.status = format!("打开插件文件选择器失败：{error}"),
+        }
     }
     x + 84.0
 }
