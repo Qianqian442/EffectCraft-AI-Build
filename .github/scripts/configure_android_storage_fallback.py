@@ -615,9 +615,7 @@ def patch_builder(builder: Path) -> None:
                 | "plugin" | "bundle" | "prm" | "8bf")
         {
             Some("effect.plugins.load")
-        } else if extension == "jsx" {
-            Some("file.installScriptUIPanel")
-        } else if extension == "js" {
+        } else if matches!(extension.as_str(), "jsx" | "js") {
             Some("file.installScript")
         } else if matches!(extension.as_str(), "aep" | "aepx") {
             Some("file.importAep")
