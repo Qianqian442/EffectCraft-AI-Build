@@ -879,6 +879,30 @@ fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, 
     }
 }
 
+// EFFECTCRAFT_AM_BOTTOM_SHEET_SLIDE_UP_V1
+fn am_bottom_sheet_progress(ctx: &egui::Context, key: Option<String>) -> f32 {
+    let state_id = Id::new("am-mobile-bottom-sheet-transition");
+    let now = ctx.input(|input| input.time);
+    match key {
+        Some(key) => {
+            let (stored_key, started) = ctx.data(|data| data.get_temp::<(String, f64)>(state_id))
+                .unwrap_or_default();
+            if stored_key != key {
+                ctx.data_mut(|data| data.insert_temp(state_id, (key, now)));
+                0.0
+            } else {
+                let linear = ((now - started) / 0.24).clamp(0.0, 1.0) as f32;
+                // Smoothstep easing: quick response at the start, soft landing at the end.
+                linear * linear * (3.0 - 2.0 * linear)
+            }
+        }
+        None => {
+            ctx.data_mut(|data| data.remove::<(String, f64)>(state_id));
+            1.0
+        }
+    }
+}
+
 pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let t = app.tokens;
     ui.painter().rect_filled(rect, 0.0, t.app_bg);
@@ -911,23 +935,47 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     draw_timeline(app, ui, timeline_rect);
     bottom_tools(app, ui, bottom_rect);
 
-    // Panels open as an AM-style bottom drawer rather than replacing the whole Ae dock.
+    // AM-style bottom sheet: timeline taps reveal the panel by sliding upward.
+    // This transition belongs only to the independent AM page and never touches Ae widgets.
     let drawer_id = Id::new("am-mobile-tool-drawer");
-    if ui.ctx().data(|d| d.get_temp::<String>(drawer_id)).is_some() {
-        let drawer_kind = ui.ctx().data(|d| d.get_temp::<String>(drawer_id)).unwrap_or_default();
-        let drawer_h = if drawer_kind == "keyframes" {
+    let drawer_kind = ui.ctx().data(|d| d.get_temp::<String>(drawer_id));
+    let active_layer = if drawer_kind.is_none() && !am_multi_select_enabled(ui.ctx()) {
+        ui.ctx().data(|d| d.get_temp::<u64>(Id::new(AM_ACTIVE_LAYER_ID)))
+    } else {
+        None
+    };
+    let sheet_key = drawer_kind.as_ref().map(|kind| format!("panel:{kind}"))
+        .or_else(|| active_layer.map(|id| format!("layer:{id}")));
+    let sheet_h = if let Some(kind) = drawer_kind.as_deref() {
+        if kind == "keyframes" {
             (rect.height() * 0.68).clamp(260.0, 500.0).min(timeline_rect.height().max(220.0))
         } else {
             (rect.height() * 0.42).clamp(180.0, 340.0).min(timeline_rect.height().max(140.0))
-        };
-        let drawer_rect = Rect::from_min_max(pos2(rect.min.x, timeline_rect.max.y - drawer_h), pos2(rect.max.x, bottom_rect.min.y));
-        tool_drawer(app, ui, drawer_rect);
-    } else if !am_multi_select_enabled(ui.ctx())
-        && let Some(layer_id) = ui.ctx().data(|d| d.get_temp::<u64>(Id::new(AM_ACTIVE_LAYER_ID)))
-    {
-        let drawer_h = (rect.height() * 0.44).clamp(220.0, 360.0).min(timeline_rect.height().max(180.0));
-        let drawer_rect = Rect::from_min_max(pos2(rect.min.x, timeline_rect.max.y - drawer_h), pos2(rect.max.x, bottom_rect.min.y));
-        layer_action_drawer(app, ui, drawer_rect, layer_id);
+        }
+    } else if active_layer.is_some() {
+        (rect.height() * 0.44).clamp(220.0, 360.0).min(timeline_rect.height().max(180.0))
+    } else {
+        0.0
+    };
+    let slide_progress = am_bottom_sheet_progress(ui.ctx(), sheet_key);
+    if sheet_h > 0.0 {
+        let target_rect = Rect::from_min_max(
+            pos2(rect.min.x, timeline_rect.max.y - sheet_h),
+            pos2(rect.max.x, bottom_rect.min.y),
+        );
+        let slide_offset = (1.0 - slide_progress) * sheet_h;
+        let animated_rect = target_rect.translate(vec2(0.0, slide_offset));
+        let mut sheet_ui = ui.new_child(egui::UiBuilder::new().max_rect(target_rect));
+        sheet_ui.set_clip_rect(target_rect);
+        if let Some(kind) = drawer_kind {
+            let _ = kind;
+            tool_drawer(app, &mut sheet_ui, animated_rect);
+        } else if let Some(layer_id) = active_layer {
+            layer_action_drawer(app, &mut sheet_ui, animated_rect, layer_id);
+        }
+        if slide_progress < 1.0 {
+            ui.ctx().request_repaint();
+        }
     }
 
     // Export uses the existing encoder, queue and confirmation/progress state.
@@ -1046,6 +1094,8 @@ def verify(root: Path) -> None:
         "am_group_selected_layers",
         "layer.precompose",
         "layer_action_drawer",
+        "EFFECTCRAFT_AM_BOTTOM_SHEET_SLIDE_UP_V1",
+        "am_bottom_sheet_progress",
         "颜色和填充",
         "边框和阴影",
         "混合和不透明度",
