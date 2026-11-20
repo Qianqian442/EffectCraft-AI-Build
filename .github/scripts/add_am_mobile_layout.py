@@ -116,6 +116,26 @@ def patch_touch_trim_handles(effectcraft: Path) -> None:
     """Do not patch the shared Ae timeline: AM owns its own clip-edge handles."""
     print("AM clip-edge handles are implemented in the independent AM editor; shared Ae Timeline is untouched.")
 
+
+def patch_workspace_tabs(effectcraft: Path) -> None:
+    """Keep Ae/AM selection in the existing workspace menu; never add a new toolbar row."""
+    header = (effectcraft / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
+    frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
+    dock = (effectcraft / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
+
+    if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header:
+        raise SystemExit("The original workspace menu is missing from the Ae toolbar.")
+    if "workspace_tabs(app, ui, p, rx, left, cy);" not in header:
+        raise SystemExit("The original workspace tabs are missing from the Ae toolbar.")
+    if f'"{WORKSPACE}"' not in dock:
+        raise SystemExit("AM 竖屏 is not registered in the original workspace menu.")
+    if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" in header or "layout_switch_row(" in header:
+        raise SystemExit("The extra Ae/AM toolbar row must not be present.")
+    expected_header_height = 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };'
+    if expected_header_height not in frame:
+        raise SystemExit("AM Home must use its own header space while Ae keeps the original 40px header.")
+    print("Verified Ae/AM switching uses the original workspace menu without adding a toolbar row.")
+
 def patch_workspace_selection(effectcraft: Path) -> None:
     path = effectcraft / "crates/ui-egui/src/app/window.rs"
     source = path.read_text(encoding="utf-8")
