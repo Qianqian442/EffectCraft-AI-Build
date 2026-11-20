@@ -280,6 +280,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             }
             _ => {}
         }
+        drop(add);
         routes
     }
 
