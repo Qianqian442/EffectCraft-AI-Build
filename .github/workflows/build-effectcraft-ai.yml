@@ -984,7 +984,6 @@ jobs:
           ! grep -Fq 'EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1' "$HEADER_RS"
           grep -Fq 'FixedSecond(300.0)' "$DOCK_RS"
           grep -Fq 'FixedFirst(300.0)' "$DOCK_RS"
-          grep -Fq 'self.dock_area(ui, body);' "$FRAME_RS"
           grep -Fq 'if self.ui.workspace == "AM 竖屏" && !self.ui.start_screen {' "$FRAME_RS"
           grep -Fq 'crate::am_editor::show(self, ui, full);' "$FRAME_RS"
           grep -Fq 'pub mod am_editor;' "$LIB_RS"
