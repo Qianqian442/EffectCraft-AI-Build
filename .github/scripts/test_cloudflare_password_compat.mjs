@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { AccountSessionHub } from "../../cloudflare-worker/src/account_session_hub.js";
+import { PasswordCryptoHub } from "../../cloudflare-worker/src/password_crypto_hub.js";
 
-const hub = new AccountSessionHub({ storage: {} }, {});
+const hub = new PasswordCryptoHub({ storage: {} }, {});
 const LEGACY_PASSWORD = "Legacy-Credential-Check-2026!";
 const LEGACY_HASH = "pbkdf2-sha256$210000$ABEiM0RVZneImaq7zN3u_w$uGMyIVWFJs6SvUbo81u_YADCCXkd_SdvDP5269iMbQI";
 
