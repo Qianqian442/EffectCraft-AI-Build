@@ -243,6 +243,14 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
             let host = item.get("host_adapter").and_then(Value::as_str).unwrap_or("需适配插件宿主接口");
             lines.push(format!("CPU 转译路线：{backend} → {target}；{status}。"));
             lines.push(format!("插件宿主桥接：{host}。"));
+            if let Some(selected) = item.get("selected_route") {
+                let backend = selected.get("backend").and_then(Value::as_str).unwrap_or("最佳候选");
+                let score = item.get("trial_score").and_then(Value::as_f64).unwrap_or(0.0);
+                lines.push(format!("自动选优结果：{backend}；实测完整度 {:.1}/100。", score));
+                lines.push("该方案只有在宿主接口、参数、预览/最终渲染、取消和稳定性硬性测试全部通过后才会被选中。".into());
+            } else {
+                lines.push("自动选优结果：暂无；当前没有真实运行并通过硬性测试的电脑原生插件转译方案。".into());
+            }
             if let Some(routes) = item.get("candidate_routes").and_then(Value::as_array) {
                 if !routes.is_empty() {
                     let names = routes.iter().filter_map(|route| route.get("backend").and_then(Value::as_str))
