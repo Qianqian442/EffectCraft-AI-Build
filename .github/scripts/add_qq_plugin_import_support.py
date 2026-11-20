@@ -216,16 +216,26 @@ fn saf_open_plugin_paths(bridge: &saf::Bridge, state: &SafState) -> Vec<String> 
             match dialog {'''
     source = once(source, old, new, "plug-in-specific QQ picker dispatch")
 
-    old_tail = '''            FileDialog::Save { default, .. } => saf_save_path(&bridge, &state, &default).into_iter().collect(),
-        };
-        done(paths);
-    });'''
-    new_tail = '''            FileDialog::Save { default, .. } => saf_save_path(&bridge, &state, &default).into_iter().collect(),
-            }
-        };
-        done(paths);
-    });'''
-    source = once(source, old_tail, new_tail, "plug-in-aware dialog dispatch close")
+    # The upstream builder and the SAF permission patch can add or reorder FileDialog
+    # variants. Do not anchor this closing edit to the final Save arm: locate the
+    # actual close immediately before done(paths), and wrap the existing match in
+    # the plug-in/non-plug-in conditional without changing any original match arms.
+    done_anchor = "        done(paths);\n    });"
+    done_at = source.find(done_anchor, source.find("fn saf_dialog_async("))
+    if done_at < 0:
+        raise SystemExit("Could not locate the end of Android SAF dialog dispatch")
+    function_start = source.rfind("fn saf_dialog_async(", 0, done_at)
+    dialog_body_start = source.find("        let paths = if is_plugin_dialog {", function_start, done_at)
+    if dialog_body_start < 0:
+        raise SystemExit("Could not locate the plug-in-aware dialog dispatch body")
+    before_done = source[function_start:done_at]
+    lines = before_done.splitlines()
+    if not lines or lines[-1].strip() != "};":
+        tail = lines[-1].strip() if lines else "<empty>"
+        raise SystemExit(f"Unexpected Android SAF dialog close before done(paths): {tail!r}")
+    # The existing closing `};` terminates match dialog; add the close for else.
+    lines[-1] = "            }\n        };"
+    source = source[:function_start] + "\n".join(lines) + "\n" + source[done_at:]
     source = source.replace("fn saf_dialog_async(", "// " + marker + "\nfn saf_dialog_async(", 1)
     path.write_text(source, encoding="utf-8")
 
