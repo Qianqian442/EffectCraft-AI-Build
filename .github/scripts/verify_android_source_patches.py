@@ -601,6 +601,7 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         "AM_LONG_PRESS_SECONDS",
         "am_group_selected_layers",
         "layer.precompose",
+        "has_cross_group_links",
         "layer_action_drawer",
         "颜色和填充",
         "边框和阴影",
