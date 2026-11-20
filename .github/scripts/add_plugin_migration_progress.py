@@ -200,17 +200,27 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
     let scripts = value_count(value, "desktop_scripts");
     let assets = value_count(value, "desktop_assets");
     let matched = value_count(value, "desktop_native_compatibility_matches");
-    let native_unmatched = scan.native_count.saturating_sub(matched);
+    // A filename/effect-name match is only a substitute-effect hint, never proof that
+    // the original desktop binary has been translated or hosted successfully.
+    let native_translated = value.get("desktop_native_metadata")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter(|item| {
+            item.get("translation_executed").and_then(Value::as_bool) == Some(true)
+                && item.get("trial_execution_status").and_then(Value::as_str) == Some("passed")
+                && item.get("selected_route").is_some()
+        }).count())
+        .unwrap_or(0);
+    let native_unmatched = scan.native_count.saturating_sub(native_translated);
     let errors = value_count(value, "errors");
     let skipped = value_count(value, "desktop_skipped");
     let installed = wasm + wat + panels + scripts;
-    let success = installed > 0 || matched > 0;
+    let success = installed > 0 || native_translated > 0;
 
     let mut lines = vec![format!("已扫描 {} 个文件，共 {:.1} MB。", scan.file_count, scan.total_bytes as f64 / (1024.0 * 1024.0))];
     lines.push(format!("可用模块：WASM {wasm} 个、WAT {wat} 个、AE 面板 {panels} 个、脚本 {scripts} 个。"));
     if assets > 0 { lines.push(format!("另行保存素材/源码 {assets} 个。")); }
     if matched > 0 {
-        lines.push(format!("匹配到 {matched} 个内置兼容效果。它们是兼容重实现/近似效果，不是原厂 AE 插件。"));
+        lines.push(format!("匹配到 {matched} 个内置兼容替代效果。它们不是原厂 AE 插件，也不计入原生插件移植成功数量。"));
         if let Some(items) = value.get("desktop_native_compatibility_matches").and_then(Value::as_array) {
             for item in items.iter().take(16) {
                 let source = item.get("source").and_then(Value::as_str).unwrap_or("电脑插件");
@@ -293,14 +303,18 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
     }
     if !success {
         if scan.native_count > 0 {
-            lines.insert(1, "架构分析已完成，但当前版本尚未执行 x86/x64 → ARM64 动态转译；原始插件已保留，不能视为已移植。".into());
-            ("已分析，待转译".into(), lines.join("\n"), false)
+            lines.insert(1, "已完成电脑插件架构与候选路线分析；尚无原生插件通过真实转译、宿主接口、参数和渲染测试。内置相似效果仅为替代方案，不算原插件移植。".into());
+            ("已分析，原插件待移植".into(), lines.join("\n"), false)
         } else {
             lines.insert(1, "没有安装任何可运行的兼容插件；仅保存素材或脚本文件不算移植成功。".into());
             ("移植失败".into(), lines.join("\n"), false)
         }
     } else if native_unmatched > 0 || errors > 0 || skipped > 0 {
-        ("移植部分完成".into(), lines.join("\n"), true)
+        if installed > 0 {
+            ("部分内容已导入，电脑原生插件仍待移植".into(), lines.join("\n"), true)
+        } else {
+            ("电脑原生插件仍待移植".into(), lines.join("\n"), false)
+        }
     } else {
         ("移植成功".into(), lines.join("\n"), true)
     }
