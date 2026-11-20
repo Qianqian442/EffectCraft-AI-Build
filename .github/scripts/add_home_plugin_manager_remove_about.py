@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 MARKER = "EFFECTCRAFT_HOME_PLUGIN_MANAGER_V1"
@@ -200,19 +201,23 @@ def remove_about_ui(root: Path) -> None:
         "/// The brand mark (About) and the Home button; returns the x after them.",
         "/// The decorative Ae brand mark and the Home button; returns the x after them.",
     )
-    about_click = '''    let bresp = ui.interact(brand, egui::Id::unique("brand"), Sense::click());
-    app.auto.add_response("header.about", &bresp, "About EffectCraft");
-    widgets::focus_outline(ui, &bresp, &t);
-    if bresp.on_hover_text(tr("About EffectCraft")).clicked() {
-        app.dialog = Some(Dialog::About);
-    }
-'''
-    source = replace_once(
-        source,
-        about_click,
-        "    // The logo is decorative; the former About click target and dialog are removed.\n",
-        "About logo click target",
+    about_click_pattern = re.compile(
+        r'(?m)^    let bresp = ui\\.interact\\(brand, egui::Id::unique\\("brand"\\), Sense::click\\(\\)\\);\\n'
+        r'    app\\.auto\\.add_response\\("header\\.about", &bresp, "[^"]+"\\);\\n'
+        r'    widgets::focus_outline\\(ui, &bresp, &t\\);\\n'
+        r'    if bresp\\.on_hover_text\\(tr\\("[^"]+"\\)\\)\\.clicked\\(\\) \\{\\n'
+        r'        app\\.dialog = Some\\(Dialog::About\\);\\n'
+        r'    \\}\\n'
     )
+    source, about_click_count = about_click_pattern.subn(
+        "    // The logo is decorative; the former About click target and dialog are removed.\\n",
+        source,
+        count=1,
+    )
+    if about_click_count == 0 and "header.about" not in source:
+        pass
+    elif about_click_count != 1:
+        raise SystemExit("About logo click target: expected exactly one existing click handler.")
     source = source.replace("/// Draws the Tools bar into rect: brand (About), Home,", "/// Draws the Tools bar into rect: brand mark, Home,")
     source = source.replace("/// 24 px Tools bar to the About dialog). Nothing is drawn if it can't be decoded.",
                           "/// 24 px Tools bar to larger interface surfaces). Nothing is drawn if it can't be decoded.")
@@ -252,8 +257,13 @@ def remove_about_ui(root: Path) -> None:
 
     engine_menus = root / "crates/engine/src/menus.rs"
     source = engine_menus.read_text(encoding="utf-8")
-    source = remove_once(source, "  About EffectCraft... | app.about\n", "macOS About menu")
-    source = remove_once(source, "  [!mac] About EffectCraft... | app.about\n", "non-macOS About menu")
+    source, removed_about_entries = re.subn(
+        r'(?m)^  (?:\\[!mac\\] )?About (?:EffectCraft|Ae)\\.\\.\\. \\| app\\.about\\n',
+        "",
+        source,
+    )
+    if "app.about" in source:
+        raise SystemExit("An About menu entry is still present in engine menus.")
     engine_menus.write_text(source, encoding="utf-8")
 
 
