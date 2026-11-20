@@ -684,13 +684,23 @@ async function route(request, env) {
       if (!passwordVerified) {
         return fail(503, "密码验证自检失败", { code: "password_verify_failed", stage });
       }
+      stage = "legacy_password_verify";
+      const legacyPasswordVerified = await verifyPassword(
+        env,
+        "Legacy-Credential-Check-2026!",
+        "pbkdf2-sha256$210000$ABEiM0RVZneImaq7zN3u_w$uGMyIVWFJs6SvUbo81u_YADCCXkd_SdvDP5269iMbQI"
+      );
+      if (!legacyPasswordVerified) {
+        return fail(503, "旧版账号密码兼容自检失败", { code: "legacy_password_verify_failed", stage });
+      }
       return response({
         ok: true,
         service: "Ae Cloud Account API",
         database: connected,
         password_service: true,
         password_hash: passwordHashed,
-        password_verify: passwordVerified
+        password_verify: passwordVerified,
+        password_legacy_verify: legacyPasswordVerified
       }, 200);
     } catch (error) {
       const detail = error && error.message ? error.message : String(error);
