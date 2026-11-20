@@ -279,6 +279,7 @@ fn am_effect_grid(
     y: &mut f32,
     specs: Vec<&'static effectcraft_engine::effects::EffectSpec>,
 ) {
+    let count = specs.len();
     let columns = 3usize;
     let gap = 8.0;
     let card_w = ((list.width() - 16.0 - gap * 2.0) / columns as f32).max(1.0);
@@ -294,9 +295,8 @@ fn am_effect_grid(
             am_effect_card(app, ui, p, r, spec);
         }
     }
-    // The number of rows controls the scrollable content height.
-    let count = specs_count_hint_placeholder();
-    let _ = count;
+    // The caller uses this count to size the vertically scrollable grid.
+    count
 }
 
 fn am_effect_category_card(
@@ -460,7 +460,7 @@ fn am_effect_browser(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             });
         }
     }
-    let title = category.as_deref().map(crate::i18n::effects::category).unwrap_or("效果浏览器");
+    let title = category.as_deref().map(crate::i18n::effects::category).unwrap_or_else(|| "效果浏览器".to_string());
     p.text(pos2(header.center().x, header.center().y), Align2::CENTER_CENTER, title, Tokens::semibold(14.0), t.text);
 
     let search_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, header.max.y + 8.0), vec2(rect.width() - 20.0, 32.0));
@@ -512,13 +512,13 @@ fn am_effect_browser(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let w = ((list.width() - 20.0 - gap) / cols as f32).max(1.0);
         let h = 82.0;
         for (index, cat) in categories.iter().enumerate() {
-            let count = all.iter().filter(|spec| spec.category == **cat).count();
+            let count = all.iter().filter(|spec| spec.category == *cat).count();
             let r = Rect::from_min_size(
                 pos2(list.min.x + 10.0 + (index % cols) as f32 * (w + gap), y + (index / cols) as f32 * (h + gap)),
                 vec2(w, h),
             );
             if r.max.y >= list.min.y && r.min.y <= list.max.y {
-                am_effect_category_card(app, ui, &lp, r, cat, count);
+                am_effect_category_card(app, ui, &lp, r, *cat, count);
             }
         }
         y += ((categories.len() + 1) / 2) as f32 * (h + gap) + 8.0;
