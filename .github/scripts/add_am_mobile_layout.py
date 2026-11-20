@@ -422,8 +422,13 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("AM 竖屏 must remain selectable in the original workspace menu.")
     if "file.importProject" not in (effectcraft / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8"):
         raise SystemExit("AM Home must retain the local unified project-import action.")
-    if "模板" in home or "教程" in home or "云端" in home or "cloud" in home.lower():
-        raise SystemExit("AM Home must not expose cloud, server-backed templates, or tutorials.")
+    am_home_start = home.find("// EFFECTCRAFT_AM_PORTRAIT_HOME_V1")
+    am_home_end = home.find("pub fn show(app:", am_home_start)
+    if am_home_start < 0 or am_home_end < 0:
+        raise SystemExit("Could not isolate the AM Home surface for local-only validation.")
+    am_home = home[am_home_start:am_home_end]
+    if any(token in am_home for token in ("模板", "教程", "云端", "cloud", "server", "https://")):
+        raise SystemExit("AM Home must not expose cloud, server-backed, or network-dependent features.")
     if "workspace_transition" in frame:
         raise SystemExit("AM patch must not add a workspace transition overlay to the Ae frame.")
     print("Verified the AM Home uses local project/media actions only and the Ae toolbar remains unchanged.")
