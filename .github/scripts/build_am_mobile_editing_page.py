@@ -403,9 +403,11 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
         // The small square at the left of the AM layer row is its multi-select control.
         // Holding it for 0.48 s enters selection mode; further taps add/remove layers.
-        let chip_rect = Rect::from_min_size(pos2(row.min.x + 27.0, row.min.y + 9.0), vec2(14.0, 14.0));
+        // Keep a finger-sized hit target while drawing the small AM-style square.
+        let chip_hit_rect = Rect::from_min_size(pos2(row.min.x + 22.0, row.min.y + 3.0), vec2(24.0, 26.0));
+        let chip_rect = Rect::from_center_size(chip_hit_rect.center(), vec2(14.0, 14.0));
         let chip_response = ui.interact(
-            chip_rect,
+            chip_hit_rect,
             Id::new(("am-mobile-layer-select", layer.id.0)),
             Sense::click(),
         );
