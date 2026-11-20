@@ -224,8 +224,56 @@ fn am_effect_preview(p: &egui::Painter, rect: Rect, spec: &effectcraft_engine::e
     p.rect_filled(inner, 5.0, c1);
     let center = inner.center();
     let radius = inner.width().min(inner.height()) * 0.29;
-    p.circle_filled(center, radius, c2);
-    p.circle_stroke(center, radius * 0.72, Stroke::new(1.5, Color32::from_rgb(220, 226, 242)));
+    let category = spec.category.to_lowercase();
+    if category.contains("blur") || category.contains("sharpen") {
+        for ring in 0..4 {
+            let r = radius * (0.35 + ring as f32 * 0.22);
+            p.circle_stroke(center, r, Stroke::new(1.4, c2.gamma_multiply(1.0 - ring as f32 * 0.12)));
+        }
+        p.circle_filled(center, radius * 0.16, Color32::WHITE);
+    } else if category.contains("color") || category.contains("colour") {
+        let points = [
+            center + vec2(-radius * 0.48, radius * 0.12),
+            center + vec2(radius * 0.42, radius * 0.10),
+            center + vec2(0.0, -radius * 0.52),
+        ];
+        p.circle_filled(points[0], radius * 0.40, Color32::from_rgb(255, 94, 112));
+        p.circle_filled(points[1], radius * 0.40, Color32::from_rgb(75, 190, 255));
+        p.circle_filled(points[2], radius * 0.40, Color32::from_rgb(255, 198, 79));
+        p.circle_filled(center, radius * 0.18, Color32::from_rgb(246, 246, 252));
+    } else if category.contains("distort") || category.contains("warp") {
+        for wave in 0..3 {
+            let points: Vec<egui::Pos2> = (0..25).map(|index| {
+                let x = inner.min.x + 8.0 + (inner.width() - 16.0) * index as f32 / 24.0;
+                let phase = index as f32 / 24.0 * std::f32::consts::TAU;
+                let y = center.y + (wave as f32 - 1.0) * 8.0 + phase.sin() * radius * 0.22;
+                pos2(x, y)
+            }).collect();
+            p.add(egui::Shape::line(points, Stroke::new(2.0, if wave == 1 { Color32::WHITE } else { c2 })));
+        }
+    } else if category.contains("audio") {
+        for bar in 0..11 {
+            let x = inner.min.x + 9.0 + bar as f32 * (inner.width() - 18.0) / 10.0;
+            let height = 6.0 + ((hash.rotate_left(bar as u32 * 3) & 0x1f) as f32);
+            p.line_segment(
+                [pos2(x, center.y - height * 0.5), pos2(x, center.y + height * 0.5)],
+                Stroke::new(3.0, if bar % 2 == 0 { Color32::WHITE } else { c2 }),
+            );
+        }
+    } else if category.contains("key") || category.contains("matte") {
+        let cell = (radius * 0.48).max(5.0);
+        for row in 0..4 {
+            for col in 0..4 {
+                let point = pos2(center.x - cell * 2.0 + col as f32 * cell, center.y - cell * 2.0 + row as f32 * cell);
+                p.rect_filled(Rect::from_min_size(point, vec2(cell - 1.0, cell - 1.0)),
+                    1.0, if (row + col) % 2 == 0 { Color32::WHITE } else { c2 });
+            }
+        }
+        p.circle_filled(center, radius * 0.28, c1);
+    } else {
+        p.circle_filled(center, radius, c2);
+        p.circle_stroke(center, radius * 0.72, Stroke::new(1.5, Color32::from_rgb(220, 226, 242)));
+    }
     for i in 0..4 {
         let x = inner.min.x + inner.width() * (i as f32 + 0.5) / 4.0;
         let y = inner.min.y + inner.height() * (i as f32 + 0.5) / 4.0;
