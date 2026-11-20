@@ -1,4 +1,5 @@
 # AM portrait workspace is part of the Android validation/build path.
+# Rebuild request: publish a fresh signed APK against the current account-service backend.
 name: Build Ae Android APK with shared compatibility validation
 
 on:
