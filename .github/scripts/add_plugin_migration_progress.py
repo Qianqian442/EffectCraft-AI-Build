@@ -627,8 +627,18 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
     }
 
     match action {
-        Some(Action::Start(path, mode)) => app.plugin_import = Some(spawn_scan(path, mode)),
-        Some(Action::Cancel | Action::Close) => app.plugin_import = None,
+        Some(Action::Start(path, mode)) => {
+            app.ui.status = "已开始扫描电脑插件；正在识别架构和可用路线…".into();
+            app.plugin_import = Some(spawn_scan(path, mode));
+        }
+        Some(Action::Cancel) => {
+            app.ui.status = "已取消电脑插件移植；未执行本次导入。".into();
+            app.plugin_import = None;
+        }
+        Some(Action::Close) => {
+            app.ui.status = "已关闭电脑插件移植报告。".into();
+            app.plugin_import = None;
+        }
         Some(Action::Scanned(path, mode, result)) => match result {
             Err(error) => {
                 app.plugin_import = Some(ImportState::Result { title: "移植失败".into(), message: error, success: false });
@@ -665,8 +675,12 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 }
             }
         },
-        Some(Action::Promote(title, message, success)) => app.plugin_import = Some(ImportState::Result { title, message, success }),
+        Some(Action::Promote(title, message, success)) => {
+            app.ui.status = "电脑插件扫描和兼容内容处理已完成；请查看结果报告。".into();
+            app.plugin_import = Some(ImportState::Result { title, message, success });
+        },
         Some(Action::RoutesConfirmed(title, message, success, groups, selected_routes)) => {
+            app.ui.status = "已记录各插件的路线选择；尚未接入的转译执行器不会被标记为已完成。".into();
             let mut final_message = message;
             final_message.push_str("\n\n本次路线选择记录：");
             for (index, group) in groups.iter().enumerate() {
