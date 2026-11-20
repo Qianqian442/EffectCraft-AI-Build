@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 
 
-MARKER = "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V1"
+MARKER = "EFFECTCRAFT_ANDROID_PLUGIN_IMPORT_BUTTON_V2"
 MENU_MARKER = "EFFECTCRAFT_ANDROID_SINGLE_PLUGIN_IMPORT_ENTRY_V1"
 
 
@@ -79,6 +79,7 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     }
 
     let mut import_wasm = false;
+    let mut import_desktop_advanced = false;
     let mut import_ai = false;
     if menu_open {
         let mut popup_open = true;
@@ -97,24 +98,30 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
                 if popup.button("导入效果插件包（支持 .wasm、.wat、.zip）").clicked() {
                     import_wasm = true;
                 }
+                if popup.button("电脑插件高级移植（自动比较完整度 + 强制兼容）").clicked() {
+                    import_desktop_advanced = true;
+                }
                 if popup.button("导入 DeepSeek 本地模型包（ZIP）").clicked() {
                     import_ai = true;
                 }
-                popup.label("电脑版插件文件可直接选择；安卓端会分析文件并匹配可用的兼容效果");
-                popup.label(".aep / .aepx 是 AE 工程文件，请用“导入工程”，不要走“开始移植”。");
-                popup.label("电脑版 .aex / .dll / .ofx 单文件也可以从这里导入；.aep / .aepx 工程仍使用“导入工程”。");
+                popup.label("高级移植会识别电脑插件架构，列出适用的 ARM64 转译路线和强制兼容方案。");
+                popup.label("只有实际运行并通过测试的方案才能标记为已移植；当前未接入的后端会明确显示待实现。");
+                popup.label(".aex / .dll / .ofx / .8bf / .prm 等电脑插件可选单文件或 ZIP；.aep / .aepx 是工程文件，请用“导入工程”。");
                 if popup.button("关闭").clicked() {
                     close_menu = true;
                 }
             });
-        menu_open = popup_open && !close_menu && !import_wasm && !import_ai;
+        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced && !import_ai;
     }
     ui.ctx().data_mut(|d| d.insert_temp(menu_id, menu_open));
 
-    if import_wasm
+    if (import_wasm || import_desktop_advanced)
         && let Err(error) = crate::menus::invoke(app, ui.ctx(), "effect.plugins.load", json!({}))
     {
         app.ui.status = error;
+    }
+    if import_desktop_advanced {
+        app.ui.status = "已打开电脑插件高级移植选择器：将分析架构、转译候选、宿主接口和强制兼容方案；未实测的路线不会标记为成功。".into();
     }
     if import_ai {
         match crate::open_ai_plugin_import_from_toolbar() {
@@ -129,8 +136,9 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
     source = source.replace(function_anchor, helper + function_anchor, 1)
     header_path.write_text(source, encoding="utf-8")
     print("Added the top-left 导入插件 button.")
-    print("The button calls effect.plugins.load, reusing the original WASM loader and Android file picker.")
-    print("The DeepSeek menu entry opens the in-app model-only ZIP importer.")
+    print("The menu now includes a dedicated desktop plug-in advanced migration entry.")
+    print("Advanced migration reuses the native picker/interceptor and reports architecture, candidate translation routes, host API requirements and force-compatibility profiles.")
+    print("Normal WASM/WAT and DeepSeek import paths remain available and unchanged.")
 
 
 if __name__ == "__main__":
