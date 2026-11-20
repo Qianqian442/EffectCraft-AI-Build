@@ -245,10 +245,13 @@ def remove_about_ui(root: Path) -> None:
     source = dialogs.read_text(encoding="utf-8")
     source = remove_once(source, "        Dialog::About => about(app, ctx, &t),\n", "About dialog dispatch")
     start = source.find("/// About tabs: About · Contributors · Models.")
-    end = source.find("\nfn comp_settings(", start)
-    if start < 0 or end < 0:
-        raise SystemExit("About dialog implementation range was not found.")
-    source = source[:start] + source[end + 1:]
+    if start >= 0:
+        end = source.find("\nfn comp_settings(", start)
+        if end < 0:
+            raise SystemExit("About dialog implementation end was not found.")
+        source = source[:start] + source[end + 1:]
+    elif "fn about(" in source:
+        raise SystemExit("The About dialog implementation remains but its removal anchor is missing.")
     source = source.replace(
         "//! Modal dialogs: About (community links, Contributors and Models credits), New Composition /",
         "//! Modal dialogs: New Composition /",
