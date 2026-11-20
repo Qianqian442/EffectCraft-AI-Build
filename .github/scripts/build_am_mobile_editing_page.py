@@ -247,6 +247,21 @@ fn am_group_selected_layers(app: &mut EffectcraftApp, ctx: &egui::Context) {
         app.ui.status = "所选图层中包含已锁定图层，请先解锁再编组。".into();
         return;
     }
+    let selected_ids: std::collections::HashSet<u64> = ids.iter().copied().collect();
+    let has_cross_group_links = comp.layers.iter().any(|layer| {
+        let layer_selected = selected_ids.contains(&layer.id.0);
+        let parent_crosses = layer.parent.is_some_and(|parent| {
+            selected_ids.contains(&parent.0) != layer_selected
+        });
+        let matte_crosses = layer.track_matte.as_ref().is_some_and(|matte| {
+            selected_ids.contains(&matte.layer.0) != layer_selected
+        });
+        parent_crosses || matte_crosses
+    });
+    if has_cross_group_links {
+        app.ui.status = "所选图层与未选图层之间存在父级或轨道遮罩关联，请将相关图层一起选择再编组。".into();
+        return;
+    }
     let next_group = comp.layers.iter()
         .filter(|layer| layer.name.starts_with("组 "))
         .count() + 1;
