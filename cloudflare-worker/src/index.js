@@ -151,8 +151,8 @@ async function passwordHash(env, password) {
   if (!result.hash) throw new Error("密码哈希计算失败");
   return result.hash;
 }
-async function verifyPasswordDetailed(env, password, stored) {
-  return passwordCryptoRequest(env, "/password/verify", { password, stored });
+async function verifyPasswordDetailed(env, password, stored, options = {}) {
+  return passwordCryptoRequest(env, "/password/verify", { password, stored, ...options });
 }
 async function verifyPassword(env, password, stored) {
   const result = await verifyPasswordDetailed(env, password, stored);
@@ -335,17 +335,18 @@ async function login(request, env) {
   const row = await env.DB.prepare(
     "SELECT * FROM accounts WHERE qq = ? OR lower(wechat) = lower(?) LIMIT 1"
   ).bind(identifier, identifier).first();
-  if (!row || !(await verifyPassword(env, password, row.password_hash))) return fail(401, "QQ号/微信号或密码错误");
-
-  // Migrate pre-2026-11-15 password hashes only after a successful check.
-  // The original 210000-round PBKDF2 format remains valid; the current
-  // 100000-round format is used for new and upgraded accounts.
-  if (String(row.password_hash || "").startsWith("pbkdf2-sha256$210000$")) {
+  if (!row) return fail(401, "QQ号/微信号或密码错误");
+  // Verify the password and, when needed, create the current 100000-round
+  // replacement hash in one PasswordCryptoHub invocation.
+  const verification = await verifyPasswordDetailed(env, password, row.password_hash, {
+    upgrade_legacy: true
+  });
+  if (verification.valid !== true) return fail(401, "QQ号/微信号或密码错误");
+  if (verification.upgraded_hash) {
     try {
-      const upgradedHash = await passwordHash(env, password);
       await env.DB.prepare(
         "UPDATE accounts SET password_hash = ? WHERE id = ? AND password_hash = ?"
-      ).bind(upgradedHash, row.id, row.password_hash).run();
+      ).bind(verification.upgraded_hash, row.id, row.password_hash).run();
     } catch (error) {
       console.error("legacy-password-upgrade-failed", String(error && error.message ? error.message : error));
       // A temporary migration write failure must not lock out a correctly
@@ -387,8 +388,15 @@ async function updateProfile(request, env) {
   const newPassword = String(body.new_password || "");
   if (newPassword) {
     if (newPassword.length < 8 || newPassword.length > 128) return fail(422, "新密码至少8位");
-    if (!(await verifyPassword(env, String(body.current_password || ""), row.password_hash))) return fail(401, "当前密码不正确");
-    newHash = await passwordHash(env, newPassword);
+    const passwordChange = await verifyPasswordDetailed(
+      env,
+      String(body.current_password || ""),
+      row.password_hash,
+      { new_password: newPassword }
+    );
+    if (passwordChange.valid !== true) return fail(401, "当前密码不正确");
+    if (!passwordChange.replacement_hash) return fail(503, "密码更新服务暂时不可用，请稍后重试");
+    newHash = passwordChange.replacement_hash;
   }
   try {
     await env.DB.prepare(
