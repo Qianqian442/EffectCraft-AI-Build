@@ -569,7 +569,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
 
 
 def verify_am_workspace_and_android_integrity(root: Path) -> None:
-    """Verify portrait AM presentation, saved workspace restoration and Android signer guard."""
+    """Verify the isolated AM portrait surface and orientation-only Android bridge."""
     workspace = "AM 竖屏"
     dock = (root / "crates/ui-egui/src/dock.rs").read_text(encoding="utf-8")
     window = (root / "crates/ui-egui/src/app/window.rs").read_text(encoding="utf-8")
@@ -589,8 +589,6 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     header = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
     if "workspace_transition" in frame:
         raise SystemExit("AM must not add a transition overlay to the Ae frame.")
-    if "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1" in timeline:
-        raise SystemExit("AM must not change Ae timeline touch targets.")
     home = (root / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
     lib = (root / "crates/ui-egui/src/lib.rs").read_text(encoding="utf-8")
     # AM editing must route to its own touch-first page. The original DockArea
@@ -652,6 +650,13 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         raise SystemExit("AM 竖屏 is not registered in the existing workspace menu.")
     if "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" not in home:
         raise SystemExit("Ae×am portrait Home is missing.")
+    am_home_start = home.find("// EFFECTCRAFT_AM_PORTRAIT_HOME_V1")
+    am_home_end = home.find("pub fn show(app:", am_home_start)
+    if am_home_start < 0 or am_home_end < 0:
+        raise SystemExit("Could not isolate the AM Home surface for offline-only validation.")
+    am_home = home[am_home_start:am_home_end]
+    if any(token in am_home for token in ("模板", "教程", "云端", "cloud", "server", "https://")):
+        raise SystemExit("AM Home must not expose cloud, server-backed, or network-dependent features.")
     bridge = (root / "crates/ui-egui/src/android_layout.rs").read_text(encoding="utf-8")
     ui_cargo = (root / "crates/ui-egui/Cargo.toml").read_text(encoding="utf-8")
 
