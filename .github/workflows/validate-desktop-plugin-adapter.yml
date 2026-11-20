@@ -86,12 +86,16 @@ jobs:
           # Route plans must remain explicit and must never be reported as executed by metadata scanning.
           grep -Fq 'fn native_translation_trials(' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'fn forced_compatibility_profiles(' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'fn rank_desktop_native_trials(' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'REQUIRED_GATES' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq '"candidate_routes": candidate_routes' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq '"translation_executed": false' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'not_run_runtime_not_integrated' effectcraft/crates/engine/src/cmd/effect.rs
           # A bundled compatibility recreation must never count as a successful native binary port.
           grep -Fq 'native_translated' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq '不计入原生插件移植成功数量' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '自动选优结果' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '暂无真实运行并通过硬性测试' effectcraft/crates/ui-egui/src/plugin_migration.rs
 
       - name: Apply the AI and export toolbar base patch used by the APK build
         env:
