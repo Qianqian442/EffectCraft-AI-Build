@@ -81,6 +81,18 @@ jobs:
             .github/scripts/configure_android_storage_fallback.py \
             .github/scripts/add_am_mobile_layout.py \
             .github/scripts/build_am_mobile_editing_page.py
+            .github/scripts/add_windows_runtime_ui.py \
+            .github/scripts/integrate_windows_compat_runtime.py \
+            .github/scripts/package_windows_runtime_assets.py \
+            windows-compat/tools/patch_box64_obstack_compat.py \
+            windows-compat/tools/patch_box64_signal32_bionic.py \
+            windows-compat/tools/patch_box64_threads32_bionic.py \
+            windows-compat/tools/patch_box64_resolver_bionic.py \
+            windows-compat/tools/patch_box64_netdb_r_bionic.py \
+            windows-compat/tools/patch_box64_posix_spawn_bionic.py \
+            windows-compat/tools/patch_box64_box32_alloc_bionic.py \
+            windows-compat/tools/pe_audit.py
+          bash windows-compat/android-runtime/exec-bridge/tests/run_host_tests.sh
 
       - name: Apply the same plug-in patches used by the APK build
         env:
@@ -92,6 +104,8 @@ jobs:
           python3 .github/scripts/add_desktop_plugin_package_support.py
           python3 .github/scripts/add_effect_plugin_uninstall.py
           python3 .github/scripts/add_plugin_migration_progress.py
+          python3 .github/scripts/add_windows_runtime_ui.py
+          python3 .github/scripts/integrate_windows_compat_runtime.py
           python3 .github/scripts/add_qq_plugin_import_support.py
           grep -Fq 'pub mod plugin_migration;' effectcraft/crates/ui-egui/src/lib.rs
           grep -Fq 'looks_like_plugin_archive' effectcraft/crates/ui-egui/src/plugin_migration.rs
