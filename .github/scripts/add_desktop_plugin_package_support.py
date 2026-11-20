@@ -880,12 +880,28 @@ def patch_toolbar(root: Path) -> None:
     script_buttons = '''                // EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1
                 if popup.button("特效软件脚本（.jsx、.js）").clicked() {
                     import_script = true;
+                    app.ui.status = "正在打开特效软件脚本文件选择器…".into();
                 }
                 if popup.button("脚本交互面板（.jsx）").clicked() {
                     import_panel = true;
+                    app.ui.status = "正在打开脚本交互面板文件选择器…".into();
                 }
 '''
-    source = replace_once(source, wasm_button, wasm_button + script_buttons, "desktop script menu item")
+    wasm_button_with_feedback = '''                if popup.button("导入效果插件包（支持 .wasm、.wat、.zip）").clicked() {
+                    import_wasm = true;
+                    app.ui.status = "正在打开效果插件文件选择器…".into();
+                }
+'''
+    if "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1" not in source:
+        if wasm_button_with_feedback in source:
+            source = replace_once(
+                source,
+                wasm_button_with_feedback,
+                wasm_button_with_feedback + script_buttons,
+                "desktop script menu item with feedback",
+            )
+        else:
+            source = replace_once(source, wasm_button, wasm_button + script_buttons, "desktop script menu item")
 
     if keep_advanced_flag and keep_ai_flag:
         old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced && !import_ai;\n"
