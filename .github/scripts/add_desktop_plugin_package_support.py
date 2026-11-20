@@ -118,6 +118,69 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         ("未知原生文件", "架构未识别")
     }
 
+    // Produce an honest execution route for each binary. Box64/Box86 translate CPU
+    // instructions at runtime; they do not rewrite a PE/ELF plug-in into an ARM64 file.
+    // Wine supplies the Windows loader/API for PE binaries. A separate plug-in host ABI
+    // bridge is still required before any native desktop plug-in can render inside Ae.
+    fn native_translation_route(
+        binary_format: &str,
+        architecture: &str,
+        extension: &str,
+    ) -> (&'static str, &'static str, &'static str, &'static str) {
+        let ext = extension.to_ascii_lowercase();
+        let host = match ext.as_str() {
+            "ofx" => "OpenFX 1.x Host API 桥接（C ABI）",
+            "aex" => "Adobe After Effects SDK 宿主桥接（尚未实现）",
+            "8bf" => "Photoshop Filter SDK 宿主桥接（尚未实现）",
+            "prm" => "Premiere 插件宿主 ABI 桥接（尚未实现）",
+            _ => "需先识别并实现该插件对应的宿主 ABI",
+        };
+        match (binary_format, architecture) {
+            ("Windows 可执行文件", "64 位 x86") => (
+                "Box64 + Wine64",
+                "ARM64 / Android arm64-v8a",
+                "x86-64 PE 动态转译候选；当前只做架构识别，尚未执行转译；仍需 Windows API 与插件宿主桥接",
+                host,
+            ),
+            ("Windows 可执行文件", "32 位 x86") => (
+                "Box86 + Wine32（需 32 位客体运行库）；Box64 + Wine WOW64 为实验备选",
+                "ARM64 / Android arm64-v8a",
+                "x86 PE 动态转译候选；32 位客体环境尚未接入，当前未执行转译；仍需 Windows API 与插件宿主桥接",
+                host,
+            ),
+            ("Linux 可执行文件", "64 位 x86") => (
+                "Box64",
+                "ARM64 / Android arm64-v8a",
+                "x86-64 ELF 动态转译候选；需 glibc 客体环境及匹配的 Linux 插件宿主 ABI；当前未执行转译",
+                host,
+            ),
+            ("Linux 可执行文件", "32 位 x86") => (
+                "Box86（需 ARM32 客体运行库）",
+                "ARM64 / Android arm64-v8a",
+                "x86 ELF 动态转译候选；需 32 位客体运行库及插件宿主 ABI；当前未执行转译",
+                host,
+            ),
+            ("Windows 可执行文件", "64 位 ARM") | ("Linux 可执行文件", "64 位 ARM") => (
+                "ARM64 原生指令路径",
+                "ARM64 / Android arm64-v8a",
+                "CPU 架构匹配；操作系统 ABI 与插件宿主接口仍需适配",
+                host,
+            ),
+            ("苹果系统原生文件", _) | ("苹果通用原生文件", _) => (
+                "不自动转译",
+                "ARM64 / Android arm64-v8a",
+                "macOS Mach-O 插件依赖 macOS ABI；需要可用源代码后移植，或针对效果重新实现",
+                host,
+            ),
+            _ => (
+                "未确定（保留原件）",
+                "ARM64 / Android arm64-v8a",
+                "二进制格式或 CPU 架构无法可靠识别；不尝试执行",
+                host,
+            ),
+        }
+    }
+
     // Match only effects for which this APK actually ships an Android reimplementation.
     // Probe both package paths and readable strings embedded in native plug-in binaries.
     fn desktop_native_compatibility(source: &str, probe: &str) -> Option<Value> {
@@ -369,10 +432,21 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     push_unique_native_mapping(&mut native_mappings, mapping);
                 }
                 let (binary_format, architecture) = native_binary_info(&bytes);
+                let extension = Path::new(&entry_name)
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default();
+                let (translation_backend, target_abi, translation_status, host_adapter) =
+                    native_translation_route(binary_format, architecture, extension);
                 native_metadata.push(json!({
                     "file": entry_name,
                     "binary_format": binary_format,
                     "architecture": architecture,
+                    "translation_backend": translation_backend,
+                    "target_abi": target_abi,
+                    "translation_status": translation_status,
+                    "host_adapter": host_adapter,
+                    "translation_executed": false,
                     "readable_text_count": embedded_strings.len()
                 }));
             }
@@ -476,9 +550,13 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑版插件");
         let format = item.get("binary_format").and_then(Value::as_str).unwrap_or("插件资源信息");
         let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("未识别");
+        let backend = item.get("translation_backend").and_then(Value::as_str).unwrap_or("未确定");
+        let target = item.get("target_abi").and_then(Value::as_str).unwrap_or("ARM64");
+        let status = item.get("translation_status").and_then(Value::as_str).unwrap_or("尚未执行转译");
+        let host = item.get("host_adapter").and_then(Value::as_str).unwrap_or("需适配插件宿主接口");
         let readable_text_count = item.get("readable_text_count")
             .and_then(Value::as_u64).unwrap_or(0);
-        format!("\n[{file}] {format} / {architecture}，已提取 {readable_text_count} 条可读信息（原始文字仅用于内部匹配，不在界面中显示）")
+        format!("\n[{file}] {format} / {architecture}；CPU 路线：{backend} → {target}；状态：{status}；宿主接口：{host}；已提取 {readable_text_count} 条可读信息（原始文字仅用于内部匹配，不在界面中显示）")
     }).collect::<Vec<_>>().join("\n");
     let mut install_result = json!({
         "installed": installed_wasm,
@@ -497,7 +575,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息统计：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在安卓设备上执行。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并在内部分析；原始英文参数文字仅用于兼容匹配，不会显示在界面或报告中，也不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息统计：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\nCPU 转译目标为 Android ARM64（arm64-v8a）。x86-64 Windows PE 的候选路线是 Box64 + Wine64，32 位 x86 候选路线是 Box86 + Wine32；Box64/Box86 属于运行时动态转译，不会把原始插件文件改写成 ARM64 二进制。当前版本仅识别架构、记录候选路线并保存原件，translation_executed=false；尚未集成可执行的 Windows 兼容运行时和插件宿主桥接，不能将扫描结果视为转译成功。\n.aex/.dll/.ofx/.plugin 等原生二进制不会在 Ae 主进程中加载或执行。OpenFX 插件需要独立 OFX Host API 桥接；.aex 还需要 Adobe After Effects SDK 宿主接口适配。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并在内部分析；原始英文参数文字仅用于兼容匹配，不会显示在界面或报告中，也不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
