@@ -183,7 +183,6 @@ pub(crate) fn reconstruct_pe(bytes: &[u8]) -> Result<Value, String> {
                 truncated = true;
                 break;
             }
-            let instruction_offset = decoder.position();
             let instruction = decoder.decode();
             local_instructions += 1;
             instruction_count += 1;
