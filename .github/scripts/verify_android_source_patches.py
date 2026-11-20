@@ -603,6 +603,8 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         "layer.precompose",
         "has_cross_group_links",
         "layer_action_drawer",
+        "EFFECTCRAFT_AM_BOTTOM_SHEET_SLIDE_UP_V1",
+        "am_bottom_sheet_progress",
         "颜色和填充",
         "边框和阴影",
         "混合和不透明度",
