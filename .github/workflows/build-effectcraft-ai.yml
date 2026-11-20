@@ -46,6 +46,7 @@ on:
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_home_plugin_manager_remove_about.py'
+      - '.github/scripts/add_effect_plugin_uninstall.py'
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/add_account_whitelist_local_cache.py'
       - '.github/scripts/hide_account_security_details.py'
@@ -133,6 +134,7 @@ jobs:
             .github/scripts/integrate_deepseek_single_apk.py \
             .github/scripts/add_plugin_import_button.py \
             .github/scripts/add_home_plugin_manager_remove_about.py \
+            .github/scripts/add_effect_plugin_uninstall.py \
             .github/scripts/fix_viewer_drag_selection.py \
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
             .github/scripts/add_bottom_left_media_import.py \
@@ -555,6 +557,20 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_desktop_plugin_package_support.py
           python3 build-assets/.github/scripts/add_desktop_plugin_package_support.py
+
+      - name: Add safe user plug-in deletion and runtime unloading
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_effect_plugin_uninstall.py
+          python3 build-assets/.github/scripts/add_effect_plugin_uninstall.py
+          EFFECT_RS="$EFFECTCRAFT_DIR/crates/engine/src/cmd/effect.rs"
+          PLUGIN_RS="$EFFECTCRAFT_DIR/crates/effects/src/plugin.rs"
+          grep -Fq 'pub fn unregister_plugin(id: &str)' "$PLUGIN_RS"
+          grep -Fq '"effect.plugins.unload"' "$EFFECT_RS"
+          grep -Fq '"can_delete": can_delete' "$EFFECT_RS"
+          grep -Fq 'BUILTIN_EFFECT_MODULES' "$EFFECT_RS"
+          echo "Verified safe user-plugin deletion and built-in protection."
 
       - name: Add draggable AE plug-in migration and progress windows
         env:
