@@ -797,7 +797,7 @@ jobs:
           LIB_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/lib.rs"
           AM_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/am_editor.rs"
           grep -Fq "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" "$HOME_RS"
-          grep -Fq 'let header_h = 40.0;' "$FRAME_RS"
+          grep -Fq 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };' "$FRAME_RS"
           ! grep -Fq 'let header_h = 64.0;' "$FRAME_RS"
           grep -Fq 'let rx = workspace_menu(app, ui, p, rx, cy);' "$HEADER_RS"
           grep -Fq 'workspace_tabs(app, ui, p, rx, left, cy);' "$HEADER_RS"
