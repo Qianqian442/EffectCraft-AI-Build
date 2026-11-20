@@ -14,6 +14,10 @@
         "class_name": "AccountSessionHub"
       },
       {
+        "name": "PASSWORD_CRYPTO",
+        "class_name": "PasswordCryptoHub"
+      },
+      {
         "name": "NODE_NETWORK",
         "class_name": "NodeNetworkHub"
       }
@@ -27,6 +31,10 @@
     {
       "tag": "v2",
       "new_sqlite_classes": ["NodeNetworkHub"]
+    },
+    {
+      "tag": "v3",
+      "new_sqlite_classes": ["PasswordCryptoHub"]
     }
   ],
   "d1_databases": [
