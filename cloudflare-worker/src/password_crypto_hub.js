@@ -133,7 +133,9 @@ function pbkdf2Sha256Legacy(passwordBytes, salt, iterations) {
   return result;
 }
 
-async function passwordVerify(password, stored) {
+async function passwordVerify(password, stored, options = {}) {
+  const upgradeLegacy = options.upgradeLegacy === true;
+  const newPassword = String(options.newPassword || "");
   const parts = String(stored || "").split("$");
   if (parts.length !== 4 || parts[0] !== "pbkdf2-sha256") {
     return { valid: false, reason: "unsupported_hash_format" };
@@ -162,11 +164,18 @@ async function passwordVerify(password, stored) {
           256
         ));
     const actual = "pbkdf2-sha256$" + iterations + "$" + bytesToB64Url(salt) + "$" + bytesToB64Url(digest);
-    return {
-      valid: constantTimeEqual(encoder.encode(actual), encoder.encode(stored)),
-      reason: "digest_checked",
-      iterations
-    };
+    const valid = constantTimeEqual(encoder.encode(actual), encoder.encode(stored));
+    const result = { valid, reason: "digest_checked", iterations };
+    if (valid && newPassword) {
+      if (newPassword.length < 8 || newPassword.length > 128) {
+        return { valid: false, reason: "invalid_new_password_length" };
+      }
+      result.replacement_hash = await passwordHash(newPassword);
+    } else if (valid && upgradeLegacy && iterations > PASSWORD_ITERATIONS) {
+      // Migrate legacy accounts inside the same Durable Object invocation.
+      result.upgraded_hash = await passwordHash(password);
+    }
+    return result;
   } catch (error) {
     const name = error && error.name ? String(error.name).slice(0, 80) : "Error";
     const message = error && error.message ? String(error.message).slice(0, 180) : "unknown_error";
@@ -212,8 +221,15 @@ export class PasswordCryptoHub {
         const body = await request.json();
         const password = String(body.password || "");
         const stored = String(body.stored || "");
+        const newPassword = String(body.new_password || "");
         if (!password || !stored) return Response.json({ valid: false, reason: "missing_input" });
-        return Response.json(await passwordVerify(password, stored));
+        if (newPassword && (newPassword.length < 8 || newPassword.length > 128)) {
+          return Response.json({ valid: false, reason: "invalid_new_password_length" }, { status: 422 });
+        }
+        return Response.json(await passwordVerify(password, stored, {
+          upgradeLegacy: body.upgrade_legacy === true,
+          newPassword
+        }));
       } catch (error) {
         const name = error && error.name ? String(error.name).slice(0, 80) : "Error";
         const message = error && error.message ? String(error.message).slice(0, 180) : "unknown_error";
