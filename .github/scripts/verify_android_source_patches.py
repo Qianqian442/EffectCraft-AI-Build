@@ -400,10 +400,16 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     effect_controls = (root / "crates/ui-egui/src/panels/effect_controls/panel.rs").read_text(encoding="utf-8")
     widgets = (root / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
     home = (root / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" not in am_effects:
-        raise SystemExit("Android Effects & Presets entries must apply on a single tap.")
-    if "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" not in widgets or "PanelScroll::begin" not in am_effects:
-        raise SystemExit("Native effect list is missing finger-drag vertical scrolling.")
+    am_editor_path = root / "crates/ui-egui/src/am_editor.rs"
+    if not am_editor_path.is_file():
+        raise SystemExit("The independent AM editor is missing.")
+    am_editor = am_editor_path.read_text(encoding="utf-8")
+    if "EFFECTCRAFT_AM_EFFECT_BROWSER_V1" not in am_editor or "am_effect_browser" not in am_editor:
+        raise SystemExit("The AM-owned visual effect browser is missing.")
+    if "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1" not in widgets or "PanelScroll::begin" not in effect_controls:
+        raise SystemExit("AM effect parameter drawers must scroll with AM-scoped finger gestures.")
+    if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" in am_effects or "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" in widgets:
+        raise SystemExit("The AM patch must not change global Ae effect-row or panel-scroll behavior.")
     if "PanelScroll::begin" not in effect_controls:
         raise SystemExit("Native Effect Controls must retain its scrollable parameter panel.")
     if "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" not in home:
@@ -570,10 +576,21 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     app = (root / "crates/ui-egui/src/app.rs").read_text(encoding="utf-8")
     store = (root / "crates/ui-egui/src/workspace_state.rs").read_text(encoding="utf-8")
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1" not in timeline:
-        raise SystemExit("AM timeline touch trim handles are missing; direct layer-edge duration dragging must remain available.")
+    am_editor_path = root / "crates/ui-egui/src/am_editor.rs"
+    if not am_editor_path.is_file():
+        raise SystemExit("The independent AM editor is missing.")
+    am_editor_source = am_editor_path.read_text(encoding="utf-8")
+    for token in ("fn draw_timeline", "am-mobile-trim", "layer.timing", "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1"):
+        if token not in am_editor_source:
+            raise SystemExit(f"AM's independent timeline is missing its own clip-edge editing support: {token}")
+    if "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1" in timeline:
+        raise SystemExit("AM patch must not alter the shared Ae Timeline hit targets.")
     frame = (root / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
     header = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
+    if "workspace_transition" in frame:
+        raise SystemExit("AM must not add a transition overlay to the Ae frame.")
+    if "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1" in timeline:
+        raise SystemExit("AM must not change Ae timeline touch targets.")
     home = (root / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
     lib = (root / "crates/ui-egui/src/lib.rs").read_text(encoding="utf-8")
     # AM editing must route to its own touch-first page. The original DockArea
@@ -633,8 +650,6 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         raise SystemExit("The original Ae fixed-width left/right panel arrangement is missing.")
     if '"AM 竖屏"' not in dock:
         raise SystemExit("AM 竖屏 is not registered in the existing workspace menu.")
-    if "ae_workspace_layout_restore_v1" not in app:
-        raise SystemExit("The one-time saved Ae/AM workspace migration is missing.")
     if "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" not in home:
         raise SystemExit("Ae×am portrait Home is missing.")
     bridge = (root / "crates/ui-egui/src/android_layout.rs").read_text(encoding="utf-8")
@@ -650,8 +665,6 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
             raise SystemExit(f"AM portrait workspace is missing a required panel/layout element: {token}")
     if f'set_workspace_portrait(name == "{workspace}")' not in window:
         raise SystemExit("Switching away from AM does not restore sensor orientation.")
-    if f'set_workspace_portrait(app.ui.workspace == "{workspace}")' not in app:
-        raise SystemExit("The last saved AM layout is not applied to orientation on app startup.")
     if "workspace: ui.workspace.clone()" not in store or "ui.workspace = self.workspace" not in store:
         raise SystemExit("The active workspace name is not persisted/restored with workspaces.json.")
     if "android_layout::set_workspace_portrait" not in app or "setWorkspacePortrait" not in bridge:
@@ -665,17 +678,16 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         raise SystemExit("Android SafActivity template is missing from ARTCRAFT_DIR.")
     java = template.read_text(encoding="utf-8")
     for token in (
-        "EFFECTCRAFT_ANDROID_AM_ORIENTATION_AND_SIGNER_GUARD_V1",
-        "verifyReleaseSigningCertificate()",
+        "EFFECTCRAFT_ANDROID_AM_ORIENTATION_ONLY_V2",
         "setWorkspacePortrait(boolean portrait)",
-        "__EFFECTCRAFT_SIGNING_CERT_SHA256__",
     ):
         if token not in java:
-            raise SystemExit(f"Android startup integrity/orientation guard is missing: {token}")
-    print("Verified AM uses the original native DockArea and Timeline, with portrait panel split, touch trim handles, two-way sensor switching and workspace persistence.")
-    # Ae×am intentionally reuses the original native Ae Effects & Presets panel (no duplicate AM clip-editor page).
-    # Its registry's all() function combines built-in effects with every successfully registered plug-in;
-    # the ordinary Effect Controls panel then exposes each registered EffectSpec's real typed parameters.
+            raise SystemExit(f"AM-only orientation bridge is missing: {token}")
+    if "verifyReleaseSigningCertificate()" in java or "EXPECTED_SIGNING_CERT_SHA256" in java:
+        raise SystemExit("AM patch must not add a new signer gate to the Ae app startup path.")
+    print("Verified AM is rendered in its independent portrait editor; the shared Ae Timeline and controls are unchanged.")
+    # AM's custom visual effect browser calls the shared effect registry and effect.apply command.
+    # Effect parameter values and renderer remain shared; only AM presentation and touch gestures are separate.
     am_effects = (root / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
     effect_registry = (root / "crates/effects/src/lib.rs").read_text(encoding="utf-8")
     plugin_api = (root / "crates/effects/src/plugin.rs").read_text(encoding="utf-8")
@@ -696,16 +708,15 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     if "PanelScroll::begin" not in effect_controls:
         raise SystemExit("Native Effect Controls must display the real scrollable parameter panel.")
     widgets = (root / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
-    scroll_marker = "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V2"
-    if scroll_marker not in widgets or "pointer.primary_down()" not in widgets:
-        raise SystemExit("AM effect drawer is missing Android primary-pointer finger scrolling.")
-    scroll_start = widgets.index(scroll_marker)
-    scroll_end = widgets.find('let gutter: Gutter', scroll_start)
-    scroll_block = widgets[scroll_start:scroll_end if scroll_end >= 0 else None]
-    if "i.has_touch_screen()" in scroll_block:
-        raise SystemExit("AM Android finger scrolling must not depend on has_touch_screen() capability detection.")
-    print("Verified Ae×am uses the native effects browser, built-in and registered plug-in effects, real effect.apply and scrollable Effect Controls.")
-    print("Verified Android release-signer guard is installed in the generated Activity template.")
+    scroll_marker = "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1"
+    if scroll_marker not in widgets or "am_touch_draw_context && ui.input" not in widgets:
+        raise SystemExit("AM finger scrolling is not scoped to AM-owned drawers.")
+    if "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V2" in widgets or "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" in am_effects:
+        raise SystemExit("AM must not install global Android touch behavior into Ae panels.")
+    if "EFFECTCRAFT_AM_EFFECT_BROWSER_V1" not in am_editor:
+        raise SystemExit("AM visual effect browser is not installed.")
+    print("Verified AM's independent effect icon browser, live effect application and AM-scoped parameter scrolling.")
+    print("Verified the Android host bridge only changes orientation while AM is selected.")
 
 
 def verify_account_security(root: Path) -> None:
