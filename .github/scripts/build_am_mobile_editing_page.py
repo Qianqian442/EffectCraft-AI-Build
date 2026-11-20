@@ -1473,19 +1473,20 @@ def patch_frame(root: Path) -> None:
     # AM owns its top bar. Normalize the one frame header declaration even if
     # the editor route marker was inserted by an earlier, interrupted invocation.
     expected_header = 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };'
-    header_matches = list(re.finditer(r"(?m)^\\s*let header_h\\s*=\\s*[^;]+;", source))
+    header_matches = list(re.finditer(r"(?m)^\s*let header_h\s*=\s*[^;]+;", source))
     if len(header_matches) != 1:
         raise SystemExit(f"Expected exactly one frame header-height declaration, found {len(header_matches)}.")
     header_match = header_matches[0]
     if header_match.group(0).strip() != expected_header:
-        indentation = re.match(r"\\s*", header_match.group(0)).group(0)
+        indentation = re.match(r"\s*", header_match.group(0)).group(0)
         source = source[:header_match.start()] + indentation + expected_header + source[header_match.end():]
     path.write_text(source, encoding="utf-8")
     verified = path.read_text(encoding="utf-8")
     if MARKER not in verified:
         raise SystemExit("The independent AM editor route was not installed.")
-    if len(re.findall(r"(?m)^\\s*let header_h\\s*=\\s*" + re.escape(expected_header[len("let header_h = "):-1]) + r";", verified)) != 1:
-        raise SystemExit("The AM Home/Ae header-height invariant was not repaired.");
+    verified_headers = list(re.finditer(r"(?m)^\s*let header_h\s*=\s*[^;]+;", verified))
+    if len(verified_headers) != 1 or verified_headers[0].group(0).strip() != expected_header:
+        raise SystemExit("The AM Home/Ae header-height invariant was not repaired.")
 
 
 def verify(root: Path) -> None:
