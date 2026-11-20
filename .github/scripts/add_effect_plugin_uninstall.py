@@ -188,6 +188,9 @@ fn plugins_unload(s: &mut Session, p: &Value) -> Result<Value> {
         return Err(bad("effect.plugins.unload", error));
     }
     s.layer_cache.clear();
+    if let Some(cache) = s.disk_cache.as_ref() {
+        cache.clear();
+    }
     s.toast(format!("Removed effect plug-in {id}"));
     Ok(json!({"deleted": id, "source": source, "file_removed": true}))
 }
