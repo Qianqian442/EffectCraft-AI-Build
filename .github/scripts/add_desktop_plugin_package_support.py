@@ -37,6 +37,62 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     const MAX_ASSET_BYTES: u64 = 32 * 1024 * 1024;
     const MAX_NATIVE_BYTES: u64 = 64 * 1024 * 1024;
 
+    // Score only candidates that have actually run and passed every mandatory gate.
+    // Unexecuted candidates retain a null score and can never be auto-selected.
+    fn trial_metric(route: &Value, key: &str) -> f64 {
+        route.get("metrics")
+            .and_then(|metrics| metrics.get(key))
+            .and_then(Value::as_f64)
+            .unwrap_or(0.0)
+            .clamp(0.0, 100.0)
+    }
+
+    fn rank_desktop_native_trials(metadata: &mut [Value]) {
+        const REQUIRED_GATES: [&str; 8] = [
+            "binary_load",
+            "host_api_coverage",
+            "parameter_roundtrip",
+            "preview_render",
+            "final_render",
+            "cancellation",
+            "stability",
+            "license_ok",
+        ];
+        for plugin in metadata.iter_mut() {
+            let mut best: Option<(f64, Value)> = None;
+            if let Some(routes) = plugin.get_mut("candidate_routes").and_then(Value::as_array_mut) {
+                for route in routes.iter_mut() {
+                    let executed = route.get("translation_executed").and_then(Value::as_bool) == Some(true);
+                    let passed = route.get("status").and_then(Value::as_str) == Some("passed");
+                    let gates_passed = route.get("hard_gates").is_some_and(|gates| {
+                        REQUIRED_GATES.iter().all(|key| gates.get(*key).and_then(Value::as_bool) == Some(true))
+                    });
+                    if !executed || !passed || !gates_passed {
+                        route["score"] = Value::Null;
+                        continue;
+                    }
+                    let score =
+                        trial_metric(route, "host_api_coverage") * 0.20
+                        + trial_metric(route, "parameter_animation_coverage") * 0.15
+                        + trial_metric(route, "render_correctness") * 0.20
+                        + trial_metric(route, "feature_coverage") * 0.15
+                        + trial_metric(route, "visual_fidelity") * 0.15
+                        + trial_metric(route, "stability") * 0.10
+                        + trial_metric(route, "performance") * 0.05;
+                    route["score"] = json!(score);
+                    if best.as_ref().is_none_or(|(best_score, _)| score > *best_score) {
+                        best = Some((score, route.clone()));
+                    }
+                }
+            }
+            if let Some((score, selected)) = best {
+                plugin["selected_route"] = selected;
+                plugin["trial_score"] = json!(score);
+                plugin["trial_execution_status"] = json!("passed");
+            }
+        }
+    }
+
     // Extract visible ASCII and UTF-16LE strings without loading or executing the binary.
     // AE PiPL resources carry effect names, categories and match-name identifiers; plug-in
     // binaries may also retain parameter labels and UI text as readable strings.
@@ -116,6 +172,193 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             };
         }
         ("未知原生文件", "架构未识别")
+    }
+
+    // Produce an honest execution route for each binary. Box64/Box86 translate CPU
+    // instructions at runtime; they do not rewrite a PE/ELF plug-in into an ARM64 file.
+    // Wine supplies the Windows loader/API for PE binaries. A separate plug-in host ABI
+    // bridge is still required before any native desktop plug-in can render inside Ae.
+    fn native_translation_route(
+        binary_format: &str,
+        architecture: &str,
+        extension: &str,
+    ) -> (&'static str, &'static str, &'static str, &'static str) {
+        let ext = extension.to_ascii_lowercase();
+        let host = match ext.as_str() {
+            "ofx" => "OpenFX 1.x Host API 桥接（C ABI）",
+            "aex" => "Adobe After Effects SDK 宿主桥接（尚未实现）",
+            "8bf" => "Photoshop Filter SDK 宿主桥接（尚未实现）",
+            "prm" => "Premiere 插件宿主 ABI 桥接（尚未实现）",
+            _ => "需先识别并实现该插件对应的宿主 ABI",
+        };
+        match (binary_format, architecture) {
+            ("Windows 可执行文件", "64 位 x86") => (
+                "Box64 + Wine64",
+                "ARM64 / Android arm64-v8a",
+                "x86-64 PE 动态转译候选；当前只做架构识别，尚未执行转译；仍需 Windows API 与插件宿主桥接",
+                host,
+            ),
+            ("Windows 可执行文件", "32 位 x86") => (
+                "Box86 + Wine32（需 32 位客体运行库）；Box64 + Wine WOW64 为实验备选",
+                "ARM64 / Android arm64-v8a",
+                "x86 PE 动态转译候选；32 位客体环境尚未接入，当前未执行转译；仍需 Windows API 与插件宿主桥接",
+                host,
+            ),
+            ("Linux 可执行文件", "64 位 x86") => (
+                "Box64",
+                "ARM64 / Android arm64-v8a",
+                "x86-64 ELF 动态转译候选；需 glibc 客体环境及匹配的 Linux 插件宿主 ABI；当前未执行转译",
+                host,
+            ),
+            ("Linux 可执行文件", "32 位 x86") => (
+                "Box86（需 ARM32 客体运行库）",
+                "ARM64 / Android arm64-v8a",
+                "x86 ELF 动态转译候选；需 32 位客体运行库及插件宿主 ABI；当前未执行转译",
+                host,
+            ),
+            ("Windows 可执行文件", "64 位 ARM") | ("Linux 可执行文件", "64 位 ARM") => (
+                "ARM64 原生指令路径",
+                "ARM64 / Android arm64-v8a",
+                "CPU 架构匹配；操作系统 ABI 与插件宿主接口仍需适配",
+                host,
+            ),
+            ("苹果系统原生文件", _) | ("苹果通用原生文件", _) => (
+                "不自动转译",
+                "ARM64 / Android arm64-v8a",
+                "macOS Mach-O 插件依赖 macOS ABI；需要可用源代码后移植，或针对效果重新实现",
+                host,
+            ),
+            _ => (
+                "未确定（保留原件）",
+                "ARM64 / Android arm64-v8a",
+                "二进制格式或 CPU 架构无法可靠识别；不尝试执行",
+                host,
+            ),
+        }
+    }
+
+    // List every technically plausible execution route in a deterministic order.
+    // Routes are candidates only: the importer must not mark a route successful until
+    // an isolated worker actually completes the full host/render test suite.
+    fn native_translation_trials(
+        binary_format: &str,
+        architecture: &str,
+        extension: &str,
+    ) -> Vec<Value> {
+        let ext = extension.to_ascii_lowercase();
+        let host = match ext.as_str() {
+            "ofx" => "OpenFX 1.x host adapter",
+            "aex" => "Adobe After Effects SDK host adapter",
+            "8bf" => "Photoshop Filter SDK host adapter",
+            "prm" => "Premiere plug-in host adapter",
+            _ => "format-specific plug-in host adapter",
+        };
+        let mut routes = Vec::new();
+        let mut add = |id: &str, backend: &str, prerequisites: &str, notes: &str| {
+            routes.push(json!({
+                "id": id,
+                "backend": backend,
+                "host_adapter": host,
+                "target_abi": "Android ARM64 / arm64-v8a",
+                "prerequisites": prerequisites,
+                "notes": notes,
+                "status": "not_run_runtime_not_integrated",
+                "translation_executed": false,
+                "score": Value::Null
+            }));
+        };
+
+        match (binary_format, architecture) {
+            ("Windows 可执行文件", "64 位 x86") => {
+                add(
+                    "wine_box64_x86_64",
+                    "Wine64 + Box64",
+                    "Windows x86-64 guest libraries, Box64 ARM64 build, Wine64, private glibc guest rootfs",
+                    "首选验证路线；Winlator demonstrates the Wine + Box64 Android architecture",
+                );
+                add(
+                    "wine_fex_x86_64",
+                    "Wine64 + FEX",
+                    "FEX-compatible Linux ARM64 guest rootfs and supported 4 KiB page-size kernel",
+                    "备选动态转译路线；需独立验证 FEX 与 Wine guest 的系统调用和 Android 内核兼容性",
+                );
+                add(
+                    "wine_qemu_x86_64",
+                    "Wine64 + QEMU x86_64-user",
+                    "QEMU linux-user, matching x86-64 guest rootfs and Wine runtime",
+                    "慢速兼容参考路线；用于可行性对照，不预设性能可用",
+                );
+            }
+            ("Windows 可执行文件", "32 位 x86") => {
+                add(
+                    "wine_box86_i386",
+                    "Wine32 + Box86",
+                    "32-bit x86 Wine guest and compatible 32-bit ARM guest libraries",
+                    "传统 32 位候选路线；需验证 Android ARM64 上的 32 位 guest 运行库",
+                );
+                add(
+                    "wine_wow64_box64_i386",
+                    "Wine WOW64 + Box64",
+                    "Wine build with working x86-on-x86-64 WoW64 path plus Box64",
+                    "实验性备选；仅在所选 Wine/Box64 构建通过 32 位组件测试后启用",
+                );
+                add(
+                    "wine_fex_i386",
+                    "Wine32 + FEX",
+                    "FEX 32-bit x86 support, compatible guest rootfs and supported 4 KiB page-size kernel",
+                    "备选动态转译路线；需验证 32 位 Wine guest 的调用约定和系统接口",
+                );
+                add(
+                    "wine_qemu_i386",
+                    "Wine32 + QEMU i386-user",
+                    "QEMU linux-user i386 target, matching guest rootfs and Wine32",
+                    "慢速兼容参考路线；在隔离环境中用于对照，不预设性能可用",
+                );
+            }
+            ("Linux 可执行文件", "64 位 x86") => {
+                add("linux_box64_x86_64", "Box64", "glibc x86-64 guest rootfs and required shared libraries", "优先 Linux ELF 动态转译路线");
+                add("linux_fex_x86_64", "FEX", "FEX-compatible x86-64 rootfs and supported 4 KiB page-size kernel", "高兼容度备选；需核实内核页大小与 guest ABI");
+                add("linux_qemu_x86_64", "QEMU x86_64-user", "QEMU linux-user x86-64 target and guest rootfs", "慢速参考路线；优先用于完整性对照");
+            }
+            ("Linux 可执行文件", "32 位 x86") => {
+                add("linux_box86_i386", "Box86", "32-bit x86 guest libraries and compatible ARM userspace", "优先 32 位 Linux ELF 动态转译路线");
+                add("linux_fex_i386", "FEX i386", "FEX 32-bit guest support, rootfs and supported 4 KiB page-size kernel", "32 位备选动态转译路线");
+                add("linux_qemu_i386", "QEMU i386-user", "QEMU linux-user i386 target and guest rootfs", "慢速参考路线；优先用于完整性对照");
+            }
+            ("Windows 可执行文件", "64 位 ARM") => {
+                add("wine_arm64_native", "Wine ARM64 native", "ARM64 PE support and matching Windows API imports", "CPU 无需 x86 转译；仍需 Windows API 与插件宿主桥接");
+            }
+            ("Linux 可执行文件", "64 位 ARM") => {
+                add("linux_arm64_native", "ARM64 native loader", "AArch64 ELF and compatible Android/Linux ABI", "CPU 架构匹配；仍需依赖库和插件宿主桥接");
+            }
+            ("苹果系统原生文件", _) | ("苹果通用原生文件", _) => {
+                add("mach_o_static_rebuild", "Ghidra analysis + source rebuild / clean reimplementation", "Readable source or legally usable interface/algorithm information", "macOS Mach-O is not directly executable on Android; this is a reconstruction path, not CPU translation");
+            }
+            _ => {}
+        }
+        drop(add);
+        routes
+    }
+
+    // Aggressive compatibility is an ordered set of explicit host/runtime profiles.
+    // It may adapt optional behavior, but must never fake required APIs or bypass licensing.
+    fn forced_compatibility_profiles(extension: &str) -> Vec<Value> {
+        let ext = extension.to_ascii_lowercase();
+        let host_profile = match ext.as_str() {
+            "ofx" => "OpenFX suite capability negotiation and optional-suite shims",
+            "aex" => "Adobe SDK suite compatibility adapter; only documented/legally usable interfaces",
+            "8bf" => "Photoshop Filter host callback adapter",
+            "prm" => "Premiere host callback adapter",
+            _ => "format-specific host callback adapter",
+        };
+        vec![
+            json!({"id":"legacy_os_and_runtime","name":"旧版系统与运行库兼容", "actions":["选择可用 Windows API 版本配置","补齐合法可再分发的 VC runtime / .NET 依赖"], "status":"planned_not_run"}),
+            json!({"id":"host_optional_suite_shims","name":"插件宿主接口兼容", "actions":[host_profile, "只对明确标记为 optional 的接口提供有边界的兼容实现", "required API 缺失时必须判定失败"], "status":"planned_not_run"}),
+            json!({"id":"pixel_format_matrix","name":"画面格式强制适配", "actions":["RGBA / BGRA 通道转换","8/16/32-bit 像素深度适配","预乘/直通 Alpha 与行跨度适配"], "status":"planned_not_run"}),
+            json!({"id":"render_execution_fallbacks","name":"渲染兼容回退", "actions":["GPU 不可用时尝试 CPU 路径","多线程失败后尝试串行渲染","逐帧与时间序列两种调用模式"], "status":"planned_not_run"}),
+            json!({"id":"cpu_feature_fallbacks","name":"CPU 指令与功能降级", "actions":["按运行时能力屏蔽不可用 CPU 扩展","逐级降低可选图形/加速特性"], "status":"planned_not_run"}),
+            json!({"id":"source_or_binary_reconstruction","name":"强力移植 / 重构", "actions":["有源码时使用 Android NDK/Clang 重编译 ARM64","无源码时使用 Ghidra 分析导入、导出、控制流和资源","可用时用 Remill 提升指令到 LLVM IR 作辅助分析","按效果算法重写成 ARM64/WASM 兼容插件并进行参考帧回归"], "status":"planned_not_run"})
+        ]
     }
 
     // Match only effects for which this APK actually ships an Android reimplementation.
@@ -369,10 +612,26 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     push_unique_native_mapping(&mut native_mappings, mapping);
                 }
                 let (binary_format, architecture) = native_binary_info(&bytes);
+                let extension = Path::new(&entry_name)
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .unwrap_or_default();
+                let (translation_backend, target_abi, translation_status, host_adapter) =
+                    native_translation_route(binary_format, architecture, extension);
+                let candidate_routes = native_translation_trials(binary_format, architecture, extension);
+                let forced_profiles = forced_compatibility_profiles(extension);
                 native_metadata.push(json!({
                     "file": entry_name,
                     "binary_format": binary_format,
                     "architecture": architecture,
+                    "translation_backend": translation_backend,
+                    "target_abi": target_abi,
+                    "translation_status": translation_status,
+                    "host_adapter": host_adapter,
+                    "translation_executed": false,
+                    "candidate_routes": candidate_routes,
+                    "forced_compatibility_profiles": forced_profiles,
+                    "trial_execution_status": "not_run_runtime_not_integrated",
                     "readable_text_count": embedded_strings.len()
                 }));
             }
@@ -463,6 +722,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         }
     }
 
+    // Automatically rank tested routes; current unexecuted plans receive no score and no selection.
+    rank_desktop_native_trials(&mut native_metadata);
     let compatibility_match_count = native_mappings.len();
     let compatibility_summary = native_mappings.iter().map(|item| {
         format!(
@@ -476,9 +737,24 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑版插件");
         let format = item.get("binary_format").and_then(Value::as_str).unwrap_or("插件资源信息");
         let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("未识别");
+        let backend = item.get("translation_backend").and_then(Value::as_str).unwrap_or("未确定");
+        let target = item.get("target_abi").and_then(Value::as_str).unwrap_or("ARM64");
+        let status = item.get("translation_status").and_then(Value::as_str).unwrap_or("尚未执行转译");
+        let host = item.get("host_adapter").and_then(Value::as_str).unwrap_or("需适配插件宿主接口");
+        let route_names = item.get("candidate_routes").and_then(Value::as_array)
+            .map(|routes| routes.iter().filter_map(|route| route.get("backend").and_then(Value::as_str)).collect::<Vec<_>>().join(" → "))
+            .unwrap_or_default();
+        let selected_backend = item.get("selected_route")
+            .and_then(|route| route.get("backend"))
+            .and_then(Value::as_str)
+            .unwrap_or("暂无通过硬性测试的方案");
+        let trial_score = item.get("trial_score").and_then(Value::as_f64);
+        let selected_summary = trial_score.map(|score| format!("；实测最佳：{selected_backend}，完整度 {:.1}/100", score))
+            .unwrap_or_else(|| "；尚无实测最佳方案，不能自动导入原生插件".into());
+        let force_count = item.get("forced_compatibility_profiles").and_then(Value::as_array).map_or(0, |profiles| profiles.len());
         let readable_text_count = item.get("readable_text_count")
             .and_then(Value::as_u64).unwrap_or(0);
-        format!("\n[{file}] {format} / {architecture}，已提取 {readable_text_count} 条可读信息（原始文字仅用于内部匹配，不在界面中显示）")
+        format!("\n[{file}] {format} / {architecture}；首选路线：{backend} → {target}；候选顺序：{route_names}{selected_summary}；状态：{status}；宿主接口：{host}；强制兼容方案：{force_count} 项（当前仅生成计划，尚未执行）；已提取 {readable_text_count} 条可读信息（原始文字仅用于内部匹配，不在界面中显示）")
     }).collect::<Vec<_>>().join("\n");
     let mut install_result = json!({
         "installed": installed_wasm,
@@ -497,7 +773,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息统计：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\n.aex/.dll/.ofx/.plugin 等原生二进制仅保存为待移植原件，不会在安卓设备上执行。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并在内部分析；原始英文参数文字仅用于兼容匹配，不会显示在界面或报告中，也不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息统计：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\nCPU 转译目标为 Android ARM64（arm64-v8a）。导入分析会按文件格式建立候选路线：Windows x86-64 可比较 Wine+Box64、Wine+FEX、Wine+QEMU user-mode；Windows x86 可比较 Wine32+Box86、Wine WOW64+Box64、Wine32+FEX、Wine32+QEMU；Linux ELF 可比较 Box64/Box86、FEX、QEMU user-mode。只有系统 ABI、客体运行库、内核页大小和插件宿主接口满足条件时才属于可试路线。Box64/Box86/FEX/QEMU 是运行时动态转译/模拟，不会把原始插件文件改写成 ARM64 二进制。当前版本仅识别架构、生成候选顺序与强制兼容策略，并保存原件；所有候选路线均标记 not_run_runtime_not_integrated，translation_executed=false，尚未执行逐项试跑。\n.aex/.dll/.ofx/.plugin 等原生二进制不会在 Ae 主进程中加载或执行。OpenFX 插件需要独立 OFX Host API 桥接；.aex 还需要 Adobe After Effects SDK 宿主接口适配。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n移植策略：目标是逐个候选后端在隔离副本中进行同一套加载、宿主 API、参数、预览渲染、最终渲染、关键帧/时序、稳定性、画质和性能测试；按功能完整度与稳定性评分后仅导入通过硬性门槛的最高分方案。强制兼容模式会逐项尝试可选 API 兼容层、像素格式转换、CPU/串行渲染回退与源码重编译/二进制分析重构；不得伪造必需 API，不得绕过插件授权/DRM。当前候选路线和兼容配置只是试验计划，尚未执行。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并在内部分析；原始英文参数文字仅用于兼容匹配，不会显示在界面或报告中，也不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
@@ -558,15 +834,34 @@ def patch_toolbar(root: Path) -> None:
 
     # The menu no longer imports a separate DeepSeek APK/ZIP. It now only imports effect
     # plug-ins; the embedded DeepSeek model manager is opened from the AI assistant itself.
+    state_with_advanced_ai = "    let mut import_wasm = false;\n    let mut import_desktop_advanced = false;\n    let mut import_ai = false;\n"
+    state_with_advanced_no_ai = "    let mut import_wasm = false;\n    let mut import_desktop_advanced = false;\n"
     state_with_ai = "    let mut import_wasm = false;\n    let mut import_ai = false;\n"
     state_without_ai = "    let mut import_wasm = false;\n"
-    if state_with_ai in source:
+    if state_with_advanced_ai in source:
+        source = replace_once(
+            source, state_with_advanced_ai,
+            state_with_advanced_ai + "    let mut import_script = false;\n    let mut import_panel = false;\n",
+            "toolbar import state",
+        )
+        keep_ai_flag = True
+        keep_advanced_flag = True
+    elif state_with_advanced_no_ai in source:
+        source = replace_once(
+            source, state_with_advanced_no_ai,
+            state_with_advanced_no_ai + "    let mut import_script = false;\n    let mut import_panel = false;\n",
+            "toolbar import state",
+        )
+        keep_ai_flag = False
+        keep_advanced_flag = True
+    elif state_with_ai in source:
         source = replace_once(
             source, state_with_ai,
             state_with_ai + "    let mut import_script = false;\n    let mut import_panel = false;\n",
             "toolbar import state",
         )
         keep_ai_flag = True
+        keep_advanced_flag = False
     elif state_without_ai in source:
         source = replace_once(
             source, state_without_ai,
@@ -574,6 +869,7 @@ def patch_toolbar(root: Path) -> None:
             "toolbar import state",
         )
         keep_ai_flag = False
+        keep_advanced_flag = False
     else:
         raise SystemExit("Could not locate the WASM plug-in import state in the toolbar.")
 
@@ -584,14 +880,36 @@ def patch_toolbar(root: Path) -> None:
     script_buttons = '''                // EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1
                 if popup.button("特效软件脚本（.jsx、.js）").clicked() {
                     import_script = true;
+                    app.ui.status = "正在打开特效软件脚本文件选择器…".into();
                 }
                 if popup.button("脚本交互面板（.jsx）").clicked() {
                     import_panel = true;
+                    app.ui.status = "正在打开脚本交互面板文件选择器…".into();
                 }
 '''
-    source = replace_once(source, wasm_button, wasm_button + script_buttons, "desktop script menu item")
+    wasm_button_with_feedback = '''                if popup.button("导入效果插件包（支持 .wasm、.wat、.zip）").clicked() {
+                    import_wasm = true;
+                    app.ui.status = "正在打开效果插件文件选择器…".into();
+                }
+'''
+    if "EFFECTCRAFT_ANDROID_DESKTOP_PLUGIN_IMPORT_MENU_V1" not in source:
+        if wasm_button_with_feedback in source:
+            source = replace_once(
+                source,
+                wasm_button_with_feedback,
+                wasm_button_with_feedback + script_buttons,
+                "desktop script menu item with feedback",
+            )
+        else:
+            source = replace_once(source, wasm_button, wasm_button + script_buttons, "desktop script menu item")
 
-    if keep_ai_flag:
+    if keep_advanced_flag and keep_ai_flag:
+        old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced && !import_ai;\n"
+        new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced && !import_ai && !import_script && !import_panel;\n"
+    elif keep_advanced_flag:
+        old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced;\n"
+        new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_desktop_advanced && !import_script && !import_panel;\n"
+    elif keep_ai_flag:
         old_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai;\n"
         new_close = "        menu_open = popup_open && !close_menu && !import_wasm && !import_ai && !import_script && !import_panel;\n"
     else:

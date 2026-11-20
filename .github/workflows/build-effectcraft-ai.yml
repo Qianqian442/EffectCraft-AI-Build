@@ -31,6 +31,7 @@ on:
       - '.github/scripts/add_zip_plugin_support.py'
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/scripts/add_qq_plugin_import_support.py'
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/enable_android_missing_footage_relink.py'
       - '.github/scripts/harden_android_export_frame_scheduling.py'
@@ -45,6 +46,8 @@ on:
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
       - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/add_home_plugin_manager_remove_about.py'
+      - '.github/scripts/add_effect_plugin_uninstall.py'
       - '.github/scripts/add_account_avatar_picker.py'
       - '.github/scripts/add_account_whitelist_local_cache.py'
       - '.github/scripts/hide_account_security_details.py'
@@ -131,6 +134,9 @@ jobs:
             .github/scripts/install_ai_plugin_bridge.py \
             .github/scripts/integrate_deepseek_single_apk.py \
             .github/scripts/add_plugin_import_button.py \
+            .github/scripts/add_qq_plugin_import_support.py \
+            .github/scripts/add_home_plugin_manager_remove_about.py \
+            .github/scripts/add_effect_plugin_uninstall.py \
             .github/scripts/fix_viewer_drag_selection.py \
             .github/scripts/add_chinese_group_puppet_keyframe_ui.py \
             .github/scripts/add_bottom_left_media_import.py \
@@ -554,12 +560,40 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_desktop_plugin_package_support.py
           python3 build-assets/.github/scripts/add_desktop_plugin_package_support.py
 
+      - name: Add safe user plug-in deletion and runtime unloading
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_effect_plugin_uninstall.py
+          python3 build-assets/.github/scripts/add_effect_plugin_uninstall.py
+          EFFECT_RS="$EFFECTCRAFT_DIR/crates/engine/src/cmd/effect.rs"
+          PLUGIN_RS="$EFFECTCRAFT_DIR/crates/effects/src/plugin.rs"
+          grep -Fq 'pub fn unregister_plugin(id: &str)' "$PLUGIN_RS"
+          grep -Fq '"effect.plugins.unload"' "$EFFECT_RS"
+          grep -Fq '"can_delete": can_delete' "$EFFECT_RS"
+          grep -Fq 'BUILTIN_EFFECT_MODULES' "$EFFECT_RS"
+          echo "Verified safe user-plugin deletion and built-in protection."
+
       - name: Add draggable AE plug-in migration and progress windows
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_plugin_migration_progress.py
           python3 build-assets/.github/scripts/add_plugin_migration_progress.py
+
+      - name: Route QQ downloads to the plug-in importer and QQ receive folder
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_qq_plugin_import_support.py
+          python3 build-assets/.github/scripts/add_qq_plugin_import_support.py
+          grep -Fq 'safRequestPluginOpen' artcraft/templates/android/SafActivity.java
+          grep -Fq 'Tencent/QQfile_recv' artcraft/templates/android/SafActivity.java
+          grep -Fq 'pick_plugin_open_blocking_worker' artcraft/templates/android/saf_bridge.rs
+          grep -Fq 'saf_open_plugin_paths' artcraft/lib/build-common.sh
+          grep -Fq 'looks_like_plugin_archive' "$EFFECTCRAFT_DIR/crates/ui-egui/src/plugin_migration.rs"
+          grep -Fq 'effectcraft_ui_egui::plugin_migration::looks_like_plugin_archive(path)' "$GITHUB_WORKSPACE/build-assets/.github/scripts/configure_android_storage_fallback.py"
 
       - name: Route AE projects through the original Import Project control
         env:
@@ -789,6 +823,31 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/brand_ae_visible_names.py
           python3 build-assets/.github/scripts/brand_ae_visible_names.py
+
+      - name: Add Home plug-in management and remove About Ae
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_home_plugin_manager_remove_about.py
+          python3 build-assets/.github/scripts/add_home_plugin_manager_remove_about.py
+          ACCOUNT_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
+          EFFECT_RS="$EFFECTCRAFT_DIR/crates/engine/src/cmd/effect.rs"
+          DIALOGS_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/dialogs.rs"
+          FRONTEND_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/menus/frontend.rs"
+          MENUS_RS="$EFFECTCRAFT_DIR/crates/engine/src/menus.rs"
+          grep -Fq 'ui.horizontal(|ui|' "$ACCOUNT_RS"
+          grep -Fq 'ui.button("账号管理")' "$ACCOUNT_RS"
+          grep -Fq 'ui.button("插件管理")' "$ACCOUNT_RS"
+          grep -Fq 'effect.plugins.list' "$ACCOUNT_RS"
+          grep -Fq 'ui.button("删除")' "$ACCOUNT_RS"
+          grep -Fq 'effect.plugins.unload' "$ACCOUNT_RS"
+          grep -Fq '"effect.plugins.unload"' "$EFFECT_RS"
+          ! grep -Fq 'header.about' "$HEADER_RS"
+          ! grep -Fq 'Dialog::About' "$DIALOGS_RS"
+          ! grep -Fq '"app.about"' "$FRONTEND_RS"
+          ! grep -Fq 'app.about' "$MENUS_RS"
+          echo "Verified Home plug-in management is beside account management and About Ae is removed."
 
       - name: Guard the Export button against immediate crashes
         env:

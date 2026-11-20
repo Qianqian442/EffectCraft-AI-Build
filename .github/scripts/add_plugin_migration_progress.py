@@ -32,10 +32,42 @@ const MAX_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
 const SCAN_PROGRESS_MAX: usize = 9_000;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum MigrationMode {
+    AutoBest,
+    CpuTranslation,
+    ForceCompatibility,
+    AggressivePort,
+    ManualBackend,
+}
+
+impl MigrationMode {
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Self::AutoBest => "自动比较并选择完整度最高的方案",
+            Self::CpuTranslation => "指令转译优先（Box64 / Box86 / FEX / QEMU）",
+            Self::ForceCompatibility => "强制兼容（运行库 / 接口 / 画面 / 渲染回退）",
+            Self::AggressivePort => "暴力移植 / 重构（源码重编译 + 二进制分析）",
+            Self::ManualBackend => "手动查看并指定转译后端",
+        }
+    }
+
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::AutoBest => "逐个测试适用路线，按功能完整度、画质、参数/关键帧和稳定性评分，自动选择最高分且通过硬性测试的方案。",
+            Self::CpuTranslation => "优先尝试适用的 CPU 指令动态转译路线；不兼容的系统 API 或插件宿主接口仍必须单独适配。",
+            Self::ForceCompatibility => "逐项尝试可选宿主接口、运行库、像素格式、CPU 特性和 CPU/串行渲染回退；不伪造必需接口。",
+            Self::AggressivePort => "优先源码 ARM64 重编译；无源码时进行指令/控制流分析并重建效果逻辑。需要原插件功能的参考输入与回归测试。",
+            Self::ManualBackend => "分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；目前尚未集成可执行后端，指定只记录选择意向，不会谎称已经转译。",
+        }
+    }
+}
+
 pub(crate) enum ImportState {
-    Confirm { path: String, native_count: usize },
+    Confirm { path: String, native_count: usize, mode: MigrationMode },
     Running {
         path: String,
+        mode: MigrationMode,
         progress: Arc<AtomicUsize>,
         receiver: Receiver<Result<ScanReport, String>>,
     },
@@ -45,6 +77,13 @@ pub(crate) enum ImportState {
         success: bool,
         since: Instant,
     },
+    RouteSelection {
+        title: String,
+        message: String,
+        success: bool,
+        groups: Vec<NativeRouteGroup>,
+        selected_routes: Vec<String>,
+    },
     Result { title: String, message: String, success: bool },
 }
 
@@ -53,6 +92,61 @@ struct ScanReport {
     native_count: usize,
     native_names: Vec<String>,
     total_bytes: u64,
+}
+
+#[derive(Clone)]
+struct NativeRouteOption {
+    id: String,
+    backend: String,
+    prerequisites: String,
+    notes: String,
+    status: String,
+    score: Option<f64>,
+}
+
+#[derive(Clone)]
+struct NativeRouteGroup {
+    file: String,
+    binary_format: String,
+    architecture: String,
+    routes: Vec<NativeRouteOption>,
+    compatibility_profiles: Vec<String>,
+}
+
+fn route_groups(value: &Value) -> Vec<NativeRouteGroup> {
+    value.get("desktop_native_metadata")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().map(|item| {
+            let routes = item.get("candidate_routes")
+                .and_then(Value::as_array)
+                .map(|routes| routes.iter().map(|route| NativeRouteOption {
+                    id: route.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
+                    backend: route.get("backend").and_then(Value::as_str).unwrap_or("未命名路线").to_string(),
+                    prerequisites: route.get("prerequisites").and_then(Value::as_str).unwrap_or("未提供前置条件").to_string(),
+                    notes: route.get("notes").and_then(Value::as_str).unwrap_or("").to_string(),
+                    status: route.get("status").and_then(Value::as_str).unwrap_or("未执行").to_string(),
+                    score: route.get("score").and_then(Value::as_f64),
+                }).collect())
+                .unwrap_or_default();
+            let compatibility_profiles = item.get("forced_compatibility_profiles")
+                .and_then(Value::as_array)
+                .map(|profiles| profiles.iter().map(|profile| {
+                    let name = profile.get("name").and_then(Value::as_str).unwrap_or("兼容方案");
+                    let actions = profile.get("actions").and_then(Value::as_array)
+                        .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("；"))
+                        .unwrap_or_default();
+                    if actions.is_empty() { name.to_string() } else { format!("{name}：{actions}") }
+                }).collect())
+                .unwrap_or_default();
+            NativeRouteGroup {
+                file: item.get("file").and_then(Value::as_str).unwrap_or("电脑插件").to_string(),
+                binary_format: item.get("binary_format").and_then(Value::as_str).unwrap_or("原生文件").to_string(),
+                architecture: item.get("architecture").and_then(Value::as_str).unwrap_or("架构未知").to_string(),
+                routes,
+                compatibility_profiles,
+            }
+        }).collect())
+        .unwrap_or_default()
 }
 
 /// Called when the existing effect.plugins.load picker returns a ZIP. Only desktop
@@ -111,11 +205,12 @@ pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool 
     app.plugin_import = Some(ImportState::Confirm {
         path: import_path.0,
         native_count: import_path.1,
+        mode: MigrationMode::AutoBest,
     });
     true
 }
 
-fn spawn_scan(path: String) -> ImportState {
+fn spawn_scan(path: String, mode: MigrationMode) -> ImportState {
     let progress = Arc::new(AtomicUsize::new(0));
     let worker_progress = Arc::clone(&progress);
     let worker_path = path.clone();
@@ -124,7 +219,7 @@ fn spawn_scan(path: String) -> ImportState {
         let result = scan_archive(&worker_path, &worker_progress);
         let _ = sender.send(result);
     });
-    ImportState::Running { path, progress, receiver }
+    ImportState::Running { path, mode, progress, receiver }
 }
 
 /// Read and validate the actual ZIP entries off the UI thread. The progress value measures
@@ -193,24 +288,39 @@ fn value_count(value: &Value, key: &str) -> usize {
     value.get(key).and_then(Value::as_array).map_or(0, |items| items.len())
 }
 
-fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
+fn result_summary(scan: &ScanReport, value: &Value, mode: MigrationMode) -> (String, String, bool) {
     let wasm = value_count(value, "loaded");
     let wat = value.get("wat_result").map_or(0, |item| value_count(item, "loaded"));
     let panels = value_count(value, "panels");
     let scripts = value_count(value, "desktop_scripts");
     let assets = value_count(value, "desktop_assets");
     let matched = value_count(value, "desktop_native_compatibility_matches");
-    let native_unmatched = scan.native_count.saturating_sub(matched);
+    // A filename/effect-name match is only a substitute-effect hint, never proof that
+    // the original desktop binary has been translated or hosted successfully.
+    let native_translated = value.get("desktop_native_metadata")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().filter(|item| {
+            item.get("translation_executed").and_then(Value::as_bool) == Some(true)
+                && item.get("trial_execution_status").and_then(Value::as_str) == Some("passed")
+                && item.get("selected_route").is_some()
+        }).count())
+        .unwrap_or(0);
+    let native_unmatched = scan.native_count.saturating_sub(native_translated);
     let errors = value_count(value, "errors");
     let skipped = value_count(value, "desktop_skipped");
     let installed = wasm + wat + panels + scripts;
-    let success = installed > 0 || matched > 0;
+    let success = installed > 0 || native_translated > 0;
 
-    let mut lines = vec![format!("已扫描 {} 个文件，共 {:.1} MB。", scan.file_count, scan.total_bytes as f64 / (1024.0 * 1024.0))];
+    let mut lines = vec![
+        format!("本次选择的移植方式：{}。", mode.label()),
+        format!("已扫描 {} 个文件，共 {:.1} MB。", scan.file_count, scan.total_bytes as f64 / (1024.0 * 1024.0)),
+    ];
+    lines.push(format!("方式说明：{}", mode.description()));
+    lines.push("注意：当前构建已加入方式选择和报告记录；Box64/Box86/FEX/QEMU/Wine 的实际运行时试跑、后端手动切换和暴力二进制重建引擎尚未集成，不会伪称已执行。".into());
     lines.push(format!("可用模块：WASM {wasm} 个、WAT {wat} 个、AE 面板 {panels} 个、脚本 {scripts} 个。"));
     if assets > 0 { lines.push(format!("另行保存素材/源码 {assets} 个。")); }
     if matched > 0 {
-        lines.push(format!("匹配到 {matched} 个内置兼容效果。它们是兼容重实现/近似效果，不是原厂 AE 插件。"));
+        lines.push(format!("匹配到 {matched} 个内置兼容替代效果。它们不是原厂 AE 插件，也不计入原生插件移植成功数量。"));
         if let Some(items) = value.get("desktop_native_compatibility_matches").and_then(Value::as_array) {
             for item in items.iter().take(16) {
                 let source = item.get("source").and_then(Value::as_str).unwrap_or("电脑插件");
@@ -222,11 +332,52 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
     }
     if let Some(items) = value.get("desktop_native_metadata").and_then(Value::as_array) {
         let mut shown = 0usize;
-        for item in items.iter().take(8) {
+        // Show every detected native plug-in and every candidate route; do not hide
+        // additional routes behind a short preview limit.
+        for item in items.iter() {
             let file = item.get("file").and_then(Value::as_str).unwrap_or("电脑插件");
             let binary_format = item.get("binary_format").and_then(Value::as_str).unwrap_or("原生文件");
             let architecture = item.get("architecture").and_then(Value::as_str).unwrap_or("架构未知");
             lines.push(format!("原生文件 [{file}]：{binary_format} / {architecture}"));
+            let backend = item.get("translation_backend").and_then(Value::as_str).unwrap_or("未确定");
+            let target = item.get("target_abi").and_then(Value::as_str).unwrap_or("ARM64 / arm64-v8a");
+            let status = item.get("translation_status").and_then(Value::as_str).unwrap_or("尚未执行 CPU 转译");
+            let host = item.get("host_adapter").and_then(Value::as_str).unwrap_or("需适配插件宿主接口");
+            lines.push(format!("CPU 转译路线：{backend} → {target}；{status}。"));
+            lines.push(format!("插件宿主桥接：{host}。"));
+            if let Some(selected) = item.get("selected_route") {
+                let backend = selected.get("backend").and_then(Value::as_str).unwrap_or("最佳候选");
+                let score = item.get("trial_score").and_then(Value::as_f64).unwrap_or(0.0);
+                lines.push(format!("自动选优结果：{backend}；实测完整度 {:.1}/100。", score));
+                lines.push("该方案只有在宿主接口、参数、预览/最终渲染、取消和稳定性硬性测试全部通过后才会被选中。".into());
+            } else {
+                lines.push("自动选优结果：暂无；当前没有真实运行并通过硬性测试的电脑原生插件转译方案。".into());
+            }
+            if let Some(routes) = item.get("candidate_routes").and_then(Value::as_array) {
+                if !routes.is_empty() {
+                    let names = routes.iter().filter_map(|route| route.get("backend").and_then(Value::as_str))
+                        .collect::<Vec<_>>().join(" → ");
+                    lines.push(format!("候选路线顺序（逐个试跑后比较）：{names}。"));
+                    for route in routes.iter() {
+                        let backend = route.get("backend").and_then(Value::as_str).unwrap_or("候选后端");
+                        let status = route.get("status").and_then(Value::as_str).unwrap_or("未执行");
+                        let score = route.get("score").and_then(Value::as_f64);
+                        if let Some(score) = score {
+                            lines.push(format!("试跑结果 {backend}：{status}；完整度评分 {:.1}/100。", score));
+                        } else {
+                            lines.push(format!("试跑结果 {backend}：{status}；尚无实测评分。"));
+                        }
+                    }
+                    lines.push("只有实际运行并通过硬性测试的候选路线，才允许进入自动导入排名。".into());
+                }
+            }
+            if let Some(profiles) = item.get("forced_compatibility_profiles").and_then(Value::as_array) {
+                let names = profiles.iter().filter_map(|profile| profile.get("name").and_then(Value::as_str))
+                    .collect::<Vec<_>>().join("、");
+                if !names.is_empty() {
+                    lines.push(format!("强制兼容候选方案：{names}。当前只记录方案，未对必需 API 作伪造或绕过授权。"));
+                }
+            }
             let strings = item.get("strings").and_then(Value::as_array)
                 .map(|values| values.iter().filter_map(Value::as_str).take(8).collect::<Vec<_>>().join(" | "))
                 .unwrap_or_default();
@@ -261,10 +412,19 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
         lines.push(format!("详细报告：{report}"));
     }
     if !success {
-        lines.insert(1, "没有安装任何可运行的兼容插件；仅保存原始文件不算移植成功。".into());
-        ("移植失败".into(), lines.join("\n"), false)
+        if scan.native_count > 0 {
+            lines.insert(1, "已完成电脑插件架构与候选路线分析；尚无原生插件通过真实转译、宿主接口、参数和渲染测试。内置相似效果仅为替代方案，不算原插件移植。".into());
+            ("已分析，原插件待移植".into(), lines.join("\n"), false)
+        } else {
+            lines.insert(1, "没有安装任何可运行的兼容插件；仅保存素材或脚本文件不算移植成功。".into());
+            ("移植失败".into(), lines.join("\n"), false)
+        }
     } else if native_unmatched > 0 || errors > 0 || skipped > 0 {
-        ("移植部分完成".into(), lines.join("\n"), true)
+        if installed > 0 {
+            ("部分内容已导入，电脑原生插件仍待移植".into(), lines.join("\n"), true)
+        } else {
+            ("电脑原生插件仍待移植".into(), lines.join("\n"), false)
+        }
     } else {
         ("移植成功".into(), lines.join("\n"), true)
     }
@@ -273,17 +433,18 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
 /// Draw the draggable confirmation, live progress, and final OK windows.
 pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
     enum Action {
-        Start(String),
+        Start(String, MigrationMode),
         Cancel,
-        Scanned(String, Result<ScanReport, String>),
+        Scanned(String, MigrationMode, Result<ScanReport, String>),
         Close,
         Promote(String, String, bool),
+        RoutesConfirmed(String, String, bool, Vec<NativeRouteGroup>, Vec<String>),
     }
     let mut action: Option<Action> = None;
 
     if let Some(state) = app.plugin_import.as_mut() {
         match state {
-            ImportState::Confirm { path, native_count } => {
+            ImportState::Confirm { path, native_count, mode } => {
                 let mut open = true;
                 let mut start = false;
                 let mut cancel = false;
@@ -301,17 +462,26 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.heading("检测到需要移植的电脑版插件");
                         ui.label(format!("发现 {native_count} 个 .aex / .dll / .ofx 等原生插件文件。"));
                         ui.add_space(4.0);
-                        ui.label("点击开始后会扫描压缩包、检查安全性，并安装 EffectCraft 能兼容的模块或替代效果。无法兼容的原生插件会保留原件，不会伪装成已移植。 ");
+                        ui.label("选择本次电脑插件移植方式；可按需切换，不会强制固定使用某一种转译器。");
+                        ui.label("扫描完成后，结果页会展示检测到的每个插件的全部适用路线，不省略候选项。");
+                        ui.radio_value(mode, MigrationMode::AutoBest, MigrationMode::AutoBest.label());
+                        ui.radio_value(mode, MigrationMode::CpuTranslation, MigrationMode::CpuTranslation.label());
+                        ui.radio_value(mode, MigrationMode::ForceCompatibility, MigrationMode::ForceCompatibility.label());
+                        ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
+                        ui.radio_value(mode, MigrationMode::ManualBackend, MigrationMode::ManualBackend.label());
+                        ui.small(mode.description());
+                        ui.add_space(6.0);
+                        ui.label("当前版本会分析架构、列出路线并保留原件；尚未接入的运行时/宿主接口会显示待实现，不会伪报成功。");
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
                             if ui.button("取消").clicked() { cancel = true; }
-                            if ui.button("开始移植").clicked() { start = true; }
+                            if ui.button("按此方式开始").clicked() { start = true; }
                         });
                     });
-                if start { action = Some(Action::Start(path.clone())); }
+                if start { action = Some(Action::Start(path.clone(), *mode)); }
                 else if cancel || !open { action = Some(Action::Cancel); }
             }
-            ImportState::Running { path, progress, receiver } => {
+            ImportState::Running { path, mode, progress, receiver } => {
                 let fraction = (progress.load(Ordering::Acquire).min(SCAN_PROGRESS_MAX) as f32) / 10_000.0;
                 let percent = (fraction * 100.0).round() as u32;
                 let mut received = None;
@@ -335,7 +505,77 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.small("进度根据实际读取和解压的文件数据更新；完成扫描后会安装兼容模块。");
                     });
                 ctx.request_repaint_after(Duration::from_millis(100));
-                if let Some(result) = received { action = Some(Action::Scanned(path.clone(), result)); }
+                if let Some(result) = received { action = Some(Action::Scanned(path.clone(), *mode, result)); }
+            }
+            ImportState::RouteSelection { title, message, success, groups, selected_routes } => {
+                let mut open = true;
+                let mut confirm = false;
+                let screen = ctx.content_rect();
+                egui::Window::new("选择电脑插件移植路线")
+                    .id(Id::new("effectcraft-ae-migration-route-selection"))
+                    .order(Order::Foreground)
+                    .movable(true)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_width(390.0)
+                    .default_pos(pos2(screen.center().x - 195.0, screen.center().y - 190.0))
+                    .open(&mut open)
+                    .show(ctx, |ui| {
+                        ui.heading("选择自动优选或手动指定路线");
+                        ui.label("下面完整列出每个电脑插件适用的路线，不会只显示部分候选项。每个插件可单独选择。");
+                        ui.add_space(6.0);
+                        egui::ScrollArea::vertical().max_height(390.0).show(ui, |ui| {
+                            for (index, group) in groups.iter().enumerate() {
+                                ui.group(|ui| {
+                                    ui.strong(&group.file);
+                                    ui.small(format!("{} · {}", group.binary_format, group.architecture));
+                                    if let Some(choice) = selected_routes.get_mut(index) {
+                                        ui.radio_value(
+                                            choice,
+                                            String::new(),
+                                            "自动优选：真实试跑后选择完整度最高且通过测试的路线",
+                                        );
+                                        if group.routes.is_empty() {
+                                            ui.label("当前未识别到可直接尝试的 CPU 转译路线。");
+                                        }
+                                        for route in group.routes.iter() {
+                                            let label = if let Some(score) = route.score {
+                                                format!("{}（{} · {:.1}/100）", route.backend, route.status, score)
+                                            } else {
+                                                format!("{}（{} · 暂无实测分数）", route.backend, route.status)
+                                            };
+                                            ui.radio_value(choice, route.id.clone(), label);
+                                            ui.small(format!("前置条件：{}", route.prerequisites));
+                                            if !route.notes.is_empty() {
+                                                ui.small(format!("说明：{}", route.notes));
+                                            }
+                                        }
+                                    }
+                                    if !group.compatibility_profiles.is_empty() {
+                                        ui.separator();
+                                        ui.strong("强制兼容 / 暴力移植子方案（全部展示）");
+                                        for profile in group.compatibility_profiles.iter() {
+                                            ui.small(format!("• {profile}"));
+                                        }
+                                    }
+                                });
+                                ui.add_space(6.0);
+                            }
+                        });
+                        ui.add_space(6.0);
+                        ui.small("说明：本版本可查看并保存你的路线偏好；Box64/Box86、FEX、QEMU、Wine 的实际执行器及插件宿主桥接尚未集成，未实测路线不会被标记为已移植。");
+                        ui.add_space(8.0);
+                        if ui.button("确认选择并查看移植报告").clicked() { confirm = true; }
+                    });
+                if confirm || !open {
+                    action = Some(Action::RoutesConfirmed(
+                        title.clone(),
+                        message.clone(),
+                        *success,
+                        groups.clone(),
+                        selected_routes.clone(),
+                    ));
+                }
             }
             ImportState::ProgressComplete { title: _, message: _, success: _, since } => {
                 let screen = ctx.content_rect();
@@ -387,9 +627,19 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
     }
 
     match action {
-        Some(Action::Start(path)) => app.plugin_import = Some(spawn_scan(path)),
-        Some(Action::Cancel | Action::Close) => app.plugin_import = None,
-        Some(Action::Scanned(path, result)) => match result {
+        Some(Action::Start(path, mode)) => {
+            app.ui.status = "已开始扫描电脑插件；正在识别架构和可用路线…".into();
+            app.plugin_import = Some(spawn_scan(path, mode));
+        }
+        Some(Action::Cancel) => {
+            app.ui.status = "已取消电脑插件移植；未执行本次导入。".into();
+            app.plugin_import = None;
+        }
+        Some(Action::Close) => {
+            app.ui.status = "已关闭电脑插件移植报告。".into();
+            app.plugin_import = None;
+        }
+        Some(Action::Scanned(path, mode, result)) => match result {
             Err(error) => {
                 app.plugin_import = Some(ImportState::Result { title: "移植失败".into(), message: error, success: false });
             }
@@ -404,8 +654,18 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 }
                 match import_result {
                     Ok(value) => {
-                        let (title, message, success) = result_summary(&scan, &value);
-                        if success {
+                        let (title, message, success) = result_summary(&scan, &value, mode);
+                        let groups = route_groups(&value);
+                        if !groups.is_empty() {
+                            let selected_routes = vec![String::new(); groups.len()];
+                            app.plugin_import = Some(ImportState::RouteSelection {
+                                title,
+                                message,
+                                success,
+                                groups,
+                                selected_routes,
+                            });
+                        } else if success {
                             app.plugin_import = Some(ImportState::ProgressComplete { title, message, success, since: Instant::now() });
                         } else {
                             app.plugin_import = Some(ImportState::Result { title, message, success });
@@ -415,7 +675,31 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 }
             }
         },
-        Some(Action::Promote(title, message, success)) => app.plugin_import = Some(ImportState::Result { title, message, success }),
+        Some(Action::Promote(title, message, success)) => {
+            app.ui.status = "电脑插件扫描和兼容内容处理已完成；请查看结果报告。".into();
+            app.plugin_import = Some(ImportState::Result { title, message, success });
+        },
+        Some(Action::RoutesConfirmed(title, message, success, groups, selected_routes)) => {
+            app.ui.status = "已记录各插件的路线选择；尚未接入的转译执行器不会被标记为已完成。".into();
+            let mut final_message = message;
+            final_message.push_str("\n\n本次路线选择记录：");
+            for (index, group) in groups.iter().enumerate() {
+                let selected = selected_routes.get(index).map(String::as_str).unwrap_or("");
+                if selected.is_empty() {
+                    if let Some(best) = group.routes.iter().find(|route| route.status == "passed" && route.score.is_some()) {
+                        final_message.push_str(&format!("\n{}：自动优选为 {}（实测 {:.1}/100）。", group.file, best.backend, best.score.unwrap_or_default()));
+                    } else {
+                        final_message.push_str(&format!("\n{}：选择自动优选；等待可执行后端完成真实试跑后再决定。", group.file));
+                    }
+                } else if let Some(route) = group.routes.iter().find(|route| route.id == selected) {
+                    final_message.push_str(&format!("\n{}：你指定了 {}；当前状态：{}。", group.file, route.backend, route.status));
+                    final_message.push_str("该选择目前记录为优先路线，不代表已执行转译或已安装。");
+                } else {
+                    final_message.push_str(&format!("\n{}：已记录手动路线选择。", group.file));
+                }
+            }
+            app.plugin_import = Some(ImportState::Result { title, message: final_message, success });
+        }
         None => {}
     }
 }

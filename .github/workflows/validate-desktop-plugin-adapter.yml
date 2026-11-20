@@ -3,6 +3,19 @@ name: Validate desktop plug-in compatibility adapter
 on:
   workflow_call:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/scripts/add_home_plugin_manager_remove_about.py'
+      - '.github/scripts/add_effect_plugin_uninstall.py'
+      - '.github/scripts/add_home_lan_account_gate.py'
+      - '.github/scripts/add_plugin_import_button.py'
+      - '.github/scripts/add_qq_plugin_import_support.py'
+      - '.github/scripts/configure_android_storage_fallback.py'
+      - '.github/workflows/validate-desktop-plugin-adapter.yml'
+      - 'docs/android-arm64-desktop-plugin-compatibility.md'
 
 concurrency:
   group: desktop-plugin-adapter-validation-${{ github.ref }}
@@ -53,6 +66,10 @@ jobs:
             .github/scripts/add_zip_plugin_support.py \
             .github/scripts/add_desktop_plugin_package_support.py \
             .github/scripts/add_plugin_migration_progress.py \
+            .github/scripts/add_qq_plugin_import_support.py \
+            .github/scripts/add_home_lan_account_gate.py \
+            .github/scripts/add_home_plugin_manager_remove_about.py \
+            .github/scripts/add_effect_plugin_uninstall.py \
             .github/scripts/install_ai_plugin_bridge.py \
             .github/scripts/add_curve_quick_access.py \
             .github/scripts/add_startup_attribution_notice.py \
@@ -68,11 +85,58 @@ jobs:
       - name: Apply the same plug-in patches used by the APK build
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+          ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: |
           python3 .github/scripts/add_plugin_import_button.py
           python3 .github/scripts/add_zip_plugin_support.py
           python3 .github/scripts/add_desktop_plugin_package_support.py
+          python3 .github/scripts/add_effect_plugin_uninstall.py
           python3 .github/scripts/add_plugin_migration_progress.py
+          python3 .github/scripts/add_qq_plugin_import_support.py
+          grep -Fq 'pub mod plugin_migration;' effectcraft/crates/ui-egui/src/lib.rs
+          grep -Fq 'looks_like_plugin_archive' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'safRequestPluginOpen' artcraft/templates/android/SafActivity.java
+          grep -Fq 'Tencent/QQfile_recv' artcraft/templates/android/SafActivity.java
+          grep -Fq 'pick_plugin_open_blocking_worker' artcraft/templates/android/saf_bridge.rs
+          grep -Fq 'saf_open_plugin_paths' artcraft/lib/build-common.sh
+          python3 .github/scripts/add_home_lan_account_gate.py
+          # The dedicated advanced desktop plug-in migration entry must be visible in Ae.
+          grep -Fq '电脑插件高级移植（自动比较完整度 + 强制兼容）' effectcraft/crates/ui-egui/src/header.rs
+          grep -Fq '未实测的路线不会标记为成功' effectcraft/crates/ui-egui/src/header.rs
+          ! grep -Fq '导入 DeepSeek 本地模型包（ZIP）' effectcraft/crates/ui-egui/src/header.rs
+          ! grep -Fq 'import_ai' effectcraft/crates/ui-egui/src/header.rs
+          grep -Fq '结果页会展示检测到的每个插件的全部适用路线' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'for item in items.iter()' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'for route in routes.iter()' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          # The post-scan screen exposes every route, permits automatic or per-plugin manual selection,
+          # and shows every forced-compatibility/aggressive-port profile without truncating the list.
+          grep -Fq '选择自动优选或手动指定路线' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'ui.radio_value(choice, route.id.clone(), label)' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '强制兼容 / 暴力移植子方案（全部展示）' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '该选择目前记录为优先路线，不代表已执行转译或已安装。' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'AI 插件和模型请前往模型管理' effectcraft/crates/ui-egui/src/header.rs
+          # AI plugin/model package import and model download belong to the dedicated model manager.
+          grep -Fq '导入 AI 插件包 ZIP' android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt
+          grep -Fq '直接下载 DeepSeek 本地模型' android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt
+          grep -Fq 'effectcraft-ai-model-plugin' android-ai-plugin/app/src/main/java/com/artcraft/effectcraft/aiassistant/PluginManagerActivity.kt
+          # Route plans must remain explicit and must never be reported as executed by metadata scanning.
+          grep -Fq 'fn native_translation_trials(' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'fn forced_compatibility_profiles(' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'fn rank_desktop_native_trials(' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'REQUIRED_GATES' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq '"candidate_routes": candidate_routes' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq '"translation_executed": false' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'not_run_runtime_not_integrated' effectcraft/crates/engine/src/cmd/effect.rs
+          # A bundled compatibility recreation must never count as a successful native binary port.
+          grep -Fq 'native_translated' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '不计入原生插件移植成功数量' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '自动选优结果' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq '没有真实运行并通过硬性测试的电脑原生插件转译方案' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          # The engine exposes safe unloading and only marks app-owned user modules deletable.
+          grep -Fq 'pub fn unregister_plugin(id: &str)' effectcraft/crates/effects/src/plugin.rs
+          grep -Fq '"effect.plugins.unload"' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq '"can_delete": can_delete' effectcraft/crates/engine/src/cmd/effect.rs
+          grep -Fq 'BUILTIN_EFFECT_MODULES' effectcraft/crates/engine/src/cmd/effect.rs
 
       - name: Apply the AI and export toolbar base patch used by the APK build
         env:
@@ -207,6 +271,28 @@ jobs:
           grep -Fq "EFFECTCRAFT_ANDROID_AM_PORTRAIT_WORKSPACE_V1" effectcraft/crates/ui-egui/src/app/window.rs
           grep -Fq "self.dock_area(ui, body);" effectcraft/crates/ui-egui/src/app/frame.rs
           echo "Verified Ae×am portrait Home and native Ae effects, scrollable parameters, keyframes, curves, puppet, vector and timeline tools."
+
+      - name: Validate Home plug-in management and remove About Ae
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/effectcraft
+        run: |
+          python3 .github/scripts/add_home_plugin_manager_remove_about.py
+          ACCOUNT_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
+          DIALOGS_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/dialogs.rs"
+          FRONTEND_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/menus/frontend.rs"
+          MENUS_RS="$EFFECTCRAFT_DIR/crates/engine/src/menus.rs"
+          grep -Fq 'ui.horizontal(|ui|' "$ACCOUNT_RS"
+          grep -Fq 'ui.button("账号管理")' "$ACCOUNT_RS"
+          grep -Fq 'ui.button("插件管理")' "$ACCOUNT_RS"
+          grep -Fq 'effect.plugins.list' "$ACCOUNT_RS"
+          grep -Fq 'ui.button("删除")' "$ACCOUNT_RS"
+          grep -Fq 'effect.plugins.unload' "$ACCOUNT_RS"
+          ! grep -Fq 'header.about' "$HEADER_RS"
+          ! grep -Fq 'Dialog::About' "$DIALOGS_RS"
+          ! grep -Fq '"app.about"' "$FRONTEND_RS"
+          ! grep -Fq 'app.about' "$MENUS_RS"
+          echo "Verified Home plug-in management is beside account management and About Ae is removed."
 
       - name: Compile-check v0.21.1 engine and Android UI integration
         working-directory: effectcraft

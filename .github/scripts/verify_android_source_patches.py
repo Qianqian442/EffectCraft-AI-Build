@@ -647,9 +647,13 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     for token in ("pub fn all()", "let plugins = plugin::plugins();", "v.extend(plugins);", "pub fn find(id: &str)", "plugin::plugins()"):
         if token not in effect_registry:
             raise SystemExit(f"Engine effect registry no longer exposes imported plug-ins: {token}")
-    for token in ("pub fn register_plugin", "pub fn plugins()", "pub fn plugin(id: &str)", "pub trait EffectPlugin"):
+    for token in ("pub fn register_plugin", "pub fn plugins()", "pub fn plugin(id: &str)", "pub trait EffectPlugin", "pub fn unregister_plugin(id: &str)"):
         if token not in plugin_api:
             raise SystemExit(f"Runnable plug-in effect API is missing: {token}")
+    plugin_commands = (root / "crates/engine/src/cmd/effect.rs").read_text(encoding="utf-8")
+    for token in ('"effect.plugins.unload"', "fn plugins_unload(", '"can_delete": can_delete', "BUILTIN_EFFECT_MODULES", "s.layer_cache.clear();", "cache.clear();"):
+        if token not in plugin_commands:
+            raise SystemExit(f"Safe plug-in removal path is missing: {token}")
     if "PanelScroll::begin" not in effect_controls:
         raise SystemExit("Native Effect Controls must display the real scrollable parameter panel.")
     widgets = (root / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
