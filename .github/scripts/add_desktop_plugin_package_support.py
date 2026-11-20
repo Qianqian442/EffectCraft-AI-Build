@@ -181,6 +181,129 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         }
     }
 
+    // List every technically plausible execution route in a deterministic order.
+    // Routes are candidates only: the importer must not mark a route successful until
+    // an isolated worker actually completes the full host/render test suite.
+    fn native_translation_trials(
+        binary_format: &str,
+        architecture: &str,
+        extension: &str,
+    ) -> Vec<Value> {
+        let ext = extension.to_ascii_lowercase();
+        let host = match ext.as_str() {
+            "ofx" => "OpenFX 1.x host adapter",
+            "aex" => "Adobe After Effects SDK host adapter",
+            "8bf" => "Photoshop Filter SDK host adapter",
+            "prm" => "Premiere plug-in host adapter",
+            _ => "format-specific plug-in host adapter",
+        };
+        let mut routes = Vec::new();
+        let mut add = |id: &str, backend: &str, prerequisites: &str, notes: &str| {
+            routes.push(json!({
+                "id": id,
+                "backend": backend,
+                "host_adapter": host,
+                "target_abi": "Android ARM64 / arm64-v8a",
+                "prerequisites": prerequisites,
+                "notes": notes,
+                "status": "not_run_runtime_not_integrated",
+                "translation_executed": false,
+                "score": Value::Null
+            }));
+        };
+
+        match (binary_format, architecture) {
+            ("Windows 可执行文件", "64 位 x86") => {
+                add(
+                    "wine_box64_x86_64",
+                    "Wine64 + Box64",
+                    "Windows x86-64 guest libraries, Box64 ARM64 build, Wine64, private glibc guest rootfs",
+                    "首选验证路线；Winlator demonstrates the Wine + Box64 Android architecture",
+                );
+                add(
+                    "wine_fex_x86_64",
+                    "Wine64 + FEX",
+                    "FEX-compatible Linux ARM64 guest rootfs and supported 4 KiB page-size kernel",
+                    "备选动态转译路线；需独立验证 FEX 与 Wine guest 的系统调用和 Android 内核兼容性",
+                );
+                add(
+                    "wine_qemu_x86_64",
+                    "Wine64 + QEMU x86_64-user",
+                    "QEMU linux-user, matching x86-64 guest rootfs and Wine runtime",
+                    "慢速兼容参考路线；用于可行性对照，不预设性能可用",
+                );
+            }
+            ("Windows 可执行文件", "32 位 x86") => {
+                add(
+                    "wine_box86_i386",
+                    "Wine32 + Box86",
+                    "32-bit x86 Wine guest and compatible 32-bit ARM guest libraries",
+                    "传统 32 位候选路线；需验证 Android ARM64 上的 32 位 guest 运行库",
+                );
+                add(
+                    "wine_wow64_box64_i386",
+                    "Wine WOW64 + Box64",
+                    "Wine build with working x86-on-x86-64 WoW64 path plus Box64",
+                    "实验性备选；仅在所选 Wine/Box64 构建通过 32 位组件测试后启用",
+                );
+                add(
+                    "wine_fex_i386",
+                    "Wine32 + FEX",
+                    "FEX 32-bit x86 support, compatible guest rootfs and supported 4 KiB page-size kernel",
+                    "备选动态转译路线；需验证 32 位 Wine guest 的调用约定和系统接口",
+                );
+                add(
+                    "wine_qemu_i386",
+                    "Wine32 + QEMU i386-user",
+                    "QEMU linux-user i386 target, matching guest rootfs and Wine32",
+                    "慢速兼容参考路线；在隔离环境中用于对照，不预设性能可用",
+                );
+            }
+            ("Linux 可执行文件", "64 位 x86") => {
+                add("linux_box64_x86_64", "Box64", "glibc x86-64 guest rootfs and required shared libraries", "优先 Linux ELF 动态转译路线");
+                add("linux_fex_x86_64", "FEX", "FEX-compatible x86-64 rootfs and supported 4 KiB page-size kernel", "高兼容度备选；需核实内核页大小与 guest ABI");
+                add("linux_qemu_x86_64", "QEMU x86_64-user", "QEMU linux-user x86-64 target and guest rootfs", "慢速参考路线；优先用于完整性对照");
+            }
+            ("Linux 可执行文件", "32 位 x86") => {
+                add("linux_box86_i386", "Box86", "32-bit x86 guest libraries and compatible ARM userspace", "优先 32 位 Linux ELF 动态转译路线");
+                add("linux_fex_i386", "FEX i386", "FEX 32-bit guest support, rootfs and supported 4 KiB page-size kernel", "32 位备选动态转译路线");
+                add("linux_qemu_i386", "QEMU i386-user", "QEMU linux-user i386 target and guest rootfs", "慢速参考路线；优先用于完整性对照");
+            }
+            ("Windows 可执行文件", "64 位 ARM") => {
+                add("wine_arm64_native", "Wine ARM64 native", "ARM64 PE support and matching Windows API imports", "CPU 无需 x86 转译；仍需 Windows API 与插件宿主桥接");
+            }
+            ("Linux 可执行文件", "64 位 ARM") => {
+                add("linux_arm64_native", "ARM64 native loader", "AArch64 ELF and compatible Android/Linux ABI", "CPU 架构匹配；仍需依赖库和插件宿主桥接");
+            }
+            ("苹果系统原生文件", _) | ("苹果通用原生文件", _) => {
+                add("mach_o_static_rebuild", "Ghidra analysis + source rebuild / clean reimplementation", "Readable source or legally usable interface/algorithm information", "macOS Mach-O is not directly executable on Android; this is a reconstruction path, not CPU translation");
+            }
+            _ => {}
+        }
+        routes
+    }
+
+    // Aggressive compatibility is an ordered set of explicit host/runtime profiles.
+    // It may adapt optional behavior, but must never fake required APIs or bypass licensing.
+    fn forced_compatibility_profiles(extension: &str) -> Vec<Value> {
+        let ext = extension.to_ascii_lowercase();
+        let host_profile = match ext.as_str() {
+            "ofx" => "OpenFX suite capability negotiation and optional-suite shims",
+            "aex" => "Adobe SDK suite compatibility adapter; only documented/legally usable interfaces",
+            "8bf" => "Photoshop Filter host callback adapter",
+            "prm" => "Premiere host callback adapter",
+            _ => "format-specific host callback adapter",
+        };
+        vec![
+            json!({"id":"legacy_os_and_runtime","name":"旧版系统与运行库兼容", "actions":["选择可用 Windows API 版本配置","补齐合法可再分发的 VC runtime / .NET 依赖"], "status":"planned_not_run"}),
+            json!({"id":"host_optional_suite_shims","name":"插件宿主接口兼容", "actions":[host_profile, "只对明确标记为 optional 的接口提供有边界的兼容实现", "required API 缺失时必须判定失败"], "status":"planned_not_run"}),
+            json!({"id":"pixel_format_matrix","name":"画面格式强制适配", "actions":["RGBA / BGRA 通道转换","8/16/32-bit 像素深度适配","预乘/直通 Alpha 与行跨度适配"], "status":"planned_not_run"}),
+            json!({"id":"render_execution_fallbacks","name":"渲染兼容回退", "actions":["GPU 不可用时尝试 CPU 路径","多线程失败后尝试串行渲染","逐帧与时间序列两种调用模式"], "status":"planned_not_run"}),
+            json!({"id":"cpu_feature_fallbacks","name":"CPU 指令与功能降级", "actions":["按运行时能力屏蔽不可用 CPU 扩展","逐级降低可选图形/加速特性"], "status":"planned_not_run"}),
+            json!({"id":"source_or_binary_reconstruction","name":"强力移植 / 重构", "actions":["有源码时使用 Android NDK/Clang 重编译 ARM64","无源码时使用 Ghidra 分析导入、导出、控制流和资源","可用时用 Remill 提升指令到 LLVM IR 作辅助分析","按效果算法重写成 ARM64/WASM 兼容插件并进行参考帧回归"], "status":"planned_not_run"})
+        ]
+    }
+
     // Match only effects for which this APK actually ships an Android reimplementation.
     // Probe both package paths and readable strings embedded in native plug-in binaries.
     fn desktop_native_compatibility(source: &str, probe: &str) -> Option<Value> {
@@ -438,6 +561,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     .unwrap_or_default();
                 let (translation_backend, target_abi, translation_status, host_adapter) =
                     native_translation_route(binary_format, architecture, extension);
+                let candidate_routes = native_translation_trials(binary_format, architecture, extension);
+                let forced_profiles = forced_compatibility_profiles(extension);
                 native_metadata.push(json!({
                     "file": entry_name,
                     "binary_format": binary_format,
@@ -447,6 +572,9 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     "translation_status": translation_status,
                     "host_adapter": host_adapter,
                     "translation_executed": false,
+                    "candidate_routes": candidate_routes,
+                    "forced_compatibility_profiles": forced_profiles,
+                    "trial_execution_status": "not_run_runtime_not_integrated",
                     "readable_text_count": embedded_strings.len()
                 }));
             }
@@ -554,9 +682,13 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let target = item.get("target_abi").and_then(Value::as_str).unwrap_or("ARM64");
         let status = item.get("translation_status").and_then(Value::as_str).unwrap_or("尚未执行转译");
         let host = item.get("host_adapter").and_then(Value::as_str).unwrap_or("需适配插件宿主接口");
+        let route_names = item.get("candidate_routes").and_then(Value::as_array)
+            .map(|routes| routes.iter().filter_map(|route| route.get("backend").and_then(Value::as_str)).collect::<Vec<_>>().join(" → "))
+            .unwrap_or_default();
+        let force_count = item.get("forced_compatibility_profiles").and_then(Value::as_array).map_or(0, |profiles| profiles.len());
         let readable_text_count = item.get("readable_text_count")
             .and_then(Value::as_u64).unwrap_or(0);
-        format!("\n[{file}] {format} / {architecture}；CPU 路线：{backend} → {target}；状态：{status}；宿主接口：{host}；已提取 {readable_text_count} 条可读信息（原始文字仅用于内部匹配，不在界面中显示）")
+        format!("\n[{file}] {format} / {architecture}；首选路线：{backend} → {target}；候选顺序：{route_names}；状态：{status}；宿主接口：{host}；强制兼容方案：{force_count} 项（当前仅生成计划，尚未执行）；已提取 {readable_text_count} 条可读信息（原始文字仅用于内部匹配，不在界面中显示）")
     }).collect::<Vec<_>>().join("\n");
     let mut install_result = json!({
         "installed": installed_wasm,
@@ -575,7 +707,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息统计：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\nCPU 转译目标为 Android ARM64（arm64-v8a）。x86-64 Windows PE 的候选路线是 Box64 + Wine64，32 位 x86 候选路线是 Box86 + Wine32；Box64/Box86 属于运行时动态转译，不会把原始插件文件改写成 ARM64 二进制。当前版本仅识别架构、记录候选路线并保存原件，translation_executed=false；尚未集成可执行的 Windows 兼容运行时和插件宿主桥接，不能将扫描结果视为转译成功。\n.aex/.dll/.ofx/.plugin 等原生二进制不会在 Ae 主进程中加载或执行。OpenFX 插件需要独立 OFX Host API 桥接；.aex 还需要 Adobe After Effects SDK 宿主接口适配。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并在内部分析；原始英文参数文字仅用于兼容匹配，不会显示在界面或报告中，也不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息统计：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\nCPU 转译目标为 Android ARM64（arm64-v8a）。导入分析会按文件格式建立候选路线：Windows x86-64 可比较 Wine+Box64、Wine+FEX、Wine+QEMU user-mode；Windows x86 可比较 Wine32+Box86、Wine WOW64+Box64、Wine32+FEX、Wine32+QEMU；Linux ELF 可比较 Box64/Box86、FEX、QEMU user-mode。只有系统 ABI、客体运行库、内核页大小和插件宿主接口满足条件时才属于可试路线。Box64/Box86/FEX/QEMU 是运行时动态转译/模拟，不会把原始插件文件改写成 ARM64 二进制。当前版本仅识别架构、生成候选顺序与强制兼容策略，并保存原件；所有候选路线均标记 not_run_runtime_not_integrated，translation_executed=false，尚未执行逐项试跑。\n.aex/.dll/.ofx/.plugin 等原生二进制不会在 Ae 主进程中加载或执行。OpenFX 插件需要独立 OFX Host API 桥接；.aex 还需要 Adobe After Effects SDK 宿主接口适配。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n移植策略：目标是逐个候选后端在隔离副本中进行同一套加载、宿主 API、参数、预览渲染、最终渲染、关键帧/时序、稳定性、画质和性能测试；按功能完整度与稳定性评分后仅导入通过硬性门槛的最高分方案。强制兼容模式会逐项尝试可选 API 兼容层、像素格式转换、CPU/串行渲染回退与源码重编译/二进制分析重构；不得伪造必需 API，不得绕过插件授权/DRM。当前候选路线和兼容配置只是试验计划，尚未执行。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并在内部分析；原始英文参数文字仅用于兼容匹配，不会显示在界面或报告中，也不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
         assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
