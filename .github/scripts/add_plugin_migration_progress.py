@@ -77,6 +77,13 @@ pub(crate) enum ImportState {
         success: bool,
         since: Instant,
     },
+    RouteSelection {
+        title: String,
+        message: String,
+        success: bool,
+        groups: Vec<NativeRouteGroup>,
+        selected_routes: Vec<String>,
+    },
     Result { title: String, message: String, success: bool },
 }
 
@@ -85,6 +92,61 @@ struct ScanReport {
     native_count: usize,
     native_names: Vec<String>,
     total_bytes: u64,
+}
+
+#[derive(Clone)]
+struct NativeRouteOption {
+    id: String,
+    backend: String,
+    prerequisites: String,
+    notes: String,
+    status: String,
+    score: Option<f64>,
+}
+
+#[derive(Clone)]
+struct NativeRouteGroup {
+    file: String,
+    binary_format: String,
+    architecture: String,
+    routes: Vec<NativeRouteOption>,
+    compatibility_profiles: Vec<String>,
+}
+
+fn route_groups(value: &Value) -> Vec<NativeRouteGroup> {
+    value.get("desktop_native_metadata")
+        .and_then(Value::as_array)
+        .map(|items| items.iter().map(|item| {
+            let routes = item.get("candidate_routes")
+                .and_then(Value::as_array)
+                .map(|routes| routes.iter().map(|route| NativeRouteOption {
+                    id: route.get("id").and_then(Value::as_str).unwrap_or("").to_string(),
+                    backend: route.get("backend").and_then(Value::as_str).unwrap_or("未命名路线").to_string(),
+                    prerequisites: route.get("prerequisites").and_then(Value::as_str).unwrap_or("未提供前置条件").to_string(),
+                    notes: route.get("notes").and_then(Value::as_str).unwrap_or("").to_string(),
+                    status: route.get("status").and_then(Value::as_str).unwrap_or("未执行").to_string(),
+                    score: route.get("score").and_then(Value::as_f64),
+                }).collect())
+                .unwrap_or_default();
+            let compatibility_profiles = item.get("forced_compatibility_profiles")
+                .and_then(Value::as_array)
+                .map(|profiles| profiles.iter().map(|profile| {
+                    let name = profile.get("name").and_then(Value::as_str).unwrap_or("兼容方案");
+                    let actions = profile.get("actions").and_then(Value::as_array)
+                        .map(|items| items.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("；"))
+                        .unwrap_or_default();
+                    if actions.is_empty() { name.to_string() } else { format!("{name}：{actions}") }
+                }).collect())
+                .unwrap_or_default();
+            NativeRouteGroup {
+                file: item.get("file").and_then(Value::as_str).unwrap_or("电脑插件").to_string(),
+                binary_format: item.get("binary_format").and_then(Value::as_str).unwrap_or("原生文件").to_string(),
+                architecture: item.get("architecture").and_then(Value::as_str).unwrap_or("架构未知").to_string(),
+                routes,
+                compatibility_profiles,
+            }
+        }).collect())
+        .unwrap_or_default()
 }
 
 /// Called when the existing effect.plugins.load picker returns a ZIP. Only desktop
@@ -376,6 +438,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         Scanned(String, MigrationMode, Result<ScanReport, String>),
         Close,
         Promote(String, String, bool),
+        RoutesConfirmed(String, String, bool, Vec<NativeRouteGroup>, Vec<String>),
     }
     let mut action: Option<Action> = None;
 
@@ -443,6 +506,76 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     });
                 ctx.request_repaint_after(Duration::from_millis(100));
                 if let Some(result) = received { action = Some(Action::Scanned(path.clone(), *mode, result)); }
+            }
+            ImportState::RouteSelection { title, message: _, success: _, groups, selected_routes } => {
+                let mut open = true;
+                let mut confirm = false;
+                let screen = ctx.content_rect();
+                egui::Window::new("选择电脑插件移植路线")
+                    .id(Id::new("effectcraft-ae-migration-route-selection"))
+                    .order(Order::Foreground)
+                    .movable(true)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_width(390.0)
+                    .default_pos(pos2(screen.center().x - 195.0, screen.center().y - 190.0))
+                    .open(&mut open)
+                    .show(ctx, |ui| {
+                        ui.heading("选择自动优选或手动指定路线");
+                        ui.label("下面完整列出每个电脑插件适用的路线，不会只显示部分候选项。每个插件可单独选择。");
+                        ui.add_space(6.0);
+                        egui::ScrollArea::vertical().max_height(390.0).show(ui, |ui| {
+                            for (index, group) in groups.iter().enumerate() {
+                                ui.group(|ui| {
+                                    ui.strong(&group.file);
+                                    ui.small(format!("{} · {}", group.binary_format, group.architecture));
+                                    if let Some(choice) = selected_routes.get_mut(index) {
+                                        ui.radio_value(
+                                            choice,
+                                            String::new(),
+                                            "自动优选：真实试跑后选择完整度最高且通过测试的路线",
+                                        );
+                                        if group.routes.is_empty() {
+                                            ui.label("当前未识别到可直接尝试的 CPU 转译路线。");
+                                        }
+                                        for route in group.routes.iter() {
+                                            let label = if let Some(score) = route.score {
+                                                format!("{}（{} · {:.1}/100）", route.backend, route.status, score)
+                                            } else {
+                                                format!("{}（{} · 暂无实测分数）", route.backend, route.status)
+                                            };
+                                            ui.radio_value(choice, route.id.clone(), label);
+                                            ui.small(format!("前置条件：{}", route.prerequisites));
+                                            if !route.notes.is_empty() {
+                                                ui.small(format!("说明：{}", route.notes));
+                                            }
+                                        }
+                                    }
+                                    if !group.compatibility_profiles.is_empty() {
+                                        ui.separator();
+                                        ui.strong("强制兼容 / 暴力移植子方案（全部展示）");
+                                        for profile in group.compatibility_profiles.iter() {
+                                            ui.small(format!("• {profile}"));
+                                        }
+                                    }
+                                });
+                                ui.add_space(6.0);
+                            }
+                        });
+                        ui.add_space(6.0);
+                        ui.small("说明：本版本可查看并保存你的路线偏好；Box64/Box86、FEX、QEMU、Wine 的实际执行器及插件宿主桥接尚未集成，未实测路线不会被标记为已移植。");
+                        ui.add_space(8.0);
+                        if ui.button("确认选择并查看移植报告").clicked() { confirm = true; }
+                    });
+                if confirm || !open {
+                    action = Some(Action::RoutesConfirmed(
+                        title.clone(),
+                        message.clone(),
+                        false,
+                        groups.clone(),
+                        selected_routes.clone(),
+                    ));
+                }
             }
             ImportState::ProgressComplete { title: _, message: _, success: _, since } => {
                 let screen = ctx.content_rect();
@@ -512,7 +645,17 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 match import_result {
                     Ok(value) => {
                         let (title, message, success) = result_summary(&scan, &value, mode);
-                        if success {
+                        let groups = route_groups(&value);
+                        if !groups.is_empty() {
+                            let selected_routes = vec![String::new(); groups.len()];
+                            app.plugin_import = Some(ImportState::RouteSelection {
+                                title,
+                                message,
+                                success,
+                                groups,
+                                selected_routes,
+                            });
+                        } else if success {
                             app.plugin_import = Some(ImportState::ProgressComplete { title, message, success, since: Instant::now() });
                         } else {
                             app.plugin_import = Some(ImportState::Result { title, message, success });
@@ -523,6 +666,26 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             }
         },
         Some(Action::Promote(title, message, success)) => app.plugin_import = Some(ImportState::Result { title, message, success }),
+        Some(Action::RoutesConfirmed(title, message, success, groups, selected_routes)) => {
+            let mut final_message = message;
+            final_message.push_str("\\n\\n本次路线选择记录：");
+            for (index, group) in groups.iter().enumerate() {
+                let selected = selected_routes.get(index).map(String::as_str).unwrap_or("");
+                if selected.is_empty() {
+                    if let Some(best) = group.routes.iter().find(|route| route.status == "passed" && route.score.is_some()) {
+                        final_message.push_str(&format!("\\n{}：自动优选为 {}（实测 {:.1}/100）。", group.file, best.backend, best.score.unwrap_or_default()));
+                    } else {
+                        final_message.push_str(&format!("\\n{}：选择自动优选；等待可执行后端完成真实试跑后再决定。", group.file));
+                    }
+                } else if let Some(route) = group.routes.iter().find(|route| route.id == selected) {
+                    final_message.push_str(&format!("\\n{}：你指定了 {}；当前状态：{}。", group.file, route.backend, route.status));
+                    final_message.push_str("该选择目前记录为优先路线，不代表已执行转译或已安装。");
+                } else {
+                    final_message.push_str(&format!("\\n{}：已记录手动路线选择。", group.file));
+                }
+            }
+            app.plugin_import = Some(ImportState::Result { title, message: final_message, success });
+        }
         None => {}
     }
 }
