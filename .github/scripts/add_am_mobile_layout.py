@@ -167,13 +167,13 @@ def patch_activity(builder: Path) -> None:
     path = builder / "templates/android/SafActivity.java"
     source = path.read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_AM_ORIENTATION_ONLY_V2" not in source:
-        imports = "".join(item + "\\n" for item in JAVA_IMPORTS if item not in source)
+        imports = "".join(item + "\n" for item in JAVA_IMPORTS if item not in source)
         if imports:
-            source = replace_once(source, "import android.content.pm.PackageManager;\\n",
-                                  "import android.content.pm.PackageManager;\\n" + imports,
+            source = replace_once(source, "import android.content.pm.PackageManager;\n",
+                                  "import android.content.pm.PackageManager;\n" + imports,
                                   "AM orientation-only Java import")
-        class_anchor = "public final class __CLASS__ extends NativeActivity {\\n"
-        source = replace_once(source, class_anchor, class_anchor + JAVA_BRIDGE + "\\n",
+        class_anchor = "public final class __CLASS__ extends NativeActivity {\n"
+        source = replace_once(source, class_anchor, class_anchor + JAVA_BRIDGE + "\n",
                               "AM orientation-only Java bridge")
         create_anchor = '''    protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -183,7 +183,7 @@ def patch_activity(builder: Path) -> None:
         workspaceOrientationActivity = this;
 '''
         source = replace_once(source, create_anchor, create_patch, "AM orientation Activity registration")
-        destroy_anchor = "    protected void onDestroy() {\\n"
+        destroy_anchor = "    protected void onDestroy() {\n"
         destroy_patch = '''    protected void onDestroy() {
         if (workspaceOrientationActivity == this) workspaceOrientationActivity = null;
 '''
@@ -407,6 +407,7 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("The original workspace tabs must remain unchanged.")
     widgets = (effectcraft / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
     frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
+    home = (effectcraft / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1" not in widgets:
         raise SystemExit("AM drawers must have AM-scoped finger scrolling.")
     native_effects = (effectcraft / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
@@ -442,9 +443,9 @@ def main() -> None:
     patch_activity(builder)
     verify_import_export_unchanged(effectcraft)
     print("Restored the original Ae toolbar and responsive three-column workspace.")
-    print("AM remains a separate portrait workspace, selectable from the original workspace menu; stale built-in layouts are migrated once.")
+    print("AM remains a separate portrait workspace, selectable from the original workspace menu; Ae saved layouts are not migrated.")
     print("Project import/share/export routes and project formats were not changed.")
-    print("Added release-certificate pin verification and sensor/AM portrait switching for Android.")
+    print("Added only the AM portrait orientation bridge; no app-startup signer gate is added by AM.")
     
 
 if __name__ == "__main__":
