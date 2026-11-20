@@ -51,6 +51,7 @@ fn show_home_plugin_manager(app: &mut EffectcraftApp, ctx: &egui::Context, open:
                 }
                 if ui.button("刷新列表").clicked() {
                     refresh = true;
+                    app.ui.status = "正在刷新已安装插件列表…".into();
                 }
             });
             ui.separator();
@@ -77,6 +78,7 @@ fn show_home_plugin_manager(app: &mut EffectcraftApp, ctx: &egui::Context, open:
                                         if plugin.get("can_delete").and_then(Value::as_bool) == Some(true) {
                                             if ui.button("删除").clicked() {
                                                 let id = plugin.get("id").and_then(Value::as_str).unwrap_or("").to_string();
+                                                app.ui.status = format!("已选择插件“{name}”；请在确认窗口中确认删除。");
                                                 request_delete = Some((id, name.to_string()));
                                             }
                                         } else {
@@ -154,6 +156,7 @@ fn show_home_plugin_manager(app: &mut EffectcraftApp, ctx: &egui::Context, open:
             }
             delete_pending = None;
         } else if cancel_delete || !confirm_open {
+            app.ui.status = "已取消删除；插件未发生变化。".into();
             delete_pending = None;
         }
     }
@@ -233,6 +236,7 @@ def patch_home_account_ui(account_path: Path) -> None:
                         }
                         if ui.button("插件管理").clicked() {
                             plugin_manager_open = true;
+                            app.ui.status = "正在打开主页插件管理…".into();
                         }
                     });
                 });
