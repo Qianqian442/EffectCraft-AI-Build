@@ -352,8 +352,12 @@ def main() -> None:
     dialogs_source = (root / "crates/ui-egui/src/panels/dialogs.rs").read_text(encoding="utf-8")
     frontend_source = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     menus_source = (root / "crates/engine/src/menus.rs").read_text(encoding="utf-8")
-    if "账号管理" not in account_source or "插件管理" not in account_source or "effect.plugins.list" not in account_source:
-        raise SystemExit("Home plug-in manager controls or list command were not installed.")
+    if ("账号管理" not in account_source or "插件管理" not in account_source
+            or "ui.horizontal(|ui|" not in account_source
+            or "effect.plugins.list" not in account_source
+            or 'ui.button("删除")' not in account_source
+            or "effect.plugins.unload" not in account_source):
+        raise SystemExit("Home account/plugin buttons, plug-in listing or delete controls were not installed.")
     if "Dialog::About" in dialogs_source or "fn about(" in dialogs_source or '"app.about"' in frontend_source:
         raise SystemExit("About dialog functionality is still reachable.")
     if "app.about" in menus_source or "header.about" in header_source:
