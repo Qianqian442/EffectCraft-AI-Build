@@ -83,6 +83,7 @@ jobs:
             .github/scripts/build_am_mobile_editing_page.py
             .github/scripts/add_windows_runtime_ui.py \
             .github/scripts/integrate_windows_compat_runtime.py \
+            .github/scripts/integrate_binary_reconstruction.py \
             .github/scripts/package_windows_runtime_assets.py \
             windows-compat/tools/patch_box64_obstack_compat.py \
             windows-compat/tools/patch_box64_signal32_bionic.py \
@@ -106,6 +107,7 @@ jobs:
           python3 .github/scripts/add_plugin_migration_progress.py
           python3 .github/scripts/add_windows_runtime_ui.py
           python3 .github/scripts/integrate_windows_compat_runtime.py
+          python3 .github/scripts/integrate_binary_reconstruction.py
           python3 .github/scripts/add_qq_plugin_import_support.py
           grep -Fq 'pub mod plugin_migration;' effectcraft/crates/ui-egui/src/lib.rs
           grep -Fq 'looks_like_plugin_archive' effectcraft/crates/ui-egui/src/plugin_migration.rs
