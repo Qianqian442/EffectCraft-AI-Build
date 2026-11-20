@@ -278,7 +278,7 @@ fn am_effect_grid(
     list: Rect,
     y: &mut f32,
     specs: Vec<&'static effectcraft_engine::effects::EffectSpec>,
-) {
+) -> usize {
     let count = specs.len();
     let columns = 3usize;
     let gap = 8.0;
@@ -379,11 +379,15 @@ fn am_effect_detail_sheet(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rec
         return;
     };
     let t = app.tokens;
+    let progress = am_bottom_sheet_progress(ui.ctx(), Some(format!("effect-detail:{effect_id}")));
     let p = ui.painter().with_clip_rect(rect);
-    p.rect_filled(rect, 0.0, Color32::from_rgba_premultiplied(0, 0, 0, 150));
+    let alpha = (150.0 * progress).round() as u8;
+    p.rect_filled(rect, 0.0, Color32::from_rgba_premultiplied(0, 0, 0, alpha));
     let height = (rect.height() * 0.46).clamp(250.0, 430.0);
-    let sheet = Rect::from_min_size(pos2(rect.min.x, rect.max.y - height), vec2(rect.width(), height));
+    let target = Rect::from_min_size(pos2(rect.min.x, rect.max.y - height), vec2(rect.width(), height));
+    let sheet = target.translate(vec2(0.0, (1.0 - progress) * height));
     p.rect_filled(sheet, 12.0, t.panel_bg);
+    if progress < 1.0 { ui.ctx().request_repaint(); }
     p.line_segment([sheet.left_top(), sheet.right_top()], Stroke::new(1.0, t.separator));
 
     let close_rect = Rect::from_min_size(pos2(sheet.min.x + 13.0, sheet.min.y + 10.0), vec2(32.0, 30.0));
