@@ -478,6 +478,23 @@ fn am_effect_browser(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
     let body = Rect::from_min_max(pos2(rect.min.x + 4.0, search_rect.max.y + 5.0), rect.max);
     let mut scroll = crate::widgets::PanelScroll::begin(ui, Id::new("am-effect-browser-scroll"), body);
+    // AM-only finger pan for this custom effects browser. Clickable cards are registered
+    // afterwards so taps remain taps; vertical drags update only this browser's scroll offset.
+    let pan_id = Id::new("am-effect-browser-touch-pan");
+    let pan = ui.interact(body, pan_id, Sense::drag());
+    let pan_state = Id::new("am-effect-browser-touch-pan-state");
+    if pan.drag_started() {
+        ui.ctx().data_mut(|d| d.insert_temp(pan_state, scroll.offset));
+    }
+    if pan.dragged() {
+        if let Some(start_offset) = ui.ctx().data(|d| d.get_temp::<f32>(pan_state)) {
+            scroll.offset = (start_offset - pan.drag_delta().y).max(0.0);
+            ui.ctx().request_repaint();
+        }
+    }
+    if pan.drag_stopped() {
+        ui.ctx().data_mut(|d| d.remove::<f32>(pan_state));
+    }
     let list = scroll.content;
     let lp = ui.painter().with_clip_rect(list);
     let normalized = query.trim().to_lowercase();
@@ -1121,7 +1138,11 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
     } else if let Some(panel) = panel {
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
+        // This flag is scoped to the AM drawer's native parameter panel for this frame.
+        // The shared Ae panels never enable the AM-only touch-scroll path.
+        ui.ctx().data_mut(|d| d.insert_temp(Id::new("EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1"), true));
         crate::panels::show(app, &mut child, panel, body);
+        ui.ctx().data_mut(|d| d.remove::<bool>(Id::new("EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1")));
     }
 }
 
@@ -1459,6 +1480,8 @@ def verify(root: Path) -> None:
         "预设",
         "效果",
         "EFFECTCRAFT_AM_EFFECT_BROWSER_V1",
+        "am-effect-browser-touch-pan",
+        "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1",
         "效果浏览器",
         "am_effect_browser",
         "am_effect_detail_sheet",
