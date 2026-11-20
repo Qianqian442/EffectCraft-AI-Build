@@ -233,6 +233,21 @@ fn result_summary(scan: &ScanReport, value: &Value) -> (String, String, bool) {
             let host = item.get("host_adapter").and_then(Value::as_str).unwrap_or("需适配插件宿主接口");
             lines.push(format!("CPU 转译路线：{backend} → {target}；{status}。"));
             lines.push(format!("插件宿主桥接：{host}。"));
+            if let Some(routes) = item.get("candidate_routes").and_then(Value::as_array) {
+                if !routes.is_empty() {
+                    let names = routes.iter().filter_map(|route| route.get("backend").and_then(Value::as_str))
+                        .collect::<Vec<_>>().join(" → ");
+                    lines.push(format!("候选路线顺序（逐个试跑后比较）：{names}。"));
+                    lines.push("当前候选后端尚未实际执行；需要先完成对应运行时和插件宿主桥接。".into());
+                }
+            }
+            if let Some(profiles) = item.get("forced_compatibility_profiles").and_then(Value::as_array) {
+                let names = profiles.iter().filter_map(|profile| profile.get("name").and_then(Value::as_str))
+                    .collect::<Vec<_>>().join("、");
+                if !names.is_empty() {
+                    lines.push(format!("强制兼容候选方案：{names}。当前只记录方案，未对必需 API 作伪造或绕过授权。"));
+                }
+            }
             let strings = item.get("strings").and_then(Value::as_array)
                 .map(|values| values.iter().filter_map(Value::as_str).take(8).collect::<Vec<_>>().join(" | "))
                 .unwrap_or_default();
