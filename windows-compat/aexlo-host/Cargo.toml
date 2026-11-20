@@ -1,0 +1,10 @@
+[package]
+name = "effectcraft-aex-host"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+aexlo = { git = "https://github.com/potistudio/aexlo", rev = "32c3fe399bc7d2deb3e5f9a02c627db50d8e7ff9" }
+image = { version = "0.25.10", default-features = false, features = ["png"] }
+serde_json = "1.0"

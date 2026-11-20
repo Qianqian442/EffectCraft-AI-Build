@@ -1,0 +1,727 @@
+{
+  "schema_version": 1,
+  "status": "experimental-runtime-integration-not-device-validated",
+  "target_abi": [
+    "arm64-v8a"
+  ],
+  "primary_backend": {
+    "id": "winlator-bionic-hybrid",
+    "components": [
+      {
+        "name": "Winlator Bionic Android orchestration reference",
+        "repository": "https://github.com/EmuProto/Winlator-Ludashi",
+        "revision": "95224ca7db27ae133dbb1578e004b94b86ef8894",
+        "ref": "winlator_bionic",
+        "license": "MIT (repository license; audit bundled assets separately)",
+        "role": "Android process orchestration for standard Box64/Box86 Wine containers and Arm64EC FEXCore/WowBox64 containers"
+      },
+      {
+        "name": "Wine",
+        "repository": "https://gitlab.winehq.org/wine/wine",
+        "revision": "7384c8babcaa411a0014bf223068a633d7bfa899",
+        "license": "LGPL-2.1-or-later",
+        "role": "Windows PE/DLL loader and Windows API compatibility"
+      },
+      {
+        "name": "Box64",
+        "repository": "https://github.com/ptitSeb/box64",
+        "revision": "6441fcfaeb69487039b0fd8cfb948c9e3f18c3d6",
+        "license": "MIT",
+        "role": "x86-64 Linux user-space dynamic translation for standard Wine containers"
+      },
+      {
+        "name": "Box86",
+        "repository": "https://github.com/ptitSeb/box86",
+        "revision": "bb716a2a6576cc06da811bf55e31e2f6f03b7596",
+        "license": "MIT",
+        "role": "optional 32-bit x86 Linux user-space emulator for compatible Wine configurations"
+      },
+      {
+        "name": "FEXCore",
+        "repository": "https://github.com/FEX-Emu/FEX",
+        "revision": "ab135df091d005cc98dfddc56c3dc9c9e4bd501d",
+        "license": "MIT",
+        "role": "alternate x86-64/32-bit execution backend in supported Arm64EC Wine/Proton containers"
+      }
+    ]
+  },
+  "alternative_backend": {
+    "id": "hangover",
+    "repository": "https://github.com/AndreRH/hangover",
+    "revision": "56e385b7ff490edd281b288f420677093563560b",
+    "license": "LGPL-2.1",
+    "role": "alternative ARM64 Wine emulator-DLL approach; retain only if it passes separate Android and plug-in ABI tests"
+  },
+  "memory_policy": {
+    "application_imposed_ram_limit": false,
+    "rlimit_as": false,
+    "rlimit_data": false,
+    "cgroup_memory_limit": false,
+    "box64_artificial_memory_cap": false,
+    "qemu_guest_ram_cap": false,
+    "fex_guest_ram_cap": false,
+    "clvk_memory_pool_cap": false,
+    "allocation_policy": "No fixed application-level RAM budget; allocations are governed by available OS/device memory and driver limits"
+  },
+  "required_before_apk_distribution": [
+    "per-package SBOM and license review",
+    "reproducible ARM64 Android build of the selected Wine and emulator components",
+    "corresponding source and license notices for all LGPL/GPL components",
+    "Windows PE loader smoke tests",
+    "AE SDK ABI host coverage report",
+    "real sample plug-in compatibility tests",
+    "independent backend smoke tests: Box64 x86_64, Box86/WoW64 x86, FEXCore Arm64EC containers",
+    "PE architecture routing tests including x86-64, x86, ARM64EC and ARM64X test fixtures",
+    "separate Wine prefixes for different emulator backends; do not mix incompatible emulator DLL sets",
+    "build and run the aexlo Windows x64 worker under both Wine+Box64 and Arm64EC Wine+FEXCore container variants",
+    "test sample AEX plug-ins from real x86-64 Windows distributions and compare output/parameters against After Effects references",
+    "implement or explicitly report missing AEGP, sequence, mask, text, camera, composite and GPU host features",
+    "supervise one isolated worker process per native plug-in and verify crash/timeout recovery",
+    "test Android rootfs extraction and direct guest process launching without root on OPPO/Qualcomm and Huawei/Mali-class devices",
+    "test QEMU x86_64 Linux-user Wine fallback against the same PE host worker used by Box64",
+    "test clvk OpenCL path only through a real Wine OpenCL ICD bridge and representative plug-in kernels; report unsupported OpenCL extensions",
+    "run LIEF independently against the Rust PE importer and compare machine/import/export results",
+    "use Qiling only in a development analysis harness to trace Windows API calls; do not ship it in the APK by default",
+    "keep no application-level memory limits in all runtime backends",
+    "test the BOX32-enabled Box64 runtime with 32-bit x86 Linux ELF fixtures and a matching 32-bit Wine/WoW64 prefix",
+    "test the 32-bit aexlo Windows host worker inside a matching Box86/Box64-WoW64/FEXCore container before claiming 32-bit AEX execution support",
+    "use a developer-side Ghidra analysis pipeline for closed-source AEX files whose effect identity/parameters cannot be determined with static PE metadata and string extraction alone; do not bundle Ghidra in the main APK",
+    "recreate the Winlator Bionic ImageFS + Proton x86-64 and ARM64EC one-time download/install flow in EffectCraft private app storage, with checksum verification",
+    "verify every component's license/NOTICE/source obligations from the actual package contents before redistribution",
+    "create isolated Wine prefixes from the matching x86-64 and ARM64EC container patterns; never share one prefix between different ABI backends",
+    "launch the x86-64 aexlo worker through Box64+Proton and the x86 worker through a verified 32-bit Wine/WoW64 route",
+    "launch and render the AEX sample under both Box64 x86-64 and ARM64EC/FEXCore Wine/Proton containers",
+    "test the same runtime plan on OPPO/Qualcomm and Huawei/Mali-class ARM64 devices",
+    "evaluate Boxedwine only as a separate GPL-2.0 Android/SDL2 ARM64 port for legacy 32-bit plug-ins; keep it out of the production APK until Android build, 32-bit AEX render and GPL compliance tests pass",
+    "verify the three November 12, 2026 WCP packages against pinned SHA-256 during an Android emulator install test and confirm profile.json maps Box64 to ${bindir}/box64, FEXCore to its two system32 DLLs and WOWBox64 to wowbox64.dll",
+    "run the same real AEX host + Noise sample render using FEXCore 2611 and WowBox64 0.4.5 on the ARM64EC Proton container, compare success/failure and output hashes",
+    "reproduce the Termux Hangover 11.16 Bionic package set from pinned Wine/Hangover inputs and verify repository signatures, package hashes and full transitive SBOM",
+    "install hangover-wine plus libarm64ecfex, libwow64fex and wowbox64 into private app storage; validate clean prefix creation and DLL placement",
+    "test native Bionic Wine launch through /system/bin/linker64 on Android target SDK 35 without root",
+    "test x86_64 PE and x86 PE process execution on Android ARM64 before running the AEX host",
+    "compare current upstream FEX ARM64EC/WoW64 DLL build against Hangover 11.16 bundled FEX 2608 DLLs",
+    "test EffectCraft exec bridge on an Android app UID: launch a Bionic parent through linker64, then verify its child Bionic ELF is also routed through linker64 with argv/environment preserved",
+    "audit Wine/Hangover for direct execve/execveat syscalls and ensure every wineserver/helper process uses the EffectCraft exec bridge",
+    "rebuild or patch the Termux Hangover package to remove /data/data/com.termux/files/usr absolute paths; verify WINELOADER, WINESERVER, WINEDLLPATH and data paths from EffectCraft private storage"
+  ],
+  "explicit_non_claims": [
+    "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
+    "No claim that arbitrary AE AEX plug-ins are fully hosted",
+    "No claim that all AE SmartFX or AEGP suites are implemented",
+    "No claim of unlimited physical memory or GPU resources"
+  ],
+  "backend_selection": [
+    {
+      "pe_machine": "0x8664",
+      "architecture": "x86-64",
+      "candidates": [
+        "Arm64EC Wine/Proton + FEXCore (HODLL64=libarm64ecfex.dll) — preferred candidate, runtime not yet device-tested",
+        "Wine + Box64 x86_64 container — fallback only after using a compatible x86_64 Linux Wine build; current Bionic Proton test failed on unresolved __libc_init",
+        "Arm64EC Wine/Proton + WowBox64 (HODLL64=wowbox64.dll) — separate 64-bit fallback candidate"
+      ]
+    },
+    {
+      "pe_machine": "0x014c",
+      "architecture": "x86",
+      "candidates": [
+        "Arm64EC Wine/Proton + FEXCore WoW64 (HODLL=libwow64fex.dll) — preferred candidate; runtime/device tests pending",
+        "Box64 BOX32 + matching 32-bit Wine/WoW64 — Android ARM64 BOX32 executable now built and checksum-verified; 32-bit x86 ELF execution and Windows PE/AEX hosting are not yet verified",
+        "Boxedwine Android ARM64 port — independent legacy fallback candidate; Android app port still required"
+      ]
+    },
+    {
+      "pe_machine": "0xA641",
+      "architecture": "ARM64EC",
+      "candidates": [
+        "Arm64EC Wine/Proton container; verify PE and imported ABI before selection"
+      ]
+    },
+    {
+      "pe_machine": "0xA64E",
+      "architecture": "ARM64X",
+      "candidates": [
+        "Manual compatibility review; do not assume ARM64EC compatibility"
+      ]
+    },
+    {
+      "pe_machine": "0xAA64",
+      "architecture": "ARM64",
+      "candidates": [
+        "Native ARM64 runtime if the host/plugin ABI is actually ARM64"
+      ]
+    }
+  ],
+  "ae_plugin_host": {
+    "name": "aexlo",
+    "repository": "https://github.com/potistudio/aexlo",
+    "revision": "32c3fe399bc7d2deb3e5f9a02c627db50d8e7ff9",
+    "license": "MIT",
+    "role": "Windows x64 After Effects Effect API host shim; run as an isolated PE worker inside Wine/Box64 or Arm64EC Wine/FEXCore",
+    "reported_effect_api_coverage": "89% of listed Effect API suites",
+    "reported_aegp_coverage": "11% of listed AEGP suites",
+    "upstream_status": "heavy development; incomplete suites and features remain",
+    "platform_note": "upstream targets Windows x64 and macOS arm64; Windows x64 worker must run under the Android Windows compatibility container",
+    "bridge_source": "windows-compat/aexlo-host"
+  },
+  "alternative_backends": [
+    {
+      "id": "qemu-x86_64-linux-user",
+      "repository": "https://gitlab.com/qemu-project/qemu",
+      "version": "11.1.3 (Termux Android package recipe)",
+      "license": "GPL-2.0",
+      "role": "Third execution fallback for x86-64 Linux Wine binaries on Android ARM64; it translates Linux ELF execution, not Windows PE directly",
+      "android_recipe": "https://github.com/termux/termux-packages/blob/master/packages/qemu-system-x86-64-headless/build.sh",
+      "target": "x86_64-linux-user",
+      "limitations": [
+        "requires a compatible x86-64 Wine/glibc rootfs",
+        "slower than dynarec backends in expected workloads",
+        "must bundle and audit runtime shared-library dependencies"
+      ]
+    },
+    {
+      "id": "clvk-opencl-vulkan",
+      "repository": "https://github.com/kpet/clvk",
+      "revision": "5aa061c93c2d5a53b591e646ad359f2e5408b794",
+      "license": "Apache-2.0",
+      "role": "Optional Android ARM64 OpenCL 3.0 implementation layered on Vulkan, for plug-ins whose OpenCL usage can be bridged through Wine",
+      "android_build": "Android NDK arm64-v8a supported upstream",
+      "limitations": [
+        "compiler-disabled build supports only precompiled SPIR-V paths",
+        "full runtime OpenCL C compilation needs clspv/LLVM",
+        "Wine OpenCL ICD bridge to Android ARM64 driver is unverified",
+        "does not implement CUDA"
+      ]
+    },
+    {
+      "id": "qiling-analysis",
+      "repository": "https://github.com/qilingframework/qiling",
+      "license": "GPL-2.0-or-later",
+      "role": "Development-only PE/API emulation and dynamic instrumentation to identify imported Windows APIs and missing host shims",
+      "limitations": [
+        "Python tooling, not suitable as the main frame-rendering runtime",
+        "not an AE host; still needs AE SDK suite shims",
+        "keep outside shipping APK unless GPL and size implications are intentionally accepted"
+      ]
+    },
+    {
+      "id": "lief-pe-analysis",
+      "repository": "https://github.com/lief-project/LIEF",
+      "license": "Apache-2.0",
+      "role": "Independent robust PE/COFF parser for validating imports, exports, sections, symbols and machine architecture",
+      "limitations": [
+        "analysis/parsing only; does not execute Windows code or provide Windows APIs"
+      ]
+    },
+    {
+      "id": "box64-box32",
+      "repository": "https://github.com/ptitSeb/box64",
+      "revision": "6441fcfaeb69487039b0fd8cfb948c9e3f18c3d6",
+      "license": "MIT",
+      "role": "Optional Box64 build with BOX32=ON, supporting 32-bit x86 Linux ELF programs inside the 64-bit ARM64 Box64 process",
+      "build_options": [
+        "ANDROID=1",
+        "ARM64=1",
+        "ARM_DYNAREC=1",
+        "BOX32=ON",
+        "BOX32_BINFMT=OFF"
+      ],
+      "limitations": [
+        "supports 32-bit Linux ELF userland, not Windows PE by itself",
+        "still requires a compatible 32-bit Wine/WoW64 configuration to host 32-bit Windows AEX plug-ins"
+      ]
+    },
+    {
+      "id": "ghidra-static-reverse-engineering",
+      "repository": "https://github.com/NationalSecurityAgency/ghidra",
+      "license": "Apache-2.0",
+      "role": "Developer-side static reverse-engineering of closed-source x86/x64 AEX PE binaries: disassembly, decompilation, call graphs, imports, render routines and API use",
+      "limitations": [
+        "not a production runtime",
+        "does not automatically reconstruct original source or effect algorithms",
+        "dynamic traces still require a compatible Wine/Box64/FEX execution environment"
+      ]
+    },
+    {
+      "id": "boxedwine-x86-32",
+      "repository": "https://github.com/danoon2/Boxedwine",
+      "license": "GPL-2.0 (upstream README; audit individual file notices and bundled libraries)",
+      "role": "Separate x86 CPU + Linux-kernel + 32-bit Wine environment, with ARMv8 JIT; candidate for legacy 16/32-bit Windows plug-ins",
+      "status": "developer-only Android porting experiment",
+      "limitations": [
+        "No ready-made upstream Android app build target is documented",
+        "Current upstream target list is Windows, macOS, Linux and Emscripten",
+        "Not a 64-bit AEX execution solution",
+        "Still needs an AE plug-in host ABI such as a compatible 32-bit aexlo host",
+        "GPL-2.0 distribution obligations require a separate legal/source-release review"
+      ]
+    }
+  ],
+  "rootfs_strategy": {
+    "primary_reference": "https://github.com/brunodev85/winlator-app",
+    "method": "Extract a verified compressed Wine/glibc rootfs into EffectCraft's private files directory; launch Box64 directly with explicit LD_LIBRARY_PATH and BOX64_LD_LIBRARY_PATH, following Winlator's Android RootFS and GuestProgramLauncher pattern",
+    "no_root_required": true,
+    "proot_optional": {
+      "repository": "https://github.com/termux/proot",
+      "license": "GPL-2.0",
+      "role": "Optional path redirection and chroot-like rootfs view where the direct launcher is insufficient"
+    },
+    "rootfs_manager": {
+      "repository": "https://github.com/termux/proot-distro",
+      "role": "Reference for rootfs bootstrap, architecture selection and QEMU user-mode handling"
+    }
+  },
+  "graphics_backends": [
+    {
+      "id": "wine-opengl-mesa",
+      "role": "OpenGL compatibility through selected Mesa driver path (Zink/Turnip/VirGL where supported)",
+      "status": "candidate; target-GPU tests required"
+    },
+    {
+      "id": "dxvk",
+      "role": "Direct3D 9/10/11 to Vulkan translation",
+      "license": "MIT",
+      "status": "candidate; per-GPU testing required"
+    },
+    {
+      "id": "vkd3d-proton",
+      "role": "Direct3D 12 to Vulkan translation",
+      "license": "LGPL-2.1-or-later",
+      "status": "candidate; per-GPU testing required"
+    },
+    {
+      "id": "clvk",
+      "role": "OpenCL 3.0 on Vulkan for compatible OpenCL plug-ins",
+      "license": "Apache-2.0",
+      "status": "experimental; Wine bridge and runtime compiler need verification"
+    },
+    {
+      "id": "cuda",
+      "role": "CUDA plug-in execution",
+      "status": "not currently solved for ordinary Android GPUs"
+    }
+  ],
+  "winlator_bionic_runtime": {
+    "repository": "https://github.com/EmuProto/Winlator-Ludashi",
+    "revision": "95224ca7db27ae133dbb1578e004b94b86ef8894",
+    "branch": "winlator_bionic",
+    "repository_code_license": "MIT",
+    "license_caveat": "MIT applies to the fork's source code only. Ubuntu ImageFS, Wine/Proton, Box64, FEXCore, WowBox64, Mesa, DXVK, VKD3D and other runtime assets retain their own licenses and NOTICE/source obligations.",
+    "source_files": {
+      "imagefs_installer": "app/src/main/java/com/winlator/cmod/xenvironment/ImageFsInstaller.java",
+      "imagefs_model": "app/src/main/java/com/winlator/cmod/xenvironment/ImageFs.java",
+      "wine_info": "app/src/main/java/com/winlator/cmod/core/WineInfo.java",
+      "launcher": "app/src/main/java/com/winlator/cmod/xenvironment/components/GuestProgramLauncherComponent.java",
+      "process_helper": "app/src/main/java/com/winlator/cmod/core/ProcessHelper.java",
+      "container_manager": "app/src/main/java/com/winlator/cmod/container/ContainerManager.java",
+      "content_manager": "app/src/main/java/com/winlator/cmod/contents/ContentsManager.java"
+    },
+    "base_imagefs": {
+      "version": 21,
+      "archive_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/imagefs/imagefs.txz",
+      "checksum_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/imagefs/imagefs.txz.sha256sum",
+      "source_build_uses_four_parts": true,
+      "install_path": "<app-private-files>/imagefs",
+      "role": "Ubuntu Bionic userland and ARM64 Android helper libraries, including Wine/graphics runtime layout"
+    },
+    "wine_runtimes": [
+      {
+        "id": "proton-9.0-x86_64",
+        "architecture": "x86_64",
+        "archive_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-x86_64.txz",
+        "checksum_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-x86_64.txz.sha256sum",
+        "install_path": "/opt/proton-9.0-x86_64",
+        "launcher": "/usr/bin/box64 <proton-bin>/<guest-executable>",
+        "container_pattern": {
+          "path": "app/src/main/assets/proton-9.0-x86_64_container_pattern.tzst",
+          "size_bytes": 8698674,
+          "git_blob_sha1": "c7a6ed5972f6a357ed033da88b5de0dc5eaaf468",
+          "raw_url": "https://raw.githubusercontent.com/EmuProto/Winlator-Ludashi/95224ca7db27ae133dbb1578e004b94b86ef8894/app/src/main/assets/proton-9.0-x86_64_container_pattern.tzst"
+        },
+        "purpose": "Standard x86-64 Windows PE execution through Wine/Proton and Box64"
+      },
+      {
+        "id": "proton-9.0-arm64ec",
+        "architecture": "ARM64EC",
+        "archive_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-arm64ec.txz",
+        "checksum_url": "https://gitlab.com/winlator3/winlator-extra/-/raw/main/proton/proton-9.0-arm64ec.txz.sha256sum",
+        "install_path": "/opt/proton-9.0-arm64ec",
+        "launcher": "<proton-bin>/<guest-executable> (native ARM64EC Wine/Proton path, no Box64 wrapper)",
+        "container_pattern": {
+          "path": "app/src/main/assets/proton-9.0-arm64ec_container_pattern.tzst",
+          "size_bytes": 10309411,
+          "git_blob_sha1": "6a2fe6f1a7aa2f70d6f15d2c057fc7c6b2246248",
+          "raw_url": "https://raw.githubusercontent.com/EmuProto/Winlator-Ludashi/95224ca7db27ae133dbb1578e004b94b86ef8894/app/src/main/assets/proton-9.0-arm64ec_container_pattern.tzst"
+        },
+        "purpose": "ARM64EC Wine/Proton with FEXCore or WowBox64 Windows WoW64 emulator DLL selected via HODLL"
+      }
+    ],
+    "emulator_components": {
+      "box64": {
+        "path": "app/src/main/assets/box64/box64-0.3.7.tzst",
+        "size_bytes": 2971992,
+        "git_blob_sha1": "32c8a016de8368c68090c27e6de91389f927cc04",
+        "role": "Standard x86-64 Wine/Proton process translation"
+      },
+      "fexcore": {
+        "path": "app/src/main/assets/fexcore/fexcore-2508.tzst",
+        "size_bytes": 3416724,
+        "git_blob_sha1": "9cde1a54074e183ef627c1d1a18a943cff622c86",
+        "role": "ARM64EC and 32-bit WoW64 DLLs; extract into the matching prefix system32"
+      },
+      "wowbox64": {
+        "path": "app/src/main/assets/wowbox64/wowbox64-0.3.7.tzst",
+        "size_bytes": 1049978,
+        "git_blob_sha1": "807702ccb71c7ee5c0983f02e5217517cb3caf95",
+        "role": "Alternative 32-bit WoW64 DLL; extract into the matching prefix system32"
+      }
+    },
+    "launch_rules": {
+      "x86_64": {
+        "command": "<imagefs>/usr/bin/box64 <imagefs>/opt/proton-9.0-x86_64/bin/<guest-executable>",
+        "environment": [
+          "BOX64_DYNAREC=1",
+          "BOX64_X11GLX=1",
+          "WINEPREFIX=<private-prefix>"
+        ]
+      },
+      "arm64ec_fexcore": {
+        "command": "<imagefs>/opt/proton-9.0-arm64ec/bin/<guest-executable>",
+        "environment": [
+          "HODLL=libwow64fex.dll",
+          "WINEPREFIX=<private-prefix>"
+        ],
+        "dlls": [
+          "libarm64ecfex.dll",
+          "libwow64fex.dll"
+        ]
+      },
+      "arm64ec_wowbox64": {
+        "command": "<imagefs>/opt/proton-9.0-arm64ec/bin/<guest-executable>",
+        "environment": [
+          "HODLL=wowbox64.dll",
+          "WINEPREFIX=<private-prefix>"
+        ],
+        "dlls": [
+          "wowbox64.dll"
+        ]
+      }
+    },
+    "install_flow": [
+      "Download ImageFS and Proton runtime archives from upstream and verify their SHA-256 sidecars before extraction.",
+      "Extract ImageFS into the app-private files/imagefs directory.",
+      "Extract selected Proton runtime under /opt/proton-9.0-<arch>.",
+      "Create a separate private Wine prefix per EffectCraft compatibility container by extracting the pinned matching container-pattern archive.",
+      "Install common Windows DLLs for x86-64/ARM64EC and i386 from the Wine runtime into system32/syswow64 as the upstream ContainerManager does.",
+      "For ARM64EC, extract FEXCore or WowBox64 emulator DLLs into the selected prefix system32 and set HODLL consistently.",
+      "Launch the Windows AE host worker in its own supervised process using the architecture-specific launcher.",
+      "Preserve logs and allow switching to another backend/prefix if a plugin fails."
+    ],
+    "memory_policy": {
+      "application_imposed_ram_limit": false,
+      "rlimit_as": false,
+      "cgroup_memory_limit": false,
+      "box64_memory_cap": false,
+      "fexcore_memory_cap": false,
+      "wine_memory_cap": false,
+      "video_memory_limit": "Use 0/driver default; never impose an arbitrary fixed cap for plug-in compatibility"
+    }
+  },
+  "current_runtime_wcp": {
+    "catalog_repository": "https://github.com/The412Banner/Nightlies",
+    "verified_release_metadata_date": "2026-11-14",
+    "mutable_alias": "nightly-latest (all package assets remain SHA-256 and size pinned)",
+    "preferred": {
+      "box64": {
+        "version": "0.4.5-416051d58-Bionic",
+        "release_url": "https://github.com/The412Banner/Nightlies/releases/tag/nightly-latest",
+        "asset_url": "https://github.com/The412Banner/Nightlies/releases/download/nightly-latest/Box64-0.4.5-416051d58-Bionic.wcp",
+        "size_bytes": 2866256,
+        "sha256": "5c00577a649890d88f6d82b9503c9a019fc20699056352a9042981883f146a9f",
+        "build_label": "416051d58"
+      },
+      "box64ec": {
+        "version": "0.4.5-6441fcfae-experimental",
+        "release_url": "https://github.com/The412Banner/Nightlies/releases/tag/nightly-latest",
+        "asset_url": "https://github.com/The412Banner/Nightlies/releases/download/nightly-latest/Box64EC-0.4.5-6441fcfae-experimental.wcp",
+        "size_bytes": 1055784,
+        "sha256": "80bc7ac0345744e7d571f1f9d1cc243d5408f5464f9e97e9cea4ae40ca0be7ac",
+        "upstream_commit": "ptitSeb/box64@6441fcfae"
+      },
+      "wowbox64": {
+        "version": "0.4.5-416051d58",
+        "release_url": "https://github.com/The412Banner/Nightlies/releases/tag/nightly-latest",
+        "asset_url": "https://github.com/The412Banner/Nightlies/releases/download/nightly-latest/WOWBox64-0.4.5-416051d58.wcp",
+        "size_bytes": 910112,
+        "sha256": "421e0fa560351f1e0b92ccead78656f6125acf0ca1e78ac96872f6ed65ec460b",
+        "build_label": "416051d58"
+      },
+      "fexcore": {
+        "version": "2611.1",
+        "release_url": "https://github.com/The412Banner/Nightlies/releases/tag/FEXCore-2611.1",
+        "asset_url": "https://github.com/The412Banner/Nightlies/releases/download/FEXCore-2611.1/FEXCore-2611.1.wcp",
+        "size_bytes": 1288148,
+        "sha256": "60ef9fefd5a01e353d9266ddb2ad50317ff6f526bc0f42a96408651e373fa8b4",
+        "upstream_commit": "FEX-Emu/FEX@4f9c1f1e36443d22d7655477e34f51b95b685bf1"
+      }
+    },
+    "install_policy": "Download each WCP to private runtime storage, verify pinned SHA-256 and expected size, parse profile.json and allow only pre-approved destinations. The nightly-latest alias is mutable; reject any payload whose SHA-256 or size differs from this manifest."
+  },
+  "recent_validation_findings": [
+    "November 14, 2026: Box64 BOX32=ON Android NDK build completed in run 43548031456 (artifact 14095430775, 5,807,088 bytes); 658-object ARM64 PIE linked with /system/bin/linker64. This is build/package success, not x86 Linux ELF execution.",
+    "November 14, 2026: current upstream FEX ARM64EC/WoW64 PE DLLs, Android Box64 and Windows x64 AEX host worker all built successfully in run 43548223291 (artifacts 14095630953, 14094903025 and 14095545959); no Android PE/AEX runtime test.",
+    "November 14, 2026: EffectCraft Bionic exec bridge host linker-shim tests and Android NDK ARM64 shared-library/fixture build passed in run 43548375417 (artifact 14095630837, 19,638 bytes); no Android app UID/device execution.",
+    "November 14, 2026: main APK run 43548422037 failed at Rust compilation because open_ai_plugin_import_from_toolbar was unresolved; no APK artifact was published. This is an app integration blocker, not proof of a Windows runtime failure.",
+    "November 14, 2026: official Termux Hangover 11.16 package reproduction workflow added; first build run pending.",
+    "November 14, 2026: added an EffectCraft-owned Bionic exec preload prototype that wraps native app-private ELF children through /system/bin/linker64 and preserves argv[0]. Host linker-shim and Android NDK build workflows are pending; no Android device test.",
+    "November 14, 2026: Termux libandroid-spawn source was confirmed to implement posix_spawn through fork/vfork plus execve/execvpe; Termux's separate termux-exec LD_PRELOAD is required for app-private linker64 execution. Termux-prefix hard-coded paths are a separate relocation blocker.",
+    "November 14, 2026: Termux hangover-wine 11.16 Bionic recipe audited; native Wine build enables i386/aarch64/arm64ec and packages FEX ARM64EC, FEX WoW64 and Box64 WoW64 PE DLLs. No EffectCraft Android device execution yet.",
+    "November 13, 2026: Box64 BOX32=ON Android NDK build completed and was packaged with SHA-256 0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5; 658-object link succeeded. 32-bit x86 ELF execution and Windows PE/AEX hosting remain unverified.",
+    "November 14, 2026: current WCP validation run initially failed because the pinned nightly-20261112-230654 release tag had been removed (HTTP 404); validation pins were refreshed to nightly-latest with exact package hashes/sizes and stable FEXCore 2611.1.",
+    "November 14, 2026: a separate CI build was updated to compile FEX ARM64EC and WoW64 PE DLLs from current FEX upstream commit ea43314f040633c76fb5891ff31d8a7c3dc533b8; build result pending.",
+    "November 13, 2026: SHA-256 and archive/profile inspection passed for pinned Box64EC, Box64 Bionic, WowBox64, FEXCore 2611.1, GE-Proton 11.0-7.1 x86_64 and GE-Proton 11.0-7.1 ARM64EC WCP packages; this validates package integrity/metadata only, not runtime execution.",
+    "November 12, 2026: Android NDK build produced a Bionic ARM64 Box64 artifact, FEXCore Arm64EC/WoW64 PE DLL artifacts, and a Windows x64 AEX host worker artifact.",
+    "November 12, 2026: the x64 AEX worker built successfully on Windows, but the Linux ARM64 Box64 + Bionic Proton x86_64 smoke test failed with unresolved __libc_init and SIGSEGV; this Bionic Wine/Box64 combination is not supported by current evidence.",
+    "November 13, 2026: Android runtime launcher now wraps app-private Bionic host executables through /system/bin/linker64 and selects HODLL64 for x86_64 PE plus HODLL for 32-bit WoW64 PE; unit/instrumented validation is pending.",
+    "No real Windows PE or AEX plug-in has yet been launched and rendered on an Android ARM64 device through this integration."
+  ],
+  "android_bionic_alternatives": [
+    {
+      "id": "termux-hangover-bionic-11.16",
+      "source_repository": "https://github.com/termux/termux-packages",
+      "source_revision": "e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9",
+      "package_version": "11.16",
+      "role": "Preferred Bionic-native Hangover/Wine ARM64 runtime candidate; native Wine with FEX ARM64EC and FEX/Box64 WoW64 PE DLLs",
+      "integration_status": "source-audited; package published in Termux x11-repo; not integrated into EffectCraft; not Android-device-tested",
+      "limitations": [
+        "Termux recipe disables OpenCL and ALSA; Vulkan/OpenGL/PulseAudio/X11 dependencies need Android-specific adaptation",
+        "Termux X11/PulseAudio desktop setup is not an EffectCraft Surface/headless render bridge",
+        "Package-level SBOM and source/notice obligations remain pending",
+        "Termux issue #27663 documents historical x86/x64 startup and prefix packaging issues; install all emulator subpackages and create a clean prefix"
+      ]
+    },
+    {
+      "id": "piperella-hangover-bionic-11.9",
+      "source_repository": "https://github.com/Piperella/Piperella-Hangover-Bionic",
+      "source_revision": "cd0d2b48da092a6a662a10d0b0b1ce189bbd3981",
+      "release_tag": "hangover-bionic-11.9-build19",
+      "release_date": "2026-07-14",
+      "release_asset": {
+        "file": "hangover-bionic-aarch64.tar",
+        "bytes": 339589120,
+        "sha256": "09cc7c2f43a1607d64b5f79e916939d0fefc8e1d094d09aee923abc4b8608793"
+      },
+      "role": "Bionic-native Hangover 11.9 Wine runtime for Android ARM64 with fresh FEX-2607 ARM64EC/WoW64 DLLs, Box64 WoW64 DLL, Wayland driver, PulseAudio support, linker64/W^X/wineserver path hardening.",
+      "integration_status": "source-and-release-audited; not integrated into EffectCraft and not device-tested",
+      "limitations": [
+        "release is from July 2026 and uses FEX-2607, older than the currently audited FEXCore 2611.1 WCP",
+        "Wayland output requires a compatible compositor; EffectCraft needs a headless/offscreen or Surface-backed host integration",
+        "the release tar is about 340 MB and must remain an optional on-demand runtime, not part of the base APK",
+        "package-level SBOM and redistribution-license review are required before bundling or redistributing"
+      ]
+    }
+  ],
+  "box64_box32_android_build": {
+    "status": "compiled-packaged-checksum-verified; guest execution and device validation pending",
+    "branch": "experiment/windows-plugin-runtime",
+    "source_commit": "92cda7aeee5fc793083af51dd7d4f17f7515bec3",
+    "workflow_run_id": 43392590850,
+    "workflow_url": "https://github.com/Qianqian442/EffectCraft-AI-Build/actions/runs/43392590850",
+    "artifact_name": "EffectCraft-Box64-BOX32-Android-ARM64",
+    "artifact_id": 14021596892,
+    "artifact_zip_size_bytes": 5807204,
+    "payload": "box64-box32-android-arm64.tar.zst",
+    "payload_size_bytes": 5841155,
+    "payload_sha256": "0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5",
+    "binary": "usr/bin/box64",
+    "binary_format": "Android ARM64 ELF64 PIE, API 31, interpreter /system/bin/linker64",
+    "build_configuration": [
+      "ANDROID=1",
+      "ARM64=1",
+      "ARM_DYNAREC=1",
+      "BOX32=ON",
+      "BOX32_BINFMT=OFF"
+    ],
+    "validation_completed": [
+      "Android NDK r26b configuration",
+      "Bionic compatibility patch application",
+      "obstack ABI layout compile-time assertions",
+      "BOX32=ON CMake configuration",
+      "658-object Box64 link completed",
+      "zstd archive integrity",
+      "payload SHA-256 independently matched"
+    ],
+    "validation_pending": [
+      "execute a 32-bit x86 Linux ELF fixture through the ARM64 Box64 binary",
+      "validate matching 32-bit Wine/WoW64 process startup",
+      "run a 32-bit Windows PE/AEX host fixture",
+      "OPPO Android ARM64 device validation",
+      "Huawei ARM64 device validation"
+    ]
+  },
+  "preferred_bionic_pe_backend": {
+    "id": "termux-hangover-bionic-11.16",
+    "status": "source-audited-package-published-reproduction-workflow-added-not-yet-run-not-integrated-not-device-tested",
+    "repository": "https://github.com/termux/termux-packages",
+    "repository_revision": "e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9",
+    "package_path": "x11-packages/hangover-wine",
+    "package_version": "11.16",
+    "package_license": "LGPL-2.1 (Termux package metadata)",
+    "package_recipe_last_path_update": "2026-10-28",
+    "package_version_bump_commit": "f28d0cbacde34399f0c95ec085972be23da952b9",
+    "wine_source": {
+      "repository": "https://github.com/AndreRH/wine",
+      "tag": "hangover-11.16",
+      "revision": "628d1aeb09803d3fa9170023e7203060e955bfe8",
+      "source_archive_sha256": "21e4dd77a9d1d4897194d5751e03a5fc6cdec4390889ad6a652b87d05aa0bb4d"
+    },
+    "hangover_release": {
+      "repository": "https://github.com/AndreRH/hangover",
+      "tag": "hangover-11.16",
+      "revision": "56e385b7ff490edd281b288f420677093563560b",
+      "published_at": "2026-08-30",
+      "source_submodule_wine_revision": "3ea3a14941b6a122b892c84141ce9662c008081e",
+      "asset": "hangover_11.16_ubuntu2204_jammy_arm64.tar",
+      "size_bytes": 312883200,
+      "sha256": "ecde5846b2f1b23d394fede04a52cbf31853076b85e98d53a391d9e758345488"
+    },
+    "enabled_wine_architectures": [
+      "i386",
+      "aarch64",
+      "arm64ec"
+    ],
+    "build_options": [
+      "--enable-archs=i386,aarch64,arm64ec",
+      "--with-opengl",
+      "--with-vulkan",
+      "--with-pulse",
+      "--with-sdl",
+      "--without-opencl",
+      "--without-alsa",
+      "--without-dbus",
+      "ac_cv_header_linux_userfaultfd_h=no",
+      "LDFLAGS += -landroid-spawn -Wl,--rosegment"
+    ],
+    "emulator_dlls": {
+      "x86_64_pe": {
+        "file": "libarm64ecfex.dll",
+        "backend": "FEX ARM64EC",
+        "selection": "HODLL64=libarm64ecfex.dll"
+      },
+      "x86_pe": {
+        "file": "libwow64fex.dll",
+        "backend": "FEX WoW64",
+        "selection": "HODLL=libwow64fex.dll"
+      },
+      "x86_alternative": {
+        "file": "wowbox64.dll",
+        "backend": "Box64 PE WoW64 alternative"
+      }
+    },
+    "published_termux_packages": {
+      "wine_deb": "hangover-wine_11.16_aarch64.deb",
+      "wine_deb_approx_size_bytes": 262625316,
+      "fex_arm64ec_deb": "hangover-libarm64ecfex_11.16_aarch64.deb",
+      "fex_arm64ec_deb_size_bytes": 741184,
+      "fex_wow64_deb": "hangover-libwow64fex_11.16_aarch64.deb",
+      "fex_wow64_deb_size_bytes": 659456,
+      "box64_wow64_deb": "hangover-wowbox64_11.16_aarch64.deb",
+      "box64_wow64_deb_approx_size_bytes": 908732
+    },
+    "rationale": "Wine runs natively against Bionic on ARM64; FEX/Box64 PE DLLs translate only guest Windows code at the WoW64/ARM64EC boundary. Do not wrap the full Wine host in Linux Box64 for the primary PE route.",
+    "known_issue": "Termux issue #27663 recorded historical x86/x64 startup failures; closed as completed on 2026-03-21 after all Hangover packages were installed and a clean Wine prefix was generated.",
+    "source_mismatch": "Termux builds Wine from the hangover-11.16 tag commit 628d1aeb..., while the Hangover release submodule tree points to Wine commit 3ea3a149... (a page-size-warning change was reverted). Verify the resulting Wine/PE DLL ABI at runtime.",
+    "limitations": [
+      "Termux recipe disables OpenCL; CLVK bridge remains unverified and compiler-disabled build only supports precompiled SPIR-V/OpenCL IL paths",
+      "No CUDA implementation",
+      "X11/PulseAudio desktop path is not an Android Surface integration",
+      "Vulkan/DXVK requires device-specific extensions/features; some ARM64 GPUs may not meet Vulkan 1.3 requirements",
+      "No Android ARM64 device execution test has been completed"
+    ],
+    "license_gate": "Generate full package-level SBOM, preserve LGPL-2.1 Wine/Hangover sources and notices, FEX MIT notices, Box64 MIT notices and all transitive dependency licenses before APK redistribution.",
+    "next_steps": [
+      "Run .github/workflows/build-termux-hangover-bionic.yml against the pinned Termux revision and inspect all generated .deb packages, Bionic ELF interpreters, PE machine types and checksums",
+      "Reproduce the Bionic package set from pinned Termux inputs and verify signed repository metadata and per-package SHA-256",
+      "Implement private-storage extraction, Termux-prefix relocation, library path and wineserver handling",
+      "Launch Bionic host executables through /system/bin/linker64",
+      "Install the complete emulator DLL set and create clean isolated Wine prefixes",
+      "Run minimal Win32, x86_64 PE and x86 PE tests on Android ARM64 before AEX tests"
+    ],
+    "critical_integration_gaps": [
+      "Termux libandroid-spawn implements posix_spawn via fork/vfork and execve/execvpe; it is not the linker64 execution shim",
+      "EffectCraft must set its own LD_PRELOAD exec bridge for child Bionic ELF launches or patch all direct exec syscall paths",
+      "Termux package embeds /data/data/com.termux/files/usr paths; rebuild with relocatable paths or prove Wine loader/server/DLL/data paths can be overridden",
+      "All Wine/wineserver/helper processes must be validated under the EffectCraft app UID and target SDK, not just the initial process",
+      "Current EffectCraft runtime manager does not yet set LD_PRELOAD to the built exec bridge for every Bionic Wine/wineserver/helper process",
+      "Current Winlator manager native LD_LIBRARY_PATH includes ImageFS /usr/lib; keep glibc guest libraries exclusively in BOX64_LD_LIBRARY_PATH and never expose them to the Bionic host linker",
+      "Current exec bridge does not yet match Termux-exec shebang/PATH rewriting and /proc/self/exe compatibility hooks; execveat and raw syscall(SYS_execve) paths remain unaudited"
+    ],
+    "additional_license_inputs": [
+      {
+        "component": "termux-exec linker preload if reused",
+        "license": "Apache-2.0",
+        "source": "https://github.com/termux-play-store/termux-exec"
+      },
+      {
+        "component": "libandroid-spawn",
+        "license": "BSD-2-Clause",
+        "source": "https://github.com/termux/termux-packages"
+      }
+    ]
+  },
+  "recommended_next_backend": {
+    "id": "termux-hangover-bionic-11.16",
+    "priority": "preferred next integration target",
+    "status": "audited-not-integrated-not-device-tested",
+    "rationale": "Native Bionic Wine plus PE emulator DLLs avoids the failed full-Wine-under-Box64 route and avoids layering multiple CPU emulators around Wine.",
+    "keep_existing_backend_as": "Winlator/Proton fallback and comparison path"
+  },
+  "android_bionic_exec_bridge": {
+    "id": "effectcraft-exec-bridge-prototype",
+    "source_path": "windows-compat/android-runtime/exec-bridge",
+    "status": "host-and-android-ndk-build-passed-not-device-tested-not-packaged-in-apk",
+    "native_library": "libeffectcraft-exec.so",
+    "environment": {
+      "EFFECTCRAFT_RUNTIME_ROOT": "Absolute canonical app-private runtime root; only native ELF files under this path are considered for linker64 wrapping",
+      "LD_PRELOAD": "Absolute path to libeffectcraft-exec.so",
+      "linker64": "/system/bin/linker64"
+    },
+    "behavior": [
+      "Intercepts execve, execv, execvp, execvpe, execl, execlp, execle and fexecve",
+      "Checks native ELF machine type and PT_INTERP=/system/bin/linker64 before wrapping",
+      "Routes eligible app-private Bionic ELF launches through /system/bin/linker64",
+      "Preserves caller argv[0] and passes the original executable path as linker argument"
+    ],
+    "tests": {
+      "host_linker_shim": "passed in run 43548375417",
+      "android_arm64_ndk_build": "passed in run 43548375417; artifact 14095630837; Android API 31 arm64-v8a shared library and linker64 ELF fixtures",
+      "android_device_execution": "not tested"
+    },
+    "known_gaps": [
+      "Does not intercept raw syscall(SYS_execve) call sites",
+      "execveat behavior requires audit and implementation",
+      "PATH search and shebang handling do not yet match termux-exec",
+      "Does not preserve logical /proc/self/exe via readlink/realpath hooks",
+      "LD_PRELOAD and EFFECTCRAFT_RUNTIME_ROOT are not yet wired into every Wine/wineserver/helper process in the runtime manager",
+      "Native Bionic host LD_LIBRARY_PATH must not include glibc ImageFS /usr/lib; guest libraries belong only in BOX64_LD_LIBRARY_PATH",
+      "Does not solve Termux hard-coded prefix relocation",
+      "Does not prove Wine/wineserver child process compatibility on Android"
+    ],
+    "related_upstream": {
+      "termux_exec_repository": "https://github.com/termux-play-store/termux-exec",
+      "termux_exec_license": "Apache-2.0 code; MIT site documentation",
+      "libandroid_spawn_license": "BSD-2-Clause; posix_spawn wrapper calls execve/execvpe and does not replace linker64 preload"
+    }
+  },
+  "termux_hangover_bionic_build": {
+    "workflow": ".github/workflows/build-termux-hangover-bionic.yml",
+    "status": "added-awaiting-first-run",
+    "termux_repository": "https://github.com/termux/termux-packages",
+    "termux_revision": "e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9",
+    "package": "x11-packages/hangover-wine",
+    "version": "11.16",
+    "target": "aarch64 Android Bionic",
+    "ci_recipe_change": "Replace upstream interactive `make -k || bash` fallback with fail-closed `make -k` in the CI checkout only",
+    "validation": "Inspect Wine ELF PT_INTERP=/system/bin/linker64, verify libarm64ecfex.dll/libwow64fex.dll/wowbox64.dll PE machine types, archive .deb packages and SHA-256",
+    "non_claim": "Cross-build/package inspection only; no Android app UID or device execution"
+  }
+}

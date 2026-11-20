@@ -15,6 +15,11 @@ public final class WindowsCompatRuntimeTests {
     }
 
     @Test
+    public void buildsNativeBionicHangoverProfilesWithoutMixingGuestLibc() throws Exception {
+        HangoverBionicLaunchProfileSelfTest.main(new String[0]);
+    }
+
+    @Test
     public void rejectsUnpinnedOrCorruptEmbeddedBox32Archives() throws Exception {
         java.nio.file.Path root = java.nio.file.Files.createTempDirectory("effectcraft-box32-test");
         java.nio.file.Path archive = root.resolve("bad.tar.zst");
@@ -41,36 +46,6 @@ public final class WindowsCompatRuntimeTests {
                     try { java.nio.file.Files.deleteIfExists(path); } catch (java.io.IOException ignored) {}
                 });
             }
-        }
-    }
-
-    @Test
-    public void detectsFexCpuFeaturesAndWinePageSizeCandidates() {
-        long minimum = AndroidArm64Capabilities.HWCAP_FP
-                | AndroidArm64Capabilities.HWCAP_ASIMD
-                | AndroidArm64Capabilities.HWCAP_CRC32;
-        AndroidArm64Capabilities fourK = AndroidArm64Capabilities.fromNativeProbe(
-                new long[] { minimum, 4096 });
-        if (!fourK.supportsFexMinimum() || !fourK.supportsArm64EcCandidate()) {
-            throw new AssertionError("4K ARM64 device with FP/CRC32 should be an ARM64EC/FEX candidate");
-        }
-
-        AndroidArm64Capabilities sixteenK = AndroidArm64Capabilities.fromNativeProbe(
-                new long[] { minimum, 16384 });
-        if (!sixteenK.supportsArm64EcCandidate()) {
-            throw new AssertionError("16K page size should be considered a Wine 10.5+ candidate");
-        }
-
-        AndroidArm64Capabilities sixtyFourK = AndroidArm64Capabilities.fromNativeProbe(
-                new long[] { minimum, 65536 });
-        if (sixtyFourK.supportsArm64EcCandidate()) {
-            throw new AssertionError("64K page size must remain unverified and not auto-selected");
-        }
-
-        AndroidArm64Capabilities noCrc32 = AndroidArm64Capabilities.fromNativeProbe(
-                new long[] { AndroidArm64Capabilities.HWCAP_FP, 4096 });
-        if (noCrc32.supportsFexMinimum()) {
-            throw new AssertionError("FEX must not be selected without FEAT_CRC32");
         }
     }
 

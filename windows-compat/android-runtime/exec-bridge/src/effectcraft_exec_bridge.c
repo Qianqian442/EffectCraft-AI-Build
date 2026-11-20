@@ -11,10 +11,6 @@
 #include <string.h>
 #include <sys/syscall.h>
 #include <unistd.h>
-#if defined(__ANDROID__)
-#include <jni.h>
-#include <sys/auxv.h>
-#endif
 
 extern char **environ;
 
@@ -382,6 +378,45 @@ int execle(const char *path, const char *arg, ...) {
     return result;
 }
 
+#ifdef SYS_execveat
+static char *ec_execveat_private_target(int dirfd, const char *pathname, int flags) {
+    if (flags & AT_SYMLINK_NOFOLLOW) return NULL;
+
+    char candidate[PATH_MAX];
+    int written;
+    if (!pathname || !*pathname) {
+        if (!(flags & AT_EMPTY_PATH) || dirfd == AT_FDCWD) return NULL;
+        written = snprintf(candidate, sizeof(candidate), "/proc/self/fd/%d", dirfd);
+    } else if (pathname[0] == '/' || dirfd == AT_FDCWD) {
+        written = snprintf(candidate, sizeof(candidate), "%s", pathname);
+    } else {
+        written = snprintf(candidate, sizeof(candidate), "/proc/self/fd/%d/%s", dirfd, pathname);
+    }
+    if (written < 0 || (size_t)written >= sizeof(candidate)) return NULL;
+
+    char *canonical = NULL;
+    if (!ec_path_is_under_root(candidate, &canonical)) return NULL;
+    if (!ec_is_native_bionic_elf(canonical)) {
+        free(canonical);
+        return NULL;
+    }
+    return canonical;
+}
+
+__attribute__((visibility("default")))
+int execveat(int dirfd, const char *pathname, char *const argv[], char *const envp[], int flags) {
+    char *canonical = ec_execveat_private_target(dirfd, pathname, flags);
+    if (canonical) {
+        int result = ec_execve_wrapped(canonical, argv, envp);
+        int saved_errno = errno;
+        free(canonical);
+        errno = saved_errno;
+        return result;
+    }
+    return (int)syscall(SYS_execveat, dirfd, pathname, argv, envp ? envp : environ, flags);
+}
+#endif
+
 __attribute__((visibility("default")))
 int fexecve(int fd, char *const argv[], char *const envp[]) {
     char proc_path[64];
@@ -406,19 +441,3 @@ int fexecve(int fd, char *const argv[], char *const envp[]) {
     return -1;
 #endif
 }
-
-#if defined(__ANDROID__)
-/* Runtime CPU/page-size probe for the FEX ARM64EC selector. HWCAP bits are
- * interpreted in Java so the same native library can be audited on-device. */
-JNIEXPORT jlongArray JNICALL
-Java_com_artcraft_effectcraft_WindowsCompatAndroidBridge_nativeProbeArm64(
-        JNIEnv *env, jclass clazz) {
-    (void)clazz;
-    jlong values[2];
-    values[0] = (jlong)getauxval(AT_HWCAP);
-    values[1] = (jlong)sysconf(_SC_PAGESIZE);
-    jlongArray result = (*env)->NewLongArray(env, 2);
-    if (result) (*env)->SetLongArrayRegion(env, result, 0, 2, values);
-    return result;
-}
-#endif
