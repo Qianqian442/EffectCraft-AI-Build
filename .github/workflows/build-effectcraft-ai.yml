@@ -33,7 +33,7 @@ on:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/add_windows_runtime_ui.py'
-      - '.github/scripts/integrate_windows_compat_runtime.py' \
+      - '.github/scripts/integrate_windows_compat_runtime.py'
       - '.github/scripts/integrate_binary_reconstruction.py'
       - 'windows-compat/aex-reconstruction/**'
       - '.github/scripts/package_windows_runtime_assets.py'
@@ -754,7 +754,7 @@ jobs:
           ARTCRAFT_DIR: ${{ github.workspace }}/artcraft
         run: |
           set -euo pipefail
-          python3 -m py_compile build-assets/.github/scripts/add_windows_runtime_ui.py build-assets/.github/scripts/integrate_windows_compat_runtime.py build-assets/.github/scripts/package_windows_runtime_assets.py
+          python3 -m py_compile build-assets/.github/scripts/add_windows_runtime_ui.py build-assets/.github/scripts/integrate_windows_compat_runtime.py build-assets/.github/scripts/integrate_binary_reconstruction.py build-assets/.github/scripts/package_windows_runtime_assets.py
           python3 build-assets/.github/scripts/add_windows_runtime_ui.py
           python3 build-assets/.github/scripts/integrate_windows_compat_runtime.py
           python3 build-assets/.github/scripts/integrate_binary_reconstruction.py
