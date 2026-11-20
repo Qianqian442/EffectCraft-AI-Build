@@ -1441,14 +1441,17 @@ def patch_export_access(root: Path) -> None:
 def patch_frame(root: Path) -> None:
     path = root / "crates/ui-egui/src/app/frame.rs"
     source = path.read_text(encoding="utf-8")
-    if MARKER in source:
-        return
 
-    source = source.replace(
-        "if self.ui.show_menu_bar {",
-        'if self.ui.show_menu_bar && self.ui.workspace != "AM 竖屏" {',
-        1,
-    )
+    # Keep this patch idempotent: a prior partial run may already have inserted the
+    # AM editor marker but not normalized the Home/DockArea header height. Never
+    # return before repairing that independent invariant.
+    if "if self.ui.show_menu_bar {" in source:
+        source = source.replace(
+            "if self.ui.show_menu_bar {",
+            'if self.ui.show_menu_bar && self.ui.workspace != "AM 竖屏" {',
+            1,
+        )
+
 
     old_header = "        header::show(self, ui, header);\n"
     new_header = "        // AM Home and the AM editor own their own headers; never draw the Ae toolbar in AM mode.\n        if self.ui.workspace != \"AM 竖屏\" {\n            header::show(self, ui, header);\n        }\n"
@@ -1467,18 +1470,22 @@ def patch_frame(root: Path) -> None:
         "route AM editing to its independent surface instead of the Ae DockArea",
     )
 
-    # The old AM base patch used a 64 px header for an extra selector row. The independent
-    # surface owns its complete top bar, so the underlying DockArea header height is irrelevant;
-    # keep Home's 40 px header and avoid an extra dead strip when the user returns to Home.
-    source = source.replace(
-        "let header_h = if self.ui.start_screen { 40.0 } else { 64.0 };",
-        "let header_h = if self.ui.workspace == \"AM 竖屏\" { 0.0 } else { 40.0 };",
-    )
-    source = source.replace("let header_h = 64.0;", "let header_h = if self.ui.workspace == \"AM 竖屏\" { 0.0 } else { 40.0 };")
-    source = source.replace("let header_h = 40.0;", "let header_h = if self.ui.workspace == \"AM 竖屏\" { 0.0 } else { 40.0 };")
+    # AM owns its top bar. Normalize the one frame header declaration even if
+    # the editor route marker was inserted by an earlier, interrupted invocation.
+    expected_header = 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };'
+    header_matches = list(re.finditer(r"(?m)^\\s*let header_h\\s*=\\s*[^;]+;", source))
+    if len(header_matches) != 1:
+        raise SystemExit(f"Expected exactly one frame header-height declaration, found {len(header_matches)}.")
+    header_match = header_matches[0]
+    if header_match.group(0).strip() != expected_header:
+        indentation = re.match(r"\\s*", header_match.group(0)).group(0)
+        source = source[:header_match.start()] + indentation + expected_header + source[header_match.end():]
     path.write_text(source, encoding="utf-8")
-    if MARKER not in path.read_text(encoding="utf-8"):
+    verified = path.read_text(encoding="utf-8")
+    if MARKER not in verified:
         raise SystemExit("The independent AM editor route was not installed.")
+    if len(re.findall(r"(?m)^\\s*let header_h\\s*=\\s*" + re.escape(expected_header[len("let header_h = "):-1]) + r";", verified)) != 1:
+        raise SystemExit("The AM Home/Ae header-height invariant was not repaired.");
 
 
 def verify(root: Path) -> None:
