@@ -268,6 +268,14 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
         t.text_dim,
     );
 
+    // A layout switch belongs to the AM Home itself; never reuse the Ae toolbar here.
+    let layout_rect = Rect::from_min_size(pos2(rect.max.x - 104.0, rect.min.y + 10.0), vec2(90.0, 32.0));
+    let layout = ui.put(layout_rect, egui::Button::new("切回 Ae 布局").min_size(layout_rect.size()));
+    app.auto.add_response("am.home.layout", &layout, "切回 Ae 布局");
+    if layout.clicked() {
+        app.set_workspace("Default");
+    }
+
     let pad = 14.0;
     let gap = 9.0;
     let card_top = rect.min.y + 78.0;
