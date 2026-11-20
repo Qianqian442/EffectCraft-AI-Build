@@ -68,6 +68,7 @@ on:
       - '.github/scripts/add_effect_controls_crash_guard.py'
       - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/scripts/add_am_mobile_layout.py'
+      - '.github/scripts/build_am_mobile_editing_page.py'
       - '.github/scripts/add_am_brand_label.py'
       - '.github/scripts/add_home_layout_switch.py'
       - '.github/scripts/patch_absentmotion_external_navigation.py'
