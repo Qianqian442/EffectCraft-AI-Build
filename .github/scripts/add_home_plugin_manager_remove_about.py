@@ -126,6 +126,15 @@ fn show_home_plugin_manager(app: &mut EffectcraftApp, ctx: &egui::Context, open:
 '''
 
 
+def remove_once(source: str, old: str, label: str) -> str:
+    count = source.count(old)
+    if count == 0:
+        return source
+    if count != 1:
+        raise SystemExit(f"{label}: expected one removal target, found {count}")
+    return source.replace(old, "", 1)
+
+
 def patch_home_account_ui(account_path: Path) -> None:
     source = account_path.read_text(encoding="utf-8")
     if MARKER not in source:
@@ -211,26 +220,25 @@ def remove_about_ui(root: Path) -> None:
 
     lib = ui / "lib.rs"
     source = lib.read_text(encoding="utf-8")
-    source = replace_once(source, "pub enum Dialog {\n    About,\n", "pub enum Dialog {\n", "About dialog enum variant")
+    source = remove_once(source, "    About,\n", "About dialog enum variant")
     lib.write_text(source, encoding="utf-8")
 
     frontend = ui / "menus/frontend.rs"
     source = frontend.read_text(encoding="utf-8")
-    source = replace_once(
+    source = remove_once(
         source,
         '''        "app.about" => {
             app.dialog = Some(crate::Dialog::About);
             Value::Null
         }
 ''',
-        "",
         "About command handler",
     )
     frontend.write_text(source, encoding="utf-8")
 
     dialogs = ui / "panels/dialogs.rs"
     source = dialogs.read_text(encoding="utf-8")
-    source = replace_once(source, "        Dialog::About => about(app, ctx, &t),\n", "", "About dialog dispatch")
+    source = remove_once(source, "        Dialog::About => about(app, ctx, &t),\n", "About dialog dispatch")
     start = source.find("/// About tabs: About · Contributors · Models.")
     end = source.find("\nfn comp_settings(", start)
     if start < 0 or end < 0:
@@ -244,8 +252,8 @@ def remove_about_ui(root: Path) -> None:
 
     engine_menus = root / "crates/engine/src/menus.rs"
     source = engine_menus.read_text(encoding="utf-8")
-    source = replace_once(source, "  About EffectCraft... | app.about\n", "", "macOS About menu")
-    source = replace_once(source, "  [!mac] About EffectCraft... | app.about\n", "", "non-macOS About menu")
+    source = remove_once(source, "  About EffectCraft... | app.about\n", "macOS About menu")
+    source = remove_once(source, "  [!mac] About EffectCraft... | app.about\n", "non-macOS About menu")
     engine_menus.write_text(source, encoding="utf-8")
 
 
