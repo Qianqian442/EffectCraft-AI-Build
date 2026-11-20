@@ -1,6 +1,8 @@
 # Desktop plug-in to Android ARM64: sequential trials and aggressive compatibility
 
-**Status: route planning is implemented in the import analysis; execution backends and plug-in host workers are not yet integrated.** Every route is currently recorded as not_run_runtime_not_integrated. This is deliberate: CPU architecture detection or a filename match is not proof of a working port.
+**Status: Android runtime integration is now in the build pipeline, but device validation is still pending.** The current branch includes the app-private Winlator Bionic Wine/Proton manager, Box64 with BOX32 support, ARM64EC/WoW64 FEXCore assets, an Android Bionic process-launch bridge, and separately built x64/x86 AEX host workers. CI builds the ARM64 Box64/BOX32 binary and runs native Windows smoke tests that load a sample AEX and render a PNG. These CI checks do not yet prove that the whole Wine/Proton + translator chain runs on a phone; no backend is marked generally supported until on-device tests pass. The aggressive-port mode also includes an offline PE reconstruction pass (imports/exports, executable sections, x86/x64 instruction IR and basic-block candidates) and writes a JSON report. That is static reconstruction assistance, not an automatic semantic PE-to-ARM64 recompiler.
+
+**Backend boundaries:** Box64/BOX32 is the current Android ARM64 x86-64/32-bit ELF translation component; a separate Box86 executable is not bundled because it requires a compatible 32-bit ARM userspace and cannot be assumed available on 64-bit-only Android devices. FEX is integrated as FEXCore in the ARM64EC/WoW64 Wine container, not as the full FEX Linux-user emulator. QEMU x86_64-user remains a Linux-ELF fallback candidate; it is not a Windows PE/AEX loader and is not yet packaged into the production app. Wine/Proton supplies the Windows PE loader/API layer. AEX host compatibility remains a limited host ABI and must be tested against real plug-ins.
 
 ## Goal
 
