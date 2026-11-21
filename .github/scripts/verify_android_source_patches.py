@@ -722,7 +722,36 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         raise SystemExit("AM must not install global Android touch behavior into Ae panels.")
     if "EFFECTCRAFT_AM_EFFECT_BROWSER_V1" not in am_editor:
         raise SystemExit("AM visual effect browser is not installed.")
-    print("Verified AM's independent effect icon browser, live effect application and AM-scoped parameter scrolling.")
+    for token in (
+        "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1",
+        '"effect.plugins.load"',
+        "effectcraft_engine::effects::all()",
+        "effectcraft_engine::effects::find(effect_id)",
+        "am_effect_matches",
+        "is_effect_favorite",
+        "toggle_effect_favorite",
+        "effect.apply",
+        "push_recent",
+        "choose_files_after_apply",
+    ):
+        if token not in am_editor:
+            raise SystemExit(f"AM shared plug-in library/browser integration is incomplete: {token}")
+    am_home_path = root / "crates/ui-egui/src/panels/home.rs"
+    am_home = am_home_path.read_text(encoding="utf-8")
+    am_home_start = am_home.find("// EFFECTCRAFT_AM_PORTRAIT_HOME_V1")
+    am_home_end = am_home.find("pub fn show(app:", am_home_start)
+    if am_home_start < 0 or am_home_end < 0:
+        raise SystemExit("AM Home source block cannot be isolated for plug-in import validation.")
+    am_home_source = am_home[am_home_start:am_home_end]
+    if '("导入插件", "effect.plugins.load")' not in am_home_source:
+        raise SystemExit("AM Home must expose the shared effect plug-in loader.")
+    for token in ("pub fn all()", "let plugins = plugin::plugins();", "v.extend(plugins);", "pub fn find(id: &str)"):
+        if token not in effect_registry:
+            raise SystemExit(f"Shared effect registry is not dynamic for imported plug-ins: {token}")
+    for token in ('"effect.plugins.unload"', "fn plugins_unload(", "s.layer_cache.clear();", "cache.clear();"):
+        if token not in plugin_commands:
+            raise SystemExit(f"Plug-in unload must clear shared runtime/effect caches: {token}")
+    print("Verified AM import uses the shared Ae loader; registered effects appear through the live registry and unloading removes them.")
     print("Verified the Android host bridge only changes orientation while AM is selected.")
 
 
