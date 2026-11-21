@@ -34,14 +34,22 @@
         "repository": "https://github.com/ptitSeb/box86",
         "revision": "bb716a2a6576cc06da811bf55e31e2f6f03b7596",
         "license": "MIT",
-        "role": "optional 32-bit x86 Linux user-space emulator for compatible Wine configurations"
+        "role": "optional 32-bit x86 Linux ELF user-space emulator compiled as Android ARMv7 Bionic binary; requires /system/bin/linker, a 32-bit Android ABI and a separate i386 Wine userspace; not a Windows PE loader",
+        "build_workflow": ".github/workflows/build-effectcraft-ai.yml#build-box86-armv7",
+        "apk_asset": "windows-compat/box86-android-armv7.tar.zst (only when optional CI build artifact exists)",
+        "runtime_installer": "WinlatorBionicRuntimeManager.installBox86Archive",
+        "status": "optional-armv7-build-and-private-installer-added-build-and-device-test-pending"
       },
       {
         "name": "FEXCore",
         "repository": "https://github.com/FEX-Emu/FEX",
-        "revision": "ab135df091d005cc98dfddc56c3dc9c9e4bd501d",
+        "revision": "ea43314f040633c76fb5891ff31d8a7c3dc533b8",
         "license": "MIT",
-        "role": "alternate x86-64/32-bit execution backend in supported Arm64EC Wine/Proton containers"
+        "role": "source-built complete FEXCore Wine PE backend pair: libarm64ecfex.dll (ARM64EC/CHPE x64 PE) and libwow64fex.dll (ARM64 PE) for ARM64EC Wine/Proton; not the standalone FEX Linux-user emulator or a full Linux rootfs",
+        "build_workflow": ".github/workflows/build-effectcraft-ai.yml#build-fexcore-arm64ec",
+        "apk_asset": "windows-compat/fexcore-arm64ec-wow64.tar.zst",
+        "runtime_installer": "WinlatorBionicRuntimeManager.installFexCoreArchive",
+        "status": "source-build-and-checksum-verified-installer-added-awaiting-successful-ci-and-device-runtime-test"
       }
     ]
   },
@@ -102,7 +110,11 @@
     "compare current upstream FEX ARM64EC/WoW64 DLL build against Hangover 11.16 bundled FEX 2608 DLLs",
     "test EffectCraft exec bridge on an Android app UID: launch a Bionic parent through linker64, then verify its child Bionic ELF is also routed through linker64 with argv/environment preserved",
     "audit Wine/Hangover for direct execve/execveat syscalls and ensure every wineserver/helper process uses the EffectCraft exec bridge",
-    "rebuild or patch the Termux Hangover package to remove /data/data/com.termux/files/usr absolute paths; verify WINELOADER, WINESERVER, WINEDLLPATH and data paths from EffectCraft private storage"
+    "rebuild or patch the Termux Hangover package to remove /data/data/com.termux/files/usr absolute paths; verify WINELOADER, WINESERVER, WINEDLLPATH and data paths from EffectCraft private storage",
+    "complete and pass the source-built FEXCore ARM64EC/WoW64 CI build and PE/CHPE/export validation",
+    "run Box86 only on 32-bit-linker Android devices with a matching i386 Wine prefix and the x86 AEX host",
+    "package QEMU only after its Termux runtime is relocatable, the x86-64 Wine/glibc rootfs and dependency closure are included, and the AEX worker renders successfully",
+    "test aggressive PE IR output against real AEX samples and independently port/rewrite each effect to ARM64 before counting it as a native migration"
   ],
   "explicit_non_claims": [
     "No claim that arbitrary Windows EXE/DLL files already run inside EffectCraft",
@@ -115,18 +127,20 @@
       "pe_machine": "0x8664",
       "architecture": "x86-64",
       "candidates": [
-        "Arm64EC Wine/Proton + FEXCore (HODLL64=libarm64ecfex.dll) — preferred candidate, runtime not yet device-tested",
+        "ARM64EC Wine/Proton + source-built FEXCore ARM64EC backend — preferred candidate; CI/device runtime test pending",
         "Wine + Box64 x86_64 container — fallback only after using a compatible x86_64 Linux Wine build; current Bionic Proton test failed on unresolved __libc_init",
-        "Arm64EC Wine/Proton + WowBox64 (HODLL64=wowbox64.dll) — separate 64-bit fallback candidate"
+        "Arm64EC Wine/Proton + WowBox64 (HODLL64=wowbox64.dll) — separate 64-bit fallback candidate",
+        "QEMU x86_64-linux-user + x86-64 Wine/glibc rootfs — optional Linux-user candidate, not yet staged in APK or AEX-tested"
       ]
     },
     {
       "pe_machine": "0x014c",
       "architecture": "x86",
       "candidates": [
-        "Arm64EC Wine/Proton + FEXCore WoW64 (HODLL=libwow64fex.dll) — preferred candidate; runtime/device tests pending",
+        "ARM64EC Wine/Proton + source-built FEXCore WoW64 backend — preferred candidate; device tests pending",
         "Box64 BOX32 + matching 32-bit Wine/WoW64 — Android ARM64 BOX32 executable now built and checksum-verified; 32-bit x86 ELF execution and Windows PE/AEX hosting are not yet verified",
-        "Boxedwine Android ARM64 port — independent legacy fallback candidate; Android app port still required"
+        "Boxedwine Android ARM64 port — independent legacy fallback candidate; Android app port still required",
+        "Box86 Android ARMv7 Bionic + 32-bit linker + i386 Wine — optional candidate, device and AEX tests pending"
       ]
     },
     {
@@ -169,14 +183,18 @@
       "repository": "https://gitlab.com/qemu-project/qemu",
       "version": "11.1.3 (Termux Android package recipe)",
       "license": "GPL-2.0",
-      "role": "Third execution fallback for x86-64 Linux Wine binaries on Android ARM64; it translates Linux ELF execution, not Windows PE directly",
+      "role": "x86-64 Linux-user CPU emulation fallback for x86-64 Linux Wine ELF on Android ARM64; translates Linux ELF execution, not Windows PE/AEX files directly",
       "android_recipe": "https://github.com/termux/termux-packages/blob/master/packages/qemu-system-x86-64-headless/build.sh",
       "target": "x86_64-linux-user",
       "limitations": [
         "requires a compatible x86-64 Wine/glibc rootfs",
         "slower than dynarec backends in expected workloads",
         "must bundle and audit runtime shared-library dependencies"
-      ]
+      ],
+      "build_workflow": ".github/workflows/build-effectcraft-ai.yml#build-qemu-user-android",
+      "artifact": "EffectCraft-QEMU-x86-64-Android-Fallback",
+      "apk_status": "not yet packaged into main APK; Termux packages must be made relocatable and a compatible x86-64 Wine/glibc rootfs plus shared-library closure must be integrated",
+      "status": "optional-linux-user-package-build-added-runtime-integration-pending"
     },
     {
       "id": "clvk-opencl-vulkan",
@@ -254,6 +272,22 @@
         "Still needs an AE plug-in host ABI such as a compatible 32-bit aexlo host",
         "GPL-2.0 distribution obligations require a separate legal/source-release review"
       ]
+    },
+    {
+      "id": "box86-armv7-bionic",
+      "repository": "https://github.com/ptitSeb/box86",
+      "revision": "bb716a2a6576cc06da811bf55e31e2f6f03b7596",
+      "license": "MIT",
+      "role": "optional Android ARMv7 Bionic 32-bit x86 Linux ELF dynamic translator",
+      "build_workflow": ".github/workflows/build-effectcraft-ai.yml#build-box86-armv7",
+      "apk_asset": "windows-compat/box86-android-armv7.tar.zst",
+      "limitations": [
+        "requires a device with a working /system/bin/linker and a supported 32-bit ABI",
+        "requires a separate i386 Wine/glibc-compatible userspace and matching 32-bit AEX host",
+        "translates Linux ELF binaries; it does not load Windows PE/AEX binaries directly",
+        "optional build may be omitted when the Android NDK build fails"
+      ],
+      "status": "optional-build-and-installer-added; runtime-test-pending"
     }
   ],
   "rootfs_strategy": {
@@ -723,5 +757,70 @@
     "ci_recipe_change": "Replace upstream interactive `make -k || bash` fallback with fail-closed `make -k` in the CI checkout only",
     "validation": "Inspect Wine ELF PT_INTERP=/system/bin/linker64, verify libarm64ecfex.dll/libwow64fex.dll/wowbox64.dll PE machine types, archive .deb packages and SHA-256",
     "non_claim": "Cross-build/package inspection only; no Android app UID or device execution"
+  },
+  "aggressive_binary_reconstruction": {
+    "mode": "AggressivePort",
+    "source": "windows-compat/aex-reconstruction/src/lib.rs",
+    "integration_script": ".github/scripts/integrate_binary_reconstruction.py",
+    "status": "static-pe-ir-analysis-integrated",
+    "supports": [
+      "PE32 x86",
+      "PE32+ x86-64",
+      "sections",
+      "imports",
+      "exports",
+      "executable-section instruction decoding",
+      "branch targets",
+      "basic-block candidates",
+      "bounded JSON IR report"
+    ],
+    "output_status": "static_ir_recovered_not_native_recompiled",
+    "limitations": [
+      "does not automatically reconstruct original source or prove effect algorithm semantics",
+      "does not emit an ARM64 native plugin binary yet",
+      "does not emulate missing Windows APIs or the After Effects AEX SDK host suites",
+      "requires reference renders and developer review before native port claims"
+    ]
+  },
+  "runtime_integration_status": {
+    "updated_at": "2026-11-21",
+    "box64_box32": {
+      "status": "compiled-and-packaged-in-prior-ci-runs",
+      "build_workflow": ".github/workflows/build-effectcraft-ai.yml#build-box64-box32",
+      "runtime_installer": "WinlatorBionicRuntimeManager.installBox64Box32Archive",
+      "apk_asset": "windows-compat/box64-box32-android-arm64.tar.zst",
+      "remaining": "32-bit x86 Linux ELF and Windows PE/AEX execution require device validation"
+    },
+    "fexcore": {
+      "status": "source-build-job-and-private-installer-wired-awaiting-successful-ci",
+      "pe_backends": [
+        "libarm64ecfex.dll",
+        "libwow64fex.dll"
+      ],
+      "target": "ARM64EC Wine/Proton + FEXCore WoW64"
+    },
+    "box86": {
+      "status": "optional-build-and-private-installer-wired-awaiting-ci",
+      "target": "Android ARMv7 Bionic only"
+    },
+    "qemu": {
+      "status": "optional-package-build-only; not yet staged in APK or runtime install manager",
+      "target": "x86_64-linux-user",
+      "missing": [
+        "relocatable Termux runtime packaging",
+        "x86-64 Wine/glibc rootfs",
+        "dependency closure",
+        "private-storage installer",
+        "same AEX worker smoke test"
+      ]
+    },
+    "device_validation": {
+      "status": "not-yet-performed",
+      "devices": [
+        "OPPO/Qualcomm ARM64",
+        "Huawei/Mali-class ARM64"
+      ],
+      "required": "isolate and execute real AEX sample, enumerate parameters, render PNG/video frames, compare expected output and verify crash recovery"
+    }
   }
 }
