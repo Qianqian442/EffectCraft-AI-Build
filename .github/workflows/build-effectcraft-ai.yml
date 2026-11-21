@@ -2103,7 +2103,12 @@ jobs:
           echo "Verified narrow-screen touch scrolling keeps every toolbar button reachable."
           echo "Verified the visible top-left WASM plug-in import button is present in the APK source."
           grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_PROGRESS_POPUP_V1" "$HEADER_SRC"
-          grep -Fq "EFFECTCRAFT_ANDROID_DIRECT_GALLERY_OUTPUT_V1" "$HEADER_SRC"
+          # The Render Queue writes to app-private staging; publish to MediaStore only after rendering completes.
+          grep -Fq "fn saf_video_gallery_stage_path(default: &str)" "lib/build-common.sh"
+          grep -Fq "effectcraft_ui_egui::android_gallery::staging_path(name)" "lib/build-common.sh"
+          grep -Fq "match saf_video_gallery_stage_path(&default)" "lib/build-common.sh"
+          grep -Fq "crate::android_gallery::start_publish(&path, &gallery_request)" "$HEADER_SRC"
+          grep -Fq "crate::android_gallery::poll_publish(&gallery_request)" "$HEADER_SRC"
           if grep -Fq "app.hooks.save_dialog(&default_output)" "$HEADER_SRC"; then
             echo "Android video export must not open the system Save dialog before rendering." >&2
             exit 1
