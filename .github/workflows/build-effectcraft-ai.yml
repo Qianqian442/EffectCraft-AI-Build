@@ -1342,6 +1342,13 @@ jobs:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: python3 build-assets/.github/scripts/make_header_scrollable.py
 
+      - name: Add unified project import shortcut without removing existing import actions
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_unified_project_import_toolbar_button.py
+          python3 build-assets/.github/scripts/add_unified_project_import_toolbar_button.py
+
       - name: Enable touch scrolling across Android panels and timelines
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
