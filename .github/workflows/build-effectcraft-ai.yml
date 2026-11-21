@@ -185,6 +185,21 @@ jobs:
           unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
           echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
 
+      - name: Patch Box86 math builtin naming for Android NDK
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("third_party/box86/src/emu/x86run0f.c")
+          source = path.read_text(encoding="utf-8")
+          old = "isinff(EX->f[1])"
+          new = "isinf(EX->f[1])"
+          if source.count(old) != 1:
+              raise SystemExit(f"Expected one Android NDK isinff compatibility site, found {source.count(old)}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          print("Mapped the legacy float infinity check to the C99 type-generic isinf macro.")
+          PY
+
       - name: Configure Box86 as optional Android ARMv7 Bionic binary
         run: |
           set -euo pipefail
