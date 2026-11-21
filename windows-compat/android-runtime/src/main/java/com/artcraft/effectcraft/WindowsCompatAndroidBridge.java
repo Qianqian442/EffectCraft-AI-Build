@@ -44,6 +44,8 @@ public final class WindowsCompatAndroidBridge {
             "windows-compat/box64-box32-android-arm64.tar.zst";
     private static final String BOX32_SHA256 =
             "0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5";
+    private static final String FEXCORE_ASSET = "windows-compat/fexcore-arm64ec-wow64.tar.zst";
+    private static final String FEXCORE_ASSET_SHA256 = "0000000000000000000000000000000000000000000000000000000000000000";
     private static final String AEX_HOST_X64_ASSET = "windows-compat/aex-host-x64.exe";
     private static final String AEX_HOST_X64_SHA256 = "ed8875e9346f117cb4f61a766dd271a746fecab2db315e6e9fd753b90101511f";
     private static final String AEX_HOST_X86_ASSET = "windows-compat/aex-host-x86.exe";
@@ -137,6 +139,7 @@ public final class WindowsCompatAndroidBridge {
             WinlatorBionicRuntimeManager manager,
             String requestId) {
         Path archive = null;
+        Path fexArchive = null;
         try {
             INSTALL_STATUS.put(requestId, "正在下载并校验 Windows 兼容基础环境…");
             manager.installAllRuntimeComponents();
@@ -150,9 +153,9 @@ public final class WindowsCompatAndroidBridge {
             WinlatorBionicRuntimeManager.Container container = manager.createContainer(
                     "effectcraft-aex-arm64ec",
                     WinlatorBionicRuntimeManager.Architecture.ARM64EC);
-            manager.installArm64EcEmulator(
-                    container,
-                    WinlatorBionicRuntimeManager.WoW64Engine.FEXCORE);
+            fexArchive = context.getCacheDir().toPath().resolve("fexcore-arm64ec-wow64.tar.zst");
+            copyBundledAsset(context, FEXCORE_ASSET, fexArchive);
+            manager.installFexCoreArchive(container, fexArchive, FEXCORE_ASSET_SHA256);
 
             arm64EcContainer = container;
             INSTALL_STATUS.put(requestId, "正在校验并安装 Windows x64 / x86 AEX 宿主…");
@@ -175,6 +178,9 @@ public final class WindowsCompatAndroidBridge {
         } finally {
             if (archive != null) {
                 try { Files.deleteIfExists(archive); } catch (IOException ignored) {}
+            }
+            if (fexArchive != null) {
+                try { Files.deleteIfExists(fexArchive); } catch (IOException ignored) {}
             }
             ACTIVE_REQUESTS.remove(requestId);
         }
