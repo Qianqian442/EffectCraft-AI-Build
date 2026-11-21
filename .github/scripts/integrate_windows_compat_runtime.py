@@ -164,13 +164,8 @@ pub(crate) fn start_windows_compat_aex_test(source_path: &str) -> Result<String,
         )
         build_common.write_text(common, encoding="utf-8")
 
-    native_anchor = '''fi
-
-GRADLE_JDK="$(find_gradle_jdk || true)"
-'''
-    native_block = '''fi
-
-# EFFECTCRAFT_ANDROID_WINDOWS_COMPAT_NATIVE_V1
+    native_anchor = 'GRADLE_JDK="$(find_gradle_jdk || true)"'
+    native_block = '''# EFFECTCRAFT_ANDROID_WINDOWS_COMPAT_NATIVE_V1
 if [[ "$APP" == "effectcraft" ]]; then
     WINDOWS_COMPAT_NATIVE_SOURCE="$ROOT/templates/windows-compat-native/arm64-v8a/libeffectcraft-exec.so"
     [[ -s "$WINDOWS_COMPAT_NATIVE_SOURCE" ]] || fail "The ARM64 Windows compatibility exec bridge is missing."
@@ -179,8 +174,7 @@ if [[ "$APP" == "effectcraft" ]]; then
     echo "  -> installed the Android ARM64 Bionic exec interception bridge"
 fi
 
-GRADLE_JDK="$(find_gradle_jdk || true)"
-'''
+GRADLE_JDK="$(find_gradle_jdk || true)"'''
     if "EFFECTCRAFT_ANDROID_WINDOWS_COMPAT_NATIVE_V1" not in common:
         common = replace_once(
             common, native_anchor, native_block,
