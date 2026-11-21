@@ -82,14 +82,22 @@ def main() -> None:
     box86 = None
     box86_hash = None
     if args.box86_dir is not None and args.box86_dir.is_dir():
-        box86 = require_one(args.box86_dir, "box86-android-armv7.tar.zst")
-        box86_sidecar = require_one(args.box86_dir, "box86-android-armv7.tar.zst.sha256")
-        box86_match = re.search(r"(?i)\b([0-9a-f]{64})\b", box86_sidecar.read_text(encoding="ascii"))
-        if not box86_match:
-            raise SystemExit("Box86 SHA-256 sidecar is malformed")
-        box86_hash = box86_match.group(1).lower()
-        if sha256(box86).lower() != box86_hash:
-            raise SystemExit("Box86 ARMv7 archive SHA-256 mismatch")
+        box86_archives = [
+            item for item in args.box86_dir.rglob("box86-android-armv7.tar.zst")
+            if item.is_file() and not item.is_symlink()
+        ]
+        if box86_archives:
+            if len(box86_archives) != 1:
+                raise SystemExit(f"Expected at most one Box86 archive, found {len(box86_archives)}")
+            box86 = box86_archives[0]
+            box86_sidecar = require_one(args.box86_dir, "box86-android-armv7.tar.zst.sha256")
+            box86_match = re.search(r"(?i)\b([0-9a-f]{64})\b", box86_sidecar.read_text(encoding="ascii"))
+            if not box86_match:
+                raise SystemExit("Box86 SHA-256 sidecar is malformed")
+            box86_hash = box86_match.group(1).lower()
+            if sha256(box86).lower() != box86_hash:
+                raise SystemExit("Box86 ARMv7 archive SHA-256 mismatch")
+
 
     box32 = require_one(args.box32_dir, "box64-box32-android-arm64.tar.zst")
     if sha256(box32).lower() != BOX32_SHA256:
