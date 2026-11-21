@@ -48,6 +48,8 @@ public final class WindowsCompatAndroidBridge {
     private static final String FEXCORE_ASSET_SHA256 = "0000000000000000000000000000000000000000000000000000000000000000";
     private static final String BOX86_ASSET = "windows-compat/box86-android-armv7.tar.zst";
     private static final String BOX86_ASSET_SHA256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    private static final String QEMU_ASSET = "windows-compat/qemu-x86_64-linux-user-android-arm64.tar.zst";
+    private static final String QEMU_ASSET_SHA256 = "0000000000000000000000000000000000000000000000000000000000000000";
     private static final String AEX_HOST_X64_ASSET = "windows-compat/aex-host-x64.exe";
     private static final String AEX_HOST_X64_SHA256 = "ed8875e9346f117cb4f61a766dd271a746fecab2db315e6e9fd753b90101511f";
     private static final String AEX_HOST_X86_ASSET = "windows-compat/aex-host-x86.exe";
@@ -143,6 +145,7 @@ public final class WindowsCompatAndroidBridge {
         Path archive = null;
         Path fexArchive = null;
         Path box86Archive = null;
+        Path qemuArchive = null;
         try {
             INSTALL_STATUS.put(requestId, "正在下载并校验 Windows 兼容基础环境…");
             manager.installAllRuntimeComponents();
@@ -174,6 +177,15 @@ public final class WindowsCompatAndroidBridge {
                         : "Box86 ARMv7 已随包安装，但设备没有 32 位 Bionic linker，当前设备禁用该路线。";
             }
 
+            String qemuStatus = "QEMU x86-64 Linux-user 引擎未随包提供。";
+            if (!QEMU_ASSET_SHA256.matches("0{64}")) {
+                INSTALL_STATUS.put(requestId, "正在安装可选 QEMU x86-64 Linux-user 引擎…");
+                qemuArchive = context.getCacheDir().toPath().resolve("qemu-x86_64-linux-user-android-arm64.tar.zst");
+                copyBundledAsset(context, QEMU_ASSET, qemuArchive);
+                manager.installQemuUserArchive(qemuArchive, QEMU_ASSET_SHA256);
+                qemuStatus = "QEMU ARM64 引擎已安装；它运行 Linux x86-64 ELF，Windows AEX 仍需独立 x86-64 Wine/glibc 根文件系统。";
+            }
+
             arm64EcContainer = container;
             INSTALL_STATUS.put(requestId, "正在校验并安装 Windows x64 / x86 AEX 宿主…");
             Path hostDirectory = context.getFilesDir().toPath().resolve("windows-compat/hosts");
@@ -184,7 +196,7 @@ public final class WindowsCompatAndroidBridge {
 
             INSTALL_STATUS.put(requestId,
                     "READY:Windows 兼容基础环境与源码构建 FEXCore 已安装。"
-                    + box86Status + "真实 AEX 插件执行仍需逐项验证。");
+                    + box86Status + qemuStatus + "真实 AEX 插件执行仍需逐项验证。");
             Log.i(TAG, "Windows compatibility base, Box64 BOX32 and FEXCore are prepared.");
         } catch (Exception error) {
             String detail = error.getMessage();
@@ -202,6 +214,9 @@ public final class WindowsCompatAndroidBridge {
             }
             if (box86Archive != null) {
                 try { Files.deleteIfExists(box86Archive); } catch (IOException ignored) {}
+            }
+            if (qemuArchive != null) {
+                try { Files.deleteIfExists(qemuArchive); } catch (IOException ignored) {}
             }
             ACTIVE_REQUESTS.remove(requestId);
         }
