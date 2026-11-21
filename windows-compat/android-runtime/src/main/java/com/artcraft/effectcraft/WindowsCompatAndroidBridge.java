@@ -160,40 +160,71 @@ public final class WindowsCompatAndroidBridge {
             WinlatorBionicRuntimeManager.Container container = manager.createContainer(
                     "effectcraft-aex-arm64ec",
                     WinlatorBionicRuntimeManager.Architecture.ARM64EC);
-            fexArchive = context.getCacheDir().toPath().resolve("fexcore-arm64ec-wow64.tar.zst");
-            copyBundledAsset(context, FEXCORE_ASSET, fexArchive);
-            manager.installFexCoreArchive(container, fexArchive, FEXCORE_ASSET_SHA256);
-
-            INSTALL_STATUS.put(requestId, "正在准备 x86-64 Proton + Box64/BOX32 独立容器…");
-            WinlatorBionicRuntimeManager.Container x64 = manager.createContainer(
-                    "effectcraft-aex-x86_64",
-                    WinlatorBionicRuntimeManager.Architecture.X86_64);
-
-            String box86Status = "Box86 架构后备未打包。";
-            if (!BOX86_ASSET_SHA256.matches("0{64}")) {
-                INSTALL_STATUS.put(requestId, "正在校验并安装可选 Box86 ARMv7 引擎…");
-                box86Archive = context.getCacheDir().toPath().resolve("box86-android-armv7.tar.zst");
-                copyBundledAsset(context, BOX86_ASSET, box86Archive);
-                manager.installBox86Archive(box86Archive, BOX86_ASSET_SHA256);
-                boolean hasArm32Linker = Build.SUPPORTED_32_BIT_ABIS != null
-                        && Build.SUPPORTED_32_BIT_ABIS.length > 0
-                        && Files.isExecutable(Paths.get("/system/bin/linker"));
-                box86Status = hasArm32Linker
-                        ? "Box86 ARMv7 已安装；仍需独立的 i386 Wine 前缀，当前不作为 AEX 成功路线。"
-                        : "Box86 ARMv7 已随包安装，但设备没有 32 位 Bionic linker，当前设备禁用该路线。";
-            }
-
-            String qemuStatus = "QEMU x86-64 Linux-user 引擎未随包提供。";
-            if (!QEMU_ASSET_SHA256.matches("0{64}")) {
-                INSTALL_STATUS.put(requestId, "正在安装可选 QEMU x86-64 Linux-user 引擎…");
-                qemuArchive = context.getCacheDir().toPath().resolve("qemu-x86_64-linux-user-android-arm64.tar.zst");
-                copyBundledAsset(context, QEMU_ASSET, qemuArchive);
-                manager.installQemuUserArchive(qemuArchive, QEMU_ASSET_SHA256);
-                qemuStatus = "QEMU ARM64 引擎已安装；它运行 Linux x86-64 ELF，Windows AEX 仍需独立 x86-64 Wine/glibc 根文件系统。";
-            }
-
             arm64EcContainer = container;
-            box64Container = x64;
+
+            String fexStatus = "FEXCore 源码构建包未安装。";
+            try {
+                fexArchive = context.getCacheDir().toPath().resolve("fexcore-arm64ec-wow64.tar.zst");
+                copyBundledAsset(context, FEXCORE_ASSET, fexArchive);
+                manager.installFexCoreArchive(container, fexArchive, FEXCORE_ASSET_SHA256);
+                fexStatus = "源码构建的 FEXCore ARM64EC + WoW64 两套后端已校验并安装。";
+            } catch (Exception fexError) {
+                fexStatus = "源码构建 FEXCore 安装失败：" + safeMessage(fexError);
+                Log.w(TAG, fexStatus, fexError);
+            }
+
+            String box64Status = "Box64/BOX32 x86-64 Proton 容器未准备。";
+            try {
+                INSTALL_STATUS.put(requestId, "正在准备 x86-64 Proton + Box64/BOX32 独立容器…");
+                WinlatorBionicRuntimeManager.Container x64 = manager.createContainer(
+                        "effectcraft-aex-x86_64",
+                        WinlatorBionicRuntimeManager.Architecture.X86_64);
+                box64Container = x64;
+                box64Status = "独立 x86-64 Proton + Box64/BOX32 容器已准备；尚需 AEX 实测。";
+            } catch (Exception box64Error) {
+                box64Container = null;
+                box64Status = "Box64 x86-64 容器准备失败：" + safeMessage(box64Error);
+                Log.w(TAG, box64Status, box64Error);
+            }
+
+            String box86Status = "Box86 ARMv7 后备未随包提供。";
+            if (!BOX86_ASSET_SHA256.matches("0{64}")) {
+                try {
+                    INSTALL_STATUS.put(requestId, "正在校验并安装可选 Box86 ARMv7 引擎…");
+                    box86Archive = context.getCacheDir().toPath().resolve("box86-android-armv7.tar.zst");
+                    copyBundledAsset(context, BOX86_ASSET, box86Archive);
+                    manager.installBox86Archive(box86Archive, BOX86_ASSET_SHA256);
+                    boolean hasArm32Linker = Build.SUPPORTED_32_BIT_ABIS != null
+                            && Build.SUPPORTED_32_BIT_ABIS.length > 0
+                            && Files.isExecutable(Paths.get("/system/bin/linker"));
+                    box86Status = hasArm32Linker
+                            ? "Box86 ARMv7 已安装；仍需独立 i386 Wine 根文件系统。"
+                            : "Box86 ARMv7 已安装，但设备没有 32 位 Bionic linker，当前设备禁用该路线。";
+                } catch (Exception box86Error) {
+                    box86Status = "Box86 ARMv7 安装失败：" + safeMessage(box86Error);
+                    Log.w(TAG, box86Status, box86Error);
+                }
+            }
+
+            String qemuStatus = "QEMU x86-64 Linux-user 后备未随包提供。";
+            if (!QEMU_ASSET_SHA256.matches("0{64}")) {
+                try {
+                    INSTALL_STATUS.put(requestId, "正在安装可选 QEMU x86-64 Linux-user 引擎…");
+                    qemuArchive = context.getCacheDir().toPath().resolve("qemu-x86_64-linux-user-android-arm64.tar.zst");
+                    copyBundledAsset(context, QEMU_ASSET, qemuArchive);
+                    manager.installQemuUserArchive(qemuArchive, QEMU_ASSET_SHA256);
+                    qemuStatus = "QEMU ARM64 引擎已安装；仍需独立 x86-64 Wine/glibc 根文件系统才能运行 Windows AEX。";
+                } catch (Exception qemuError) {
+                    qemuStatus = "QEMU Linux-user 安装失败：" + safeMessage(qemuError);
+                    Log.w(TAG, qemuStatus, qemuError);
+                }
+            }
+
+            boolean fexReady = Files.isRegularFile(container.system32.resolve("libarm64ecfex.dll"))
+                    && Files.isRegularFile(container.system32.resolve("libwow64fex.dll"));
+            if (!fexReady && box64Container == null) {
+                throw new IOException("FEXCore 和 Box64 两条核心后端均未准备成功。");
+            }
             INSTALL_STATUS.put(requestId, "正在校验并安装 Windows x64 / x86 AEX 宿主…");
             Path hostDirectory = context.getFilesDir().toPath().resolve("windows-compat/hosts");
             installVerifiedPeHost(context, AEX_HOST_X64_ASSET, AEX_HOST_X64_SHA256,
@@ -202,8 +233,9 @@ public final class WindowsCompatAndroidBridge {
                     hostDirectory.resolve("effectcraft-aex-host-x86.exe"), 0x014c);
 
             INSTALL_STATUS.put(requestId,
-                    "READY:Windows 兼容基础环境、源码构建 FEXCore 和独立 Box64/BOX32 容器已准备。"
-                    + box86Status + qemuStatus + "真实 AEX 插件执行仍需逐项验证。");
+                    "READY:Windows 兼容环境基础文件与 x86/x64 AEX 宿主已准备。"
+                    + fexStatus + box64Status + box86Status + qemuStatus
+                    + "导入 AEX 后会先试 FEXCore，再回退测试 Box64；Box86/QEMU 只有满足各自 Wine 客体根文件系统条件后才可执行。");
             Log.i(TAG, "Windows compatibility base, Box64 BOX32 and FEXCore are prepared.");
         } catch (Exception error) {
             String detail = error.getMessage();
@@ -227,6 +259,12 @@ public final class WindowsCompatAndroidBridge {
             }
             ACTIVE_REQUESTS.remove(requestId);
         }
+    }
+
+    private static String safeMessage(Exception error) {
+        String message = error.getMessage();
+        return message == null || message.trim().isEmpty()
+                ? error.getClass().getSimpleName() : message;
     }
 
     /** Starts a user-requested, isolated test of the first AEX found in a file or ZIP. */
