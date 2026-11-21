@@ -40,7 +40,13 @@ def main() -> None:
     if not header_path.is_file():
         raise SystemExit(f"EffectCraft toolbar source was not found: {header_path}")
     source = header_path.read_text(encoding="utf-8")
+    # This patch owns only Ae's existing top-left plug-in entry. AM-specific controls
+    # belong exclusively in am_editor.rs and must never be inserted into header.rs.
+    if "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" in source or "am-plugin-import" in source:
+        raise SystemExit("AM-specific button code has leaked into Ae's shared toolbar.")
     if MARKER in source:
+        if "let x = tool_slots(app, ui, &p, x, cy);" not in source:
+            raise SystemExit("The original Ae tool-slot layout was changed by the plug-in import patch.")
         print("Top-left WASM plug-in import button is already present.")
         return
 
@@ -136,8 +142,12 @@ fn plugin_import_button(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy:
 
 '''
     source = source.replace(function_anchor, helper + function_anchor, 1)
+    if "let x = tool_slots(app, ui, &p, x, cy);" not in source:
+        raise SystemExit("The original Ae tool-slot layout must remain unchanged after adding the plug-in entry.")
+    if "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" in source or "am-plugin-import" in source:
+        raise SystemExit("AM-specific button code must remain isolated from the Ae toolbar.")
     header_path.write_text(source, encoding="utf-8")
-    print("Added the top-left 导入插件 button.")
+    print("Added the top-left 导入插件 button without changing Ae tool-slot sizing.")
     print("The menu now includes a dedicated desktop plug-in advanced migration entry.")
     print("Advanced migration reuses the native picker/interceptor and reports architecture, candidate translation routes, host API requirements and force-compatibility profiles.")
     print("AI plug-in ZIP import and model downloads are intentionally handled only by the in-app 模型管理 screen.")
