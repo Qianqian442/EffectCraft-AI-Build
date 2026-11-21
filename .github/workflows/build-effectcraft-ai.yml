@@ -96,8 +96,8 @@ permissions:
 concurrency:
   # Only the newest source revision should consume a runner for this APK.
   group: effectcraft-ai-android-runtime-v2-${{ github.ref }}
-  # Let an already-running APK build finish; queue this unified validation/build run next.
-  cancel-in-progress: false
+  # A newer source revision supersedes stale APK builds; keep only the latest integrated runtime build active.
+  cancel-in-progress: true
 
 jobs:
   build-box64-box32:
