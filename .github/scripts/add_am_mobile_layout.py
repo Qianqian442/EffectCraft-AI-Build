@@ -251,6 +251,13 @@ def patch_am_scoped_panel_touch_scroll(effectcraft: Path) -> None:
         }
         let gutter: Gutter = ui.data(|d| d.get_temp(id.with("gutter"))).unwrap_or_default();"""
         source = replace_once(source, old, new, "AM-scoped PanelScroll finger gesture")
+        scoped_start = source.find("// EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1")
+        scoped_end = source.find("let gutter: Gutter", scoped_start)
+        scoped_block = source[scoped_start:scoped_end]
+        if scoped_start < 0 or scoped_end < 0 or "am_touch_draw_context && ui.input" not in scoped_block:
+            raise SystemExit("AM touch scrolling is not strictly scoped to AM-owned drawers.")
+        if any(token in scoped_block for token in ("egui::Button", "Button::new", "button_size", "min_size(")):
+            raise SystemExit("AM touch patch must not change shared button size, style, or hit targets.")
         widgets_path.write_text(source, encoding="utf-8")
     print("Installed touch scrolling scoped to the AM drawer context; Ae panels do not enable it.")
 
