@@ -568,6 +568,48 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         }
     }
 
+    /** Launch an i386 Linux ELF guest via Box86 when Android exposes a 32-bit Bionic linker. */
+    public GuestProcess launchBox86Guest(
+            Path guestRoot,
+            Path guestExecutable,
+            List<String> guestArguments,
+            Consumer<String> logCallback,
+            Consumer<Integer> exitCallback) throws IOException {
+        ensureOpen();
+        Path linker32 = Paths.get(AndroidBionicProcessLauncher.SYSTEM_LINKER32);
+        Path box86 = privateRoot.resolve("engines/box86-armv7/usr/bin/box86").normalize();
+        Path root = guestRoot.toAbsolutePath().normalize();
+        Path executable = guestExecutable.toAbsolutePath().normalize();
+        if (!Files.isExecutable(linker32)) {
+            throw new IOException("this Android device does not expose /system/bin/linker for 32-bit ARM binaries");
+        }
+        if (!box86.startsWith(privateRoot) || !Files.isRegularFile(box86, LinkOption.NOFOLLOW_LINKS)
+                || !root.startsWith(privateRoot) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)
+                || !executable.startsWith(root) || !Files.isRegularFile(executable, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("Box86, i386 guest rootfs or guest executable is missing/outside private storage");
+        }
+        ensureExecutable(box86);
+        List<String> command = AndroidBionicProcessLauncher.box86Command(
+                box86, prependGuestPath(root, executable, guestArguments));
+        ProcessBuilder builder = new ProcessBuilder(command);
+        builder.directory(root.toFile());
+        builder.environment().put("BOX86_PATH", root.resolve("usr/bin").toString());
+        builder.environment().put("BOX86_LD_LIBRARY_PATH",
+                root.resolve("usr/lib/i386-linux-gnu") + ":"
+                        + root.resolve("lib/i386-linux-gnu") + ":"
+                        + root.resolve("usr/lib"));
+        builder.environment().put("LD_LIBRARY_PATH", "/system/lib");
+        builder.redirectErrorStream(false);
+        return new GuestProcess(builder.start(), logCallback, exitCallback);
+    }
+
+    private static List<String> prependGuestPath(Path root, Path executable, List<String> args) {
+        List<String> result = new ArrayList<>();
+        result.add(executable.toString());
+        if (args != null) result.addAll(args);
+        return result;
+    }
+
     /** Launch an x86_64 Linux ELF guest through the packaged ARM64 QEMU user-mode engine. */
     public GuestProcess launchQemuX86_64Guest(
             Path guestRoot,
