@@ -440,6 +440,78 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
     }
 
     /**
+     * Installs the optional Android ARMv7 Box86 binary in its own app-private directory.
+     * It is only useful when the device exposes a 32-bit Bionic linker and a matching
+     * i386 Wine userspace is supplied separately; it is not a Windows PE loader.
+     */
+    public synchronized Path installBox86Archive(Path archive, String expectedSha256) throws IOException {
+        ensureOpen();
+        if (archive == null || !Files.isRegularFile(archive, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(archive)) {
+            throw new IOException("Box86 archive is missing or unsafe");
+        }
+        if (expectedSha256 == null || !expectedSha256.matches("(?i)[0-9a-f]{64}")) {
+            throw new IOException("Box86 archive requires a pinned SHA-256 digest");
+        }
+        String actualDigest = sha256(archive);
+        if (!actualDigest.equalsIgnoreCase(expectedSha256)) {
+            throw new IOException("Box86 archive SHA-256 mismatch");
+        }
+
+        Path staging = privateRoot.resolve("staging/box86-armv7");
+        Path destination = privateRoot.resolve("engines/box86-armv7");
+        deleteTree(staging);
+        Files.createDirectories(staging);
+        try {
+            extractor.extractTarZstd(archive, staging);
+            Path binary = staging.resolve("usr/bin/box86").normalize();
+            if (!binary.startsWith(staging) || !Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS)
+                    || Files.isSymbolicLink(binary)) {
+                throw new IOException("Box86 archive does not contain usr/bin/box86");
+            }
+            verifyElfMachineFile(binary, 1, 40);
+            createDirectoriesNoSymlink(privateRoot, destination.getParent());
+            deleteTree(destination);
+            try {
+                Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(staging, destination);
+            }
+            Path installed = destination.resolve("usr/bin/box86");
+            ensureExecutable(installed);
+            Files.write(destination.resolve(".effectcraft-box86.sha256"),
+                    (actualDigest + "\n").getBytes(StandardCharsets.US_ASCII),
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            return installed;
+        } finally {
+            deleteTree(staging);
+        }
+    }
+
+    private static void verifyElfMachineFile(Path path, int expectedClass, int expectedMachine)
+            throws IOException {
+        try (java.io.RandomAccessFile file = new java.io.RandomAccessFile(path.toFile(), "r")) {
+            if (file.length() < 20 || file.readUnsignedByte() != 0x7f
+                    || file.readUnsignedByte() != 'E' || file.readUnsignedByte() != 'L'
+                    || file.readUnsignedByte() != 'F') {
+                throw new IOException("runtime component is not an ELF executable");
+            }
+            int elfClass = file.readUnsignedByte();
+            int dataEncoding = file.readUnsignedByte();
+            if (elfClass != expectedClass || dataEncoding != 1) {
+                throw new IOException("runtime ELF class or byte order does not match the requested engine");
+            }
+            file.seek(18);
+            int machine = file.readUnsignedByte() | (file.readUnsignedByte() << 8);
+            if (machine != expectedMachine) {
+                throw new IOException(String.format(Locale.ROOT,
+                        "runtime ELF machine mismatch: expected %d, received %d",
+                        expectedMachine, machine));
+            }
+        }
+    }
+
+    /**
      * Installs the source-built FEXCore PE backends used by ARM64EC/WoW64 Wine.
      * This is the complete DLL pair for Hangover's Windows-PE execution path,
      * not the standalone FEX Linux-user emulator/root filesystem.
