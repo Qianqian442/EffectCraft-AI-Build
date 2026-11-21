@@ -62,6 +62,9 @@ on:
       - '.github/scripts/add_account_whitelist_local_cache.py'
       - '.github/scripts/hide_account_security_details.py'
       - '.github/scripts/convert_account_gate_to_cloud.py'
+      - '.github/scripts/integrate_public_proxy_pool.py'
+      - '.github/scripts/fetch_public_proxy_bootstrap.py'
+      - '.github/native/public_proxy_pool.rs'
       - '.github/scripts/patch_gradle_maven_mirrors.py'
       - '.github/scripts/normalize_account_network_dependencies.py'
       - '.github/scripts/make_header_scrollable.py'
@@ -1426,6 +1429,25 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/normalize_account_network_dependencies.py
           python3 build-assets/.github/scripts/normalize_account_network_dependencies.py
+
+      - name: Prepare mainland-network HTTPS and WSS fallback routes
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+          BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
+          PUBLIC_PROXY_BOOTSTRAP_FILE: ${{ github.workspace }}/build-assets/.github/native/public_proxy_bootstrap.txt
+        run: |
+          set -euo pipefail
+          python3 -m py_compile build-assets/.github/scripts/fetch_public_proxy_bootstrap.py
+          python3 build-assets/.github/scripts/fetch_public_proxy_bootstrap.py --output "$PUBLIC_PROXY_BOOTSTRAP_FILE"
+          python3 -m py_compile build-assets/.github/scripts/integrate_public_proxy_pool.py
+          python3 build-assets/.github/scripts/integrate_public_proxy_pool.py
+          ACCOUNT_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/account.rs"
+          grep -Fq 'EFFECTCRAFT_PUBLIC_PROXY_POOL_V1' "$ACCOUNT_RS"
+          grep -Fq 'crate::public_proxy_pool::account_http_request' "$ACCOUNT_RS"
+          grep -Fq 'crate::public_proxy_pool::connect_websocket' "$ACCOUNT_RS"
+          grep -Fq 'mod public_proxy_pool;' "$EFFECTCRAFT_DIR/crates/ui-egui/src/lib.rs"
+          grep -Fq 'features = ["socks-proxy"]' "$EFFECTCRAFT_DIR/Cargo.toml"
+          echo "Verified direct-first HTTPS/WSS with mainland candidate CONNECT/SOCKS5 fallback; TLS certificate validation remains enabled."
 
       - name: Guard Android Effect Controls from panel crashes
         env:
