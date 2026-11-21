@@ -548,10 +548,14 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
             }
             createDirectoriesNoSymlink(privateRoot, destination.getParent());
             deleteTree(destination);
+            Path stagedUsr = staging.resolve("usr").normalize();
+            if (!stagedUsr.startsWith(staging) || !Files.isDirectory(stagedUsr, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("QEMU archive staging root does not contain usr/");
+            }
             try {
-                Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
+                Files.move(stagedUsr, destination, StandardCopyOption.ATOMIC_MOVE);
             } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
-                Files.move(staging, destination);
+                Files.move(stagedUsr, destination);
             }
             Path installed = destination.resolve("bin/qemu-x86_64");
             ensureExecutable(installed);
