@@ -5,6 +5,8 @@ import argparse
 import hashlib
 import re
 import shutil
+import subprocess
+import tempfile
 import struct
 from pathlib import Path
 
@@ -62,6 +64,7 @@ def main() -> None:
     parser.add_argument("--box32-dir", type=Path, required=True)
     parser.add_argument("--fexcore-dir", type=Path, required=True)
     parser.add_argument("--box86-dir", type=Path, default=None)
+    parser.add_argument("--qemu-dir", type=Path, default=None)
     parser.add_argument("--x64-host-dir", type=Path, required=True)
     parser.add_argument("--x86-host-dir", type=Path, required=True)
     parser.add_argument("--assets-dir", type=Path, required=True)
@@ -99,6 +102,60 @@ def main() -> None:
                 raise SystemExit("Box86 ARMv7 archive SHA-256 mismatch")
 
 
+    qemu_archive = None
+    qemu_hash = None
+    if args.qemu_dir is not None and args.qemu_dir.is_dir():
+        qemu_packages = sorted(
+            item for item in args.qemu_dir.rglob("*.deb")
+            if item.is_file() and not item.is_symlink()
+        )
+        if qemu_packages:
+            with tempfile.TemporaryDirectory(prefix="ae-qemu-deb-") as temp_dir:
+                unpack_root = Path(temp_dir) / "unpacked"
+                unpack_root.mkdir(parents=True)
+                for package in qemu_packages:
+                    subprocess.run(
+                        ["dpkg-deb", "-x", str(package), str(unpack_root)],
+                        check=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                    )
+                binaries = list(unpack_root.rglob("qemu-x86_64"))
+                if len(binaries) != 1:
+                    raise SystemExit(
+                        f"Expected exactly one QEMU x86_64 Linux-user binary in the packages, found {len(binaries)}"
+                    )
+                binary = binaries[0]
+                termux_usr = next((parent for parent in binary.parents if parent.name == "usr"), None)
+                if termux_usr is None or not termux_usr.is_dir():
+                    raise SystemExit("QEMU package did not contain an identifiable usr runtime prefix")
+                normalized = Path(temp_dir) / "normalized"
+                shutil.copytree(termux_usr, normalized / "usr", symlinks=True)
+                readelf = subprocess.run(
+                    ["readelf", "-h", str(normalized / "usr/bin/qemu-x86_64")],
+                    check=True, capture_output=True, text=True,
+                ).stdout
+                if "ELF64" not in readelf or "AArch64" not in readelf:
+                    raise SystemExit("QEMU user-mode binary is not Android ARM64 ELF64")
+                staging = Path(temp_dir) / "qemu-stage"
+                staging.mkdir()
+                shutil.copytree(normalized / "usr", staging / "usr", symlinks=True)
+                (staging / "README.txt").write_text(
+                    "QEMU x86_64 Linux-user runtime for Android ARM64.\\n"
+                    "This translates Linux x86_64 ELF programs; it is not a Windows PE loader.\\n"
+                    "A matching x86_64 Wine/glibc guest rootfs is still required for Windows AEX hosting.\\n",
+                    encoding="utf-8",
+                )
+                archive_path = Path(temp_dir) / "qemu-android-arm64.tar.zst"
+                subprocess.run(
+                    ["tar", "--zstd", "-cf", str(archive_path), "-C", str(staging), "."],
+                    check=True,
+                )
+                qemu_hash = sha256(archive_path)
+                qemu_archive = Path(tempfile.gettempdir()) / f"ae-qemu-{qemu_hash}.tar.zst"
+                shutil.copyfile(archive_path, qemu_archive)
+
     box32 = require_one(args.box32_dir, "box64-box32-android-arm64.tar.zst")
     if sha256(box32).lower() != BOX32_SHA256:
         raise SystemExit("BOX32 runtime archive SHA-256 mismatch")
@@ -118,6 +175,9 @@ def main() -> None:
     copy_verified(fexcore, args.assets_dir / "windows-compat/fexcore-arm64ec-wow64.tar.zst", fexcore_hash)
     if box86 is not None and box86_hash is not None:
         copy_verified(box86, args.assets_dir / "windows-compat/box86-android-armv7.tar.zst", box86_hash)
+    if qemu_archive is not None and qemu_hash is not None:
+        copy_verified(qemu_archive, args.assets_dir / "windows-compat/qemu-x86_64-linux-user-android-arm64.tar.zst", qemu_hash)
+        qemu_archive.unlink(missing_ok=True)
     copy_verified(x64, args.assets_dir / "windows-compat/aex-host-x64.exe", x64_hash)
     copy_verified(x86, args.assets_dir / "windows-compat/aex-host-x86.exe", x86_hash)
 
@@ -126,6 +186,8 @@ def main() -> None:
     replace_java_hash(args.bridge_java, "FEXCORE_ASSET_SHA256", fexcore_hash)
     if box86_hash is not None:
         replace_java_hash(args.bridge_java, "BOX86_ASSET_SHA256", box86_hash)
+    if qemu_hash is not None:
+        replace_java_hash(args.bridge_java, "QEMU_ASSET_SHA256", qemu_hash)
     replace_java_hash(args.bridge_java, "AEX_HOST_X64_SHA256", x64_hash)
     replace_java_hash(args.bridge_java, "AEX_HOST_X86_SHA256", x86_hash)
 
@@ -137,6 +199,8 @@ def main() -> None:
     ]
     if box86_hash is not None:
         sidecars.append((args.assets_dir / "windows-compat/box86-android-armv7.tar.zst", box86_hash))
+    if qemu_hash is not None:
+        sidecars.append((args.assets_dir / "windows-compat/qemu-x86_64-linux-user-android-arm64.tar.zst", qemu_hash))
     for source, digest in sidecars:
         sidecar = source.with_name(source.name + ".sha256")
         sidecar.write_text(f"{digest}  {source.name}\n", encoding="ascii")
@@ -145,6 +209,7 @@ def main() -> None:
     print(f"  Box64 BOX32 Android ARM64: {BOX32_SHA256}")
     print(f"  Source-built FEXCore ARM64EC/WoW64: {fexcore_hash}")
     print("  Box86 ARMv7 optional fallback: " + (box86_hash or "not packaged in this build"))
+    print("  QEMU x86_64 Linux-user optional fallback: " + (qemu_hash or "not packaged in this build"))
     print(f"  Windows x64 AEX host: {x64_hash}")
     print(f"  Windows x86 AEX host: {x86_hash}")
     print(f"  AEXLO MIT license: {LICENSE_SHA256}")
