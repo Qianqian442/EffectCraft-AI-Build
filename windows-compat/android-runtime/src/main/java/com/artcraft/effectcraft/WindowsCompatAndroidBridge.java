@@ -557,12 +557,20 @@ public final class WindowsCompatAndroidBridge {
                 throw new IOException("AEX 宿主渲染完成后的退出码异常：" + exitCode);
             }
 
-            // Scores are calculated from observed work only. No desktop visual-fidelity
-            // percentage is invented because this sample run has no AE reference image.
+            // Scores are calculated from observed work only. Parameter points scale
+            // with actual supported values round-tripped; unsupported custom controls
+            // are never silently counted as migrated. No visual-fidelity score is
+            // invented because there is no desktop reference render in this smoke test.
+            if (parameterCount > 0 && roundTrip.length() == 0) {
+                throw new IOException("插件声明了参数，但当前宿主无法往返任何参数值；不能将该插件判为完整兼容。");
+            }
+            int parameterPoints = parameterCount == 0
+                    ? 20
+                    : Math.min(20, (int) Math.round(20.0 * roundTrip.length() / parameterCount));
             int performancePoints = Math.max(0, 5 - (int) Math.min(5, renderMillis / 1000));
             int score = 15 /* loaded */
                     + 15 /* parameter metadata */
-                    + 20 /* supported parameters round-tripped */
+                    + parameterPoints
                     + 25 /* two real frame renders */
                     + (stable ? 10 : 0)
                     + 10 /* clean worker exit */
