@@ -98,6 +98,7 @@ permissions:
   contents: write
   actions: read
 
+# Dual-host account transport change: reuse the already-built pinned runtime artifacts for the APK rebuild.
 concurrency:
   # Only the newest source revision should consume a runner for this APK.
   group: effectcraft-ai-android-runtime-v2-${{ github.ref }}
