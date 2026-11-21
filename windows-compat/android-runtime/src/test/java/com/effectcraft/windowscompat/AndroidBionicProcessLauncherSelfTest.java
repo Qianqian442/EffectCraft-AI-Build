@@ -35,6 +35,30 @@ public final class AndroidBionicProcessLauncherSelfTest {
             rejected = true;
         }
         check(rejected, "relative executable paths must be rejected");
+        List<String> qemu = AndroidBionicProcessLauncher.qemuUserCommand(
+                Paths.get("/data/user/0/com.effectcraft/files/windows-compat/usr/bin/qemu-x86_64"),
+                Paths.get("/data/user/0/com.effectcraft/files/windows-compat/guest"),
+                Paths.get("/data/user/0/com.effectcraft/files/windows-compat/guest/bin/wine"),
+                List.of("--version"));
+        check(qemu.get(0).equals("/system/bin/linker64"),
+                "QEMU Bionic launcher must use system linker64");
+        check(qemu.get(1).endsWith("/usr/bin/qemu-x86_64"),
+                "QEMU ARM64 binary must be started as a Bionic executable");
+        check(qemu.get(2).equals("-L") && qemu.get(3).endsWith("/guest"),
+                "QEMU must receive the x86_64 guest rootfs prefix");
+        check(qemu.get(4).endsWith("/guest/bin/wine") && qemu.get(5).equals("--version"),
+                "QEMU must preserve guest executable and arguments");
+
+        List<String> box86 = AndroidBionicProcessLauncher.box86Command(
+                Paths.get("/data/user/0/com.effectcraft/files/windows-compat/engines/box86/usr/bin/box86"),
+                List.of("/data/user/0/com.effectcraft/files/windows-compat/i386/usr/bin/wine", "--version"));
+        check(box86.get(0).equals("/system/bin/linker"),
+                "Box86 ARMv7 Bionic binary must use the 32-bit system linker");
+        check(box86.get(1).endsWith("/usr/bin/box86"),
+                "Box86 runtime path must be preserved");
+        check(box86.get(2).endsWith("/usr/bin/wine") && box86.get(3).equals("--version"),
+                "Box86 guest arguments must be preserved");
+
         System.out.println("Android Bionic process launcher tests passed.");
     }
 }
