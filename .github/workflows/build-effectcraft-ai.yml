@@ -218,6 +218,88 @@ jobs:
           path: artifacts/box86/*
           retention-days: 30
 
+  build-qemu-user-android:
+    name: Build optional QEMU x86-64 Linux-user fallback for Android
+    runs-on: ubuntu-22.04
+    timeout-minutes: 180
+    continue-on-error: true
+    steps:
+      - name: Check out pinned Termux package recipes
+        uses: actions/checkout@v4
+        with:
+          repository: termux/termux-packages
+          ref: e0ce77d242bb9f9adb48cc38dca4d69b3b6d0af9
+          path: third_party/termux-packages
+          fetch-depth: 1
+
+      - name: Install package inspection tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y dpkg-dev file zstd
+
+      - name: Patch QEMU recipe to build x86-64 Linux-user only
+        working-directory: third_party/termux-packages
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          recipe = Path("packages/qemu-system-x86-64-headless/build.sh")
+          source = recipe.read_text(encoding="utf-8")
+          start = source.index('\\tlocal QEMU_TARGETS=""')
+          end = source.index("\\n\\tCFLAGS+=", start)
+          source = source[:start] + '''\\t# EffectCraft uses QEMU only as an x86-64 Linux-user Wine fallback.
+          \\tlocal QEMU_TARGETS="x86_64-linux-user"
+          ''' + source[end:]
+          source = source.replace("alsa-lib, dtc, glib,", "glib,")
+          for dependency in ("jack2, ", "libspice-server, ", "libusb, ",
+                             "libusbredir, ", "ncurses, ", "pulseaudio, "):
+              source = source.replace(dependency, "")
+          for old, new in (
+              ("--enable-fdt=system", "--disable-fdt"),
+              ("--audio-drv-list=pa", "--audio-drv-list="),
+              ("--enable-curses", "--disable-curses"),
+              ("--enable-vnc", "--disable-vnc"),
+              ("--enable-virtfs", "--disable-virtfs"),
+              ("--enable-spice", "--disable-spice"),
+              ("--enable-libusb", "--disable-libusb"),
+              ("--enable-usb-redir", "--disable-usb-redir"),
+          ):
+              source = source.replace(old, new)
+          recipe.write_text(source, encoding="utf-8")
+          print("Configured QEMU x86_64-linux-user only; softmmu/system devices disabled.")
+          PY
+
+      - name: Build PRoot helper and QEMU Android packages
+        working-directory: third_party/termux-packages
+        run: |
+          set -euo pipefail
+          sudo ./scripts/run-docker.sh ./build-package.sh -a aarch64 proot
+          sudo ./scripts/run-docker.sh ./build-package.sh -a aarch64 qemu-system-x86-64-headless
+
+      - name: Collect and validate optional QEMU Android packages
+        working-directory: third_party/termux-packages
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/artifacts/qemu"
+          find output -type f -name 'qemu-user-x86-64*.deb' -exec cp -t "$GITHUB_WORKSPACE/artifacts/qemu/" {} +
+          find output -type f -name 'proot_*.deb' -exec cp -t "$GITHUB_WORKSPACE/artifacts/qemu/" {} +
+          find output -type f -name 'qemu-system-x86-64-headless*.deb' -exec cp -t "$GITHUB_WORKSPACE/artifacts/qemu/" {} +
+          test -n "$(find "$GITHUB_WORKSPACE/artifacts/qemu" -name 'qemu-user-x86-64*.deb' -print -quit)"
+          for package in "$GITHUB_WORKSPACE"/artifacts/qemu/*.deb; do
+            dpkg-deb -I "$package" >/dev/null
+          done
+          sha256sum "$GITHUB_WORKSPACE"/artifacts/qemu/*.deb > "$GITHUB_WORKSPACE/artifacts/qemu/SHA256SUMS.txt"
+          printf '%s\\n' 'Termux QEMU Linux-user package; not a Windows PE loader' \
+            'Requires an x86-64 Wine/glibc rootfs and full runtime shared-library closure' \
+            'No AEX runtime success is claimed by this package build' > "$GITHUB_WORKSPACE/artifacts/qemu/README.txt"
+
+      - name: Upload QEMU Android Linux-user packages for compatibility integration
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-QEMU-x86-64-Android-Fallback
+          path: artifacts/qemu/*
+          retention-days: 30
+
   build-fexcore-arm64ec:
     name: Build and validate full FEXCore ARM64EC and WoW64 PE backends
     runs-on: ubuntu-24.04-arm
@@ -482,7 +564,7 @@ jobs:
           bash windows-compat/android-runtime/exec-bridge/tests/run_host_tests.sh
 
   build:
-    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-fexcore-arm64ec, build-box86-armv7, build-aex-host]
+    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-fexcore-arm64ec, build-box86-armv7, build-qemu-user-android, build-aex-host]
     # Keep the main APK account client on direct HTTPS to the configured Cloudflare account server; do not route account traffic through P2P or public proxies.
     name: Build Ae 0.22.1 with AI and existing features
     runs-on: ubuntu-22.04
