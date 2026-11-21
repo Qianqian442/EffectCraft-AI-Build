@@ -275,7 +275,7 @@ jobs:
           grep -Fq "Tool::Puppet" effectcraft/crates/ui-egui/src/am_editor.rs
           grep -Fq "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" effectcraft/crates/ui-egui/src/panels/home.rs
           ! grep -Fq "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" effectcraft/crates/ui-egui/src/panels/effects_presets.rs
-          grep -Fq "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V1" effectcraft/crates/ui-egui/src/widgets.rs
+          grep -Fq "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1" effectcraft/crates/ui-egui/src/widgets.rs
           grep -Fq "file.importProject" effectcraft/crates/ui-egui/src/panels/home.rs
           ! grep -Fq "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" effectcraft/crates/ui-egui/src/header.rs
           ! grep -Fq "layout_switch_row(" effectcraft/crates/ui-egui/src/header.rs
