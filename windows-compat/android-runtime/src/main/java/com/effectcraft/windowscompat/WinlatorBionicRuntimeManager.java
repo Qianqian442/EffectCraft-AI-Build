@@ -531,7 +531,7 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         }
 
         Path staging = privateRoot.resolve("staging/qemu-x86_64-linux-user");
-        Path destination = privateRoot.resolve("qemu-x86_64-linux-user");
+        Path destination = privateRoot.resolve("usr");
         deleteTree(staging);
         Files.createDirectories(staging);
         try {
@@ -553,7 +553,7 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
             } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
                 Files.move(staging, destination);
             }
-            Path installed = destination.resolve("usr/bin/qemu-x86_64");
+            Path installed = destination.resolve("bin/qemu-x86_64");
             ensureExecutable(installed);
             Files.write(destination.resolve(".effectcraft-qemu.sha256"),
                     (actualDigest + "\n").getBytes(StandardCharsets.US_ASCII),
@@ -572,7 +572,7 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
             Consumer<String> logCallback,
             Consumer<Integer> exitCallback) throws IOException {
         ensureOpen();
-        Path qemu = privateRoot.resolve("qemu-x86_64-linux-user/usr/bin/qemu-x86_64").normalize();
+        Path qemu = privateRoot.resolve("usr/bin/qemu-x86_64").normalize();
         Path root = guestRoot.toAbsolutePath().normalize();
         Path executable = guestExecutable.toAbsolutePath().normalize();
         if (!qemu.startsWith(privateRoot) || !Files.isRegularFile(qemu, LinkOption.NOFOLLOW_LINKS)
@@ -587,7 +587,7 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         builder.environment().put("QEMU_LD_PREFIX", root.toString());
         builder.environment().put("QEMU_CPU", "max");
         builder.environment().put("LD_LIBRARY_PATH",
-                privateRoot.resolve("qemu-x86_64-linux-user/usr/lib") + ":/system/lib64");
+                privateRoot.resolve("usr/lib") + ":/system/lib64");
         builder.redirectErrorStream(false);
         return new GuestProcess(builder.start(), logCallback, exitCallback);
     }
