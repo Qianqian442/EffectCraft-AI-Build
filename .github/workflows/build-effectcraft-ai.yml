@@ -1434,6 +1434,7 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
+          AE_ACCOUNT_API_URL: https://ae-account-api-gateway.pages.dev
           PUBLIC_PROXY_BOOTSTRAP_FILE: ${{ github.workspace }}/build-assets/.github/native/public_proxy_bootstrap.txt
         run: |
           set -euo pipefail
