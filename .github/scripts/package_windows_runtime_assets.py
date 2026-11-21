@@ -170,40 +170,43 @@ def main() -> None:
                         text=True,
                     )
                 binaries = list(unpack_root.rglob("qemu-x86_64"))
-                if len(binaries) != 1:
-                    raise SystemExit(
-                        f"Expected exactly one QEMU x86_64 Linux-user binary in the packages, found {len(binaries)}"
+                if binaries:
+                    if len(binaries) > 1:
+                        raise SystemExit(
+                            f"Expected exactly one QEMU x86_64 Linux-user binary in the packages, found {len(binaries)}"
+                        )
+                    binary = binaries[0]
+                    termux_usr = next((parent for parent in binary.parents if parent.name == "usr"), None)
+                    if termux_usr is None or not termux_usr.is_dir():
+                        raise SystemExit("QEMU package did not contain an identifiable usr runtime prefix")
+                    normalized = Path(temp_dir) / "normalized"
+                    shutil.copytree(termux_usr, normalized / "usr", symlinks=True)
+                    normalize_termux_symlinks(normalized / "usr")
+                    readelf = subprocess.run(
+                        ["readelf", "-h", str(normalized / "usr/bin/qemu-x86_64")],
+                        check=True, capture_output=True, text=True,
+                    ).stdout
+                    if "ELF64" not in readelf or "AArch64" not in readelf:
+                        raise SystemExit("QEMU user-mode binary is not Android ARM64 ELF64")
+                    staging = Path(temp_dir) / "qemu-stage"
+                    staging.mkdir()
+                    shutil.copytree(normalized / "usr", staging / "usr", symlinks=True)
+                    (staging / "README.txt").write_text(
+                        "QEMU x86_64 Linux-user runtime for Android ARM64.\\n"
+                        "This translates Linux x86_64 ELF programs; it is not a Windows PE loader.\\n"
+                        "A matching x86_64 Wine/glibc guest rootfs is still required for Windows AEX hosting.\\n",
+                        encoding="utf-8",
                     )
-                binary = binaries[0]
-                termux_usr = next((parent for parent in binary.parents if parent.name == "usr"), None)
-                if termux_usr is None or not termux_usr.is_dir():
-                    raise SystemExit("QEMU package did not contain an identifiable usr runtime prefix")
-                normalized = Path(temp_dir) / "normalized"
-                shutil.copytree(termux_usr, normalized / "usr", symlinks=True)
-                normalize_termux_symlinks(normalized / "usr")
-                readelf = subprocess.run(
-                    ["readelf", "-h", str(normalized / "usr/bin/qemu-x86_64")],
-                    check=True, capture_output=True, text=True,
-                ).stdout
-                if "ELF64" not in readelf or "AArch64" not in readelf:
-                    raise SystemExit("QEMU user-mode binary is not Android ARM64 ELF64")
-                staging = Path(temp_dir) / "qemu-stage"
-                staging.mkdir()
-                shutil.copytree(normalized / "usr", staging / "usr", symlinks=True)
-                (staging / "README.txt").write_text(
-                    "QEMU x86_64 Linux-user runtime for Android ARM64.\\n"
-                    "This translates Linux x86_64 ELF programs; it is not a Windows PE loader.\\n"
-                    "A matching x86_64 Wine/glibc guest rootfs is still required for Windows AEX hosting.\\n",
-                    encoding="utf-8",
-                )
-                archive_path = Path(temp_dir) / "qemu-android-arm64.tar.zst"
-                subprocess.run(
-                    ["tar", "--zstd", "-cf", str(archive_path), "-C", str(staging), "."],
-                    check=True,
-                )
-                qemu_hash = sha256(archive_path)
-                qemu_archive = Path(tempfile.gettempdir()) / f"ae-qemu-{qemu_hash}.tar.zst"
-                shutil.copyfile(archive_path, qemu_archive)
+                    archive_path = Path(temp_dir) / "qemu-android-arm64.tar.zst"
+                    subprocess.run(
+                        ["tar", "--zstd", "-cf", str(archive_path), "-C", str(staging), "."],
+                        check=True,
+                    )
+                    qemu_hash = sha256(archive_path)
+                    qemu_archive = Path(tempfile.gettempdir()) / f"ae-qemu-{qemu_hash}.tar.zst"
+                    shutil.copyfile(archive_path, qemu_archive)
+                else:
+                    print("QEMU x86_64 Linux-user binary is absent; skipping this optional fallback instead of failing the main APK build.")
 
     box32 = require_one(args.box32_dir, "box64-box32-android-arm64.tar.zst")
     box32_hash = read_archive_sha256(args.box32_dir, box32.name)
