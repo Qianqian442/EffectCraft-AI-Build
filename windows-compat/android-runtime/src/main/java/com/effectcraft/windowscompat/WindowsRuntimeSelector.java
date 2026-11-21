@@ -24,7 +24,9 @@ public final class WindowsRuntimeSelector {
         BOX64_FIRST,
         FEXCORE_FIRST,
         WOWBOX64_FIRST,
-        BOXEDWINE_FIRST
+        BOXEDWINE_FIRST,
+        BOX86_FIRST,
+        QEMU_FIRST
     }
 
     public enum Confidence {
@@ -90,6 +92,7 @@ public final class WindowsRuntimeSelector {
                 addX64(plans);
                 addArm64EcWow(plans, "effectcraft-aex-host-x64.exe",
                         Confidence.CANDIDATE_NOT_YET_RUNTIME_TESTED);
+                addQemuUser(plans, "effectcraft-aex-host-x64.exe");
                 break;
             case IMAGE_FILE_MACHINE_I386:
                 // FEXCore supplies both ARM64EC and 32-bit WoW64 backends.
@@ -97,6 +100,7 @@ public final class WindowsRuntimeSelector {
                 addArm64EcFex(plans, "effectcraft-aex-host-x86.exe",
                         Confidence.HOST_WORKER_COMPILED_RUNTIME_UNTESTED);
                 addBox64Box32(plans, "effectcraft-aex-host-x86.exe");
+                addBox86(plans, "effectcraft-aex-host-x86.exe");
                 addBoxedwine(plans, "effectcraft-aex-host-x86.exe");
                 break;
             case IMAGE_FILE_MACHINE_ARM64EC:
@@ -190,6 +194,36 @@ public final class WindowsRuntimeSelector {
                 List.of("ImageFS", "Proton 9.0 x86_64", "Box64 BOX32", "32-bit Wine/WoW64 libraries")));
     }
 
+    private static void addBox86(List<LaunchPlan> plans, String worker) {
+        plans.add(new LaunchPlan(
+                "x86-32-wine-box86-armv7",
+                "i386-wine-prefix-required",
+                "box86-private-filesystem-and-i386-wine-prefix-required",
+                "/system/bin/linker <box86> <i386-wine-loader> (requires 32-bit Bionic ABI)",
+                worker,
+                null,
+                Confidence.ANDROID_PORT_REQUIRED,
+                List.of("Box86 Android ARMv7 Bionic binary",
+                        "Device must provide /system/bin/linker and a 32-bit ABI",
+                        "A separate i386 Wine/glibc-compatible userspace and matching AEX host are still required",
+                        "Box86 translates Linux ELF; it does not load Windows PE files directly")));
+    }
+
+    private static void addQemuUser(List<LaunchPlan> plans, String worker) {
+        plans.add(new LaunchPlan(
+                "x86_64-wine-qemu-user",
+                "x86_64-wine-glibc-rootfs-required",
+                "qemu-x86_64-linux-user-and-x86_64-wine-rootfs-required",
+                "/system/bin/linker64 <qemu-x86_64> -L <x86_64-rootfs> <wine-loader>",
+                worker,
+                null,
+                Confidence.ANDROID_PORT_REQUIRED,
+                List.of("QEMU x86_64-linux-user fallback",
+                        "Requires a compatible x86_64 Wine/glibc rootfs and its shared libraries",
+                        "QEMU translates Linux ELF execution, not Windows PE directly",
+                        "Must pass the same isolated AEX worker load/render test before being selected")));
+    }
+
     private static void addBoxedwine(List<LaunchPlan> plans, String worker) {
         plans.add(new LaunchPlan(
                 "boxedwine-x86-32",
@@ -210,7 +244,11 @@ public final class WindowsRuntimeSelector {
                     ? "fexcore"
                     : preference == Preference.WOWBOX64_FIRST
                         ? "wowbox64"
-                        : "boxedwine";
+                        : preference == Preference.BOX86_FIRST
+                            ? "box86"
+                            : preference == Preference.QEMU_FIRST
+                                ? "qemu"
+                                : "boxedwine";
         plans.sort((left, right) -> Boolean.compare(
                 !left.backendId.contains(first), !right.backendId.contains(first)));
     }
