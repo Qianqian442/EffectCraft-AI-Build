@@ -728,7 +728,8 @@ jobs:
           bash windows-compat/android-runtime/exec-bridge/tests/run_host_tests.sh
 
   build:
-    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-fexcore-arm64ec, build-box86-armv7, build-qemu-user-android, build-aex-host]
+    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-fexcore-arm64ec, build-box86-armv7, build-aex-host]
+    # QEMU is an optional Linux-user diagnostic fallback, not a Windows PE/AEX loader. Its artifact is staged opportunistically when available and must not block the main APK build.
     # Keep the main APK account client on direct HTTPS to the configured Cloudflare account server; do not route account traffic through P2P or public proxies.
     name: Build Ae 0.22.1 with AI and existing features
     runs-on: ubuntu-22.04
