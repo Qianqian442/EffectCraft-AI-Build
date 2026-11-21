@@ -47,7 +47,7 @@ impl MigrationMode {
             Self::AutoBest => "自动比较并选择完整度最高的方案",
             Self::CpuTranslation => "指令转译优先（Box64 / Box86 / FEX / QEMU）",
             Self::ForceCompatibility => "强制兼容（运行库 / 接口 / 画面 / 渲染回退）",
-            Self::AggressivePort => "暴力移植 / 重构（源码重编译 + 二进制分析）",
+            Self::AggressivePort => "暴力移植 / 重构（PE 深度分析 + 已接入后端逐个试跑）",
             Self::ManualBackend => "手动查看并指定转译后端",
         }
     }
@@ -57,7 +57,7 @@ impl MigrationMode {
             Self::AutoBest => "逐个测试适用路线，按功能完整度、画质、参数/关键帧和稳定性评分，自动选择最高分且通过硬性测试的方案。",
             Self::CpuTranslation => "优先尝试适用的 CPU 指令动态转译路线；不兼容的系统 API 或插件宿主接口仍必须单独适配。",
             Self::ForceCompatibility => "逐项尝试可选宿主接口、运行库、像素格式、CPU 特性和 CPU/串行渲染回退；不伪造必需接口。",
-            Self::AggressivePort => "优先源码 ARM64 重编译；无源码时进行指令/控制流分析并重建效果逻辑。需要原插件功能的参考输入与回归测试。",
+            Self::AggressivePort => "逐个 AEX 执行 PE 分析与已安装 Wine/Proton + FEXCore/Box64 隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。只有提供可用源代码且依赖/授权允许时才另行重编译；未知闭源插件不承诺自动还原为 ARM64。",
             Self::ManualBackend => "分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；目前尚未集成可执行后端，指定只记录选择意向，不会谎称已经转译。",
         }
     }
