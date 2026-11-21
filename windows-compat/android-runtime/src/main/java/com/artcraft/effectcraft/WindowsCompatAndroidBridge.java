@@ -285,6 +285,44 @@ public final class WindowsCompatAndroidBridge {
                 context, manager, fexContainer, box64, requestId, sourcePath));
     }
 
+    private static final class AexTrialResult {
+        final String backendName;
+        final int score;
+        final int parameterCount;
+        final int roundTrippedParameters;
+        final long loadMillis;
+        final long renderMillis;
+        final boolean repeatedFrameStable;
+        final String outputSha256;
+        final int width;
+        final int height;
+
+        AexTrialResult(
+                String backendName, int score, int parameterCount,
+                int roundTrippedParameters, long loadMillis, long renderMillis,
+                boolean repeatedFrameStable, String outputSha256, int width, int height) {
+            this.backendName = backendName;
+            this.score = score;
+            this.parameterCount = parameterCount;
+            this.roundTrippedParameters = roundTrippedParameters;
+            this.loadMillis = loadMillis;
+            this.renderMillis = renderMillis;
+            this.repeatedFrameStable = repeatedFrameStable;
+            this.outputSha256 = outputSha256;
+            this.width = width;
+            this.height = height;
+        }
+
+        String summary() {
+            return backendName + "：得分 " + score + "/100；参数 " + parameterCount
+                    + "；成功往返参数 " + roundTrippedParameters
+                    + "；加载 " + loadMillis + " ms；两次渲染 " + renderMillis + " ms；输出 "
+                    + width + "x" + height + "；同帧重复 "
+                    + (repeatedFrameStable ? "一致" : "不一致")
+                    + "；SHA-256 " + outputSha256;
+        }
+    }
+
     private static void runAexPluginTest(
             Context context,
             WinlatorBionicRuntimeManager manager,
@@ -315,40 +353,61 @@ public final class WindowsCompatAndroidBridge {
             }
 
             Path inputPng = plugin.getParent().resolve("input.png");
-            Path outputPng = plugin.getParent().resolve("output.png");
             writeSmokeTestImage(inputPng, 320, 240);
             String[] backendNames = {"ARM64EC Wine + source-built FEXCore", "x86-64 Wine + Box64/BOX32"};
             WinlatorBionicRuntimeManager.Container[] containers = {fexContainer, box64Container};
+            java.util.List<AexTrialResult> passedTrials = new java.util.ArrayList<>();
             StringBuilder attemptLog = new StringBuilder();
 
+            // Do not stop at the first working backend. Run every available candidate
+            // against the same plug-in, input image, frame and parameter values.
             for (int index = 0; index < containers.length; index++) {
                 WinlatorBionicRuntimeManager.Container candidate = containers[index];
-                if (candidate == null) continue;
+                if (candidate == null) {
+                    attemptLog.append(backendNames[index]).append("：运行环境未安装，跳过。\\n");
+                    continue;
+                }
+                Path routeOutput = plugin.getParent().resolve(
+                        index == 0 ? "output-fexcore.png" : "output-box64.png");
                 INSTALL_STATUS.put(requestId, String.format(Locale.ROOT,
-                        "RUNNING: PE 架构 0x%04x；正在测试后端 %s…", machine, backendNames[index]));
+                        "RUNNING: PE 架构 0x%04x；正在完整测试候选后端 %s…", machine, backendNames[index]));
                 try {
-                    String summary = runAexSmokeTest(
-                            manager, candidate, host, plugin, inputPng, outputPng,
+                    AexTrialResult trial = runAexSmokeTest(
+                            manager, candidate, host, plugin, inputPng, routeOutput,
                             machine, requestId, backendNames[index]);
-                    INSTALL_STATUS.put(requestId,
-                            "EXIT:0\nAEX 插件已加载并完成一次 CPU PNG 帧渲染。"
-                                    + "\n通过后端：" + backendNames[index]
-                                    + "\n" + summary
-                                    + "\n这只证明当前样本在该路线完成了一次加载和渲染，不代表所有 AE 套件、GPU、AEGP 或其他插件均兼容。"
-                                    + (attemptLog.length() == 0 ? "" : "\n前序失败路线：\n" + attemptLog));
-                    return;
+                    passedTrials.add(trial);
+                    attemptLog.append("通过：").append(trial.summary()).append('\\n');
                 } catch (Exception backendError) {
                     String detail = backendError.getMessage();
-                    attemptLog.append(backendNames[index]).append("：")
+                    attemptLog.append("未通过：").append(backendNames[index]).append("：")
                             .append(detail == null ? backendError.getClass().getSimpleName() : detail)
-                            .append('\n');
+                            .append('\\n');
                     Log.w(TAG, "AEX sample failed on " + backendNames[index], backendError);
                 }
             }
 
-            throw new IOException("FEXCore 和 Box64/BOX32 两条已准备路线均未通过 AEX 加载/渲染测试。\n"
-                    + attemptLog
-                    + "Box86 需要 i386 Wine 根文件系统；QEMU 需要 x86-64 Wine/glibc 根文件系统，未具备时不会冒充可运行。");
+            if (passedTrials.isEmpty()) {
+                throw new IOException("所有已安装的 AEX 候选后端均未通过加载、参数往返、重复渲染和正常退出测试。\\n"
+                        + attemptLog
+                        + "Box86 需要 i386 Wine 根文件系统；QEMU 需要 x86-64 Wine/glibc 根文件系统，未具备时不会冒充可运行。");
+            }
+
+            // Rank only routes that completed every mandatory smoke-test gate.
+            // Prefer the highest measured score, then the faster two-frame render.
+            AexTrialResult best = passedTrials.stream()
+                    .sorted(java.util.Comparator
+                            .comparingInt((AexTrialResult value) -> value.score).reversed()
+                            .thenComparingLong(value -> value.renderMillis))
+                    .findFirst().orElseThrow(() -> new IOException("没有可选的通过路线。"));
+
+            StringBuilder finalStatus = new StringBuilder();
+            finalStatus.append("EXIT:0\\n当前插件样本已完成所有可用后端的隔离试跑。")
+                    .append("\\n自动优选：").append(best.backendName)
+                    .append("（").append(best.score).append("/100）")
+                    .append("\\n优选依据：参数往返、两次真实 CPU 帧渲染、重复帧稳定性、正常退出和实测耗时。")
+                    .append("\\n逐路线测试记录：\\n").append(attemptLog)
+                    .append("\\n注意：这是当前插件样本的一帧 CPU 宿主兼容性试跑，不代表全部 Adobe SDK/A E G P 套件、GPU、时间历史、多输入或其他插件均已兼容。");
+            INSTALL_STATUS.put(requestId, finalStatus.toString());
         } catch (Exception error) {
             String detail = error.getMessage();
             INSTALL_STATUS.put(requestId, "ERROR: AEX 测试失败："
@@ -363,7 +422,7 @@ public final class WindowsCompatAndroidBridge {
         }
     }
 
-    private static String runAexSmokeTest(
+    private static AexTrialResult runAexSmokeTest(
             WinlatorBionicRuntimeManager manager,
             WinlatorBionicRuntimeManager.Container container,
             Path host,
@@ -378,7 +437,9 @@ public final class WindowsCompatAndroidBridge {
                 container, host, plugin,
                 line -> appendRuntimeLog(requestId, output, line),
                 code -> appendRuntimeLog(requestId, output, "宿主退出码：" + code));
+        Path repeatedOutput = outputPng.resolveSibling(outputPng.getFileName().toString() + ".repeat.png");
         try {
+            long loadStarted = System.nanoTime();
             String metadataLine = guest.readStdoutLine(45,
                     java.util.concurrent.TimeUnit.SECONDS);
             if (metadataLine == null) {
@@ -388,28 +449,68 @@ public final class WindowsCompatAndroidBridge {
             if (!metadata.optBoolean("ok", false)) {
                 throw new IOException("AEX 插件加载失败：" + metadata.optString("error", metadataLine));
             }
+            long loadMillis = java.util.concurrent.TimeUnit.NANOSECONDS
+                    .toMillis(System.nanoTime() - loadStarted);
             int parameterCount = metadata.optInt("param_count", -1);
-            Files.deleteIfExists(outputPng);
-            JSONObject renderRequest = new JSONObject();
-            renderRequest.put("cmd", "render");
-            renderRequest.put("input_png", inputPng.toString());
-            renderRequest.put("output_png", outputPng.toString());
-            renderRequest.put("frame", 0);
-            renderRequest.put("fps", 30);
-            guest.sendLine(renderRequest.toString());
+            org.json.JSONArray parameters = metadata.optJSONArray("parameters");
+            if (parameterCount < 0 || parameters == null) {
+                throw new IOException("AEX 宿主没有返回有效的参数元数据。");
+            }
 
-            String renderLine = guest.readStdoutLine(90,
-                    java.util.concurrent.TimeUnit.SECONDS);
-            if (renderLine == null) {
-                throw new IOException("AEX 插件没有在 90 秒内返回渲染结果。");
+            // Round-trip every parameter value understood by the isolated host.
+            // Unsupported custom UI objects are counted as unsupported, never faked.
+            org.json.JSONArray roundTrip = new org.json.JSONArray();
+            for (int index = 0; index < parameters.length(); index++) {
+                JSONObject item = parameters.optJSONObject(index);
+                if (item == null) continue;
+                JSONObject value = item.optJSONObject("value");
+                if (value == null || "unsupported".equals(value.optString("type"))) continue;
+                JSONObject entry = new JSONObject();
+                entry.put("index", item.optInt("index", -1));
+                entry.put("value", value);
+                if (entry.optInt("index", -1) < 0) {
+                    throw new IOException("AEX 参数元数据包含无效索引。");
+                }
+                roundTrip.put(entry);
             }
-            JSONObject renderResult = new JSONObject(renderLine);
-            if (!renderResult.optBoolean("ok", false)) {
-                throw new IOException("AEX 插件帧渲染失败：" + renderResult.optString("error", renderLine));
-            }
-            if (!Files.isRegularFile(outputPng) || Files.size(outputPng) < 64) {
+
+            Files.deleteIfExists(outputPng);
+            Files.deleteIfExists(repeatedOutput);
+            JSONObject firstRequest = new JSONObject();
+            firstRequest.put("cmd", "render");
+            firstRequest.put("input_png", inputPng.toString());
+            firstRequest.put("output_png", outputPng.toString());
+            firstRequest.put("frame", 0);
+            firstRequest.put("fps", 30);
+            firstRequest.put("params", roundTrip);
+
+            long renderStarted = System.nanoTime();
+            guest.sendLine(firstRequest.toString());
+            JSONObject firstRender = readSuccessfulRender(guest, 90, "首次 AEX CPU 帧渲染");
+            if (!validPngOutput(outputPng)) {
                 throw new IOException("AEX 宿主报告渲染成功，但没有生成有效 PNG 输出。");
             }
+
+            JSONObject repeatRequest = new JSONObject(firstRequest.toString());
+            repeatRequest.put("output_png", repeatedOutput.toString());
+            guest.sendLine(repeatRequest.toString());
+            JSONObject repeatedRender = readSuccessfulRender(guest, 90, "同一帧重复渲染");
+            if (!validPngOutput(repeatedOutput)) {
+                throw new IOException("AEX 宿主第二次报告渲染成功，但没有生成有效 PNG 输出。");
+            }
+            long renderMillis = java.util.concurrent.TimeUnit.NANOSECONDS
+                    .toMillis(System.nanoTime() - renderStarted);
+
+            int width = firstRender.optInt("width", 0);
+            int height = firstRender.optInt("height", 0);
+            if (width <= 0 || height <= 0
+                    || repeatedRender.optInt("width", 0) != width
+                    || repeatedRender.optInt("height", 0) != height) {
+                throw new IOException("AEX 两次渲染的输出尺寸无效或不一致。");
+            }
+            String firstHash = sha256File(outputPng);
+            String repeatedHash = sha256File(repeatedOutput);
+            boolean stable = firstHash.equals(repeatedHash);
 
             guest.sendLine(new JSONObject().put("cmd", "quit").toString());
             long deadline = System.nanoTime()
@@ -425,13 +526,22 @@ public final class WindowsCompatAndroidBridge {
             if (exitCode == null || exitCode != 0) {
                 throw new IOException("AEX 宿主渲染完成后的退出码异常：" + exitCode);
             }
-            return "引擎：" + backendName
-                    + "；PE 架构：0x" + Integer.toHexString(machine)
-                    + "；参数数：" + parameterCount
-                    + "；输出尺寸：" + renderResult.optInt("width", 0)
-                    + "x" + renderResult.optInt("height", 0)
-                    + "\n" + output;
+
+            // Scores are calculated from observed work only. No desktop visual-fidelity
+            // percentage is invented because this sample run has no AE reference image.
+            int performancePoints = Math.max(0, 5 - (int) Math.min(5, renderMillis / 1000));
+            int score = 15 /* loaded */
+                    + 15 /* parameter metadata */
+                    + 20 /* supported parameters round-tripped */
+                    + 25 /* two real frame renders */
+                    + (stable ? 10 : 0)
+                    + 10 /* clean worker exit */
+                    + performancePoints;
+            return new AexTrialResult(
+                    backendName, score, parameterCount, roundTrip.length(),
+                    loadMillis, renderMillis, stable, firstHash, width, height);
         } finally {
+            Files.deleteIfExists(repeatedOutput);
             if (guest.isAlive()) {
                 guest.terminate();
                 long terminateDeadline = System.nanoTime()
@@ -440,6 +550,54 @@ public final class WindowsCompatAndroidBridge {
                 if (guest.isAlive()) guest.kill();
             }
         }
+    }
+
+    private static JSONObject readSuccessfulRender(
+            WinlatorBionicRuntimeManager.GuestProcess guest,
+            long timeoutSeconds,
+            String stage) throws Exception {
+        String line = guest.readStdoutLine(timeoutSeconds,
+                java.util.concurrent.TimeUnit.SECONDS);
+        if (line == null) {
+            throw new IOException(stage + "超时，宿主未返回结果。");
+        }
+        JSONObject result = new JSONObject(line);
+        if (!result.optBoolean("ok", false)) {
+            throw new IOException(stage + "失败：" + result.optString("error", line));
+        }
+        return result;
+    }
+
+    private static boolean validPngOutput(Path path) throws IOException {
+        if (!Files.isRegularFile(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(path) || Files.size(path) < 64) return false;
+        try (InputStream input = Files.newInputStream(path)) {
+            byte[] signature = new byte[8];
+            int offset = 0;
+            while (offset < signature.length) {
+                int count = input.read(signature, offset, signature.length - offset);
+                if (count < 0) return false;
+                offset += count;
+            }
+            byte[] expected = {(byte) 0x89, 'P', 'N', 'G', 13, 10, 26, 10};
+            return Arrays.equals(signature, expected);
+        }
+    }
+
+    private static String sha256File(Path path) throws Exception {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream input = Files.newInputStream(path)) {
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+            while ((count = input.read(buffer)) != -1) {
+                if (count > 0) digest.update(buffer, 0, count);
+            }
+        }
+        StringBuilder result = new StringBuilder(64);
+        for (byte value : digest.digest()) {
+            result.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+        }
+        return result.toString();
     }
 
     private static void writeSmokeTestImage(Path path, int width, int height) throws IOException {
