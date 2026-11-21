@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/scripts/integrate_binary_reconstruction.py'
       - '.github/scripts/add_home_plugin_manager_remove_about.py'
       - '.github/scripts/add_effect_plugin_uninstall.py'
       - '.github/scripts/add_home_lan_account_gate.py'
