@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/admin-signature-check"
-          for VERSION in 163 189; do
+          for VERSION in 163 189 436; do
             curl -fL --retry 4 --retry-all-errors \
               "https://github.com/Qianqian442/EffectCraft-AI-Build/releases/download/account-admin-$VERSION/EffectCraft-Account-Admin.apk" \
               -o "$RUNNER_TEMP/admin-signature-check/build-$VERSION.apk"
@@ -47,7 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           TOOL="$ANDROID_HOME/build-tools/35.0.0/apksigner"
-          for VERSION in 163 189; do
+          for VERSION in 163 189 436; do
             "$TOOL" verify --verbose --print-certs "$RUNNER_TEMP/admin-signature-check/build-$VERSION.apk" > "$RUNNER_TEMP/admin-signature-check/$VERSION.txt"
             CERT="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/$VERSION.txt")"
             test -n "$CERT"
@@ -55,10 +55,16 @@ jobs:
           done
           CERT163="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/163.txt")"
           CERT189="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/189.txt")"
-          echo "Build 163 signer SHA-256: $CERT163"
-          echo "Build 189 signer SHA-256: $CERT189"
+          CERT436="$(awk -F': ' '/Signer #1 certificate SHA-256 digest:/{gsub(/:/,"",$2); print tolower($2); exit}' "$RUNNER_TEMP/admin-signature-check/436.txt")"
+          echo "Historical installed candidate Build 163: $CERT163"
+          echo "Previously tested Build 189:             $CERT189"
+          echo "Current Build 436:                       $CERT436"
           if [[ "$CERT163" != "$CERT189" ]]; then
-            echo "::error::Build 189 is not signed with the installed Build 163 certificate. Do not install it over Build 163."
+            echo "::error::Historical Build 163 and Build 189 already have different signing certificates; determine which one is installed before producing an update."
             exit 1
           fi
-          echo "Certificate match confirmed: Build 189 can be installed over Build 163 without uninstalling the app or deleting local SQLite data."
+          if [[ "$CERT189" != "$CERT436" ]]; then
+            echo "::error::Build 436 is not signed with the same certificate as Builds 163/189. It cannot overwrite those installations."
+            exit 1
+          fi
+          echo "Certificate match confirmed: Build 436 can update Builds 163/189 in place without uninstalling or deleting local SQLite data."
