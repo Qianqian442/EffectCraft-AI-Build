@@ -718,6 +718,11 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     scroll_marker = "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1"
     if scroll_marker not in widgets or "am_touch_draw_context && ui.input" not in widgets:
         raise SystemExit("AM finger scrolling is not scoped to AM-owned drawers.")
+    touch_start = widgets.find("// EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1")
+    touch_end = widgets.find("let gutter: Gutter", touch_start)
+    touch_block = widgets[touch_start:touch_end]
+    if touch_start < 0 or touch_end < 0 or any(token in touch_block for token in ("egui::Button", "Button::new", "button_size", "min_size(")):
+        raise SystemExit("AM touch changes must not alter shared Ae button sizing or hit targets.")
     if "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V2" in widgets or "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" in am_effects:
         raise SystemExit("AM must not install global Android touch behavior into Ae panels.")
     if "EFFECTCRAFT_AM_EFFECT_BROWSER_V1" not in am_editor:
