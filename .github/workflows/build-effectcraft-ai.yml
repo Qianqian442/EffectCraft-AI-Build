@@ -161,6 +161,115 @@ jobs:
           path: artifacts/*
           retention-days: 30
 
+  build-fexcore-arm64ec:
+    name: Build and validate full FEXCore ARM64EC and WoW64 PE backends
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 150
+    steps:
+      - name: Check out EffectCraft compatibility configuration
+        uses: actions/checkout@v4
+
+      - name: Check out pinned upstream FEX source
+        uses: actions/checkout@v4
+        with:
+          repository: FEX-Emu/FEX
+          ref: ea43314f040633c76fb5891ff31d8a7c3dc533b8
+          path: third_party/FEX
+          submodules: recursive
+
+      - name: Install Nix build environment
+        uses: cachix/install-nix-action@v31
+        with:
+          nix_path: nixpkgs=channel:nixos-unstable
+
+      - name: Build the ARM64EC x86-64 FEXCore PE backend
+        working-directory: third_party/FEX
+        run: |
+          set -euo pipefail
+          mkdir -p ../../build-fex/arm64ec
+          cd ../../build-fex/arm64ec
+          ../../third_party/FEX/Data/nix/cmake_configure_woa64.sh ../../third_party/FEX -G Ninja -DTUNE_CPU=none
+          ninja
+
+      - name: Build the ARM64 WoW64 x86 FEXCore PE backend
+        working-directory: third_party/FEX
+        run: |
+          set -euo pipefail
+          mkdir -p ../../build-fex/wow64
+          cd ../../build-fex/wow64
+          ../../third_party/FEX/Data/nix/cmake_configure_woa32.sh ../../third_party/FEX -G Ninja -DTUNE_CPU=none
+          ninja
+
+      - name: Validate FEX PE machine types, CHPE metadata and Wine CPU exports
+        working-directory: third_party/FEX
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/pefile-venv"
+          source "$RUNNER_TEMP/pefile-venv/bin/activate"
+          python -m pip install --disable-pip-version-check pefile
+          python - <<'PY'
+          import struct
+          import pefile
+          from pathlib import Path
+
+          def chpe_version(pe):
+              directory = pe.OPTIONAL_HEADER.DATA_DIRECTORY[10]
+              if not directory.VirtualAddress:
+                  return None
+              load_config_offset = pe.get_offset_from_rva(directory.VirtualAddress)
+              load_config_size = struct.unpack_from("<I", pe.__data__, load_config_offset)[0]
+              if load_config_size < 0xD0:
+                  return None
+              chpe_va = struct.unpack_from("<Q", pe.__data__, load_config_offset + 0xC8)[0]
+              if not chpe_va:
+                  return None
+              chpe_rva = chpe_va - pe.OPTIONAL_HEADER.ImageBase
+              chpe_offset = pe.get_offset_from_rva(chpe_rva)
+              return struct.unpack_from("<I", pe.__data__, chpe_offset)[0]
+
+          checks = [
+              (Path("../../build-fex/arm64ec/Bin/libarm64ecfex.dll"), 0x8664, 1,
+               {"BTCpu64FlushInstructionCache", "BTCpu64IsProcessorFeaturePresent", "ProcessInit", "ThreadInit"}),
+              (Path("../../build-fex/wow64/Bin/libwow64fex.dll"), 0xAA64, None,
+               {"BTCpuProcessInit", "BTCpuThreadInit", "BTCpuSimulate", "__wine_get_unix_opcode"}),
+          ]
+          for path, expected_machine, expected_chpe, required in checks:
+              pe = pefile.PE(str(path), fast_load=False)
+              machine = pe.FILE_HEADER.Machine
+              chpe = chpe_version(pe)
+              exports = {item.name.decode("ascii", "replace")
+                         for item in pe.DIRECTORY_ENTRY_EXPORT.symbols if item.name}
+              missing = sorted(required - exports)
+              if machine != expected_machine:
+                  raise SystemExit(f"{path}: machine 0x{machine:04x}, expected 0x{expected_machine:04x}")
+              if chpe != expected_chpe:
+                  raise SystemExit(f"{path}: CHPE metadata version {chpe}, expected {expected_chpe}")
+              if missing:
+                  raise SystemExit(f"{path}: missing Wine CPU exports: {missing}")
+              print(f"{path}: machine=0x{machine:04x}; CHPE version={chpe}; required exports present")
+          PY
+
+      - name: Package complete source-built FEXCore DLL set and license
+        run: |
+          set -euo pipefail
+          test -s build-fex/arm64ec/Bin/libarm64ecfex.dll
+          test -s build-fex/wow64/Bin/libwow64fex.dll
+          mkdir -p artifacts/fexcore/system32
+          install -m 0644 build-fex/arm64ec/Bin/libarm64ecfex.dll artifacts/fexcore/system32/
+          install -m 0644 build-fex/wow64/Bin/libwow64fex.dll artifacts/fexcore/system32/
+          cp third_party/FEX/LICENSE artifacts/fexcore/FEX-LICENSE
+          printf '%s\n' 'FEX-Emu/FEX' 'ea43314f040633c76fb5891ff31d8a7c3dc533b8' > artifacts/fexcore/FEX-SOURCE.txt
+          sha256sum artifacts/fexcore/system32/*.dll > artifacts/fexcore/DLL-SHA256SUMS.txt
+          tar --zstd -cf artifacts/fexcore-arm64ec.tar.zst -C artifacts/fexcore .
+          sha256sum artifacts/fexcore-arm64ec.tar.zst > artifacts/fexcore-arm64ec.tar.zst.sha256
+
+      - name: Upload source-built FEXCore ARM64EC and WoW64 components
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-FEXCore-Arm64EC-WoW64-CurrentMain
+          path: artifacts/fexcore-arm64ec.tar.zst*
+          retention-days: 30
+
   build-aex-host:
     name: Build and smoke-test x64 and x86 Windows AEX hosts
     runs-on: windows-latest
@@ -316,7 +425,7 @@ jobs:
           bash windows-compat/android-runtime/exec-bridge/tests/run_host_tests.sh
 
   build:
-    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-aex-host]
+    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-fexcore-arm64ec, build-aex-host]
     # Keep the main APK account client on direct HTTPS to the configured Cloudflare account server; do not route account traffic through P2P or public proxies.
     name: Build Ae 0.22.1 with AI and existing features
     runs-on: ubuntu-22.04
@@ -362,6 +471,12 @@ jobs:
         with:
           name: EffectCraft-Box64-BOX32-Android-ARM64
           path: runtime-artifacts/box32
+
+      - name: Download source-built FEXCore ARM64EC and WoW64 DLL pair
+        uses: actions/download-artifact@v4
+        with:
+          name: EffectCraft-FEXCore-Arm64EC-WoW64-CurrentMain
+          path: runtime-artifacts/fexcore
 
       - name: Download tested Windows x64/x86 AEX host workers
         uses: actions/download-artifact@v4
@@ -761,6 +876,7 @@ jobs:
           python3 build-assets/.github/scripts/integrate_binary_reconstruction.py
           python3 build-assets/.github/scripts/package_windows_runtime_assets.py \
             --box32-dir "$GITHUB_WORKSPACE/runtime-artifacts/box32" \
+            --fexcore-dir "$GITHUB_WORKSPACE/runtime-artifacts/fexcore" \
             --x64-host-dir "$GITHUB_WORKSPACE/runtime-artifacts/aex-hosts/x64" \
             --x86-host-dir "$GITHUB_WORKSPACE/runtime-artifacts/aex-hosts/x86" \
             --assets-dir "$EFFECTCRAFT_DIR/assets" \
