@@ -439,6 +439,105 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
         }
     }
 
+    /**
+     * Installs the source-built FEXCore PE backends used by ARM64EC/WoW64 Wine.
+     * This is the complete DLL pair for Hangover's Windows-PE execution path,
+     * not the standalone FEX Linux-user emulator/root filesystem.
+     */
+    public synchronized void installFexCoreArchive(Container container, Path archive, String expectedSha256)
+            throws IOException {
+        ensureOpen();
+        ensureContainer(container, Architecture.ARM64EC);
+        if (archive == null || !Files.isRegularFile(archive, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(archive)) {
+            throw new IOException("FEXCore archive is missing or unsafe");
+        }
+        if (expectedSha256 == null || !expectedSha256.matches("(?i)[0-9a-f]{64}")) {
+            throw new IOException("FEXCore archive requires a pinned SHA-256 digest");
+        }
+        String actualDigest = sha256(archive);
+        if (!actualDigest.equalsIgnoreCase(expectedSha256)) {
+            throw new IOException("FEXCore archive SHA-256 mismatch: expected "
+                    + expectedSha256.toLowerCase(Locale.ROOT) + ", received " + actualDigest);
+        }
+
+        Path staging = privateRoot.resolve("staging/fexcore-source-built");
+        deleteTree(staging);
+        Files.createDirectories(staging);
+        try {
+            extractor.extractTarZstd(archive, staging);
+            Path arm64Ec = staging.resolve("system32/libarm64ecfex.dll").normalize();
+            Path wow64 = staging.resolve("system32/libwow64fex.dll").normalize();
+            if (!arm64Ec.startsWith(staging) || !wow64.startsWith(staging)
+                    || !Files.isRegularFile(arm64Ec, LinkOption.NOFOLLOW_LINKS)
+                    || !Files.isRegularFile(wow64, LinkOption.NOFOLLOW_LINKS)
+                    || Files.isSymbolicLink(arm64Ec) || Files.isSymbolicLink(wow64)) {
+                throw new IOException("FEXCore source archive must contain both ARM64EC and WoW64 DLLs");
+            }
+            verifyPeMachineFile(arm64Ec, 0x8664);
+            verifyPeMachineFile(wow64, 0xAA64);
+            installRuntimeFile(arm64Ec, container.system32.resolve("libarm64ecfex.dll"));
+            installRuntimeFile(wow64, container.system32.resolve("libwow64fex.dll"));
+            Files.write(container.root.resolve(".effectcraft-fexcore-source.sha256"),
+                    (actualDigest + "\n").getBytes(StandardCharsets.US_ASCII),
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+        } finally {
+            deleteTree(staging);
+        }
+    }
+
+    private void installRuntimeFile(Path source, Path destination) throws IOException {
+        Path parent = destination.getParent();
+        if (parent == null) throw new IOException("runtime DLL destination has no parent");
+        createDirectoriesNoSymlink(privateRoot, parent);
+        Path temporary = destination.resolveSibling(destination.getFileName() + ".installing");
+        Files.deleteIfExists(temporary);
+        try {
+            copyStreamed(source, temporary);
+            try {
+                Files.move(temporary, destination,
+                        StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(temporary, destination, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException | RuntimeException failure) {
+            Files.deleteIfExists(temporary);
+            throw failure;
+        }
+    }
+
+    private static void verifyPeMachineFile(Path path, int expectedMachine) throws IOException {
+        try (java.io.RandomAccessFile file = new java.io.RandomAccessFile(path.toFile(), "r")) {
+            if (file.length() < 64 || file.readUnsignedByte() != 'M' || file.readUnsignedByte() != 'Z') {
+                throw new IOException("FEXCore component is not a valid PE file: " + path.getFileName());
+            }
+            file.seek(0x3c);
+            long peOffset = readUnsignedLe32(file);
+            if (peOffset < 64 || peOffset > file.length() - 6) {
+                throw new IOException("FEXCore PE header offset is invalid: " + path.getFileName());
+            }
+            file.seek(peOffset);
+            if (file.readUnsignedByte() != 'P' || file.readUnsignedByte() != 'E'
+                    || file.readUnsignedByte() != 0 || file.readUnsignedByte() != 0) {
+                throw new IOException("FEXCore PE signature is invalid: " + path.getFileName());
+            }
+            int machine = file.readUnsignedByte() | (file.readUnsignedByte() << 8);
+            if (machine != expectedMachine) {
+                throw new IOException(String.format(Locale.ROOT,
+                        "FEXCore PE machine mismatch for %s: expected 0x%04x, received 0x%04x",
+                        path.getFileName(), expectedMachine, machine));
+            }
+        }
+    }
+
+    private static long readUnsignedLe32(java.io.RandomAccessFile file) throws IOException {
+        long b0 = file.readUnsignedByte();
+        long b1 = file.readUnsignedByte();
+        long b2 = file.readUnsignedByte();
+        long b3 = file.readUnsignedByte();
+        return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+    }
+
     public synchronized void installArm64EcEmulator(Container container, WoW64Engine engine) throws IOException {
         ensureContainer(container, Architecture.ARM64EC);
         RuntimeAssetInstaller.AssetSpec spec = engine == WoW64Engine.FEXCORE
