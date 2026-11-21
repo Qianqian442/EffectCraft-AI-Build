@@ -16,6 +16,8 @@ on:
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - 'docs/android-arm64-desktop-plugin-compatibility.md'
+      - 'windows-compat/android-runtime/**'
+      - '.github/scripts/verify_aggressive_port_trial.py'
 
 concurrency:
   group: desktop-plugin-adapter-validation-${{ github.ref }}
@@ -92,7 +94,9 @@ jobs:
             windows-compat/tools/patch_box64_netdb_r_bionic.py \
             windows-compat/tools/patch_box64_posix_spawn_bionic.py \
             windows-compat/tools/patch_box64_box32_alloc_bionic.py \
-            windows-compat/tools/pe_audit.py
+            windows-compat/tools/pe_audit.py \
+            .github/scripts/verify_aggressive_port_trial.py
+          python3 .github/scripts/verify_aggressive_port_trial.py
           bash windows-compat/android-runtime/exec-bridge/tests/run_host_tests.sh
 
       - name: Apply the same plug-in patches used by the APK build
