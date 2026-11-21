@@ -13,11 +13,15 @@ def require(source: str, fragment: str, label: str) -> None:
 
 def main() -> None:
     source = JAVA.read_text(encoding="utf-8")
-    start = source.index("            for (int index = 0; index < containers.length; index++) {")
-    end = source.index("            if (passedTrials.isEmpty())", start)
+    start = source.index("                    for (int backendIndex = 0; backendIndex < containers.length; backendIndex++) {")
+    end = source.index("                    if (passedTrials.isEmpty())", start)
     route_loop = source[start:end]
 
     require(source, "private static final class AexTrialResult", "measured trial result type")
+    require(source, "extractAexFiles(Paths.get(sourcePath), pluginDirectory)", "extract every AEX file from the input package")
+    require(source, "for (int pluginIndex = 0; pluginIndex < plugins.size(); pluginIndex++)", "test every AEX in the package")
+    require(source, "EXIT:2", "report partial package success honestly")
+    require(source, "while (entries.hasMoreElements())", "scan the complete ZIP entry list")
     require(route_loop, "runAexSmokeTest(", "execute every installed candidate")
     require(route_loop, "passedTrials.add(trial)", "record only completed trials")
     if "return;" in route_loop:
