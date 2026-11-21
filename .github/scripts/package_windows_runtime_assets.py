@@ -6,6 +6,7 @@ import hashlib
 import re
 import shutil
 import subprocess
+import os
 import tempfile
 import struct
 from pathlib import Path
@@ -50,6 +51,40 @@ def copy_verified(source: Path, destination: Path, expected: str) -> None:
     shutil.copyfile(source, destination)
     if sha256(destination).lower() != expected.lower():
         raise SystemExit(f"{destination}: destination hash changed during copy")
+
+def normalize_termux_symlinks(usr_root: Path) -> None:
+    """Convert Termux absolute-prefix symlinks to safe relocatable links inside usr/."""
+    usr_root = usr_root.resolve()
+    prefixes = (
+        "/data/data/com.artcraft.effectcraft/files/windows-compat/usr",
+        "/data/user/0/com.artcraft.effectcraft/files/windows-compat/usr",
+        "/data/data/com.termux/files/usr",
+        "/data/user/0/com.termux/files/usr",
+        "/usr",
+    )
+    for link in usr_root.rglob("*"):
+        if not link.is_symlink():
+            continue
+        target = os.readlink(link)
+        if target.startswith("/"):
+            mapped = None
+            for prefix in prefixes:
+                if target == prefix or target.startswith(prefix + "/"):
+                    suffix = target[len(prefix):].lstrip("/")
+                    mapped = usr_root / suffix
+                    break
+            if mapped is None:
+                raise SystemExit(f"QEMU runtime contains an absolute symlink outside the relocatable Termux usr prefix: {link} -> {target}")
+            mapped = Path(os.path.normpath(str(mapped)))
+            if not mapped.is_relative_to(usr_root):
+                raise SystemExit(f"QEMU runtime symlink escapes usr/: {link} -> {target}")
+            relative_target = os.path.relpath(mapped, link.parent)
+            link.unlink()
+            link.symlink_to(relative_target)
+            target = relative_target
+        resolved = Path(os.path.normpath(str(link.parent / target)))
+        if not resolved.is_relative_to(usr_root):
+            raise SystemExit(f"QEMU runtime relative symlink escapes usr/: {link} -> {target}")
 
 def replace_java_hash(path: Path, constant: str, digest: str) -> None:
     source = path.read_text(encoding="utf-8")
@@ -132,6 +167,7 @@ def main() -> None:
                     raise SystemExit("QEMU package did not contain an identifiable usr runtime prefix")
                 normalized = Path(temp_dir) / "normalized"
                 shutil.copytree(termux_usr, normalized / "usr", symlinks=True)
+                normalize_termux_symlinks(normalized / "usr")
                 readelf = subprocess.run(
                     ["readelf", "-h", str(normalized / "usr/bin/qemu-x86_64")],
                     check=True, capture_output=True, text=True,
