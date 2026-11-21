@@ -942,6 +942,7 @@ jobs:
           python3 build-assets/.github/scripts/package_windows_runtime_assets.py \
             --box32-dir "$GITHUB_WORKSPACE/runtime-artifacts/box32" \
             --fexcore-dir "$GITHUB_WORKSPACE/runtime-artifacts/fexcore" \
+            --box86-dir "$GITHUB_WORKSPACE/runtime-artifacts/box86" \
             --x64-host-dir "$GITHUB_WORKSPACE/runtime-artifacts/aex-hosts/x64" \
             --x86-host-dir "$GITHUB_WORKSPACE/runtime-artifacts/aex-hosts/x86" \
             --assets-dir "$EFFECTCRAFT_DIR/assets" \
