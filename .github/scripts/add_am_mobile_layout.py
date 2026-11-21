@@ -127,6 +127,10 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
         raise SystemExit("The original workspace menu is missing from the Ae toolbar.")
     if "workspace_tabs(app, ui, p, rx, left, cy);" not in header:
         raise SystemExit("The original workspace tabs are missing from the Ae toolbar.")
+    if "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" in header or "am-plugin-import" in header:
+        raise SystemExit("AM plug-in buttons must remain inside the independent AM editor, never the Ae toolbar.")
+    if "brand_and_home(app, ui, &p, x, cy)" not in header or "tool_slots(app, ui, &p, x, cy)" not in header:
+        raise SystemExit("The original Ae toolbar button layout/slot path must remain intact.")
     if f'"{WORKSPACE}"' not in dock:
         raise SystemExit("AM 竖屏 is not registered in the original workspace menu.")
     if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" in header or "layout_switch_row(" in header:
@@ -437,8 +441,10 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
     widgets = (effectcraft / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
     frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
     home = (effectcraft / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1" not in widgets:
+    if "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1" not in widgets or "am_touch_draw_context && ui.input" not in widgets:
         raise SystemExit("AM drawers must have AM-scoped finger scrolling.")
+    if "AM_SHARED_BUTTON_STYLE" in widgets or "am_button_size" in widgets:
+        raise SystemExit("AM patch must not introduce global/shared button sizing or style state.")
     native_effects = (effectcraft / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" in native_effects:
         raise SystemExit("AM patch must not change the native Ae effect-row behavior.")
