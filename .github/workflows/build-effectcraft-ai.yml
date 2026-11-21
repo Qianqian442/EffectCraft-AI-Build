@@ -323,21 +323,102 @@ jobs:
           sudo ./scripts/run-docker.sh ./build-package.sh -a aarch64 proot
           sudo ./scripts/run-docker.sh ./build-package.sh -a aarch64 qemu-system-x86-64-headless
 
-      - name: Collect and validate optional QEMU Android packages
+      - name: Collect QEMU and its exact Termux runtime dependency closure
         working-directory: third_party/termux-packages
         run: |
           set -euo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/artifacts/qemu"
-          find output -type f -name 'qemu-system-x86-64-headless*.deb' -exec cp -t "$GITHUB_WORKSPACE/artifacts/qemu/" {} +
-          find output -type f -name 'proot_*.deb' -exec cp -t "$GITHUB_WORKSPACE/artifacts/qemu/" {} +
-          test -n "$(find "$GITHUB_WORKSPACE/artifacts/qemu" -name 'qemu-system-x86-64-headless*.deb' -print -quit)"
-          for package in "$GITHUB_WORKSPACE"/artifacts/qemu/*.deb; do
-            dpkg-deb -I "$package" >/dev/null
-          done
+          python3 - <<'PY'
+          from collections import deque
+          from pathlib import Path
+          import os
+          import re
+          import shutil
+          import subprocess
+
+          output = Path("output")
+          destination = Path(os.environ["GITHUB_WORKSPACE"]) / "artifacts/qemu"
+          destination.mkdir(parents=True, exist_ok=True)
+          packages = {}
+          providers = {}
+          for deb in output.rglob("*.deb"):
+              def field(name):
+                  result = subprocess.run(
+                      ["dpkg-deb", "-f", str(deb), name],
+                      check=True, capture_output=True, text=True,
+                  )
+                  return result.stdout.strip()
+              package_name = field("Package")
+              if not package_name:
+                  continue
+              packages[package_name] = deb
+              for provided in field("Provides").split(","):
+                  virtual = re.sub(r"\s*\([^)]*\)", "", provided).strip().split(":", 1)[0]
+                  if virtual:
+                      providers[virtual] = package_name
+
+          roots = ["qemu-system-x86-64-headless"]
+          missing_roots = [name for name in roots if name not in packages]
+          if missing_roots:
+              raise SystemExit(f"QEMU package build did not produce required package(s): {missing_roots}")
+
+          selected = {}
+          queue = deque(roots)
+          while queue:
+              name = queue.popleft()
+              if name in selected:
+                  continue
+              deb = packages.get(name)
+              if deb is None:
+                  raise SystemExit(f"Missing runtime dependency package for QEMU: {name}")
+              selected[name] = deb
+              relationships = []
+              for field_name in ("Pre-Depends", "Depends"):
+                  result = subprocess.run(
+                      ["dpkg-deb", "-f", str(deb), field_name],
+                      check=True, capture_output=True, text=True,
+                  )
+                  if result.stdout.strip():
+                      relationships.extend(re.split(r",\s*", result.stdout.strip()))
+              for relationship in relationships:
+                  if not relationship:
+                      continue
+                  candidates = []
+                  for alternative in relationship.split("|"):
+                      candidate = re.sub(r"\s*\([^)]*\)", "", alternative).strip()
+                      candidate = candidate.split(":", 1)[0].strip()
+                      if candidate:
+                          candidates.append(candidate)
+                  dependency = next(
+                      (candidate if candidate in packages else providers.get(candidate)
+                       for candidate in candidates
+                       if candidate in packages or candidate in providers),
+                      None,
+                  )
+                  if dependency is None:
+                      raise SystemExit(
+                          f"Could not resolve QEMU runtime dependency '{relationship}' "
+                          "from the Termux packages built in this run."
+                      )
+                  if dependency not in selected:
+                      queue.append(dependency)
+
+          for name, source in sorted(selected.items()):
+              target = destination / source.name
+              shutil.copyfile(source, target)
+              subprocess.run(["dpkg-deb", "-I", str(target)], check=True,
+                             stdout=subprocess.DEVNULL)
+          (destination / "RUNTIME-PACKAGES.txt").write_text(
+              "\n".join(f"{name}: {source.name}" for name, source in sorted(selected.items())) + "\n",
+              encoding="utf-8",
+          )
+          print(f"Collected {len(selected)} QEMU runtime packages:")
+          for name in sorted(selected):
+              print(" - " + name)
+          PY
           sha256sum "$GITHUB_WORKSPACE"/artifacts/qemu/*.deb > "$GITHUB_WORKSPACE/artifacts/qemu/SHA256SUMS.txt"
-          printf '%s\\n' 'Termux QEMU Linux-user package; not a Windows PE loader' \
-            'Requires an x86-64 Wine/glibc rootfs and full runtime shared-library closure' \
-            'No AEX runtime success is claimed by this package build' > "$GITHUB_WORKSPACE/artifacts/qemu/README.txt"
+          printf '%s\\n' 'Termux QEMU Linux-user package plus exact runtime dependency closure.' \
+            'It translates x86-64 Linux ELF; it does not directly load Windows PE/AEX files.' \
+            'A separate x86-64 Wine/glibc guest rootfs is still required for AEX hosting.' > "$GITHUB_WORKSPACE/artifacts/qemu/README.txt"
 
       - name: Upload QEMU Android Linux-user packages for compatibility integration
         uses: actions/upload-artifact@v4
