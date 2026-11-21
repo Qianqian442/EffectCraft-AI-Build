@@ -300,11 +300,12 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
     let card_top = rect.min.y + 78.0;
     let card_w = ((rect.width() - pad * 2.0 - gap) / 2.0).max(76.0);
     let card_h = 50.0;
-    let actions: [(&str, &str); 4] = [
+    let actions: [(&str, &str); 5] = [
         ("新建合成", "app.newComp"),
         ("打开工程", "file.open"),
         ("导入工程", "file.importProject"),
         ("导入素材", "file.import"),
+        ("导入插件", "effect.plugins.load"),
     ];
     let mut commands: Vec<(&'static str, serde_json::Value)> = Vec::new();
     for (index, (label, command)) in actions.iter().enumerate() {
@@ -325,7 +326,8 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
         if response.clicked() {
             match *command {
                 "file.import" => commands.push(("file.import", json!({"picturesAndVideos": true}))),
-                "app.newComp" | "file.open" | "file.importProject" => {
+                "app.newComp" | "file.open" | "file.importProject" | "effect.plugins.load" => {
+                    // Reuse the original Ae effect plug-in loader, registry, storage and migration intercept.
                     commands.push((*command, json!({})));
                 }
                 _ => {}
@@ -334,7 +336,7 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
     }
 
     let edit_rect = Rect::from_min_size(
-        pos2(rect.min.x + pad, card_top + 2.0 * (card_h + gap) + 2.0),
+        pos2(rect.min.x + pad, card_top + 3.0 * (card_h + gap) + 2.0),
         vec2((rect.width() - pad * 2.0).max(60.0), 38.0),
     );
     let edit = ui.put(
@@ -445,8 +447,18 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("The original Ae fixed-width left/right panel arrangement was changed.")
     if '"AM 竖屏"' not in dock:
         raise SystemExit("AM 竖屏 must remain selectable in the original workspace menu.")
-    if "file.importProject" not in (effectcraft / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8"):
+    generated_home = (effectcraft / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
+    if "file.importProject" not in generated_home:
         raise SystemExit("AM Home must retain the local unified project-import action.")
+    am_home_start = generated_home.find("// EFFECTCRAFT_AM_PORTRAIT_HOME_V1")
+    am_home_end = generated_home.find("pub fn show(app:", am_home_start)
+    if am_home_start < 0 or am_home_end < 0:
+        raise SystemExit("Could not isolate the generated AM Home for plug-in import validation.")
+    am_home_source = generated_home[am_home_start:am_home_end]
+    if '("导入插件", "effect.plugins.load")' not in am_home_source:
+        raise SystemExit("AM Home must expose the shared effect plug-in loader.")
+    if '"effect.plugins.load" =>' not in am_home_source:
+        raise SystemExit("AM Home plug-in import must invoke the original loader command.")
     am_home_start = home.find("// EFFECTCRAFT_AM_PORTRAIT_HOME_V1")
     am_home_end = home.find("pub fn show(app:", am_home_start)
     if am_home_start < 0 or am_home_end < 0:
