@@ -17,6 +17,7 @@ import java.util.Objects;
  */
 public final class AndroidBionicProcessLauncher {
     public static final String SYSTEM_LINKER64 = "/system/bin/linker64";
+    public static final String SYSTEM_LINKER32 = "/system/bin/linker";
 
     private AndroidBionicProcessLauncher() {}
 
@@ -28,6 +29,26 @@ public final class AndroidBionicProcessLauncher {
         }
         List<String> command = new ArrayList<>(arguments.size() + 2);
         command.add(SYSTEM_LINKER64);
+        command.add(bionicExecutable.normalize().toString());
+        for (String argument : arguments) {
+            command.add(Objects.requireNonNull(argument, "command argument"));
+        }
+        return Collections.unmodifiableList(command);
+    }
+
+    /**
+     * Builds a 32-bit Bionic command for optional ARMv7 engines such as Box86.
+     * Callers must first verify that the device actually ships /system/bin/linker
+     * and advertises a 32-bit ABI; 64-bit-only Android builds cannot use this path.
+     */
+    public static List<String> command32(Path bionicExecutable, List<String> arguments) {
+        Objects.requireNonNull(bionicExecutable, "Bionic executable");
+        Objects.requireNonNull(arguments, "arguments");
+        if (!bionicExecutable.isAbsolute()) {
+            throw new IllegalArgumentException("Bionic executable path must be absolute");
+        }
+        List<String> command = new ArrayList<>(arguments.size() + 2);
+        command.add(SYSTEM_LINKER32);
         command.add(bionicExecutable.normalize().toString());
         for (String argument : arguments) {
             command.add(Objects.requireNonNull(argument, "command argument"));
