@@ -100,7 +100,8 @@ def normalize_termux_symlinks(usr_root: Path) -> None:
 
 def replace_java_hash(path: Path, constant: str, digest: str) -> None:
     source = path.read_text(encoding="utf-8")
-    pattern = rf'(private static final String {re.escape(constant)} = ")[0-9a-f]{{64}}(";)'
+    # Allow Java declarations to place the string literal on the following line.
+    pattern = rf'(private\\s+static\\s+final\\s+String\\s+{re.escape(constant)}\\s*=\\s*")[0-9a-f]{{64}}(";)'
     updated, count = re.subn(pattern, rf'\g<1>{digest}\g<2>', source, count=1)
     if count != 1:
         raise SystemExit(f"{path}: could not uniquely update {constant}")
