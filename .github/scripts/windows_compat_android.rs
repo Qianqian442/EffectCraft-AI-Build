@@ -11,6 +11,7 @@ pub(crate) fn init_android_vm(ptr: *mut std::ffi::c_void) {
 }
 
 #[cfg(target_os = "android")]
+#[allow(unsafe_code)]
 fn with_android_vm<T>(
     f: impl FnOnce(&jni::vm::JavaVM) -> Result<T, String>,
 ) -> Result<T, String> {
@@ -21,6 +22,8 @@ fn with_android_vm<T>(
     // android_app.vm_as_ptr() provides the process-owned JavaVM pointer.
     // Wrap that exact pointer instead of relying on jni-rs' per-crate singleton,
     // which may not have been initialized by a different android-activity build.
+    // SAFETY: init_android_vm receives android_app.vm_as_ptr(), which is owned by the
+    // process Android runtime and remains valid for the lifetime of this application process.
     let vm = unsafe { jni::vm::JavaVM::from_raw(raw_vm) };
     f(&vm)
 }
