@@ -722,6 +722,19 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         raise SystemExit("AM must not install global Android touch behavior into Ae panels.")
     if "EFFECTCRAFT_AM_EFFECT_BROWSER_V1" not in am_editor:
         raise SystemExit("AM visual effect browser is not installed.")
+    # AM can size its own controls, but must never inject buttons into Ae's shared toolbar.
+    header_source = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
+    frame_source = (root / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" in header_source or "am-plugin-import" in header_source:
+        raise SystemExit("AM button code leaked into the shared Ae toolbar.")
+    if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header_source:
+        raise SystemExit("The original Ae toolbar workspace menu must remain intact.")
+    if "workspace_tabs(app, ui, p, rx, left, cy);" not in header_source:
+        raise SystemExit("The original Ae toolbar workspace tabs must remain intact.")
+    if 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };' not in frame_source:
+        raise SystemExit("AM header isolation must preserve Ae's original 40px header.")
+    if "fn button(ui:" not in am_editor or "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" not in am_editor:
+        raise SystemExit("AM toolbar controls must live inside the independent AM editor.")
     for token in (
         "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1",
         '"effect.plugins.load"',
