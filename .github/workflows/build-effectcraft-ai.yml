@@ -205,7 +205,7 @@ jobs:
           readelf -l build/box86-android-armv7/box86 | grep -F '/system/bin/linker'
           mkdir -p stage/box86/usr/bin artifacts/box86
           install -m 0755 build/box86-android-armv7/box86 stage/box86/usr/bin/box86
-          cp third_party/box86/COPYING stage/box86/BOX86-LICENSE
+          cp third_party/box86/LICENSE stage/box86/BOX86-LICENSE
           printf '%s\n' 'ptitSeb/box86' 'bb716a2a6576cc06da811bf55e31e2f6f03b7596' > stage/box86/BOX86-SOURCE.txt
           tar --zstd -cf artifacts/box86/box86-android-armv7.tar.zst -C stage/box86 .
           sha256sum artifacts/box86/box86-android-armv7.tar.zst > artifacts/box86/box86-android-armv7.tar.zst.sha256
