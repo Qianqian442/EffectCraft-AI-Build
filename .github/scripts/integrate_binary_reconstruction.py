@@ -48,7 +48,7 @@ def main() -> None:
     script = migration_script.read_text(encoding="utf-8")
     script = replace_once(
         script,
-        '            Self::AggressivePort => "优先源码 ARM64 重编译；无源码时进行指令/控制流分析并重建效果逻辑。需要原插件功能的参考输入与回归测试。",',
+        '            Self::AggressivePort => "逐个 AEX 执行 PE 分析与已安装 Wine/Proton + FEXCore/Box64 隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。只有提供可用源代码且依赖/授权允许时才另行重编译；未知闭源插件不承诺自动还原为 ARM64。",',
         '            Self::AggressivePort => "逐个 AEX 执行 PE 导入/导出、指令/控制流分析，并在 Android 上对已安装 Wine/Proton + FEXCore/Box64 宿主路线隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。静态 IR 和样本试跑不等于自动重编译任意闭源插件；只有可用源码且依赖/授权允许时才考虑 ARM64 重编译。",',
         "aggressive reconstruction mode description",
     )
