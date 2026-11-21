@@ -92,8 +92,10 @@ fn import_summary(bytes: &[u8], sections: &[Section], import_rva: u32) -> (usize
         if original == 0 && name_rva == 0 && first_thunk == 0 { break; }
         if let Some(name_at) = rva_to_file(sections, name_rva) {
             let name = c_string(bytes, name_at, 260);
-            if !name.is_empty() && names.len() < 48 { names.push(name); }
-            if !name.is_empty() { count += 1; }
+            if !name.is_empty() {
+                count += 1;
+                if names.len() < 48 { names.push(name); }
+            }
         }
         offset = match offset.checked_add(20) { Some(value) => value, None => break };
     }
