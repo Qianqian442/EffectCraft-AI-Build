@@ -19,8 +19,11 @@ def main() -> None:
     ui = root / "crates/ui-egui"
     lib = ui / "src/lib.rs"
     cargo = ui / "Cargo.toml"
-    module_source = Path(os.environ.get("GITHUB_WORKSPACE", ".")) / "windows-compat/aex-reconstruction/src/lib.rs"
-    migration_script = Path(os.environ.get("GITHUB_WORKSPACE", ".")) / ".github/scripts/add_plugin_migration_progress.py"
+    # This repository is checked out under $GITHUB_WORKSPACE/build-assets in the APK job.
+    # Resolve companion sources relative to this script, not the workspace root.
+    build_assets = Path(__file__).resolve().parents[2]
+    module_source = build_assets / "windows-compat/aex-reconstruction/src/lib.rs"
+    migration_script = build_assets / ".github/scripts/add_plugin_migration_progress.py"
     if not module_source.is_file() or not migration_script.is_file():
         raise SystemExit("PE reconstruction source or migration generator is missing.")
     module_path = ui / "src/windows_binary_reconstruction.rs"
