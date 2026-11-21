@@ -512,6 +512,87 @@ public final class WinlatorBionicRuntimeManager implements AutoCloseable {
     }
 
     /**
+     * Installs the Android ARM64 QEMU x86_64 Linux-user executable and its bundled
+     * Termux runtime libraries in app-private storage. QEMU is not a PE loader:
+     * a separate x86_64 Linux/Wine guest rootfs is required for Windows AEX work.
+     */
+    public synchronized Path installQemuUserArchive(Path archive, String expectedSha256) throws IOException {
+        ensureOpen();
+        if (archive == null || !Files.isRegularFile(archive, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(archive)) {
+            throw new IOException("QEMU archive is missing or unsafe");
+        }
+        if (expectedSha256 == null || !expectedSha256.matches("(?i)[0-9a-f]{64}")) {
+            throw new IOException("QEMU archive requires a pinned SHA-256 digest");
+        }
+        String actualDigest = sha256(archive);
+        if (!actualDigest.equalsIgnoreCase(expectedSha256)) {
+            throw new IOException("QEMU archive SHA-256 mismatch");
+        }
+
+        Path staging = privateRoot.resolve("staging/qemu-x86_64-linux-user");
+        Path destination = privateRoot.resolve("qemu-x86_64-linux-user");
+        deleteTree(staging);
+        Files.createDirectories(staging);
+        try {
+            extractor.extractTarZstd(archive, staging);
+            Path binary = staging.resolve("usr/bin/qemu-x86_64").normalize();
+            if (!binary.startsWith(staging) || !Files.isRegularFile(binary, LinkOption.NOFOLLOW_LINKS)
+                    || Files.isSymbolicLink(binary)) {
+                throw new IOException("QEMU archive does not contain usr/bin/qemu-x86_64");
+            }
+            verifyElfMachineFile(binary, 2, 183);
+            Path libraryDirectory = staging.resolve("usr/lib").normalize();
+            if (!libraryDirectory.startsWith(staging) || !Files.isDirectory(libraryDirectory)) {
+                throw new IOException("QEMU archive is missing its ARM64 runtime library directory");
+            }
+            createDirectoriesNoSymlink(privateRoot, destination.getParent());
+            deleteTree(destination);
+            try {
+                Files.move(staging, destination, StandardCopyOption.ATOMIC_MOVE);
+            } catch (java.nio.file.AtomicMoveNotSupportedException ignored) {
+                Files.move(staging, destination);
+            }
+            Path installed = destination.resolve("usr/bin/qemu-x86_64");
+            ensureExecutable(installed);
+            Files.write(destination.resolve(".effectcraft-qemu.sha256"),
+                    (actualDigest + "\n").getBytes(StandardCharsets.US_ASCII),
+                    StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE);
+            return installed;
+        } finally {
+            deleteTree(staging);
+        }
+    }
+
+    /** Launch an x86_64 Linux ELF guest through the packaged ARM64 QEMU user-mode engine. */
+    public GuestProcess launchQemuX86_64Guest(
+            Path guestRoot,
+            Path guestExecutable,
+            List<String> guestArguments,
+            Consumer<String> logCallback,
+            Consumer<Integer> exitCallback) throws IOException {
+        ensureOpen();
+        Path qemu = privateRoot.resolve("qemu-x86_64-linux-user/usr/bin/qemu-x86_64").normalize();
+        Path root = guestRoot.toAbsolutePath().normalize();
+        Path executable = guestExecutable.toAbsolutePath().normalize();
+        if (!qemu.startsWith(privateRoot) || !Files.isRegularFile(qemu, LinkOption.NOFOLLOW_LINKS)
+                || !root.startsWith(privateRoot) || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)
+                || !executable.startsWith(root) || !Files.isRegularFile(executable, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("QEMU, guest rootfs or guest executable is missing/outside private storage");
+        }
+        ensureExecutable(qemu);
+        List<String> command = AndroidBionicProcessLauncher.qemuUserCommand(qemu, root, executable, guestArguments);
+        ProcessBuilder builder = new ProcessBuilder(command);
+        builder.directory(root.toFile());
+        builder.environment().put("QEMU_LD_PREFIX", root.toString());
+        builder.environment().put("QEMU_CPU", "max");
+        builder.environment().put("LD_LIBRARY_PATH",
+                privateRoot.resolve("qemu-x86_64-linux-user/usr/lib") + ":/system/lib64");
+        builder.redirectErrorStream(false);
+        return new GuestProcess(builder.start(), logCallback, exitCallback);
+    }
+
+    /**
      * Installs the source-built FEXCore PE backends used by ARM64EC/WoW64 Wine.
      * This is the complete DLL pair for Hangover's Windows-PE execution path,
      * not the standalone FEX Linux-user emulator/root filesystem.
