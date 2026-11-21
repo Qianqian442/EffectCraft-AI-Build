@@ -40,7 +40,7 @@ def main() -> None:
     require(source, "sha256File(repeatedOutput)", "verify repeat-render stability")
     require(source, "guest.getExitCode()", "require a normal worker exit")
     require(source, "validPngOutput(outputPng)", "validate output PNG signature and size")
-    require(source, "No desktop visual-fidelity", "do not invent unavailable reference-image metrics")
+    require(source, "No visual-fidelity score is", "do not invent unavailable reference-image metrics")
     print("Aggressive-port runtime trial checks passed: all available routes are attempted, parameter values round-trip, repeated CPU frames are verified, and only measured passing routes are ranked.")
 
 
