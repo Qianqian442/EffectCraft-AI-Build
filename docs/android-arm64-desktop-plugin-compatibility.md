@@ -1,6 +1,6 @@
 # Desktop plug-in to Android ARM64: sequential trials and aggressive compatibility
 
-**Status: Android runtime integration is now in the build pipeline, but device validation is still pending.** The current branch includes the app-private Winlator Bionic Wine/Proton manager, Box64 with BOX32 support, ARM64EC/WoW64 FEXCore assets, an Android Bionic process-launch bridge, and separately built x64/x86 AEX host workers. CI builds the ARM64 Box64/BOX32 binary and runs native Windows smoke tests that load a sample AEX and render a PNG. These CI checks do not yet prove that the whole Wine/Proton + translator chain runs on a phone; no backend is marked generally supported until on-device tests pass. The aggressive-port mode also includes an offline PE reconstruction pass (imports/exports, executable sections, x86/x64 instruction IR and basic-block candidates) and writes a JSON report. That is static reconstruction assistance, not an automatic semantic PE-to-ARM64 recompiler.
+**Status: the aggressive-port workflow now has two real execution paths, with Android device validation still pending.** The source includes the app-private Winlator Bionic Wine/Proton manager, Box64/BOX32, ARM64EC/WoW64 FEXCore assets, an Android Bionic process-launch bridge, and x64/x86 AEX host workers. After a user installs the runtime, Ae can extract the first AEX from a selected file/ZIP and trial every installed candidate (currently ARM64EC Wine + FEXCore and x86-64 Wine + Box64/BOX32) in separate worker processes. Each trial checks plug-in load, parameter metadata, round-trips supported parameter values, renders the same CPU frame twice, validates PNG output, records SHA-256/render time, and requires clean worker exit. Only completed trials are scored; Ae ranks passing trials by measured score and then render time. The separate aggressive binary-analysis path parses PE imports/exports/sections, decodes x86/x64 instructions and basic-block candidates, and writes a JSON IR report. These are executable compatibility trials and static reconstruction assistance, not a general semantic PE-to-ARM64 recompiler. Real OPPO/Huawei/on-device results are still required before a backend is marked generally supported.
 
 **Backend boundaries:** Box64/BOX32 is the current Android ARM64 x86-64/32-bit ELF translation component; a separate Box86 executable is not bundled because it requires a compatible 32-bit ARM userspace and cannot be assumed available on 64-bit-only Android devices. FEX is integrated as FEXCore in the ARM64EC/WoW64 Wine container, not as the full FEX Linux-user emulator. QEMU x86_64-user remains a Linux-ELF fallback candidate; it is not a Windows PE/AEX loader and is not yet packaged into the production app. Wine/Proton supplies the Windows PE loader/API layer. AEX host compatibility remains a limited host ABI and must be tested against real plug-ins.
 
@@ -138,11 +138,11 @@ The importer now:
 - reports that architecture analysis and a proposed route are not a successful port.
 
 Not yet implemented:
-- packaging Box64/Box86/FEX/QEMU and Wine guest runtimes in Ae;
-- per-route isolated workers and actual sequential execution;
-- the real score calculation from measured results;
-- OpenFX host worker and Adobe AEX host compatibility;
-- phone hardware validation.
+- complete, tested runtime packages for every optional route (Box86 still requires a compatible 32-bit Android linker and i386 Wine; QEMU still requires its x86-64 Wine/glibc guest rootfs);
+- a full route-independent Adobe AEX host implementation covering the missing SDK suites and custom UI;
+- broader automated tests for multiple frames, temporal history, multi-input, cancellation, GPU paths, and reference-image fidelity;
+- a semantic PE-to-ARM64 recompiler or automatic effect-algorithm reconstruction for arbitrary closed-source binaries;
+- real OPPO/Qualcomm and Huawei/Mali phone validation.
 
 ## License / redistribution
 
