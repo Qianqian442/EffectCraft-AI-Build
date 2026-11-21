@@ -23,7 +23,7 @@ def main() -> None:
         return
 
     call_anchor = (
-        "    let x = plugin_import_button(app, ui, x, cy);\\n"
+        "    let x = plugin_import_button(app, ui, x, cy);\n"
         "    let x = tool_slots(app, ui, &p, x, cy);"
     )
     if source.count(call_anchor) != 1:
@@ -31,13 +31,13 @@ def main() -> None:
 
     source = source.replace(
         call_anchor,
-        "    let x = plugin_import_button(app, ui, x, cy);\\n"
-        "    let x = project_import_button(app, ui, x, cy);\\n"
+        "    let x = plugin_import_button(app, ui, x, cy);\n"
+        "    let x = project_import_button(app, ui, x, cy);\n"
         "    let x = tool_slots(app, ui, &p, x, cy);",
         1,
     )
 
-    function_anchor = "/// The tool slots (with group separators after camera tools and pan-behind); returns the x after them.\\n"
+    function_anchor = "/// The tool slots (with group separators after camera tools and pan-behind); returns the x after them.\n"
     if source.count(function_anchor) != 1:
         raise SystemExit("Could not uniquely locate the toolbar helper insertion point.")
 
