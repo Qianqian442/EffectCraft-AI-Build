@@ -43,11 +43,57 @@ def main() -> None:
 
     source = template.read_text(encoding="utf-8")
     declarations = list(SIGNER_DECLARATION.finditer(source))
-    if len(declarations) != 1:
+    if len(declarations) > 1:
         raise SystemExit(
-            "SafActivity.java must contain exactly one EXPECTED_SIGNING_CERT_SHA256 declaration; "
-            f"found {len(declarations)}. Refusing to weaken or guess the startup signature check."
+            "SafActivity.java contains multiple EXPECTED_SIGNING_CERT_SHA256 declarations; "
+            "refusing to guess which startup integrity pin is authoritative."
         )
+    if not declarations:
+        # The upstream builder template does not define this app-specific pin. Add one
+        # deterministic declaration immediately after the unique TAG constant. The
+        # subsequent build-time checks still require the exact public SHA-256 value.
+        tag_line = re.search(
+            r'(?m)^(?P<indent>[ \\t]*)private static final String TAG = "[^"\\n]*";[ \\t]*    if current != fingerprint:
+        # The persistent JKS is the canonical signing identity for this app. Update only
+        # the public fingerprint constant; never replace, regenerate, or modify the key.
+        source = SIGNER_DECLARATION.sub(
+            lambda match: match.group("prefix") + '"' + fingerprint + match.group("suffix"),
+            source,
+            count=1,
+        )
+        template.write_text(source, encoding="utf-8")
+
+    verified = template.read_text(encoding="utf-8")
+    verified_declarations = list(SIGNER_DECLARATION.finditer(verified))
+    if len(verified_declarations) != 1 or verified_declarations[0].group("value") != fingerprint:
+        raise SystemExit("Release signing certificate fingerprint was not pinned to the persistent key.")
+
+    print("Pinned Android startup integrity check to the existing persistent release certificate (SHA-256).")
+    print("Only the public fingerprint constant was synchronized; the private keystore and password were not changed.")
+    print("The app-start signature verification remains enabled.")
+
+
+if __name__ == "__main__":
+    main()
+,
+            source,
+        )
+        if not tag_line:
+            raise SystemExit(
+                "SafActivity.java has no unique TAG constant insertion point for the signing pin."
+            )
+        insertion = (
+            tag_line.group(0)
+            + "\\n"
+            + tag_line.group("indent")
+            + 'private static final String EXPECTED_SIGNING_CERT_SHA256 = "'
+            + PLACEHOLDER
+            + '";'
+        )
+        source = source[:tag_line.start()] + insertion + source[tag_line.end():]
+        declarations = list(SIGNER_DECLARATION.finditer(source))
+        if len(declarations) != 1:
+            raise SystemExit("Could not insert exactly one Android signing certificate pin.")
 
     current = declarations[0].group("value")
     if current != fingerprint:
