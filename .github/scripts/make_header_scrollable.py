@@ -35,6 +35,7 @@ def main() -> None:
 
     required = [        "brand_and_home(app, ui,",
         "plugin_import_button(app, ui,",
+        "project_import_button(app, ui,",
         "puppet_quick_button(app, ui,",
         "tool_slots(app, ui,",
         "tool_options_bar(app, ui,",
@@ -78,6 +79,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             let x = origin.x + if app.integrated_titlebar && !app.ui.show_menu_bar { 80.0 } else { 10.0 };
             let x = brand_and_home(app, scroll_ui, &p, x, cy);
             let x = plugin_import_button(app, scroll_ui, x, cy);
+            let x = project_import_button(app, scroll_ui, x, cy);
             let x = puppet_quick_button(app, scroll_ui, x, cy);
             let x = tool_slots(app, scroll_ui, &p, x, cy);
             let x = tool_options_bar(app, scroll_ui, &p, x + 10.0, cy);
