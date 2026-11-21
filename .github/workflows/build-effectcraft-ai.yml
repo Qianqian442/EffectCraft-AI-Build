@@ -640,6 +640,14 @@ jobs:
           name: EffectCraft-FEXCore-Arm64EC-WoW64-CurrentMain
           path: runtime-artifacts/fexcore
 
+      - name: Download optional QEMU x86-64 Linux-user packages
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: EffectCraft-QEMU-x86-64-Android-Fallback
+          path: runtime-artifacts/qemu
+          if-no-artifact-found: ignore
+
       - name: Download tested Windows x64/x86 AEX host workers
         uses: actions/download-artifact@v4
         with:
@@ -1040,6 +1048,7 @@ jobs:
             --box32-dir "$GITHUB_WORKSPACE/runtime-artifacts/box32" \
             --fexcore-dir "$GITHUB_WORKSPACE/runtime-artifacts/fexcore" \
             --box86-dir "$GITHUB_WORKSPACE/runtime-artifacts/box86" \
+            --qemu-dir "$GITHUB_WORKSPACE/runtime-artifacts/qemu" \
             --x64-host-dir "$GITHUB_WORKSPACE/runtime-artifacts/aex-hosts/x64" \
             --x86-host-dir "$GITHUB_WORKSPACE/runtime-artifacts/aex-hosts/x86" \
             --assets-dir "$EFFECTCRAFT_DIR/assets" \
