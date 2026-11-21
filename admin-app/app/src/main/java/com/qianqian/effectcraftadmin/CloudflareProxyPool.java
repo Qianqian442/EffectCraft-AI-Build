@@ -37,7 +37,7 @@ final class CloudflareProxyPool {
     private static final long DIRECT_TTL_MS = 60L * 1000L;
     private static final int MAX_CANDIDATES = 600;
     private static final int MAX_PER_FEED = 80;
-    private static final int MAX_TRIES = 8;
+    private static final int MAX_TRIES = 24;
     private static final int CONNECT_TIMEOUT_MS = 2200;
     private static final int READ_TIMEOUT_MS = 3500;
 
@@ -51,9 +51,13 @@ final class CloudflareProxyPool {
     }
 
     private static final Feed[] FEEDS = new Feed[] {
-        // Mainland China-only proxy candidates. No HK, JP, SG or global fallback feeds.
+        // Global feeds: administrators may connect from any region or carrier.
+        // These are untrusted byte tunnels only; account traffic remains end-to-end TLS.
+        new Feed("https://raw.githubusercontent.com/proxifly/free-proxy-list/main/proxies/all/data.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/http.txt", "http"),
+        new Feed("https://raw.githubusercontent.com/TheSpeedX/PROXY-List/master/socks5.txt", "socks5"),
+        // Retain regional feeds as additional fallback sources.
         new Feed("https://raw.githubusercontent.com/maximilianfeix/free-proxy-list/main/countries/cn.txt", "http"),
-        // Independent mainland-China-only source; protocol is defined by each file.
         new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/http.txt", "http"),
         new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/https.txt", "http"),
         new Feed("https://raw.githubusercontent.com/databay-labs/free-proxy-list/master/by-country/cn/socks5.txt", "socks5"),
@@ -210,6 +214,19 @@ final class CloudflareProxyPool {
         if (directOk) return new Route(Proxy.NO_PROXY, null);
 
         refreshFeeds(context);
+        // The feed refresh runs asynchronously. Wait for its first pass so the
+        // initial login does not snapshot an empty candidate list prematurely.
+        long feedDeadline = System.currentTimeMillis() + 10000L;
+        while (System.currentTimeMillis() < feedDeadline) {
+            boolean refreshing;
+            synchronized (LOCK) { refreshing = refreshingFeeds; }
+            if (!refreshing) break;
+            try { Thread.sleep(120L); }
+            catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException("等待 HTTPS 备用线路检查时被中断", interrupted);
+            }
+        }
         List<Candidate> candidates = candidateSnapshot();
         int tried = 0;
         for (Candidate candidate : candidates) {
