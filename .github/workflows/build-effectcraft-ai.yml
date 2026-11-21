@@ -245,10 +245,10 @@ jobs:
           from pathlib import Path
           recipe = Path("packages/qemu-system-x86-64-headless/build.sh")
           source = recipe.read_text(encoding="utf-8")
-          start = source.index('\\tlocal QEMU_TARGETS=""')
-          end = source.index("\\n\\tCFLAGS+=", start)
-          source = source[:start] + '''\\t# EffectCraft uses QEMU only as an x86-64 Linux-user Wine fallback.
-          \\tlocal QEMU_TARGETS="x86_64-linux-user"
+          start = source.index('\tlocal QEMU_TARGETS=""')
+          end = source.index("\n\tCFLAGS+=", start)
+          source = source[:start] + '''\t# EffectCraft uses QEMU only as an x86-64 Linux-user Wine fallback.
+          \tlocal QEMU_TARGETS="x86_64-linux-user"
           ''' + source[end:]
           source = source.replace("alsa-lib, dtc, glib,", "glib,")
           for dependency in ("jack2, ", "libspice-server, ", "libusb, ",
