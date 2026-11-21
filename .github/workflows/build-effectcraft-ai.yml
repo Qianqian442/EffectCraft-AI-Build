@@ -209,7 +209,16 @@ jobs:
                   raise SystemExit(f"Unpatched Android-incompatible float math call in {path}")
           if not any(totals.values()):
               raise SystemExit("Pinned Box86 source no longer contains the expected legacy float math calls.")
-          print(f"Mapped {totals['isinff']} isinff and {totals['isnanf']} isnanf calls to C99 generic isinf/isnan.")
+
+          # Android NDK's elf.h omits the optional Solaris SHT_CHECKSUM section type.
+          elf_dump = Path("third_party/box86/src/elfs/elfload_dump.c")
+          elf_source = elf_dump.read_text(encoding="utf-8")
+          old_guard = "        #ifndef TERMUX\\n          GO(SHT_CHECKSUM);\\n        #endif"
+          new_guard = "        #if !defined(TERMUX) && defined(SHT_CHECKSUM)\\n          GO(SHT_CHECKSUM);\\n        #endif"
+          if old_guard not in elf_source:
+              raise SystemExit("Box86 SHT_CHECKSUM portability guard was not found.")
+          elf_dump.write_text(elf_source.replace(old_guard, new_guard, 1), encoding="utf-8")
+          print(f"Mapped {totals['isinff']} isinff and {totals['isnanf']} isnanf calls; guarded optional SHT_CHECKSUM.")
           PY
 
       - name: Configure Box86 as optional Android ARMv7 Bionic binary
@@ -290,6 +299,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
           recipe = Path("packages/qemu-system-x86-64-headless/build.sh")
           source = recipe.read_text(encoding="utf-8")
           start = source.index('\tlocal QEMU_TARGETS=""')
