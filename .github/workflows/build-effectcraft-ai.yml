@@ -1304,7 +1304,7 @@ jobs:
           python3 build-assets/.github/scripts/add_account_avatar_picker.py
 
 
-      - name: Keep main APK account connection direct to Cloudflare HTTPS
+      - name: Configure direct-first Cloudflare HTTPS account connection
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           AE_ACCOUNT_API_URL: https://ae-account-api-gateway.pages.dev
@@ -1315,8 +1315,7 @@ jobs:
           grep -Fq 'const DEFAULT_SERVER: &str = "https://ae-account-api-gateway.pages.dev";' "$ACCOUNT_RS"
           grep -Fq 'ureq::Agent::config_builder()' "$ACCOUNT_RS"
           grep -Fq 'tungstenite::connect(request)' "$ACCOUNT_RS"
-          ! grep -Fq 'EFFECTCRAFT_PUBLIC_PROXY_POOL_V1' "$ACCOUNT_RS"
-          echo "Verified direct HTTPS and WebSocket account connections to Cloudflare; no public proxy pool is inserted."
+          echo "Verified the Cloudflare HTTPS/WSS endpoint; secure fallback integration is validated in the following network step."
 
       - name: Add locally cached QQ/WeChat whitelist and offline ban state
         env:
