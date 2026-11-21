@@ -67,6 +67,7 @@ public final class WindowsCompatAndroidBridge {
     private static volatile WinlatorBionicRuntimeManager runtimeManager;
     private static volatile com.effectcraft.windowscompat.AndroidArm64Capabilities arm64Capabilities;
     private static volatile WinlatorBionicRuntimeManager.Container arm64EcContainer;
+    private static volatile WinlatorBionicRuntimeManager.Container box64Container;
 
     private WindowsCompatAndroidBridge() {}
 
@@ -163,6 +164,11 @@ public final class WindowsCompatAndroidBridge {
             copyBundledAsset(context, FEXCORE_ASSET, fexArchive);
             manager.installFexCoreArchive(container, fexArchive, FEXCORE_ASSET_SHA256);
 
+            INSTALL_STATUS.put(requestId, "正在准备 x86-64 Proton + Box64/BOX32 独立容器…");
+            WinlatorBionicRuntimeManager.Container x64 = manager.createContainer(
+                    "effectcraft-aex-x86_64",
+                    WinlatorBionicRuntimeManager.Architecture.X86_64);
+
             String box86Status = "Box86 架构后备未打包。";
             if (!BOX86_ASSET_SHA256.matches("0{64}")) {
                 INSTALL_STATUS.put(requestId, "正在校验并安装可选 Box86 ARMv7 引擎…");
@@ -187,6 +193,7 @@ public final class WindowsCompatAndroidBridge {
             }
 
             arm64EcContainer = container;
+            box64Container = x64;
             INSTALL_STATUS.put(requestId, "正在校验并安装 Windows x64 / x86 AEX 宿主…");
             Path hostDirectory = context.getFilesDir().toPath().resolve("windows-compat/hosts");
             installVerifiedPeHost(context, AEX_HOST_X64_ASSET, AEX_HOST_X64_SHA256,
@@ -195,7 +202,7 @@ public final class WindowsCompatAndroidBridge {
                     hostDirectory.resolve("effectcraft-aex-host-x86.exe"), 0x014c);
 
             INSTALL_STATUS.put(requestId,
-                    "READY:Windows 兼容基础环境与源码构建 FEXCore 已安装。"
+                    "READY:Windows 兼容基础环境、源码构建 FEXCore 和独立 Box64/BOX32 容器已准备。"
                     + box86Status + qemuStatus + "真实 AEX 插件执行仍需逐项验证。");
             Log.i(TAG, "Windows compatibility base, Box64 BOX32 and FEXCore are prepared.");
         } catch (Exception error) {
@@ -228,21 +235,23 @@ public final class WindowsCompatAndroidBridge {
                 || sourcePath == null || sourcePath.trim().isEmpty()) return;
         Context context = applicationContext;
         WinlatorBionicRuntimeManager manager = runtimeManager;
-        WinlatorBionicRuntimeManager.Container container = arm64EcContainer;
-        if (context == null || manager == null || container == null) {
+        WinlatorBionicRuntimeManager.Container fexContainer = arm64EcContainer;
+        WinlatorBionicRuntimeManager.Container box64 = box64Container;
+        if (context == null || manager == null || (fexContainer == null && box64 == null)) {
             INSTALL_STATUS.put(requestId, "ERROR: 请先安装 Windows 兼容运行环境。");
             return;
         }
         if (!ACTIVE_REQUESTS.add(requestId)) return;
-        INSTALL_STATUS.put(requestId, "RUNNING: 正在提取并检查 AEX 插件…");
+        INSTALL_STATUS.put(requestId, "RUNNING: 正在提取 AEX 并按 FEXCore、Box64 顺序测试后端…");
         INSTALL_EXECUTOR.execute(() -> runAexPluginTest(
-                context, manager, container, requestId, sourcePath));
+                context, manager, fexContainer, box64, requestId, sourcePath));
     }
 
     private static void runAexPluginTest(
             Context context,
             WinlatorBionicRuntimeManager manager,
-            WinlatorBionicRuntimeManager.Container container,
+            WinlatorBionicRuntimeManager.Container fexContainer,
+            WinlatorBionicRuntimeManager.Container box64Container,
             String requestId,
             String sourcePath) {
         Path plugin = null;
@@ -267,17 +276,71 @@ public final class WindowsCompatAndroidBridge {
                 throw new IOException("匹配的 Windows AEX 宿主未安装：" + host.getFileName());
             }
 
-            INSTALL_STATUS.put(requestId, String.format(Locale.ROOT,
-                    "RUNNING: 已识别 PE 架构 0x%04x，正在启动隔离 AEX 宿主…", machine));
-            StringBuilder output = new StringBuilder();
-            WinlatorBionicRuntimeManager.GuestProcess guest = manager.launchAexHost(
-                    container, host, plugin,
-                    line -> appendRuntimeLog(requestId, output, line),
-                    code -> appendRuntimeLog(requestId, output, "宿主退出码：" + code));
+            Path inputPng = plugin.getParent().resolve("input.png");
+            Path outputPng = plugin.getParent().resolve("output.png");
+            writeSmokeTestImage(inputPng, 320, 240);
+            String[] backendNames = {"ARM64EC Wine + source-built FEXCore", "x86-64 Wine + Box64/BOX32"};
+            WinlatorBionicRuntimeManager.Container[] containers = {fexContainer, box64Container};
+            StringBuilder attemptLog = new StringBuilder();
 
-            // The worker protocol emits one JSON metadata line, then waits for
-            // JSON commands on stdin. Exercise a real CPU frame render rather
-            // than merely starting a process and waiting for a timeout.
+            for (int index = 0; index < containers.length; index++) {
+                WinlatorBionicRuntimeManager.Container candidate = containers[index];
+                if (candidate == null) continue;
+                INSTALL_STATUS.put(requestId, String.format(Locale.ROOT,
+                        "RUNNING: PE 架构 0x%04x；正在测试后端 %s…", machine, backendNames[index]));
+                try {
+                    String summary = runAexSmokeTest(
+                            manager, candidate, host, plugin, inputPng, outputPng,
+                            machine, requestId, backendNames[index]);
+                    INSTALL_STATUS.put(requestId,
+                            "EXIT:0\nAEX 插件已加载并完成一次 CPU PNG 帧渲染。"
+                                    + "\n通过后端：" + backendNames[index]
+                                    + "\n" + summary
+                                    + "\n这只证明当前样本在该路线完成了一次加载和渲染，不代表所有 AE 套件、GPU、AEGP 或其他插件均兼容。"
+                                    + (attemptLog.length() == 0 ? "" : "\n前序失败路线：\n" + attemptLog));
+                    return;
+                } catch (Exception backendError) {
+                    String detail = backendError.getMessage();
+                    attemptLog.append(backendNames[index]).append("：")
+                            .append(detail == null ? backendError.getClass().getSimpleName() : detail)
+                            .append('\n');
+                    Log.w(TAG, "AEX sample failed on " + backendNames[index], backendError);
+                }
+            }
+
+            throw new IOException("FEXCore 和 Box64/BOX32 两条已准备路线均未通过 AEX 加载/渲染测试。\n"
+                    + attemptLog
+                    + "Box86 需要 i386 Wine 根文件系统；QEMU 需要 x86-64 Wine/glibc 根文件系统，未具备时不会冒充可运行。");
+        } catch (Exception error) {
+            String detail = error.getMessage();
+            INSTALL_STATUS.put(requestId, "ERROR: AEX 测试失败："
+                    + (detail == null || detail.trim().isEmpty()
+                    ? error.getClass().getSimpleName() : detail));
+            Log.e(TAG, "AEX plug-in test failed.", error);
+        } finally {
+            if (plugin != null) {
+                try { deletePrivateTree(plugin.getParent()); } catch (IOException ignored) {}
+            }
+            ACTIVE_REQUESTS.remove(requestId);
+        }
+    }
+
+    private static String runAexSmokeTest(
+            WinlatorBionicRuntimeManager manager,
+            WinlatorBionicRuntimeManager.Container container,
+            Path host,
+            Path plugin,
+            Path inputPng,
+            Path outputPng,
+            int machine,
+            String requestId,
+            String backendName) throws Exception {
+        StringBuilder output = new StringBuilder();
+        WinlatorBionicRuntimeManager.GuestProcess guest = manager.launchAexHost(
+                container, host, plugin,
+                line -> appendRuntimeLog(requestId, output, line),
+                code -> appendRuntimeLog(requestId, output, "宿主退出码：" + code));
+        try {
             String metadataLine = guest.readStdoutLine(45,
                     java.util.concurrent.TimeUnit.SECONDS);
             if (metadataLine == null) {
@@ -288,10 +351,7 @@ public final class WindowsCompatAndroidBridge {
                 throw new IOException("AEX 插件加载失败：" + metadata.optString("error", metadataLine));
             }
             int parameterCount = metadata.optInt("param_count", -1);
-            Path inputPng = plugin.getParent().resolve("input.png");
-            Path outputPng = plugin.getParent().resolve("output.png");
-            writeSmokeTestImage(inputPng, 320, 240);
-
+            Files.deleteIfExists(outputPng);
             JSONObject renderRequest = new JSONObject();
             renderRequest.put("cmd", "render");
             renderRequest.put("input_png", inputPng.toString());
@@ -318,34 +378,29 @@ public final class WindowsCompatAndroidBridge {
                     + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
             while (guest.isAlive() && System.nanoTime() < deadline) Thread.sleep(100);
             if (guest.isAlive()) {
-                guest.terminate();
-                Thread.sleep(500);
-                if (guest.isAlive()) guest.kill();
                 throw new IOException("AEX 宿主完成渲染后未能正常退出。");
             }
+            long exitDeadline = System.nanoTime()
+                    + java.util.concurrent.TimeUnit.SECONDS.toNanos(2);
+            while (guest.getExitCode() == null && System.nanoTime() < exitDeadline) Thread.sleep(50);
             Integer exitCode = guest.getExitCode();
             if (exitCode == null || exitCode != 0) {
                 throw new IOException("AEX 宿主渲染完成后的退出码异常：" + exitCode);
             }
-            INSTALL_STATUS.put(requestId,
-                    "EXIT:0\n已加载 AEX 并完成一次 CPU PNG 帧渲染。"
-                            + "\nPE 架构：0x" + Integer.toHexString(machine)
-                            + "，参数数： " + parameterCount
-                            + "，输出尺寸：" + renderResult.optInt("width", 0)
-                            + "x" + renderResult.optInt("height", 0)
-                            + "\n这仅验证当前样例的一次加载和渲染，不代表所有 AE 套件、GPU、AEGP 或其他插件功能均兼容。\n"
-                            + output);
-        } catch (Exception error) {
-            String detail = error.getMessage();
-            INSTALL_STATUS.put(requestId, "ERROR: AEX 测试失败："
-                    + (detail == null || detail.trim().isEmpty()
-                    ? error.getClass().getSimpleName() : detail));
-            Log.e(TAG, "AEX plug-in test failed.", error);
+            return "引擎：" + backendName
+                    + "；PE 架构：0x" + Integer.toHexString(machine)
+                    + "；参数数：" + parameterCount
+                    + "；输出尺寸：" + renderResult.optInt("width", 0)
+                    + "x" + renderResult.optInt("height", 0)
+                    + "\n" + output;
         } finally {
-            if (plugin != null) {
-                try { deletePrivateTree(plugin.getParent()); } catch (IOException ignored) {}
+            if (guest.isAlive()) {
+                guest.terminate();
+                long terminateDeadline = System.nanoTime()
+                        + java.util.concurrent.TimeUnit.SECONDS.toNanos(1);
+                while (guest.isAlive() && System.nanoTime() < terminateDeadline) Thread.sleep(50);
+                if (guest.isAlive()) guest.kill();
             }
-            ACTIVE_REQUESTS.remove(requestId);
         }
     }
 
