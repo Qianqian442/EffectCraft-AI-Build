@@ -34,6 +34,22 @@ def main() -> None:
     if not rust_helper.is_file() or not runtime_java.is_dir():
         raise SystemExit("Windows compatibility Rust/Java runtime sources are missing.")
 
+    # Keep the workspace-wide unsafe-code lint enabled, but use deny rather than
+    # forbid so the single documented JNI pointer-wrapping boundary can carry a
+    # narrowly-scoped allow(unsafe_code). Every other location remains denied.
+    workspace_manifest = effectcraft / "Cargo.toml"
+    workspace_source = workspace_manifest.read_text(encoding="utf-8")
+    forbid_lint = 'unsafe_code = "forbid"'
+    deny_lint = 'unsafe_code = "deny"'
+    if forbid_lint in workspace_source:
+        workspace_source = replace_once(
+            workspace_source, forbid_lint, deny_lint,
+            "scoped Android JNI unsafe-code lint"
+        )
+        workspace_manifest.write_text(workspace_source, encoding="utf-8")
+    elif deny_lint not in workspace_source:
+        raise SystemExit("Expected the EffectCraft workspace unsafe_code lint to be forbid or deny.")
+
     # Keep the Java sources inside the builder checkout. The APK workflow removes
     # build-assets before running build.sh to reclaim disk, so the builder must not
     # depend on the temporary patch checkout at APK-build time.
