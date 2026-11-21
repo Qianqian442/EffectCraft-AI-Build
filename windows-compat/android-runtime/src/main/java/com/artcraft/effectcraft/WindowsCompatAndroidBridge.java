@@ -364,7 +364,7 @@ public final class WindowsCompatAndroidBridge {
             for (int index = 0; index < containers.length; index++) {
                 WinlatorBionicRuntimeManager.Container candidate = containers[index];
                 if (candidate == null) {
-                    attemptLog.append(backendNames[index]).append("：运行环境未安装，跳过。\\n");
+                    attemptLog.append(backendNames[index]).append("：运行环境未安装，跳过。\n");
                     continue;
                 }
                 Path routeOutput = plugin.getParent().resolve(
@@ -376,18 +376,18 @@ public final class WindowsCompatAndroidBridge {
                             manager, candidate, host, plugin, inputPng, routeOutput,
                             machine, requestId, backendNames[index]);
                     passedTrials.add(trial);
-                    attemptLog.append("通过：").append(trial.summary()).append('\\n');
+                    attemptLog.append("通过：").append(trial.summary()).append('\n');
                 } catch (Exception backendError) {
                     String detail = backendError.getMessage();
                     attemptLog.append("未通过：").append(backendNames[index]).append("：")
                             .append(detail == null ? backendError.getClass().getSimpleName() : detail)
-                            .append('\\n');
+                            .append('\n');
                     Log.w(TAG, "AEX sample failed on " + backendNames[index], backendError);
                 }
             }
 
             if (passedTrials.isEmpty()) {
-                throw new IOException("所有已安装的 AEX 候选后端均未通过加载、参数往返、重复渲染和正常退出测试。\\n"
+                throw new IOException("所有已安装的 AEX 候选后端均未通过加载、参数往返、重复渲染和正常退出测试。\n"
                         + attemptLog
                         + "Box86 需要 i386 Wine 根文件系统；QEMU 需要 x86-64 Wine/glibc 根文件系统，未具备时不会冒充可运行。");
             }
@@ -401,12 +401,12 @@ public final class WindowsCompatAndroidBridge {
                     .findFirst().orElseThrow(() -> new IOException("没有可选的通过路线。"));
 
             StringBuilder finalStatus = new StringBuilder();
-            finalStatus.append("EXIT:0\\n当前插件样本已完成所有可用后端的隔离试跑。")
-                    .append("\\n自动优选：").append(best.backendName)
+            finalStatus.append("EXIT:0\n当前插件样本已完成所有可用后端的隔离试跑。")
+                    .append("\n自动优选：").append(best.backendName)
                     .append("（").append(best.score).append("/100）")
-                    .append("\\n优选依据：参数往返、两次真实 CPU 帧渲染、重复帧稳定性、正常退出和实测耗时。")
-                    .append("\\n逐路线测试记录：\\n").append(attemptLog)
-                    .append("\\n注意：这是当前插件样本的一帧 CPU 宿主兼容性试跑，不代表全部 Adobe SDK/A E G P 套件、GPU、时间历史、多输入或其他插件均已兼容。");
+                    .append("\n优选依据：参数往返、两次真实 CPU 帧渲染、重复帧稳定性、正常退出和实测耗时。")
+                    .append("\n逐路线测试记录：\n").append(attemptLog)
+                    .append("\n注意：这是当前插件样本的一帧 CPU 宿主兼容性试跑，不代表全部 Adobe SDK/A E G P 套件、GPU、时间历史、多输入或其他插件均已兼容。");
             INSTALL_STATUS.put(requestId, finalStatus.toString());
         } catch (Exception error) {
             String detail = error.getMessage();
