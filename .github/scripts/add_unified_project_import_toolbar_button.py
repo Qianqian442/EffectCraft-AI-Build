@@ -2,6 +2,7 @@
 """Add the unified project-import shortcut only to the independent AM editor header."""
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 
@@ -21,7 +22,7 @@ def main() -> None:
         required = (
             'app.auto.add_response("am.header.importProject"',
             'invoke(app, ui.ctx(), "file.importProject", json!({}))',
-            "let import_title_left",
+            "let mut import_title_left",
         )
         missing = [token for token in required if token not in source]
         if missing:
@@ -78,7 +79,7 @@ def main() -> None:
     generator.write_text(source, encoding="utf-8")
 
     # Guard the original Ae toolbar against accidental cross-layout injection.
-    effectcraft_dir = Path(__import__("os").environ["EFFECTCRAFT_DIR"]).resolve()
+    effectcraft_dir = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     ae_header = effectcraft_dir / "crates/ui-egui/src/header.rs"
     if not ae_header.is_file():
         raise SystemExit(f"Original Ae header source was not found: {ae_header}")
