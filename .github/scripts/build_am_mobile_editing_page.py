@@ -1439,9 +1439,15 @@ def patch_module(root: Path) -> None:
 
 def patch_export_access(root: Path) -> None:
     path = root / "crates/ui-egui/src/header.rs"
-    source = path.read_text(encoding="utf-8")
-    source = source.replace("fn export_dialog(app:", "pub(crate) fn export_dialog(app:")
+    original = path.read_text(encoding="utf-8")
+    source = original.replace("fn export_dialog(app:", "pub(crate) fn export_dialog(app:")
     source = source.replace("fn export_progress_dialog(app:", "pub(crate) fn export_progress_dialog(app:")
+    expected = original.replace("fn export_dialog(app:", "pub(crate) fn export_dialog(app:")
+    expected = expected.replace("fn export_progress_dialog(app:", "pub(crate) fn export_progress_dialog(app:")
+    # These visibility changes are the complete allowed edit to the shared Ae header.
+    # Any change to Ae button geometry, padding, font size or hit targets fails the build.
+    if source != expected:
+        raise SystemExit("AM patch attempted an unrelated edit to Ae's shared header/button code.")
     if "pub(crate) fn export_dialog(app:" not in source or "pub(crate) fn export_progress_dialog(app:" not in source:
         raise SystemExit("Could not expose the existing native export dialogs to the independent AM page.")
     path.write_text(source, encoding="utf-8")
@@ -1568,6 +1574,13 @@ def verify(root: Path) -> None:
         raise SystemExit("AM editor cannot access the original video export workflow.")
     if "self.dock_area(ui, body);" not in frame:
         raise SystemExit("The Ae DockArea must remain available for the original Ae workspace.")
+    if "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" in header or "am-plugin-import" in header:
+        raise SystemExit("AM plug-in button leaked into the shared Ae toolbar source.")
+    if 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };' not in frame:
+        raise SystemExit("AM frame sizing must preserve the original 40px Ae header.")
+    if "fn button(ui:" not in module:
+        raise SystemExit("AM toolbar buttons must use a local helper inside the independent AM module.")
+    print("Verified Ae toolbar source/button geometry stays isolated from AM's local controls.")
     print("Verified a separate AM editing surface with its own top bar, canvas, transport, clip tracks, trim handles and bottom tools.")
     print("Verified the Ae DockArea remains the render path for Ae mode; AM no longer uses the Ae dock tree or timeline widget.")
 
