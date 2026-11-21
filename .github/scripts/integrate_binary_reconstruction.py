@@ -49,7 +49,7 @@ def main() -> None:
     script = replace_once(
         script,
         '            Self::AggressivePort => "优先源码 ARM64 重编译；无源码时进行指令/控制流分析并重建效果逻辑。需要原插件功能的参考输入与回归测试。",',
-        '            Self::AggressivePort => "离线暴力分析 Windows PE：解析导入/导出表、可执行节，逐条解码 x86/x64 指令，恢复分支目标与基本块候选并生成 JSON IR 报告。该 IR 用于后续重写；不会把静态分析冒充成已经生成 ARM64 插件。",',
+        '            Self::AggressivePort => "逐个 AEX 执行 PE 导入/导出、指令/控制流分析，并在 Android 上对已安装 Wine/Proton + FEXCore/Box64 宿主路线隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。静态 IR 和样本试跑不等于自动重编译任意闭源插件；只有可用源码且依赖/授权允许时才考虑 ARM64 重编译。",',
         "aggressive reconstruction mode description",
     )
     script = replace_once(
