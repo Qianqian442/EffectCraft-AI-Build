@@ -12,10 +12,16 @@ target OPPO / China network confirms it can open `/health`.
 
 ## Deployment
 
-The GitHub Actions workflow creates the Pages project `ae-account-api-gateway`
-and deploys the advanced-mode `dist/_worker.js` entrypoint. It uses a
-Cloudflare API token with Pages Write / Edit permissions in addition to the
-existing Worker deployment permissions.
+The GitHub Actions workflow creates and deploys two Pages projects using the
+same advanced-mode `dist/_worker.js` entrypoint:
+
+- Primary: `https://ae-account-api-gateway.pages.dev`
+- Alternate: `https://ae-account-api-gateway-alt.pages.dev`
+
+Both projects use the same fixed `ACCOUNT_API` Service binding to the existing
+Worker. They are separate HTTPS hostnames, not separate account backends. The
+workflow uses a Cloudflare API token with Pages Write / Edit permissions in
+addition to the existing Worker deployment permissions.
 
 The Pages Function binds `ACCOUNT_API` to the existing Worker
 `ae-cloud-account-api`. All account routes, D1 data, Durable Objects,
@@ -28,8 +34,12 @@ password handling, JWTs and ban logic remain on the original Worker.
 - HTTPS termination remains at Cloudflare. The Android clients must continue
   validating the Pages hostname certificate and preserve the authenticated
   account API request semantics.
-- `GET /health` must return the same Worker health response before the APK
-  uses this endpoint.
+- `GET /health` and `/health/deep` must return the same Worker health response
+  through both hostnames before either APK uses them.
+- Two `pages.dev` hostnames improve hostname redundancy only; they still share
+  Cloudflare infrastructure and may both be blocked or unstable on a given
+  mainland ISP. A custom domain or independently hosted domestic HTTPS ingress
+  would be a separate future option.
 - No registration or login POST is replayed by this gateway.
 - A successful GitHub deployment is not proof of mainland reachability.
   Validate the Pages hostname from the target China network before switching
