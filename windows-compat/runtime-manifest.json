@@ -127,20 +127,20 @@
       "pe_machine": "0x8664",
       "architecture": "x86-64",
       "candidates": [
-        "ARM64EC Wine/Proton + source-built FEXCore ARM64EC backend — preferred candidate; CI/device runtime test pending",
-        "Wine + Box64 x86_64 container — fallback only after using a compatible x86_64 Linux Wine build; current Bionic Proton test failed on unresolved __libc_init",
-        "Arm64EC Wine/Proton + WowBox64 (HODLL64=wowbox64.dll) — separate 64-bit fallback candidate",
-        "QEMU x86_64-linux-user + x86-64 Wine/glibc rootfs — optional Linux-user candidate, not yet staged in APK or AEX-tested"
+        "ARM64EC Wine/Proton + source-built FEXCore ARM64EC backend — CI source build passed; Android device AEX validation pending",
+        "Wine + Box64 x86_64 container — fallback candidate; Bionic Proton launch still requires resolving the recorded __libc_init issue",
+        "Arm64EC Wine/Proton + WowBox64 (HODLL64=wowbox64.dll) — separate fallback candidate",
+        "QEMU x86_64-linux-user + x86-64 Wine/glibc rootfs — package build and APK staging added; AEX execution waits for a matching guest rootfs and device smoke test"
       ]
     },
     {
       "pe_machine": "0x014c",
       "architecture": "x86",
       "candidates": [
-        "ARM64EC Wine/Proton + source-built FEXCore WoW64 backend — preferred candidate; device tests pending",
-        "Box64 BOX32 + matching 32-bit Wine/WoW64 — Android ARM64 BOX32 executable now built and checksum-verified; 32-bit x86 ELF execution and Windows PE/AEX hosting are not yet verified",
-        "Boxedwine Android ARM64 port — independent legacy fallback candidate; Android app port still required",
-        "Box86 Android ARMv7 Bionic + 32-bit linker + i386 Wine — optional candidate, device and AEX tests pending"
+        "ARM64EC Wine/Proton + source-built FEXCore WoW64 backend — CI source build passed; Android device AEX validation pending",
+        "Box64 BOX32 + matching 32-bit Wine/WoW64 — Android ARM64 BOX32 executable compiled; 32-bit x86 ELF and AEX hosting still require runtime verification",
+        "Box86 Android ARMv7 Bionic + 32-bit linker + i386 Wine — optional build and private installer added; latest NDK compatibility fix is awaiting a successful build",
+        "Boxedwine Android ARM64 port — separate legacy fallback candidate; Android app port and GPL compliance review remain required"
       ]
     },
     {
@@ -193,8 +193,8 @@
       ],
       "build_workflow": ".github/workflows/build-effectcraft-ai.yml#build-qemu-user-android",
       "artifact": "EffectCraft-QEMU-x86-64-Android-Fallback",
-      "apk_status": "not yet packaged into main APK; Termux packages must be made relocatable and a compatible x86-64 Wine/glibc rootfs plus shared-library closure must be integrated",
-      "status": "optional-linux-user-package-build-added-runtime-integration-pending"
+      "apk_status": "APK staging now includes the QEMU archive when its optional package build succeeds; current build must still verify the package and native shared-library closure",
+      "status": "optional-linux-user-build-and-Ae-private-runtime-installer-added; CI packaging and AEX tests pending"
     },
     {
       "id": "clvk-opencl-vulkan",
@@ -287,7 +287,7 @@
         "translates Linux ELF binaries; it does not load Windows PE/AEX binaries directly",
         "optional build may be omitted when the Android NDK build fails"
       ],
-      "status": "optional-build-and-installer-added; runtime-test-pending"
+      "status": "optional-build-and-private-installer-added; latest NDK isinf fix awaits a successful CI build"
     }
   ],
   "rootfs_strategy": {
@@ -821,6 +821,48 @@
         "Huawei/Mali-class ARM64"
       ],
       "required": "isolate and execute real AEX sample, enumerate parameters, render PNG/video frames, compare expected output and verify crash recovery"
+    }
+  },
+  "integration_snapshot": {
+    "as_of": "2026-11-21",
+    "box64_box32": {
+      "status": "android_arm64_ci_build_passed",
+      "limitation": "32-bit x86 Linux ELF only; Windows x86 AEX still requires a matching Wine/WoW64 host and device execution test"
+    },
+    "fexcore": {
+      "status": "source_build_ci_passed",
+      "components": [
+        "libarm64ecfex.dll",
+        "libwow64fex.dll"
+      ],
+      "integration": "source-built pair is checksum-verified and staged into Ae's ARM64EC Wine container",
+      "limitation": "this is the complete FEXCore PE backend pair for Wine/Hangover ARM64EC and WoW64, not the standalone FEX Linux-user emulator; Android device AEX test remains pending"
+    },
+    "box86": {
+      "status": "optional_android_armv7_build_and_private_installer_added",
+      "latest_fix": "legacy isinff calls mapped to isinf for Android NDK; next full CI run must confirm",
+      "limitation": "requires /system/bin/linker and a 32-bit Android ABI, plus an i386 Wine/glibc guest rootfs; Box86 translates Linux ELF, not Windows PE directly"
+    },
+    "qemu": {
+      "status": "optional_android_x86_64_linux_user_build_and_private_installer_added",
+      "integration": "APK asset staging, checksum validation, linker64 launch command and guest launch API are implemented",
+      "limitation": "QEMU translates x86_64 Linux ELF, not Windows PE; a matching x86_64 Wine/glibc rootfs and its runtime library closure are still required"
+    },
+    "aggressive_binary_port": {
+      "status": "offline_static_pe_ir_integrated",
+      "features": [
+        "PE32/PE32+ headers",
+        "imports and exports",
+        "x86/x64 instruction decode",
+        "branch target collection",
+        "basic-block candidates",
+        "JSON IR reports"
+      ],
+      "limitation": "does not yet reconstruct full effect semantics, generate a native ARM64 plug-in, or automatically recompile arbitrary AEX binaries"
+    },
+    "apk": {
+      "status": "build_and_validation_pipeline_pending",
+      "limitation": "no new installable APK artifact has been produced by the latest integrated runtime build"
     }
   }
 }
