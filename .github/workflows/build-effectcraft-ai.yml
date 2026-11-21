@@ -190,6 +190,7 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
           paths = (
               Path("third_party/box86/src/emu/x86run0f.c"),
               Path("third_party/box86/src/emu/x86run660f.c"),
@@ -213,11 +214,12 @@ jobs:
           # Android NDK's elf.h omits the optional Solaris SHT_CHECKSUM section type.
           elf_dump = Path("third_party/box86/src/elfs/elfload_dump.c")
           elf_source = elf_dump.read_text(encoding="utf-8")
-          old_guard = "        #ifndef TERMUX\\n          GO(SHT_CHECKSUM);\\n        #endif"
-          new_guard = "        #if !defined(TERMUX) && defined(SHT_CHECKSUM)\\n          GO(SHT_CHECKSUM);\\n        #endif"
-          if old_guard not in elf_source:
-              raise SystemExit("Box86 SHT_CHECKSUM portability guard was not found.")
-          elf_dump.write_text(elf_source.replace(old_guard, new_guard, 1), encoding="utf-8")
+          pattern = r"(?m)^([ \\t]*)GO\\(SHT_CHECKSUM\\);[ \\t]*$"
+          replacement = r"\\1#if defined(SHT_CHECKSUM)\\n\\1GO(SHT_CHECKSUM);\\n\\1#endif"
+          updated, count = re.subn(pattern, replacement, elf_source, count=1)
+          if count != 1:
+              raise SystemExit("Box86 optional SHT_CHECKSUM call was not found exactly once.")
+          elf_dump.write_text(updated, encoding="utf-8")
           print(f"Mapped {totals['isinff']} isinff and {totals['isnanf']} isnanf calls; guarded optional SHT_CHECKSUM.")
           PY
 
