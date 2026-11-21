@@ -132,7 +132,9 @@ def main() -> None:
                         } else if ready {
                             ui.heading("Windows 兼容运行环境已安装");
                         } else if status.starts_with("EXIT:0") {
-                            ui.heading("AEX 样本运行与帧渲染通过");
+                            ui.heading("全部 AEX 插件试跑通过");
+                        } else if status.starts_with("EXIT:2") {
+                            ui.heading("部分 AEX 插件通过，整包尚未完成");
                         } else {
                             ui.heading("运行环境或 AEX 测试未通过");
                         }
@@ -143,8 +145,8 @@ def main() -> None:
                         if ready {
                             ui.add_space(6.0);
                             ui.label(format!("当前导入包检测到 {native_count} 个原生插件文件。"));
-                            ui.small("测试会提取首个 AEX 文件，在独立 Wine/Proton 宿主进程中读取参数并执行一次 CPU PNG 帧渲染。通过只证明该样本测试通过。");
-                            if ui.button("测试当前导入包中的第一个 AEX 插件").clicked() {
+                            ui.small("测试会提取包内全部 AEX 文件，分别在独立 Wine/Proton 宿主进程中试跑每条已安装后端，往返参数并重复渲染 CPU PNG 帧；所有插件均通过才算整包通过。");
+                            if ui.button("逐个测试导入包中的全部 AEX 插件").clicked() {
                                 test_plugin = true;
                             }
                         }
