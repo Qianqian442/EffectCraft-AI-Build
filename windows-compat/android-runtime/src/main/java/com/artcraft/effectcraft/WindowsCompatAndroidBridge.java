@@ -36,7 +36,7 @@ import java.util.concurrent.Executors;
  *
  * Runtime installation is explicitly user-triggered. All files remain inside
  * the app's private files directory; downloads are HTTPS and SHA-256 verified,
- * and the bundled Box64 BOX32 binary is pinned to the CI-produced payload.
+ * and the bundled Box64 BOX32 binary is checked against the SHA-256 emitted by its CI build.
  */
 public final class WindowsCompatAndroidBridge {
     private static final String TAG = "EffectCraftWinCompat";
