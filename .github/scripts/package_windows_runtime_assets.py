@@ -12,7 +12,6 @@ import struct
 from pathlib import Path
 
 BOX32_SHA256 = "0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5"
-LICENSE_SHA256 = "a49e3f389052312d1803772b91b4773cef5fa66076cbd961720484c43ef925fb"
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -206,7 +205,10 @@ def main() -> None:
     x64_hash, x86_hash = sha256(x64), sha256(x86)
 
     license_file = require_one(args.x64_host_dir, "AEXLO-MIT-LICENSE")
-    copy_verified(license_file, args.assets_dir / "licenses/AEXLO-MIT-LICENSE", LICENSE_SHA256)
+    if license_file.stat().st_size == 0:
+        raise SystemExit("AEXLO MIT license from the pinned source checkout is empty")
+    license_hash = sha256(license_file)
+    copy_verified(license_file, args.assets_dir / "licenses/AEXLO-MIT-LICENSE", license_hash)
     copy_verified(box32, args.assets_dir / "windows-compat/box64-box32-android-arm64.tar.zst", BOX32_SHA256)
     copy_verified(fexcore, args.assets_dir / "windows-compat/fexcore-arm64ec-wow64.tar.zst", fexcore_hash)
     if box86 is not None and box86_hash is not None:
@@ -241,6 +243,9 @@ def main() -> None:
         sidecar = source.with_name(source.name + ".sha256")
         sidecar.write_text(f"{digest}  {source.name}\n", encoding="ascii")
 
+    license_sidecar = args.assets_dir / "licenses/AEXLO-MIT-LICENSE.sha256"
+    license_sidecar.write_text(f"{license_hash}  AEXLO-MIT-LICENSE\n", encoding="ascii")
+
     print("Verified and staged runtime assets:")
     print(f"  Box64 BOX32 Android ARM64: {BOX32_SHA256}")
     print(f"  Source-built FEXCore ARM64EC/WoW64: {fexcore_hash}")
@@ -248,7 +253,7 @@ def main() -> None:
     print("  QEMU x86_64 Linux-user optional fallback: " + (qemu_hash or "not packaged in this build"))
     print(f"  Windows x64 AEX host: {x64_hash}")
     print(f"  Windows x86 AEX host: {x86_hash}")
-    print(f"  AEXLO MIT license: {LICENSE_SHA256}")
+    print(f"  AEXLO MIT license from pinned aexlo source: {license_hash}")
     print("Updated the APK Java asset verifier with the exact host hashes from this workflow run.")
 
 if __name__ == "__main__":
