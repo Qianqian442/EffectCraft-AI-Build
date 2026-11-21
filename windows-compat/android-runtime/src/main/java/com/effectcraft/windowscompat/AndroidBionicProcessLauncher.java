@@ -18,7 +18,6 @@ import java.util.Objects;
 public final class AndroidBionicProcessLauncher {
     public static final String SYSTEM_LINKER64 = "/system/bin/linker64";
     public static final String SYSTEM_LINKER32 = "/system/bin/linker";
-    public static final String SYSTEM_LINKER32 = "/system/bin/linker";
 
     private AndroidBionicProcessLauncher() {}
 
