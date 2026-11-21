@@ -267,7 +267,7 @@ public final class WindowsCompatAndroidBridge {
                 ? error.getClass().getSimpleName() : message;
     }
 
-    /** Starts a user-requested, isolated test of the first AEX found in a file or ZIP. */
+    /** Starts isolated route trials for every AEX found in the selected file or ZIP. */
     public static void startAexPluginTest(String requestId, String sourcePath) {
         if (requestId == null || requestId.trim().isEmpty()
                 || sourcePath == null || sourcePath.trim().isEmpty()) return;
