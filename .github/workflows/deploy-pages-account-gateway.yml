@@ -51,9 +51,11 @@ jobs:
             echo "::error::Cloudflare API token or account ID is missing."
             exit 1
           fi
-          npx --yes wrangler@4 pages project create ae-account-api-gateway --production-branch main || {
-            echo "Pages project may already exist; continuing to deployment."
-          }
+          for PROJECT in ae-account-api-gateway ae-account-api-gateway-alt; do
+            npx --yes wrangler@4 pages project create "$PROJECT" --production-branch main || {
+              echo "Pages project $PROJECT may already exist; continuing to deployment."
+            }
+          done
 
       - name: Deploy Pages gateway
         id: deploy
@@ -63,18 +65,24 @@ jobs:
         run: |
           set -euo pipefail
           npx --yes wrangler@4 pages deploy dist --project-name ae-account-api-gateway --branch main
+          npx --yes wrangler@4 pages deploy dist --project-name ae-account-api-gateway-alt --branch main
           GATEWAY_URL="https://ae-account-api-gateway.pages.dev"
+          ALT_GATEWAY_URL="https://ae-account-api-gateway-alt.pages.dev"
           echo "gateway_url=$GATEWAY_URL" >> "$GITHUB_OUTPUT"
-          echo "Pages gateway URL: $GATEWAY_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "alt_gateway_url=$ALT_GATEWAY_URL" >> "$GITHUB_OUTPUT"
+          echo "Primary Pages gateway: $GATEWAY_URL" >> "$GITHUB_STEP_SUMMARY"
+          echo "Alternate Pages gateway: $ALT_GATEWAY_URL" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Verify service binding and account Worker health
         env:
           GATEWAY_URL: ${{ steps.deploy.outputs.gateway_url }}
+          ALT_GATEWAY_URL: ${{ steps.deploy.outputs.alt_gateway_url }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
         run: |
           set -euo pipefail
-          RESPONSE="$(curl --silent --show-error --retry 8 --retry-all-errors --retry-delay 3 -H "x-effectcraft-health-token: $JWT_SECRET" "$GATEWAY_URL/health/deep")"
-          printf '%s\\n' "$RESPONSE"
-          printf '%s' "$RESPONSE" | node -e 'let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const health = JSON.parse(input); if (health.ok !== true || health.database !== true || health.password_service !== true) process.exit(1); });'
-          echo "Pages Service binding reached the Worker; D1 and password hash/verify self-test passed." >> "$GITHUB_STEP_SUMMARY"
-          echo "Gateway health check: $RESPONSE" >> "$GITHUB_STEP_SUMMARY"
+          for URL in "$GATEWAY_URL" "$ALT_GATEWAY_URL"; do
+            RESPONSE="$(curl --silent --show-error --retry 8 --retry-all-errors --retry-delay 3 -H "x-effectcraft-health-token: $JWT_SECRET" "$URL/health/deep")"
+            printf '%s\\n' "$URL $RESPONSE"
+            printf '%s' "$RESPONSE" | node -e 'let input = ""; process.stdin.on("data", chunk => input += chunk); process.stdin.on("end", () => { const health = JSON.parse(input); if (health.ok !== true || health.database !== true || health.password_service !== true) process.exit(1); });'
+            echo "Verified $URL through the Pages Service binding; D1 and password hash/verify self-test passed." >> "$GITHUB_STEP_SUMMARY"
+          done
