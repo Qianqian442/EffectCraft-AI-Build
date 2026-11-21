@@ -185,19 +185,31 @@ jobs:
           unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
           echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
 
-      - name: Patch Box86 math builtin naming for Android NDK
+      - name: Patch Box86 float math builtins for Android NDK
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          path = Path("third_party/box86/src/emu/x86run0f.c")
-          source = path.read_text(encoding="utf-8")
-          count = source.count("isinff(")
-          if count < 1:
-              raise SystemExit("Expected legacy Box86 isinff calls were not found.")
-          source = source.replace("isinff(", "isinf(")
-          path.write_text(source, encoding="utf-8")
-          print(f"Mapped all {count} legacy float infinity checks to the C99 type-generic isinf macro.")
+          paths = (
+              Path("third_party/box86/src/emu/x86run0f.c"),
+              Path("third_party/box86/src/emu/x86run660f.c"),
+              Path("third_party/box86/src/emu/x86runf30f.c"),
+          )
+          totals = {"isinff": 0, "isnanf": 0}
+          for path in paths:
+              source = path.read_text(encoding="utf-8")
+              inf_count = source.count("isinff(")
+              nan_count = source.count("isnanf(")
+              source = source.replace("isinff(", "isinf(")
+              source = source.replace("isnanf(", "isnan(")
+              path.write_text(source, encoding="utf-8")
+              totals["isinff"] += inf_count
+              totals["isnanf"] += nan_count
+              if "isinff(" in source or "isnanf(" in source:
+                  raise SystemExit(f"Unpatched Android-incompatible float math call in {path}")
+          if not any(totals.values()):
+              raise SystemExit("Pinned Box86 source no longer contains the expected legacy float math calls.")
+          print(f"Mapped {totals['isinff']} isinff and {totals['isnanf']} isnanf calls to C99 generic isinf/isnan.")
           PY
 
       - name: Configure Box86 as optional Android ARMv7 Bionic binary
@@ -316,10 +328,9 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/artifacts/qemu"
-          find output -type f -name 'qemu-user-x86-64*.deb' -exec cp -t "$GITHUB_WORKSPACE/artifacts/qemu/" {} +
-          find output -type f -name 'proot_*.deb' -exec cp -t "$GITHUB_WORKSPACE/artifacts/qemu/" {} +
           find output -type f -name 'qemu-system-x86-64-headless*.deb' -exec cp -t "$GITHUB_WORKSPACE/artifacts/qemu/" {} +
-          test -n "$(find "$GITHUB_WORKSPACE/artifacts/qemu" -name 'qemu-user-x86-64*.deb' -print -quit)"
+          find output -type f -name 'proot_*.deb' -exec cp -t "$GITHUB_WORKSPACE/artifacts/qemu/" {} +
+          test -n "$(find "$GITHUB_WORKSPACE/artifacts/qemu" -name 'qemu-system-x86-64-headless*.deb' -print -quit)"
           for package in "$GITHUB_WORKSPACE"/artifacts/qemu/*.deb; do
             dpkg-deb -I "$package" >/dev/null
           done
