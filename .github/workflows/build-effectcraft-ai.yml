@@ -398,10 +398,27 @@ jobs:
                   if virtual:
                       providers[virtual] = package_name
 
-          roots = ["qemu-system-x86-64-headless"]
+          # The x86-64 Linux-user executable is shipped by the dedicated
+          # qemu-user-x86-64 subpackage, not by the empty/system parent package.
+          # PRoot is a separate helper built in this job and must be delivered too.
+          roots = ["qemu-user-x86-64", "proot"]
           missing_roots = [name for name in roots if name not in packages]
           if missing_roots:
-              raise SystemExit(f"QEMU package build did not produce required package(s): {missing_roots}")
+              raise SystemExit(f"QEMU/PRoot build did not produce required package(s): {missing_roots}")
+
+          required_binaries = {
+              "qemu-user-x86-64": "qemu-x86_64",
+              "proot": "proot",
+          }
+          for package_name, binary_name in required_binaries.items():
+              listing = subprocess.run(
+                  ["dpkg-deb", "-c", str(packages[package_name])],
+                  check=True, capture_output=True, text=True,
+              ).stdout
+              if not any(line.rstrip().endswith("/usr/bin/" + binary_name) for line in listing.splitlines()):
+                  raise SystemExit(
+                      f"Required executable /usr/bin/{binary_name} is missing from {package_name}."
+                  )
 
           selected = {}
           queue = deque(roots)
@@ -461,7 +478,32 @@ jobs:
               "\n".join(f"{name}: {filename}" for name, filename in sorted(staged_names.items())) + "\n",
               encoding="utf-8",
           )
-          print(f"Collected {len(selected)} QEMU runtime packages:")
+          # Inspect the actual ARM64 executables before uploading the package set.
+          import tempfile
+          with tempfile.TemporaryDirectory(prefix="ae-qemu-package-check-") as temp_dir:
+              for package_name, binary_name in required_binaries.items():
+                  extracted = Path(temp_dir) / package_name
+                  extracted.mkdir()
+                  subprocess.run(
+                      ["dpkg-deb", "-x", str(packages[package_name]), str(extracted)],
+                      check=True,
+                  )
+                  matches = list(extracted.rglob(binary_name))
+                  if len(matches) != 1 or not matches[0].is_file():
+                      raise SystemExit(
+                          f"Expected exactly one packaged {binary_name} executable in {package_name}; found {len(matches)}."
+                      )
+                  description = subprocess.run(
+                      ["file", "-b", str(matches[0])],
+                      check=True, capture_output=True, text=True,
+                  ).stdout.strip()
+                  if "ELF 64-bit" not in description or "ARM aarch64" not in description:
+                      raise SystemExit(
+                          f"{package_name}/{binary_name} is not an Android ARM64 ELF: {description}"
+                      )
+                  print(f"Validated {package_name}/{binary_name}: {description}")
+
+          print(f"Collected {len(selected)} QEMU/PRoot runtime packages:")
           for name in sorted(selected):
               print(" - " + name)
           PY
