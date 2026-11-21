@@ -27,7 +27,7 @@ def main() -> None:
     # places the Puppet shortcut between the plug-in button and the tool slots. Match
     # the actual plug-in call, regardless of which Ui variable the layout uses.
     call_pattern = re.compile(
-        r"(?m)^(?P<indent>[ \\t]*)let x = plugin_import_button\\(app, (?P<ui>ui|scroll_ui), x, cy\\);[ \\t]*$"
+        r"(?m)^(?P<indent>[ \t]*)let x = plugin_import_button\(app, (?P<ui>ui|scroll_ui), x, cy\);[ \t]*$"
     )
     matches = list(call_pattern.finditer(source))
     if len(matches) != 1:
@@ -41,11 +41,11 @@ def main() -> None:
     insert_at = match.end()
     source = (
         source[:insert_at]
-        + f"\\n{match.group('indent')}let x = project_import_button(app, {ui_name}, x, cy);"
+        + f"\n{match.group('indent')}let x = project_import_button(app, {ui_name}, x, cy);"
         + source[insert_at:]
     )
 
-    function_anchor = "/// The tool slots (with group separators after camera tools and pan-behind); returns the x after them.\\n"
+    function_anchor = "/// The tool slots (with group separators after camera tools and pan-behind); returns the x after them.\n"
     if source.count(function_anchor) != 1:
         raise SystemExit("Could not uniquely locate the toolbar helper insertion point.")
 
