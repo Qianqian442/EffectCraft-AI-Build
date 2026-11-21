@@ -205,7 +205,14 @@ final class CloudflareProxyPool {
 
         boolean directOk = false;
         try {
-            directOk = workerHealthy(baseUrl, Proxy.NO_PROXY);
+            // Route selection must answer only "can this phone establish a
+            // verified HTTPS connection to this host?". Do not require D1 or
+            // password-service health here: a reachable /health endpoint may
+            // report database/password trouble, which is an application
+            // readiness issue, not a network-route failure. The real API
+            // response below will report those failures without sending
+            // credentials through an unnecessary public proxy.
+            directOk = workerReachable(baseUrl, Proxy.NO_PROXY);
         } catch (Exception ignored) {}
         synchronized (LOCK) {
             directCheckedAt = System.currentTimeMillis();
@@ -258,6 +265,23 @@ final class CloudflareProxyPool {
         connection.setReadTimeout(READ_TIMEOUT_MS);
         connection.setInstanceFollowRedirects(false);
         return connection;
+    }
+
+    private static boolean workerReachable(String baseUrl, Proxy proxy) throws Exception {
+        URL health = new URL(baseUrl.replaceAll("/+$", "") + "/health");
+        HttpsURLConnection connection = null;
+        try {
+            connection = openHttps(health, proxy);
+            connection.setRequestMethod("GET");
+            connection.setRequestProperty("Accept", "application/json");
+            int status = connection.getResponseCode();
+            // Any HTTP response proves DNS, TCP, TLS certificate/hostname
+            // validation and the Cloudflare host are reachable. A 4xx/5xx is
+            // still useful evidence that the network route itself works.
+            return status >= 200 && status <= 599;
+        } finally {
+            if (connection != null) connection.disconnect();
+        }
     }
 
     private static boolean workerHealthy(String baseUrl, Proxy proxy) throws Exception {
