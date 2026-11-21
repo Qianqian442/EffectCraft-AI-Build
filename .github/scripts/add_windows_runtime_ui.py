@@ -65,7 +65,7 @@ def main() -> None:
                         if ui.button("安装 Windows 兼容运行环境").clicked() {
                             prepare_runtime = true;
                         }
-                        ui.small("首次安装会下载并校验 Wine/Proton、Box64、FEXCore 运行组件，文件保存在 Ae 私有目录。");
+                        ui.small("首次安装会准备 Wine/Proton、Box64/BOX32、源码构建 FEXCore，以及设备架构适用时的 Box86 和 QEMU Linux-user；运行组件保存在 Ae 私有目录。");
 """,
         "runtime setup button",
     )
