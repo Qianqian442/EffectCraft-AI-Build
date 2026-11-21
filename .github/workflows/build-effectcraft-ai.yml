@@ -214,8 +214,8 @@ jobs:
           # Android NDK's elf.h omits the optional Solaris SHT_CHECKSUM section type.
           elf_dump = Path("third_party/box86/src/elfs/elfload_dump.c")
           elf_source = elf_dump.read_text(encoding="utf-8")
-          pattern = r"(?m)^([ \\t]*)GO\\(SHT_CHECKSUM\\);[ \\t]*$"
-          replacement = r"\\1#if defined(SHT_CHECKSUM)\\n\\1GO(SHT_CHECKSUM);\\n\\1#endif"
+          pattern = r"(?m)^([ \t]*)GO\(SHT_CHECKSUM\);[ \t]*$"
+          replacement = r"\1#if defined(SHT_CHECKSUM)\n\1GO(SHT_CHECKSUM);\n\1#endif"
           updated, count = re.subn(pattern, replacement, elf_source, count=1)
           if count != 1:
               raise SystemExit("Box86 optional SHT_CHECKSUM call was not found exactly once.")
