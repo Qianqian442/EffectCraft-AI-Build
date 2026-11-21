@@ -16,6 +16,7 @@ use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Error as WebSocketError, WebSocket};
 use ureq::{Agent, Proxy};
 
+const FALLBACK_BASE_URL: &str = "https://ae-account-api-gateway-alt.pages.dev";
 const FEED_REFRESH: Duration = Duration::from_secs(30 * 60);
 const BAD_COOLDOWN: Duration = Duration::from_secs(15 * 60);
 const GOOD_TTL: Duration = Duration::from_secs(2 * 60);
@@ -87,7 +88,7 @@ struct PoolState {
 }
 
 static POOL: OnceLock<Mutex<PoolState>> = OnceLock::new();
-static DIRECT_HEALTH: OnceLock<Mutex<Option<(bool, Instant)>>> = OnceLock::new();
+static DIRECT_HEALTH: OnceLock<Mutex<HashMap<String, (bool, Instant)>>> = OnceLock::new();
 
 fn pool() -> MutexGuard<'static, PoolState> {
     POOL.get_or_init(|| Mutex::new(PoolState::default()))
@@ -309,15 +310,11 @@ fn probe_cloud_health(base_url: &str, candidate: Option<&Candidate>) -> bool {
 }
 
 fn direct_https_healthy(base_url: &str) -> bool {
-    let cache = DIRECT_HEALTH.get_or_init(|| Mutex::new(None));
+    let cache = DIRECT_HEALTH.get_or_init(|| Mutex::new(HashMap::new()));
     {
         let state = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        if let Some((healthy, checked_at)) = state.as_ref().copied() {
-            let ttl = if healthy {
-                Duration::from_secs(60)
-            } else {
-                Duration::from_secs(10)
-            };
+        if let Some((healthy, checked_at)) = state.get(base_url).copied() {
+            let ttl = if healthy { Duration::from_secs(60) } else { Duration::from_secs(10) };
             if checked_at.elapsed() < ttl {
                 return healthy;
             }
@@ -326,14 +323,14 @@ fn direct_https_healthy(base_url: &str) -> bool {
 
     let healthy = probe_cloud_health(base_url, None);
     let mut state = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    *state = Some((healthy, Instant::now()));
+    state.insert(base_url.to_string(), (healthy, Instant::now()));
     healthy
 }
 
-fn mark_direct_bad() {
-    let cache = DIRECT_HEALTH.get_or_init(|| Mutex::new(None));
+fn mark_direct_bad(base_url: &str) {
+    let cache = DIRECT_HEALTH.get_or_init(|| Mutex::new(HashMap::new()));
     let mut state = cache.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-    *state = Some((false, Instant::now()));
+    state.insert(base_url.to_string(), (false, Instant::now()));
 }
 
 fn select_http_route(base_url: &str) -> Result<(Agent, Option<Candidate>), String> {
@@ -400,16 +397,21 @@ pub(crate) fn account_http_request(
     body: Value,
     token: Option<&str>,
 ) -> Result<(u16, Value), String> {
-    let Some(worker_host) = base_url.strip_prefix("https://") else {
-        return Err("账号服务地址必须使用 HTTPS".to_string());
+    let validate_base = |url: &str| -> Result<(), String> {
+        let Some(host) = url.strip_prefix("https://") else {
+            return Err("账号服务地址必须使用 HTTPS".to_string());
+        };
+        if !(host.ends_with(".workers.dev") || host.ends_with(".pages.dev"))
+            || host.is_empty()
+            || host.contains(['/', ':', '@', '?', '#'])
+            || host.starts_with('.')
+        {
+            return Err("账号服务地址必须是无路径、无凭据的 Cloudflare workers.dev 或 pages.dev 主机地址".to_string());
+        }
+        Ok(())
     };
-    if !(worker_host.ends_with(".workers.dev") || worker_host.ends_with(".pages.dev"))
-        || worker_host.is_empty()
-        || worker_host.contains(['/', ':', '@', '?', '#'])
-        || worker_host.starts_with('.')
-    {
-        return Err("账号服务地址必须是无路径、无凭据的 Cloudflare workers.dev 或 pages.dev 主机地址".to_string());
-    }
+    validate_base(base_url)?;
+    validate_base(FALLBACK_BASE_URL)?;
     if !path.starts_with("/v1/") || path.contains("..") || path.contains('#') {
         return Err("账号 API 路径无效".to_string());
     }
@@ -417,24 +419,39 @@ pub(crate) fn account_http_request(
         return Err("账号 API 请求方法不受支持".to_string());
     }
 
-    let (agent, route) = select_http_route(base_url)?;
-    let endpoint = format!("{}{}", base_url.trim_end_matches('/'), path);
+    // Check each hostname before sending the account operation. POST is sent
+    // exactly once, only after a healthy TLS route has been selected.
+    let mut selected: Option<(String, Agent, Option<Candidate>)> = None;
+    let mut last_route_error = String::new();
+    let endpoints = [base_url, FALLBACK_BASE_URL];
+    for candidate_url in endpoints {
+        match select_http_route(candidate_url) {
+            Ok((agent, route)) => {
+                selected = Some((candidate_url.to_string(), agent, route));
+                break;
+            }
+            Err(error) => last_route_error = error,
+        }
+    }
+    let (active_base, agent, route) = selected.ok_or_else(|| {
+        if last_route_error.is_empty() {
+            "主、备用 Cloudflare HTTPS 入口均不可用，请检查网络后重试。".to_string()
+        } else {
+            format!("主、备用 Cloudflare HTTPS 入口均不可用：{last_route_error}")
+        }
+    })?;
+    let endpoint = format!("{}{}", active_base.trim_end_matches('/'), path);
     let response_result = if method == "GET" {
-        let mut request = agent
-            .get(&endpoint)
-            .header("Accept", "application/json");
+        let mut request = agent.get(&endpoint).header("Accept", "application/json");
         if let Some(token) = token {
             request = request.header("Authorization", &format!("Bearer {token}"));
         }
         request.call()
     } else {
-        let bytes = if body.is_null() {
-            b"{}".to_vec()
-        } else {
+        let bytes = if body.is_null() { b"{}".to_vec() } else {
             serde_json::to_vec(&body).map_err(|_| "账号请求数据编码失败".to_string())?
         };
-        let mut request = agent
-            .post(&endpoint)
+        let mut request = agent.post(&endpoint)
             .header("Accept", "application/json")
             .header("Content-Type", "application/json");
         if let Some(token) = token {
@@ -442,17 +459,18 @@ pub(crate) fn account_http_request(
         }
         request.send(bytes.as_slice())
     };
+
     // Never replay a submitted POST: the upstream may have committed it before
-    // the transport error occurred.
+    // a transport error occurred. The next user action can select the other host.
     let mut response = match response_result {
         Ok(response) => response,
         Err(_) => {
             if let Some(candidate) = route.as_ref() {
                 mark_bad(candidate);
-                return Err("已通过代理连接 Cloudflare，但账号操作的响应中断；本次不会重复提交。".to_string());
+            } else {
+                mark_direct_bad(&active_base);
             }
-            mark_direct_bad();
-            return Err("Cloudflare 直连 HTTPS/TLS 响应中断；本次不会重复提交，请重新尝试备用连接。".to_string());
+            return Err("账号请求响应中断；本次不会重复提交，请重新尝试。".to_string());
         }
     };
 
@@ -463,7 +481,7 @@ pub(crate) fn account_http_request(
             if let Some(candidate) = route.as_ref() {
                 mark_bad(candidate);
             } else {
-                mark_direct_bad();
+                mark_direct_bad(&active_base);
             }
             return Err("Cloudflare 响应读取中断；本次不会重复提交。".to_string());
         }
@@ -578,82 +596,98 @@ where
     R: IntoClientRequest,
 {
     let request = request.into_client_request()?;
-    let host = request.uri().host().ok_or_else(|| {
+    let primary_host = request.uri().host().ok_or_else(|| {
         WebSocketError::Io(io::Error::new(io::ErrorKind::InvalidInput, "WSS 主机名缺失"))
     })?;
-    if !(host.ends_with(".workers.dev") || host.ends_with(".pages.dev")) || request.uri().port_u16().is_some_and(|port| port != 443) {
+    if !(primary_host.ends_with(".workers.dev") || primary_host.ends_with(".pages.dev"))
+        || request.uri().port_u16().is_some_and(|port| port != 443)
+    {
         return Err(WebSocketError::Io(io::Error::new(
             io::ErrorKind::PermissionDenied,
             "公开代理隧道仅允许连接已配置的 Cloudflare workers.dev 或 pages.dev 账号主机",
         )));
     }
-    let port = request.uri().port_u16().unwrap_or(443);
+    let fallback_host = FALLBACK_BASE_URL.strip_prefix("https://").unwrap_or_default();
+    let path = request.uri().path_and_query().map(|value| value.as_str()).unwrap_or("/");
+    let mut hosts = vec![primary_host.to_string()];
+    if !fallback_host.is_empty() && fallback_host != primary_host {
+        hosts.push(fallback_host.to_string());
+    }
+    let mut last_error = WebSocketError::Io(io::Error::new(
+        io::ErrorKind::NotConnected,
+        "主、备用 WSS 入口均不可用",
+    ));
 
-    let direct_error = match tungstenite::connect(request.clone()) {
-        Ok(connection) => return Ok(connection),
-        Err(error) => {
-            // Any HTTP response means the request reached Cloudflare. Retrying
-            // another route would waste another Worker invocation and cannot fix an
-            // application-level response, so stop here.
-            if matches!(&error, WebSocketError::Http(_)) {
-                return Err(error);
-            }
-            error
-        }
-    };
-    let candidates = websocket_candidates();
-    let mut last_error = direct_error;
-
-    for candidate in candidates {
-        let stream = match open_tunnel(&candidate, host, port) {
-            Ok(stream) => stream,
+    for host in hosts {
+        let mut host_request = request.clone();
+        let uri_text = format!("wss://{host}{path}");
+        let uri = match uri_text.parse() {
+            Ok(uri) => uri,
             Err(_) => {
-                mark_bad(&candidate);
+                last_error = WebSocketError::Io(io::Error::new(io::ErrorKind::InvalidInput, "备用 WSS 地址无效"));
                 continue;
             }
         };
-        if stream.set_read_timeout(Some(Duration::from_secs(12))).is_err()
-            || stream.set_write_timeout(Some(Duration::from_secs(12))).is_err()
-        {
-            mark_bad(&candidate);
-            continue;
-        }
+        *host_request.uri_mut() = uri;
 
-        match tungstenite::client_tls_with_config(request.clone(), stream, None, None) {
-            Ok((mut websocket, response)) => {
-                // The 12-second socket timeout is for the TLS/WebSocket handshake
-                // only. A long-lived WSS listener must not be killed while idle.
-                match websocket.get_mut() {
-                    MaybeTlsStream::Rustls(tls) => {
-                        let _ = tls.sock.set_read_timeout(None);
-                        let _ = tls.sock.set_write_timeout(Some(Duration::from_secs(30)));
-                    }
-                    MaybeTlsStream::Plain(socket) => {
-                        let _ = socket.set_read_timeout(None);
-                        let _ = socket.set_write_timeout(Some(Duration::from_secs(30)));
-                    }
-                    _ => {}
-                }
-                mark_good(&candidate);
-                return Ok((websocket, response));
-            }
-            Err(tungstenite::HandshakeError::Failure(error)) => {
+        match tungstenite::connect(host_request.clone()) {
+            Ok(connection) => return Ok(connection),
+            Err(error) => {
                 if matches!(&error, WebSocketError::Http(_)) {
-                    return Err(error);
+                    last_error = error;
+                    continue;
                 }
                 last_error = error;
-                mark_bad(&candidate);
             }
-            Err(tungstenite::HandshakeError::Interrupted(_)) => {
-                last_error = WebSocketError::Io(io::Error::new(
-                    io::ErrorKind::Other,
-                    "WSS 代理握手未完成",
-                ));
+        }
+
+        // Direct WSS failed before an HTTP response. Try verified TLS tunnels
+        // to this hostname, then move to the second hostname if none work.
+        for candidate in websocket_candidates() {
+            let stream = match open_tunnel(&candidate, &host, 443) {
+                Ok(stream) => stream,
+                Err(_) => {
+                    mark_bad(&candidate);
+                    continue;
+                }
+            };
+            if stream.set_read_timeout(Some(Duration::from_secs(12))).is_err()
+                || stream.set_write_timeout(Some(Duration::from_secs(12))).is_err()
+            {
                 mark_bad(&candidate);
+                continue;
+            }
+
+            match tungstenite::client_tls_with_config(host_request.clone(), stream, None, None) {
+                Ok((mut websocket, response)) => {
+                    match websocket.get_mut() {
+                        MaybeTlsStream::Rustls(tls) => {
+                            let _ = tls.sock.set_read_timeout(None);
+                            let _ = tls.sock.set_write_timeout(Some(Duration::from_secs(30)));
+                        }
+                        MaybeTlsStream::Plain(socket) => {
+                            let _ = socket.set_read_timeout(None);
+                            let _ = socket.set_write_timeout(Some(Duration::from_secs(30)));
+                        }
+                        _ => {}
+                    }
+                    mark_good(&candidate);
+                    return Ok((websocket, response));
+                }
+                Err(tungstenite::HandshakeError::Failure(error)) => {
+                    last_error = error;
+                    if matches!(&last_error, WebSocketError::Http(_)) {
+                        break;
+                    }
+                    mark_bad(&candidate);
+                }
+                Err(tungstenite::HandshakeError::Interrupted(_)) => {
+                    last_error = WebSocketError::Io(io::Error::new(io::ErrorKind::Other, "WSS 代理握手未完成"));
+                    mark_bad(&candidate);
+                }
             }
         }
     }
-
     Err(last_error)
 }
 
