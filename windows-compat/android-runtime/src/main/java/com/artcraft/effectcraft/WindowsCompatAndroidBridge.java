@@ -46,6 +46,8 @@ public final class WindowsCompatAndroidBridge {
             "0bfccfc0693c5ec9efc2c85de651704e9d4c279b27185878af228241a1237ae5";
     private static final String FEXCORE_ASSET = "windows-compat/fexcore-arm64ec-wow64.tar.zst";
     private static final String FEXCORE_ASSET_SHA256 = "0000000000000000000000000000000000000000000000000000000000000000";
+    private static final String BOX86_ASSET = "windows-compat/box86-android-armv7.tar.zst";
+    private static final String BOX86_ASSET_SHA256 = "0000000000000000000000000000000000000000000000000000000000000000";
     private static final String AEX_HOST_X64_ASSET = "windows-compat/aex-host-x64.exe";
     private static final String AEX_HOST_X64_SHA256 = "ed8875e9346f117cb4f61a766dd271a746fecab2db315e6e9fd753b90101511f";
     private static final String AEX_HOST_X86_ASSET = "windows-compat/aex-host-x86.exe";
@@ -140,6 +142,7 @@ public final class WindowsCompatAndroidBridge {
             String requestId) {
         Path archive = null;
         Path fexArchive = null;
+        Path box86Archive = null;
         try {
             INSTALL_STATUS.put(requestId, "正在下载并校验 Windows 兼容基础环境…");
             manager.installAllRuntimeComponents();
@@ -157,6 +160,20 @@ public final class WindowsCompatAndroidBridge {
             copyBundledAsset(context, FEXCORE_ASSET, fexArchive);
             manager.installFexCoreArchive(container, fexArchive, FEXCORE_ASSET_SHA256);
 
+            String box86Status = "Box86 架构后备未打包。";
+            if (!BOX86_ASSET_SHA256.matches("0{64}")) {
+                INSTALL_STATUS.put(requestId, "正在校验并安装可选 Box86 ARMv7 引擎…");
+                box86Archive = context.getCacheDir().toPath().resolve("box86-android-armv7.tar.zst");
+                copyBundledAsset(context, BOX86_ASSET, box86Archive);
+                manager.installBox86Archive(box86Archive, BOX86_ASSET_SHA256);
+                boolean hasArm32Linker = Build.SUPPORTED_32_BIT_ABIS != null
+                        && Build.SUPPORTED_32_BIT_ABIS.length > 0
+                        && Files.isExecutable(Paths.get("/system/bin/linker"));
+                box86Status = hasArm32Linker
+                        ? "Box86 ARMv7 已安装；仍需独立的 i386 Wine 前缀，当前不作为 AEX 成功路线。"
+                        : "Box86 ARMv7 已随包安装，但设备没有 32 位 Bionic linker，当前设备禁用该路线。";
+            }
+
             arm64EcContainer = container;
             INSTALL_STATUS.put(requestId, "正在校验并安装 Windows x64 / x86 AEX 宿主…");
             Path hostDirectory = context.getFilesDir().toPath().resolve("windows-compat/hosts");
@@ -166,7 +183,8 @@ public final class WindowsCompatAndroidBridge {
                     hostDirectory.resolve("effectcraft-aex-host-x86.exe"), 0x014c);
 
             INSTALL_STATUS.put(requestId,
-                    "READY:Windows 兼容运行环境已安装。真实 AEX 插件执行仍需逐项验证。");
+                    "READY:Windows 兼容基础环境与源码构建 FEXCore 已安装。"
+                    + box86Status + "真实 AEX 插件执行仍需逐项验证。");
             Log.i(TAG, "Windows compatibility base, Box64 BOX32 and FEXCore are prepared.");
         } catch (Exception error) {
             String detail = error.getMessage();
@@ -181,6 +199,9 @@ public final class WindowsCompatAndroidBridge {
             }
             if (fexArchive != null) {
                 try { Files.deleteIfExists(fexArchive); } catch (IOException ignored) {}
+            }
+            if (box86Archive != null) {
+                try { Files.deleteIfExists(box86Archive); } catch (IOException ignored) {}
             }
             ACTIVE_REQUESTS.remove(requestId);
         }
