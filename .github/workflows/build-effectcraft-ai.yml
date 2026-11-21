@@ -161,6 +161,63 @@ jobs:
           path: artifacts/*
           retention-days: 30
 
+  build-box86-armv7:
+    name: Build optional Box86 Android ARMv7 Bionic runtime
+    runs-on: ubuntu-22.04
+    timeout-minutes: 120
+    continue-on-error: true
+    steps:
+      - name: Check out pinned Box86 source
+        uses: actions/checkout@v4
+        with:
+          repository: ptitSeb/box86
+          ref: bb716a2a6576cc06da811bf55e31e2f6f03b7596
+          path: third_party/box86
+
+      - name: Install native build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build make python3 wget unzip file binutils zstd
+
+      - name: Install Android NDK r26b
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-r26b-linux.zip -O "$RUNNER_TEMP/android-ndk.zip"
+          unzip -q "$RUNNER_TEMP/android-ndk.zip" -d "$RUNNER_TEMP"
+          echo "ANDROID_NDK_HOME=$RUNNER_TEMP/android-ndk-r26b" >> "$GITHUB_ENV"
+
+      - name: Configure Box86 as optional Android ARMv7 Bionic binary
+        run: |
+          set -euo pipefail
+          cmake -S third_party/box86 -B build/box86-android-armv7 -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI=armeabi-v7a -DANDROID_PLATFORM=28 -DANDROID_ARM_NEON=ON \
+            -DANDROID=ON -DARM_DYNAREC=ON -DBAD_SIGNAL=ON -DNOLOADADDR=ON \
+            -DNO_CONF_INSTALL=ON -DNO_LIB_INSTALL=ON -DNOGIT=OFF \
+            -DCMAKE_BUILD_TYPE=Release -DCMAKE_SYSTEM_PROCESSOR=armv7l
+
+      - name: Compile and validate Box86 ARMv7 ELF
+        run: |
+          set -euo pipefail
+          cmake --build build/box86-android-armv7 --parallel 2
+          test -s build/box86-android-armv7/box86
+          readelf -h build/box86-android-armv7/box86 | grep -F 'ELF32'
+          readelf -h build/box86-android-armv7/box86 | grep -F 'ARM'
+          readelf -l build/box86-android-armv7/box86 | grep -F '/system/bin/linker'
+          mkdir -p stage/box86/usr/bin artifacts/box86
+          install -m 0755 build/box86-android-armv7/box86 stage/box86/usr/bin/box86
+          cp third_party/box86/COPYING stage/box86/BOX86-LICENSE
+          printf '%s\n' 'ptitSeb/box86' 'bb716a2a6576cc06da811bf55e31e2f6f03b7596' > stage/box86/BOX86-SOURCE.txt
+          tar --zstd -cf artifacts/box86/box86-android-armv7.tar.zst -C stage/box86 .
+          sha256sum artifacts/box86/box86-android-armv7.tar.zst > artifacts/box86/box86-android-armv7.tar.zst.sha256
+          file build/box86-android-armv7/box86
+
+      - name: Upload optional Box86 ARMv7 Bionic runtime
+        uses: actions/upload-artifact@v4
+        with:
+          name: EffectCraft-Box86-Android-ARMv7-Optional
+          path: artifacts/box86/*
+          retention-days: 30
+
   build-fexcore-arm64ec:
     name: Build and validate full FEXCore ARM64EC and WoW64 PE backends
     runs-on: ubuntu-24.04-arm
@@ -425,7 +482,7 @@ jobs:
           bash windows-compat/android-runtime/exec-bridge/tests/run_host_tests.sh
 
   build:
-    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-fexcore-arm64ec, build-aex-host]
+    needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-fexcore-arm64ec, build-box86-armv7, build-aex-host]
     # Keep the main APK account client on direct HTTPS to the configured Cloudflare account server; do not route account traffic through P2P or public proxies.
     name: Build Ae 0.22.1 with AI and existing features
     runs-on: ubuntu-22.04
@@ -471,6 +528,14 @@ jobs:
         with:
           name: EffectCraft-Box64-BOX32-Android-ARM64
           path: runtime-artifacts/box32
+
+      - name: Download optional Box86 ARMv7 Bionic runtime
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: EffectCraft-Box86-Android-ARMv7-Optional
+          path: runtime-artifacts/box86
+          if-no-artifact-found: ignore
 
       - name: Download source-built FEXCore ARM64EC and WoW64 DLL pair
         uses: actions/download-artifact@v4
