@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Stage checksum-verified Box64 BOX32 and Windows AEX host artifacts into Ae assets."""
+"""Stage checksum-verified Box64, source FEXCore and Windows AEX host artifacts into Ae assets."""
 from __future__ import annotations
 import argparse
 import hashlib
@@ -60,11 +60,23 @@ def replace_java_hash(path: Path, constant: str, digest: str) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--box32-dir", type=Path, required=True)
+    parser.add_argument("--fexcore-dir", type=Path, required=True)
     parser.add_argument("--x64-host-dir", type=Path, required=True)
     parser.add_argument("--x86-host-dir", type=Path, required=True)
     parser.add_argument("--assets-dir", type=Path, required=True)
     parser.add_argument("--bridge-java", type=Path, required=True)
     args = parser.parse_args()
+
+    fexcore = require_one(args.fexcore_dir, "fexcore-arm64ec.tar.zst")
+    fexcore_sidecar = require_one(args.fexcore_dir, "fexcore-arm64ec.tar.zst.sha256")
+    sidecar_match = re.search(r"(?i)\b([0-9a-f]{64})\b", fexcore_sidecar.read_text(encoding="ascii"))
+    if not sidecar_match:
+        raise SystemExit("FEXCore SHA-256 sidecar is malformed")
+    fexcore_hash = sidecar_match.group(1).lower()
+    if sha256(fexcore).lower() != fexcore_hash:
+        raise SystemExit("FEXCore ARM64EC/WoW64 archive SHA-256 mismatch")
+    if fexcore.stat().st_size <= 1024:
+        raise SystemExit("FEXCore source-built DLL archive is unexpectedly small")
 
     box32 = require_one(args.box32_dir, "box64-box32-android-arm64.tar.zst")
     if sha256(box32).lower() != BOX32_SHA256:
@@ -82,16 +94,19 @@ def main() -> None:
     license_file = require_one(args.x64_host_dir, "AEXLO-MIT-LICENSE")
     copy_verified(license_file, args.assets_dir / "licenses/AEXLO-MIT-LICENSE", LICENSE_SHA256)
     copy_verified(box32, args.assets_dir / "windows-compat/box64-box32-android-arm64.tar.zst", BOX32_SHA256)
+    copy_verified(fexcore, args.assets_dir / "windows-compat/fexcore-arm64ec-wow64.tar.zst", fexcore_hash)
     copy_verified(x64, args.assets_dir / "windows-compat/aex-host-x64.exe", x64_hash)
     copy_verified(x86, args.assets_dir / "windows-compat/aex-host-x86.exe", x86_hash)
 
     # Host binaries are built from a pinned source revision on Windows runners. Their hash is
     # calculated from the artifact in this run and baked into the APK-side asset verifier.
+    replace_java_hash(args.bridge_java, "FEXCORE_ASSET_SHA256", fexcore_hash)
     replace_java_hash(args.bridge_java, "AEX_HOST_X64_SHA256", x64_hash)
     replace_java_hash(args.bridge_java, "AEX_HOST_X86_SHA256", x86_hash)
 
     for source, digest in [
         (args.assets_dir / "windows-compat/box64-box32-android-arm64.tar.zst", BOX32_SHA256),
+        (args.assets_dir / "windows-compat/fexcore-arm64ec-wow64.tar.zst", fexcore_hash),
         (args.assets_dir / "windows-compat/aex-host-x64.exe", x64_hash),
         (args.assets_dir / "windows-compat/aex-host-x86.exe", x86_hash),
     ]:
@@ -100,6 +115,7 @@ def main() -> None:
 
     print("Verified and staged runtime assets:")
     print(f"  Box64 BOX32 Android ARM64: {BOX32_SHA256}")
+    print(f"  Source-built FEXCore ARM64EC/WoW64: {fexcore_hash}")
     print(f"  Windows x64 AEX host: {x64_hash}")
     print(f"  Windows x86 AEX host: {x86_hash}")
     print(f"  AEXLO MIT license: {LICENSE_SHA256}")
