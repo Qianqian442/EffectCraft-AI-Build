@@ -490,9 +490,13 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("Synchronous render-start panics are not converted into visible export errors.")
     if "effectcraft-export-progress-start-time" not in header_source or "startup_elapsed < 5.0" not in header_source:
         raise SystemExit("The export progress popup must allow asynchronous render startup before reporting failure.")
-    if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in header_source or "file.importProject" not in header_source:
-        raise SystemExit("The horizontally-scrollable toolbar must include a unified project-import entry.")
-    print("Verified export progress, guarded render startup and project-import toolbar shortcut.")
+    am_editor_source = (root / "crates/ui-egui/src/am_editor.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" not in am_editor_source or 'invoke(app, ui.ctx(), "file.importProject", json!({}))' not in am_editor_source:
+        raise SystemExit("The independent AM editor is missing its unified project-import shortcut.")
+    if "EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1" in header_source or "project_import_button(app," in header_source:
+        raise SystemExit("AM-only project-import controls must not alter the original Ae header or toolbar.")
+    print("Verified export progress and guarded render startup in the shared exporter.")
+    print("Verified the unified project-import shortcut exists only in the independent AM editor; the original Ae toolbar remains unchanged.")
 
     import_frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_SHARE_COLLECTED_PROJECT_V1" not in import_frontend:
