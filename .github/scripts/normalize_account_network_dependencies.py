@@ -8,7 +8,7 @@ import tomllib
 from pathlib import Path
 
 CANONICAL = {
-    "ureq": 'ureq = "3.5"',
+    "ureq": 'ureq = { version = "3.5", features = ["socks-proxy"] }',
     "tungstenite": 'tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }',
     "sha2": 'sha2 = "0.10"',
     "roxmltree": 'roxmltree = "0.21.2"',
