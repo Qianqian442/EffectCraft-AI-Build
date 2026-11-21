@@ -212,12 +212,16 @@ def main() -> None:
 
     # The migration route report now refers to the real runtime manager and says exactly what was exercised.
     source = source.replace(
-        'ui.small("说明：本版本可查看并保存你的路线偏好；Box64/Box86、FEX、QEMU、Wine 的实际执行器及插件宿主桥接尚未集成，未实测路线不会被标记为已移植。");',
+        'ui.small("Android 已接入 Bionic + Wine/Proton、Box64/BOX32 和源码构建 FEXCore；Box86 ARMv7 仅在可选构建成功且设备有 32 位 linker 时安装，仍需要 i386 Wine。QEMU 已加入独立 Linux-user 包构建，但需 x86-64 Wine/glibc rootfs，不能直接加载 Windows PE。");',
         'ui.small("Android 已接入 Bionic + Wine/Proton、Box64/BOX32 与 ARM64EC FEXCore 的安装和隔离 AEX 样本测试入口；独立 Box86/QEMU 路线仍为候选，不会冒充已通过测试。");'
     )
     source = source.replace(
-        'lines.push("注意：当前构建已加入方式选择和报告记录；Box64/Box86/FEX/QEMU/Wine 的实际运行时试跑、后端手动切换和暴力二进制重建引擎尚未集成，不会伪称已执行。".into());',
+        'lines.push("注意：Box64/BOX32 与源码构建的 ARM64EC/WoW64 FEXCore 已进入主 APK 运行时安装链；Box86 需要 32 位 Bionic linker 与 i386 Wine，QEMU 需要 x86-64 Wine/glibc rootfs，均不直接加载 Windows PE。暴力二进制模式会生成静态 x86/x64 指令与 CFG JSON IR；这不是自动 ARM64 语义重编译。".into());',
         'lines.push("注意：Android 运行时现可安装 Wine/Proton、Box64/BOX32 与 ARM64EC FEXCore，并对单个 AEX 样本执行隔离加载和 CPU 帧渲染测试；独立 Box86/QEMU 与自动二进制重建仍需单独验证。".into());'
+    )
+    source = source.replace(
+        'Self::ManualBackend => "分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；目前尚未集成可执行后端，指定只记录选择意向，不会谎称已经转译。",',
+        'Self::ManualBackend => "分析后展示适用候选、所需运行环境和实测状态；Box64/FEXCore 进入主运行时链，Box86 受 32 位系统与 i386 Wine 限制，QEMU 需要 x86-64 Wine/glibc rootfs。未满足前置条件或未通过 AEX 加载/渲染测试的路线只标记为候选，不会自动执行或谎称成功。",'
     )
     source = source.replace(
         'app.ui.status = "已记录各插件的路线选择；尚未接入的转译执行器不会被标记为已完成。".into();',
