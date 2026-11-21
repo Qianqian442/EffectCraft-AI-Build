@@ -364,8 +364,28 @@ public final class MainActivity extends Activity {
     }
 
     private void setRoot(LinearLayout content) {
-        root = content;
-        setContentView(root);
+        // Keep one attached root view for the Activity lifetime. Replacing the
+        // entire content view during login/loading transitions can expose the
+        // window background for a frame (a visible black flash on some OEM ROMs).
+        if (root == null) {
+            root = content;
+            setContentView(root);
+            return;
+        }
+        if (root == content) return;
+        root.setPadding(
+            content.getPaddingLeft(), content.getPaddingTop(),
+            content.getPaddingRight(), content.getPaddingBottom()
+        );
+        root.setBackground(content.getBackground());
+        root.removeAllViews();
+        while (content.getChildCount() > 0) {
+            View child = content.getChildAt(0);
+            content.removeViewAt(0);
+            root.addView(child);
+        }
+        root.setVisibility(View.VISIBLE);
+        root.invalidate();
     }
 
     private void showConnecting(String message) {
