@@ -35,7 +35,6 @@ def main() -> None:
 
     required = [        "brand_and_home(app, ui,",
         "plugin_import_button(app, ui,",
-        "project_import_button(app, ui,",
         "puppet_quick_button(app, ui,",
         "tool_slots(app, ui,",
         "tool_options_bar(app, ui,",
@@ -78,9 +77,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             let cy = origin.y + scroll_rect.height() * 0.5;
             let x = origin.x + if app.integrated_titlebar && !app.ui.show_menu_bar { 80.0 } else { 10.0 };
             let x = brand_and_home(app, scroll_ui, &p, x, cy);
-            let x = project_import_shortcut(app, scroll_ui, x, cy);
             let x = plugin_import_button(app, scroll_ui, x, cy);
-            let x = project_import_button(app, scroll_ui, x, cy);
             let x = puppet_quick_button(app, scroll_ui, x, cy);
             let x = tool_slots(app, scroll_ui, &p, x, cy);
             let x = tool_options_bar(app, scroll_ui, &p, x + 10.0, cy);
@@ -101,23 +98,6 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     // Render modal dialogs outside the horizontally clipped toolbar child.
     export_dialog(app, ui);
     export_progress_dialog(app, ui);
-}
-
-/// EFFECTCRAFT_AM_PROJECT_IMPORT_SHORTCUT_V1
-/// Adds a visible shortcut to the original unified project importer; it does not replace
-/// or remove File > Import, format-specific import actions, or incoming-project auto-open.
-fn project_import_shortcut(app: &mut EffectcraftApp, ui: &mut egui::Ui, x: f32, cy: f32) -> f32 {
-    let rect = Rect::from_min_size(pos2(x, cy - 13.0), vec2(78.0, 26.0));
-    let response = ui.put(rect, egui::Button::new("导入工程"))
-        .on_hover_text("导入 EffectCraft、Ae、AM、NV、CapCut 等工程");
-    app.auto.add_response("header.importProject", &response, "导入工程");
-    widgets::focus_outline(ui, &response, &app.tokens);
-    if response.clicked() {
-        if let Err(error) = crate::menus::invoke(app, ui.ctx(), "file.importProject", json!({})) {
-            app.ui.status = format!("打开工程导入失败：{error}");
-        }
-    }
-    x + 84.0
 }
 
 '''
