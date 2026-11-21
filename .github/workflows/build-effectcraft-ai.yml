@@ -252,6 +252,26 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y dpkg-dev file zstd
 
+      - name: Repoint Termux QEMU package paths to Ae private runtime prefix
+        working-directory: third_party/termux-packages
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("scripts/properties.sh")
+          source = path.read_text(encoding="utf-8")
+          replacements = [
+              ('TERMUX_APP__PACKAGE_NAME="com.termux"', 'TERMUX_APP__PACKAGE_NAME="com.artcraft.effectcraft"'),
+              ('TERMUX__ROOTFS_SUBDIR="files"', 'TERMUX__ROOTFS_SUBDIR="files/windows-compat"'),
+          ]
+          for old, new in replacements:
+              if source.count(old) != 1:
+                  raise SystemExit(f"Expected exactly one Termux QEMU prefix setting: {old}")
+              source = source.replace(old, new, 1)
+          path.write_text(source, encoding="utf-8")
+          print("QEMU package absolute data paths now resolve under Ae's files/windows-compat/usr prefix.")
+          PY
+
       - name: Patch QEMU recipe to build x86-64 Linux-user only
         working-directory: third_party/termux-packages
         run: |
