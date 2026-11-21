@@ -95,7 +95,7 @@ permissions:
 
 concurrency:
   # Only the newest source revision should consume a runner for this APK.
-  group: effectcraft-ai-android-${{ github.ref }}
+  group: effectcraft-ai-android-runtime-v2-${{ github.ref }}
   # Let an already-running APK build finish; queue this unified validation/build run next.
   cancel-in-progress: false
 
@@ -297,10 +297,19 @@ jobs:
           source = source[:start] + '''\t# EffectCraft uses QEMU only as an x86-64 Linux-user Wine fallback.
           \tlocal QEMU_TARGETS="x86_64-linux-user"
           ''' + source[end:]
-          source = source.replace("alsa-lib, dtc, glib,", "glib,")
-          for dependency in ("jack2, ", "libspice-server, ", "libusb, ",
-                             "libusbredir, ", "ncurses, ", "pulseaudio, "):
-              source = source.replace(dependency, "")
+          # Keep only dependencies needed by the x86_64 Linux-user binary.
+          source, dependency_count = re.subn(
+              r"(?m)^TERMUX_PKG_DEPENDS=.*$",
+              'TERMUX_PKG_DEPENDS="glib, qemu-common, resolv-conf, zlib, zstd"',
+              source,
+              count=1,
+          )
+          if dependency_count != 1:
+              raise SystemExit("Could not reduce QEMU runtime dependencies to the Linux-user minimum.")
+          source = source.replace(
+              'TERMUX_PKG_BUILD_DEPENDS="libtasn1"',
+              'TERMUX_PKG_BUILD_DEPENDS=""',
+          )
           for old, new in (
               ("--enable-fdt=system", "--disable-fdt"),
               ("--audio-drv-list=pa", "--audio-drv-list="),
@@ -310,10 +319,26 @@ jobs:
               ("--enable-spice", "--disable-spice"),
               ("--enable-libusb", "--disable-libusb"),
               ("--enable-usb-redir", "--disable-usb-redir"),
+              ("--enable-gnutls", "--disable-gnutls"),
+              ("--enable-nettle", "--disable-nettle"),
+              ("--enable-curl", "--disable-curl"),
+              ("--enable-lzo", "--disable-lzo"),
+              ("--enable-bzip2", "--disable-bzip2"),
+              ("--enable-libssh", "--disable-libssh"),
+              ("--enable-slirp", "--disable-slirp"),
+              ("--enable-iconv", "--disable-iconv"),
+              ("--enable-vnc-jpeg", "--disable-vnc-jpeg"),
+              ("--enable-png", "--disable-png"),
+              ("--enable-kvm", "--disable-kvm"),
+              ("--enable-bochs", "--disable-bochs"),
+              ("--enable-cloop", "--disable-cloop"),
+              ("--enable-dmg", "--disable-dmg"),
+              ("--enable-parallels", "--disable-parallels"),
+              ("--enable-qed", "--disable-qed"),
           ):
               source = source.replace(old, new)
           recipe.write_text(source, encoding="utf-8")
-          print("Configured QEMU x86_64-linux-user only; softmmu/system devices disabled.")
+          print("Configured minimal QEMU x86_64-linux-user only; desktop/system, network, crypto, audio and disk-format extras disabled.")
           PY
 
       - name: Build PRoot helper and QEMU Android packages
