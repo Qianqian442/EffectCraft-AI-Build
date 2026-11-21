@@ -8,10 +8,14 @@ on:
     paths:
       - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/add_plugin_migration_progress.py'
+      - '.github/scripts/integrate_binary_reconstruction.py'
       - '.github/scripts/add_home_plugin_manager_remove_about.py'
       - '.github/scripts/add_effect_plugin_uninstall.py'
       - '.github/scripts/add_home_lan_account_gate.py'
       - '.github/scripts/add_plugin_import_button.py'
+      - '.github/scripts/add_am_mobile_layout.py'
+      - '.github/scripts/build_am_mobile_editing_page.py'
+      - '.github/scripts/verify_android_source_patches.py'
       - '.github/scripts/add_qq_plugin_import_support.py'
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
@@ -73,6 +77,9 @@ jobs:
             .github/scripts/add_home_lan_account_gate.py \
             .github/scripts/add_home_plugin_manager_remove_about.py \
             .github/scripts/add_effect_plugin_uninstall.py \
+            .github/scripts/add_am_mobile_layout.py \
+            .github/scripts/build_am_mobile_editing_page.py \
+            .github/scripts/verify_android_source_patches.py \
             .github/scripts/install_ai_plugin_bridge.py \
             .github/scripts/add_curve_quick_access.py \
             .github/scripts/add_startup_attribution_notice.py \

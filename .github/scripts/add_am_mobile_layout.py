@@ -127,6 +127,10 @@ def patch_workspace_tabs(effectcraft: Path) -> None:
         raise SystemExit("The original workspace menu is missing from the Ae toolbar.")
     if "workspace_tabs(app, ui, p, rx, left, cy);" not in header:
         raise SystemExit("The original workspace tabs are missing from the Ae toolbar.")
+    if "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" in header or "am-plugin-import" in header:
+        raise SystemExit("AM plug-in buttons must remain inside the independent AM editor, never the Ae toolbar.")
+    if "brand_and_home(app, ui, &p, x, cy)" not in header or "tool_slots(app, ui, &p, x, cy)" not in header:
+        raise SystemExit("The original Ae toolbar button layout/slot path must remain intact.")
     if f'"{WORKSPACE}"' not in dock:
         raise SystemExit("AM 竖屏 is not registered in the original workspace menu.")
     if "EFFECTCRAFT_LAYOUT_SWITCH_RESERVED_ROW_V1" in header or "layout_switch_row(" in header:
@@ -247,6 +251,13 @@ def patch_am_scoped_panel_touch_scroll(effectcraft: Path) -> None:
         }
         let gutter: Gutter = ui.data(|d| d.get_temp(id.with("gutter"))).unwrap_or_default();"""
         source = replace_once(source, old, new, "AM-scoped PanelScroll finger gesture")
+        scoped_start = source.find("// EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1")
+        scoped_end = source.find("let gutter: Gutter", scoped_start)
+        scoped_block = source[scoped_start:scoped_end]
+        if scoped_start < 0 or scoped_end < 0 or "am_touch_draw_context && ui.input" not in scoped_block:
+            raise SystemExit("AM touch scrolling is not strictly scoped to AM-owned drawers.")
+        if any(token in scoped_block for token in ("egui::Button", "Button::new", "button_size", "min_size(")):
+            raise SystemExit("AM touch patch must not change shared button size, style, or hit targets.")
         widgets_path.write_text(source, encoding="utf-8")
     print("Installed touch scrolling scoped to the AM drawer context; Ae panels do not enable it.")
 
@@ -300,11 +311,12 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
     let card_top = rect.min.y + 78.0;
     let card_w = ((rect.width() - pad * 2.0 - gap) / 2.0).max(76.0);
     let card_h = 50.0;
-    let actions: [(&str, &str); 4] = [
+    let actions: [(&str, &str); 5] = [
         ("新建合成", "app.newComp"),
         ("打开工程", "file.open"),
         ("导入工程", "file.importProject"),
         ("导入素材", "file.import"),
+        ("导入插件", "effect.plugins.load"),
     ];
     let mut commands: Vec<(&'static str, serde_json::Value)> = Vec::new();
     for (index, (label, command)) in actions.iter().enumerate() {
@@ -325,7 +337,8 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
         if response.clicked() {
             match *command {
                 "file.import" => commands.push(("file.import", json!({"picturesAndVideos": true}))),
-                "app.newComp" | "file.open" | "file.importProject" => {
+                "app.newComp" | "file.open" | "file.importProject" | "effect.plugins.load" => {
+                    // Reuse the original Ae effect plug-in loader, registry, storage and migration intercept.
                     commands.push((*command, json!({})));
                 }
                 _ => {}
@@ -334,7 +347,7 @@ fn show_am_portrait_home(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect
     }
 
     let edit_rect = Rect::from_min_size(
-        pos2(rect.min.x + pad, card_top + 2.0 * (card_h + gap) + 2.0),
+        pos2(rect.min.x + pad, card_top + 3.0 * (card_h + gap) + 2.0),
         vec2((rect.width() - pad * 2.0).max(60.0), 38.0),
     );
     let edit = ui.put(
@@ -435,8 +448,10 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
     widgets = (effectcraft / "crates/ui-egui/src/widgets.rs").read_text(encoding="utf-8")
     frame = (effectcraft / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
     home = (effectcraft / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1" not in widgets:
+    if "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1" not in widgets or "am_touch_draw_context && ui.input" not in widgets:
         raise SystemExit("AM drawers must have AM-scoped finger scrolling.")
+    if "AM_SHARED_BUTTON_STYLE" in widgets or "am_button_size" in widgets:
+        raise SystemExit("AM patch must not introduce global/shared button sizing or style state.")
     native_effects = (effectcraft / "crates/ui-egui/src/panels/effects_presets.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" in native_effects:
         raise SystemExit("AM patch must not change the native Ae effect-row behavior.")
@@ -445,8 +460,18 @@ def verify_import_export_unchanged(effectcraft: Path) -> None:
         raise SystemExit("The original Ae fixed-width left/right panel arrangement was changed.")
     if '"AM 竖屏"' not in dock:
         raise SystemExit("AM 竖屏 must remain selectable in the original workspace menu.")
-    if "file.importProject" not in (effectcraft / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8"):
+    generated_home = (effectcraft / "crates/ui-egui/src/panels/home.rs").read_text(encoding="utf-8")
+    if "file.importProject" not in generated_home:
         raise SystemExit("AM Home must retain the local unified project-import action.")
+    am_home_start = generated_home.find("// EFFECTCRAFT_AM_PORTRAIT_HOME_V1")
+    am_home_end = generated_home.find("pub fn show(app:", am_home_start)
+    if am_home_start < 0 or am_home_end < 0:
+        raise SystemExit("Could not isolate the generated AM Home for plug-in import validation.")
+    am_home_source = generated_home[am_home_start:am_home_end]
+    if '("导入插件", "effect.plugins.load")' not in am_home_source:
+        raise SystemExit("AM Home must expose the shared effect plug-in loader.")
+    if '"effect.plugins.load" =>' not in am_home_source:
+        raise SystemExit("AM Home plug-in import must invoke the original loader command.")
     am_home_start = home.find("// EFFECTCRAFT_AM_PORTRAIT_HOME_V1")
     am_home_end = home.find("pub fn show(app:", am_home_start)
     if am_home_start < 0 or am_home_end < 0:

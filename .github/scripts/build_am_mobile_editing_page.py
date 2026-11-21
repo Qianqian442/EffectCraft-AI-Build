@@ -78,6 +78,15 @@ fn top_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         app.set_workspace(if choice == 0 { "Default" } else { WORKSPACE });
     }
 
+    // EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1
+    // Share Ae's persistent plug-in loader and desktop-native migration interception.
+    let plugin_rect = Rect::from_min_size(pos2(rect.max.x - 198.0, rect.min.y + 7.0), vec2(38.0, 30.0));
+    let plugin = button(ui, plugin_rect, "插件", "am-plugin-import");
+    app.auto.add_response("am.header.plugins.import", &plugin, "导入效果插件或电脑插件");
+    if plugin.clicked() {
+        invoke(app, ui.ctx(), "effect.plugins.load", json!({}));
+    }
+
     let export_rect = Rect::from_min_size(pos2(rect.max.x - 68.0, rect.min.y + 7.0), vec2(62.0, 30.0));
     let export = button(ui, export_rect, "导出", "am-export");
     app.auto.add_response("am.header.export", &export, "导出视频或工程");
@@ -103,7 +112,7 @@ fn top_bar(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     app.auto.add_response("am.header.redo", &redo, "重做");
 
     let title_left = layout_rect.max.x + 7.0;
-    let title_right = (undo_rect.min.x - 6.0).max(title_left);
+    let title_right = (plugin_rect.min.x - 6.0).max(title_left);
     let title_rect = Rect::from_min_max(pos2(title_left, rect.min.y), pos2(title_right, rect.max.y));
     let title = app.session.active_comp_id()
         .and_then(|id| app.session.project.item(id))
@@ -1430,9 +1439,15 @@ def patch_module(root: Path) -> None:
 
 def patch_export_access(root: Path) -> None:
     path = root / "crates/ui-egui/src/header.rs"
-    source = path.read_text(encoding="utf-8")
-    source = source.replace("fn export_dialog(app:", "pub(crate) fn export_dialog(app:")
+    original = path.read_text(encoding="utf-8")
+    source = original.replace("fn export_dialog(app:", "pub(crate) fn export_dialog(app:")
     source = source.replace("fn export_progress_dialog(app:", "pub(crate) fn export_progress_dialog(app:")
+    expected = original.replace("fn export_dialog(app:", "pub(crate) fn export_dialog(app:")
+    expected = expected.replace("fn export_progress_dialog(app:", "pub(crate) fn export_progress_dialog(app:")
+    # These visibility changes are the complete allowed edit to the shared Ae header.
+    # Any change to Ae button geometry, padding, font size or hit targets fails the build.
+    if source != expected:
+        raise SystemExit("AM patch attempted an unrelated edit to Ae's shared header/button code.")
     if "pub(crate) fn export_dialog(app:" not in source or "pub(crate) fn export_progress_dialog(app:" not in source:
         raise SystemExit("Could not expose the existing native export dialogs to the independent AM page.")
     path.write_text(source, encoding="utf-8")
@@ -1537,6 +1552,13 @@ def verify(root: Path) -> None:
         "预设",
         "效果",
         "EFFECTCRAFT_AM_EFFECT_BROWSER_V1",
+        "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1",
+        "effect.plugins.load",
+        "effectcraft_engine::effects::all()",
+        "effectcraft_engine::effects::find(effect_id)",
+        "am_effect_matches",
+        "is_effect_favorite",
+        "toggle_effect_favorite",
         "am-effect-browser-touch-pan",
         "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1",
         "效果浏览器",
@@ -1552,6 +1574,13 @@ def verify(root: Path) -> None:
         raise SystemExit("AM editor cannot access the original video export workflow.")
     if "self.dock_area(ui, body);" not in frame:
         raise SystemExit("The Ae DockArea must remain available for the original Ae workspace.")
+    if "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" in header or "am-plugin-import" in header:
+        raise SystemExit("AM plug-in button leaked into the shared Ae toolbar source.")
+    if 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };' not in frame:
+        raise SystemExit("AM frame sizing must preserve the original 40px Ae header.")
+    if "fn button(ui:" not in module:
+        raise SystemExit("AM toolbar buttons must use a local helper inside the independent AM module.")
+    print("Verified Ae toolbar source/button geometry stays isolated from AM's local controls.")
     print("Verified a separate AM editing surface with its own top bar, canvas, transport, clip tracks, trim handles and bottom tools.")
     print("Verified the Ae DockArea remains the render path for Ae mode; AM no longer uses the Ae dock tree or timeline widget.")
 

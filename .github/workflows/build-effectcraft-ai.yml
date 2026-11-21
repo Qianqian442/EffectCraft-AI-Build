@@ -439,13 +439,19 @@ jobs:
                   if dependency not in selected:
                       queue.append(dependency)
 
+          staged_names = {}
           for name, source in sorted(selected.items()):
-              target = destination / source.name
+              # Debian epoch separators use ":"; GitHub artifact paths reject colons.
+              safe_name = source.name.replace(":", "_")
+              if not safe_name or Path(safe_name).name != safe_name:
+                  raise SystemExit(f"Unsafe QEMU package artifact filename: {source.name!r}")
+              target = destination / safe_name
               shutil.copyfile(source, target)
               subprocess.run(["dpkg-deb", "-I", str(target)], check=True,
                              stdout=subprocess.DEVNULL)
+              staged_names[name] = safe_name
           (destination / "RUNTIME-PACKAGES.txt").write_text(
-              "\n".join(f"{name}: {source.name}" for name, source in sorted(selected.items())) + "\n",
+              "\n".join(f"{name}: {filename}" for name, filename in sorted(staged_names.items())) + "\n",
               encoding="utf-8",
           )
           print(f"Collected {len(selected)} QEMU runtime packages:")
@@ -782,7 +788,6 @@ jobs:
         with:
           name: EffectCraft-Box86-Android-ARMv7-Optional
           path: runtime-artifacts/box86
-          if-no-artifact-found: ignore
 
       - name: Download source-built FEXCore ARM64EC and WoW64 DLL pair
         uses: actions/download-artifact@v4

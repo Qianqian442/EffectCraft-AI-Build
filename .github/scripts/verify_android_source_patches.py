@@ -718,11 +718,58 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     scroll_marker = "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1"
     if scroll_marker not in widgets or "am_touch_draw_context && ui.input" not in widgets:
         raise SystemExit("AM finger scrolling is not scoped to AM-owned drawers.")
+    touch_start = widgets.find("// EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1")
+    touch_end = widgets.find("let gutter: Gutter", touch_start)
+    touch_block = widgets[touch_start:touch_end]
+    if touch_start < 0 or touch_end < 0 or any(token in touch_block for token in ("egui::Button", "Button::new", "button_size", "min_size(")):
+        raise SystemExit("AM touch changes must not alter shared Ae button sizing or hit targets.")
     if "EFFECTCRAFT_ANDROID_TOUCH_SCROLL_PANEL_V2" in widgets or "EFFECTCRAFT_ANDROID_TAP_TO_APPLY_EFFECT_V1" in am_effects:
         raise SystemExit("AM must not install global Android touch behavior into Ae panels.")
     if "EFFECTCRAFT_AM_EFFECT_BROWSER_V1" not in am_editor:
         raise SystemExit("AM visual effect browser is not installed.")
-    print("Verified AM's independent effect icon browser, live effect application and AM-scoped parameter scrolling.")
+    # AM can size its own controls, but must never inject buttons into Ae's shared toolbar.
+    header_source = (root / "crates/ui-egui/src/header.rs").read_text(encoding="utf-8")
+    frame_source = (root / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" in header_source or "am-plugin-import" in header_source:
+        raise SystemExit("AM button code leaked into the shared Ae toolbar.")
+    if "let rx = workspace_menu(app, ui, p, rx, cy);" not in header_source:
+        raise SystemExit("The original Ae toolbar workspace menu must remain intact.")
+    if "workspace_tabs(app, ui, p, rx, left, cy);" not in header_source:
+        raise SystemExit("The original Ae toolbar workspace tabs must remain intact.")
+    if 'let header_h = if self.ui.workspace == "AM 竖屏" { 0.0 } else { 40.0 };' not in frame_source:
+        raise SystemExit("AM header isolation must preserve Ae's original 40px header.")
+    if "fn button(ui:" not in am_editor or "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1" not in am_editor:
+        raise SystemExit("AM toolbar controls must live inside the independent AM editor.")
+    for token in (
+        "EFFECTCRAFT_AM_SHARED_PLUGIN_IMPORT_ENTRY_V1",
+        '"effect.plugins.load"',
+        "effectcraft_engine::effects::all()",
+        "effectcraft_engine::effects::find(effect_id)",
+        "am_effect_matches",
+        "is_effect_favorite",
+        "toggle_effect_favorite",
+        "effect.apply",
+        "push_recent",
+        "choose_files_after_apply",
+    ):
+        if token not in am_editor:
+            raise SystemExit(f"AM shared plug-in library/browser integration is incomplete: {token}")
+    am_home_path = root / "crates/ui-egui/src/panels/home.rs"
+    am_home = am_home_path.read_text(encoding="utf-8")
+    am_home_start = am_home.find("// EFFECTCRAFT_AM_PORTRAIT_HOME_V1")
+    am_home_end = am_home.find("pub fn show(app:", am_home_start)
+    if am_home_start < 0 or am_home_end < 0:
+        raise SystemExit("AM Home source block cannot be isolated for plug-in import validation.")
+    am_home_source = am_home[am_home_start:am_home_end]
+    if '("导入插件", "effect.plugins.load")' not in am_home_source:
+        raise SystemExit("AM Home must expose the shared effect plug-in loader.")
+    for token in ("pub fn all()", "let plugins = plugin::plugins();", "v.extend(plugins);", "pub fn find(id: &str)"):
+        if token not in effect_registry:
+            raise SystemExit(f"Shared effect registry is not dynamic for imported plug-ins: {token}")
+    for token in ('"effect.plugins.unload"', "fn plugins_unload(", "s.layer_cache.clear();", "cache.clear();"):
+        if token not in plugin_commands:
+            raise SystemExit(f"Plug-in unload must clear shared runtime/effect caches: {token}")
+    print("Verified AM import uses the shared Ae loader; registered effects appear through the live registry and unloading removes them.")
     print("Verified the Android host bridge only changes orientation while AM is selected.")
 
 
