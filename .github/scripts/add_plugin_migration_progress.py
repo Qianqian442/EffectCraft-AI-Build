@@ -48,7 +48,7 @@ impl MigrationMode {
             Self::CpuTranslation => "转译",
             Self::ForceCompatibility => "强行兼容（内部阶段，不单独显示）",
             Self::AggressivePort => "反编译+暴力移植+强行兼容",
-            Self::ManualBackend => "高级导入",
+            Self::ManualBackend => "其他选项",
         }
     }
 
