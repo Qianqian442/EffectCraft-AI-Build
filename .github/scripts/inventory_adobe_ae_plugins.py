@@ -20,7 +20,8 @@ MAX_ENTRIES = 4096
 MAX_TOTAL = 1024 * 1024 * 1024
 MAX_ENTRY = 256 * 1024 * 1024
 
-NATIVE = {".aex", ".pbk", ".pbg", ".8bi", ".8bf", ".dll", ".so", ".dylib"}
+NATIVE = {".aex", ".pbk", ".pbg", ".dll", ".so", ".dylib"}
+LEGACY_PHOTOSHOP_FILTER = {".8bi", ".8bf"}
 SCRIPT = {".jsx", ".jsxbin"}
 PRESET = {".ffx"}
 PROJECT = {".aep", ".aepx"}
@@ -44,6 +45,8 @@ def family_for(path: str) -> str:
         return "project_not_plugin"
     if ext in PRESET:
         return "animation_preset"
+    if ext in LEGACY_PHOTOSHOP_FILTER:
+        return "legacy_photoshop_filter_candidate"
     if ext in NATIVE or any(part.lower().endswith((".plugin", ".bundle")) for part in p.parts[:-1]):
         return "native_ae_plugin_candidate"
     if ext in SCRIPT:
