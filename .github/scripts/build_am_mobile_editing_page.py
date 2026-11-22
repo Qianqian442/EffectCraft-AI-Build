@@ -963,10 +963,8 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 am_toggle_multi_selected(app, ui.ctx(), layer.id.0);
             } else {
                 select_layer(app, layer.id.0);
-                ui.ctx().data_mut(|d| {
-                    d.insert_temp(Id::new(AM_ACTIVE_LAYER_ID), layer.id.0);
-                    d.insert_temp(Id::new("am-mobile-tool-drawer"), "keyframes".to_string());
-                });
+                // A clip tap opens its operation sheet; keyframes/curves live inside that sheet.
+                am_open_layer_actions(ui.ctx(), layer.id.0);
             }
         }
         let move_id = Id::new(("am-mobile-move-state", layer.id.0));
@@ -1259,13 +1257,6 @@ fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, 
     p.line_segment([header.left_bottom(), header.right_bottom()], Stroke::new(1.0, t.separator));
     p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, layer_name, Tokens::semibold(11.0), t.text);
 
-    let keyframe_rect = Rect::from_min_size(pos2(header.max.x - 108.0, header.min.y + 2.0), vec2(68.0, 28.0));
-    let keyframe = ui.put(keyframe_rect, egui::Button::new("关键帧 / 曲线").min_size(keyframe_rect.size()));
-    app.auto.add_response("am.layer.actions.keyframes", &keyframe, "编辑当前图层关键帧和曲线");
-    if keyframe.clicked() {
-        ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "keyframes".to_string()));
-    }
-
     let close_rect = Rect::from_min_size(pos2(header.max.x - 34.0, header.min.y + 2.0), vec2(30.0, 28.0));
     let close = ui.put(close_rect, egui::Button::new("×").min_size(close_rect.size()));
     app.auto.add_response("am.layer.actions.close", &close, "关闭图层操作");
@@ -1304,10 +1295,12 @@ fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, 
         ("编辑形状", "shape"),
         ("预设", "presets"),
         ("效果", "effects"),
+        ("关键帧", "keyframes"),
+        ("曲线", "curves"),
     ];
     let start_y = header.max.y + 43.0;
     for (index, (label, kind)) in cards.into_iter().enumerate() {
-        let (column, row, columns) = if index < 3 { (index, 0, 3) } else { (index - 3, 1, 4) };
+        let (column, row, columns) = (index % 3, index / 3, 3);
         let card_gap = 5.0;
         let card_w = ((rect.width() - 16.0 - card_gap * (columns - 1) as f32) / columns as f32).max(1.0);
         let r = Rect::from_min_size(
@@ -1318,7 +1311,15 @@ fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, 
         app.auto.add_response(&format!("am.layer.category.{kind}"), &response, label);
         if response.clicked() {
             // Keep AM_ACTIVE_LAYER_ID so closing the category drawer returns to this sheet.
-            if kind == "effects" { am_open_effect_browser(ui.ctx(), Some(layer_id)); } else { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), kind.to_string())); }
+            if kind == "effects" {
+                am_open_effect_browser(ui.ctx(), Some(layer_id));
+            } else if kind == "keyframes" || kind == "curves" {
+                // Open the existing native Timeline panel for this selected layer,
+                // while retaining the clip-operation sheet context.
+                ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), kind.to_string()));
+            } else {
+                ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), kind.to_string()));
+            }
         }
     }
 }
