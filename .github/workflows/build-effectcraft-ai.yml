@@ -956,6 +956,8 @@ jobs:
           python3 -m py_compile \
             build-assets/.github/scripts/inventory_adobe_ae_plugins.py \
             build-assets/.github/scripts/test_inventory_adobe_ae_plugins.py \
+            build-assets/.github/scripts/add_zip_plugin_support.py \
+            build-assets/.github/scripts/add_desktop_plugin_package_support.py \
             build-assets/.github/scripts/inspect_adobe_ae_native_pe.py \
             build-assets/.github/scripts/test_inspect_adobe_ae_native_pe.py \
             build-assets/.github/scripts/inspect_adobe_ffx_preset.py \
