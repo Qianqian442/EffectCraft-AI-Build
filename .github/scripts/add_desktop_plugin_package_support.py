@@ -376,12 +376,17 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             _ => "format-specific host callback adapter",
         };
         vec![
-            json!({"id":"legacy_os_and_runtime","name":"旧版系统与运行库兼容", "actions":["选择可用 Windows API 版本配置","补齐合法可再分发的 VC runtime / .NET 依赖"], "status":"planned_not_run"}),
-            json!({"id":"host_optional_suite_shims","name":"插件宿主接口兼容", "actions":[host_profile, "只对明确标记为 optional 的接口提供有边界的兼容实现", "required API 缺失时必须判定失败"], "status":"planned_not_run"}),
-            json!({"id":"pixel_format_matrix","name":"画面格式强制适配", "actions":["RGBA / BGRA 通道转换","8/16/32-bit 像素深度适配","预乘/直通 Alpha 与行跨度适配"], "status":"planned_not_run"}),
-            json!({"id":"render_execution_fallbacks","name":"渲染兼容回退", "actions":["GPU 不可用时尝试 CPU 路径","多线程失败后尝试串行渲染","逐帧与时间序列两种调用模式"], "status":"planned_not_run"}),
-            json!({"id":"cpu_feature_fallbacks","name":"CPU 指令与功能降级", "actions":["按运行时能力屏蔽不可用 CPU 扩展","逐级降低可选图形/加速特性"], "status":"planned_not_run"}),
-            json!({"id":"source_or_binary_reconstruction","name":"强力移植 / 重构", "actions":["有源码时使用 Android NDK/Clang 重编译 ARM64","无源码时使用 Ghidra 分析导入、导出、控制流和资源","可用时用 Remill 提升指令到 LLVM IR 作辅助分析","按效果算法重写成 ARM64/WASM 兼容插件并进行参考帧回归"], "status":"planned_not_run"})
+            // Combined route stage 1: Ghidra analysis and effect-behavior reconstruction.
+            // This is an explicit internal stage, not a separately selectable top-level route.
+            json!({"id":"ghidra_deep_analysis_effect_reconstruction","stage":1,"name":"Ghidra 深度分析与效果算法重构（组合路线第一阶段）", "actions":["在开发侧使用 Ghidra 对合法分析的插件样本进行静态分析","梳理文件格式、导入/导出、依赖、字符串、资源、控制流与可识别的数据结构","结合效果参考帧和参数行为基准，明确效果算法与参数映射","将可重实现的效果编写为 Android ARM64/WASM 原生兼容模块","执行参数往返、预览/最终渲染和参考帧回归；无法可靠还原的功能标记为不支持"], "status":"planned_not_run"}),
+            // Combined route stage 2: runtime and host compatibility.
+            json!({"id":"legacy_os_and_runtime","stage":2,"name":"旧版系统与运行库兼容", "actions":["选择可用 Windows API 版本配置","补齐合法可再分发的 VC runtime / .NET 依赖"], "status":"planned_not_run"}),
+            json!({"id":"host_optional_suite_shims","stage":3,"name":"插件宿主接口兼容", "actions":[host_profile, "只对明确标记为 optional 的接口提供有边界的兼容实现", "required API 缺失时必须判定失败"], "status":"planned_not_run"}),
+            json!({"id":"pixel_format_matrix","stage":4,"name":"画面格式强制适配", "actions":["RGBA / BGRA 通道转换","8/16/32-bit 像素深度适配","预乘/直通 Alpha 与行跨度适配"], "status":"planned_not_run"}),
+            json!({"id":"render_execution_fallbacks","stage":5,"name":"渲染兼容回退", "actions":["GPU 不可用时尝试 CPU 路径","多线程失败后尝试串行渲染","逐帧与时间序列两种调用模式"], "status":"planned_not_run"}),
+            json!({"id":"cpu_feature_fallbacks","stage":6,"name":"CPU 指令与功能降级", "actions":["按运行时能力屏蔽不可用 CPU 扩展","逐级降低可选图形/加速特性"], "status":"planned_not_run"}),
+            // Final fallback only after reconstruction/compatibility attempts fail.
+            json!({"id":"remill_llvm_ir_aggressive_port_fallback","stage":7,"name":"Remill + LLVM IR 暴力移植兜底", "actions":["仅在前序分析、重构和兼容路线无法满足目标时尝试","在开发侧将受支持的指令提升为 LLVM IR 并尝试 ARM64 重编译","显式处理重定位、导入、异常语义、系统调用和宿主 ABI","通过参数、参考帧、预览/最终渲染与稳定性回归后才可标记通过"], "status":"planned_not_run"})
         ]
     }
 
