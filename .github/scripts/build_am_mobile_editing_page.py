@@ -1379,9 +1379,9 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         .or_else(|| active_layer.map(|id| format!("layer:{id}")));
     let sheet_h = if let Some(kind) = drawer_kind.as_deref() {
         if kind == "keyframes" {
-            (rect.height() * 0.68).clamp(260.0, 500.0).min(timeline_rect.height().max(220.0))
+            (rect.height() * 0.76).clamp(300.0, 620.0).min(rect.height() * 0.82)
         } else if kind == "controls" {
-            (rect.height() * 0.56).clamp(250.0, 440.0).min(timeline_rect.height().max(220.0))
+            (rect.height() * 0.62).clamp(280.0, 520.0).min(rect.height() * 0.72)
         } else {
             (rect.height() * 0.42).clamp(180.0, 340.0).min(timeline_rect.height().max(140.0))
         }
@@ -1393,7 +1393,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let slide_progress = am_bottom_sheet_progress(ui.ctx(), sheet_key);
     if sheet_h > 0.0 {
         let target_rect = Rect::from_min_max(
-            pos2(rect.min.x, timeline_rect.max.y - sheet_h),
+            pos2(rect.min.x, bottom_rect.min.y - sheet_h),
             pos2(rect.max.x, bottom_rect.min.y),
         );
         let slide_offset = (1.0 - slide_progress) * sheet_h;
