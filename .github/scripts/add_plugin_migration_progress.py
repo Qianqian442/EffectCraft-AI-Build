@@ -168,7 +168,8 @@ pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool 
         return false;
     }
     let source = Path::new(path);
-    let is_zip = source.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("zip"));
+    let extension = source.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_ascii_lowercase();
+    let is_zip = matches!(extension.as_str(), "zip" | "zxp" | "ccx");
     let import_path = if is_zip {
         let Ok(file) = File::open(path) else { return false };
         let Ok(mut archive) = ZipArchive::new(file) else { return false };
@@ -180,8 +181,8 @@ pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool 
             let entry_name = entry_name.into_owned();
             let name = entry_name.to_ascii_lowercase();
             let extension = Path::new(&entry_name).extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase();
-            let is_native = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
-                || name.contains(".plugin/") || name.contains(".ofx.bundle/");
+            let is_native = ["aex", "pbk", "pbg", "8bi", "8bf", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm"].contains(&extension.as_str())
+                || name.contains(".plugin/") || name.contains(".bundle/");
             if is_native { native_count += 1; }
         }
         if native_count == 0 { return false; }
@@ -189,7 +190,9 @@ pub(crate) fn intercept_if_native(app: &mut EffectcraftApp, path: &str) -> bool 
     } else {
         // Also accept a single native desktop plug-in file from the Android picker.
         let extension = source.extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase();
-        if !["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str()) {
+        let is_native = ["aex", "pbk", "pbg", "8bi", "8bf", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm"].contains(&extension.as_str());
+        let is_desktop_asset = ["jsxbin", "ffx"].contains(&extension.as_str());
+        if !is_native && !is_desktop_asset {
             return false;
         }
         let Ok(metadata) = std::fs::metadata(path) else { return false };
@@ -319,7 +322,7 @@ fn result_summary(scan: &ScanReport, value: &Value, mode: MigrationMode) -> (Str
     let errors = value_count(value, "errors");
     let skipped = value_count(value, "desktop_skipped");
     let installed = wasm + wat + panels + scripts;
-    let success = installed > 0 || native_translated > 0;
+    let success = installed > 0 || native_translated > 0 || assets > 0;
 
     let mut lines = vec![
         format!("本次选择的移植方式：{}。", mode.label()),
@@ -421,7 +424,10 @@ fn result_summary(scan: &ScanReport, value: &Value, mode: MigrationMode) -> (Str
     if let Some(report) = value.get("compatibility_report").and_then(Value::as_str) {
         lines.push(format!("详细报告：{report}"));
     }
-    if !success {
+    if installed == 0 && native_translated == 0 && assets > 0 {
+        lines.push("这些文件已经安全保存原始内容，但当前 APK 尚未为它们提供可执行运行时或完整转换器；归档不等于插件运行成功。".into());
+        ("已归档，等待格式适配".into(), lines.join("\n"), true)
+    } else if !success {
         if scan.native_count > 0 {
             lines.insert(1, "已完成电脑插件架构与候选路线分析；尚无原生插件通过真实转译、宿主接口、参数和渲染测试。内置相似效果仅为替代方案，不算原插件移植。".into());
             ("已分析，原插件待移植".into(), lines.join("\n"), false)
@@ -471,7 +477,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     .open(&mut open)
                     .show(ctx, |ui| {
                         ui.heading("检测到需要移植的电脑版插件");
-                        ui.label(format!("发现 {native_count} 个 .aex / .dll / .ofx 等原生插件文件。"));
+                        ui.label(format!("发现 {native_count} 个电脑版插件、扩展、脚本或预设待处理文件。"));
                         ui.add_space(4.0);
                         ui.label("选择本次电脑插件移植方式；可按需切换，不会强制固定使用某一种转译器。");
                         ui.label("扫描完成后，结果页会展示检测到的每个插件的全部适用路线，不省略候选项。");
