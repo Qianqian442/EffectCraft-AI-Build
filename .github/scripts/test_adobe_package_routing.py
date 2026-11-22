@@ -17,6 +17,8 @@ class AdobePackageRoutingTests(unittest.TestCase):
     def test_qq_picker_exposes_zxp_ccx(self):
         source = self.read("add_qq_plugin_import_support.py")
         self.assertIn('"zip" | "zxp" | "ccx"', source)
+        self.assertIn("let name = entry.name();", source)
+        self.assertIn("Tencent/QQfile_recv", source)
 
     def test_unified_import_picker_and_archive_handler_accept_zxp_ccx(self):
         picker = self.read("add_zip_plugin_support.py")
