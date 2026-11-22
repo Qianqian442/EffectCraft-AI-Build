@@ -44,7 +44,7 @@ def main() -> None:
     cargo_source = cargo.read_text(encoding="utf-8")
     if 'iced-x86 = { version = "1.21.0"' not in cargo_source:
         anchor = 'sys-locale = { workspace = true }\n'
-        dependency = anchor + 'iced-x86 = { version = "1.21.0", default-features = false, features = ["std", "decoder", "instr_info"] }\n'
+        dependency = anchor + 'iced-x86 = { version = "1.21.0", default-features = false, features = ["std", "decoder", "instr_info", "intel"] }\n'
         cargo_source = replace_once(cargo_source, anchor, dependency, "iced-x86 dependency")
     cargo.write_text(cargo_source, encoding="utf-8")
 
