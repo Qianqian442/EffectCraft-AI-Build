@@ -152,6 +152,11 @@ jobs:
           # Static PE analysis must be patched into the generated Ae UI module, not only the generator script.
           grep -Fq 'crate::windows_binary_reconstruction::reconstruct_pe(&data)' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq 'binary_reconstruction: Vec<String>' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'import_symbol_summary' effectcraft/crates/ui-egui/src/windows_binary_reconstruction.rs
+          grep -Fq 'relocation_summary' effectcraft/crates/ui-egui/src/windows_binary_reconstruction.rs
+          grep -Fq '"base_relocation_count"' effectcraft/crates/ui-egui/src/windows_binary_reconstruction.rs
+          grep -Fq '"imported_symbol_count"' effectcraft/crates/ui-egui/src/windows_binary_reconstruction.rs
+          grep -Fq 'IntelFormatter' effectcraft/crates/ui-egui/src/windows_binary_reconstruction.rs
           # A bundled compatibility recreation must never count as a successful native binary port.
           grep -Fq 'native_translated' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq '不计入原生插件移植成功数量' effectcraft/crates/ui-egui/src/plugin_migration.rs
