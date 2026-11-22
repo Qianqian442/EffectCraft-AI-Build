@@ -12,6 +12,7 @@ class AdobePackageRoutingTests(unittest.TestCase):
         source = self.read("configure_android_storage_fallback.py")
         self.assertIn('matches!(extension.as_str(), "zxp" | "ccx")', source)
         self.assertIn('"aep", "aepx", "zip", "zxp", "ccx"', source)
+        self.assertIn('"wasm", "wat", "jsx", "js", "aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"', source)
 
     def test_qq_picker_exposes_zxp_ccx(self):
         source = self.read("add_qq_plugin_import_support.py")
