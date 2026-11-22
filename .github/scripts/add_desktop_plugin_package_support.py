@@ -288,6 +288,18 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     "QEMU linux-user, matching x86-64 guest rootfs and Wine runtime",
                     "慢速兼容参考路线；用于可行性对照，不预设性能可用",
                 );
+                add(
+                    "remill_llvm_ir_aarch64",
+                    "Remill lifting + LLVM IR → ARM64 重编译",
+                    "开发侧 Remill/LLVM 工具链、完整 PE 重定位与导入解析、Windows API 替代实现、Adobe AE SDK host adapter、可用源码/授权审查",
+                    "暴力移植候选：将可支持的 x86-64 指令提升为 LLVM IR，再尝试 ARM64 代码生成；不支持指令、异常语义、系统调用和宿主 ABI 必须单独实现并通过渲染回归",
+                );
+                add(
+                    "ghidra_effect_reconstruction",
+                    "Ghidra 深度分析 + 效果算法重写",
+                    "开发侧 Ghidra、可合法分析的插件样本、效果参考帧与参数行为基准",
+                    "闭源插件的逆向辅助路线；提取算法/参数/资源后重写为 ARM64/WASM 效果，不等于直接运行原始 AEX",
+                );
             }
             ("Windows 可执行文件", "32 位 x86") => {
                 add(
@@ -313,6 +325,18 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
                     "Wine32 + QEMU i386-user",
                     "QEMU linux-user i386 target, matching guest rootfs and Wine32",
                     "慢速兼容参考路线；在隔离环境中用于对照，不预设性能可用",
+                );
+                add(
+                    "remill_llvm_ir_aarch64",
+                    "Remill lifting + LLVM IR → ARM64 重编译",
+                    "开发侧 Remill/LLVM 工具链、32 位 x86 指令/调用约定支持、PE 重定位与导入解析、Windows API 替代实现、Adobe AE SDK host adapter、可用源码/授权审查",
+                    "暴力移植候选：将可支持的 x86 指令提升为 LLVM IR，再尝试 ARM64 代码生成；32 位栈/寄存器与异常语义需要显式适配",
+                );
+                add(
+                    "ghidra_effect_reconstruction",
+                    "Ghidra 深度分析 + 效果算法重写",
+                    "开发侧 Ghidra、可合法分析的插件样本、效果参考帧与参数行为基准",
+                    "闭源插件逆向辅助路线；按效果行为重写 ARM64/WASM 版本，不会把原始 x86 DLL 伪装成 ARM64 原生库",
                 );
             }
             ("Linux 可执行文件", "64 位 x86") => {
