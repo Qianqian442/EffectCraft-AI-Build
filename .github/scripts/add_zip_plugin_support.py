@@ -275,7 +275,7 @@ def patch_picker(root: Path) -> None:
                 continue
             entries = match.group(1)
             present = set(re.findall(r'"([^"]+)"', entries))
-            wanted = ["zip", "aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"]
+            wanted = ["zip", "zxp", "ccx", "aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"]
             missing = [extension for extension in wanted if extension not in present]
             if not missing:
                 print(f"Effect plug-in picker already accepts ZIP and desktop binary files: {path}")
