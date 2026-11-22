@@ -798,12 +798,22 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         seek_to(app, target.clamp(0.0, duration));
     }
 
-    let tick_count = 5;
-    for i in 0..=tick_count {
-        let time = view.start + visible_secs * i as f64 / tick_count as f64;
-        let x = tracks.min.x + tracks.width() * i as f32 / tick_count as f32;
-        p.line_segment([pos2(x, ruler.min.y + 18.0), pos2(x, rect.max.y)], Stroke::new(1.0, t.separator.gamma_multiply(0.35)));
-        p.text(pos2(x + 3.0, ruler.min.y + 6.0), Align2::LEFT_TOP, format!("{time:.1}s"), Tokens::ui(9.0), t.text_faint);
+    // A second-based ruler with readable major labels and intermediate ticks.
+    // Do not divide the entire composition into only five huge jumps.
+    let tick_step = if visible_secs <= 12.0 { 1.0 } else if visible_secs <= 30.0 { 2.0 } else if visible_secs <= 90.0 { 5.0 } else { 10.0 };
+    let mut tick_time = (view.start / tick_step).floor() * tick_step;
+    while tick_time <= view.start + visible_secs + tick_step {
+        let x = tracks.min.x + ((tick_time - view.start) * pps) as f32;
+        if x >= tracks.min.x && x <= tracks.max.x {
+            let major = ((tick_time / tick_step).round() as i64) % 5 == 0;
+            let tick_y = if major { ruler.min.y + 15.0 } else { ruler.min.y + 21.0 };
+            p.line_segment([pos2(x, tick_y), pos2(x, rect.max.y)], Stroke::new(if major { 1.0 } else { 0.7 }, t.separator.gamma_multiply(if major { 0.55 } else { 0.25 })));
+            if major || tick_step >= 5.0 {
+                let seconds = tick_time.max(0.0) as u64;
+                p.text(pos2(x + 3.0, ruler.min.y + 4.0), Align2::LEFT_TOP, format!("{:02}:{:02}", seconds / 60, seconds % 60), Tokens::ui(8.5), t.text_faint);
+            }
+        }
+        tick_time += tick_step;
     }
 
     let row_count = comp.layers.len();
@@ -953,7 +963,10 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 am_toggle_multi_selected(app, ui.ctx(), layer.id.0);
             } else {
                 select_layer(app, layer.id.0);
-                am_open_layer_actions(ui.ctx(), layer.id.0);
+                ui.ctx().data_mut(|d| {
+                    d.insert_temp(Id::new(AM_ACTIVE_LAYER_ID), layer.id.0);
+                    d.insert_temp(Id::new("am-mobile-tool-drawer"), "keyframes".to_string());
+                });
             }
         }
         let move_id = Id::new(("am-mobile-move-state", layer.id.0));
