@@ -475,15 +475,18 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.add_space(4.0);
                         ui.label("选择本次电脑插件移植方式；可按需切换，不会强制固定使用某一种转译器。");
                         ui.label("扫描完成后，结果页会展示检测到的每个插件的全部适用路线，不省略候选项。");
-                        start |= ui.radio_value(mode, MigrationMode::AutoBest, MigrationMode::AutoBest.label()).clicked();
-                        start |= ui.radio_value(mode, MigrationMode::CpuTranslation, MigrationMode::CpuTranslation.label()).clicked();
-                        start |= ui.radio_value(mode, MigrationMode::ManualBackend, MigrationMode::ManualBackend.label()).clicked();
-                        start |= ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label()).clicked();
+                        ui.radio_value(mode, MigrationMode::AutoBest, MigrationMode::AutoBest.label());
+                        ui.radio_value(mode, MigrationMode::CpuTranslation, MigrationMode::CpuTranslation.label());
+                        ui.radio_value(mode, MigrationMode::ManualBackend, MigrationMode::ManualBackend.label());
+                        ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
                         ui.small(mode.description());
                         ui.add_space(6.0);
                         ui.label("当前版本会分析架构、列出路线并保留原件；尚未接入的运行时/宿主接口会显示待实现，不会伪报成功。");
                         ui.add_space(10.0);
-                        if ui.button("取消").clicked() { cancel = true; }
+                        ui.horizontal(|ui| {
+                            if ui.button("取消").clicked() { cancel = true; }
+                            if ui.button("按此方式开始").clicked() { start = true; }
+                        });
                     });
                 if start { action = Some(Action::Start(path.clone(), *mode)); }
                 else if cancel || !open { action = Some(Action::Cancel); }
