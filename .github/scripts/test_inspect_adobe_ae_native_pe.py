@@ -55,6 +55,14 @@ class AdobeAeNativePeTests(unittest.TestCase):
             result = MODULE.inspect_pe(path)
             self.assertIn("error", result)
 
+    def test_rejects_oversized_binary_before_reading(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "oversized.aex"
+            with path.open("wb") as handle:
+                handle.truncate(MODULE.MAX_FILE_BYTES + 1)
+            with self.assertRaises(MODULE.PEError):
+                MODULE.inspect_pe(path)
+
 
 if __name__ == "__main__":
     unittest.main()
