@@ -705,7 +705,26 @@ pub fn import_incoming_project(app: &mut EffectcraftApp, path: &str) -> Result<(
         }
 ''',
 """
-    new_open = """    "effectcraft": '''        if let Err(error) = effectcraft_ui_egui::menus::import_incoming_project(&mut self.inner, path) {
+    new_open = """    "effectcraft": '''        let extension = std::path::Path::new(path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        // Incoming shared plug-ins must use the existing plug-in loader, not the
+        // project-format router (which intentionally rejects .aex/.wasm/.dll files).
+        let is_plugin = matches!(extension.as_str(),
+            "wasm" | "wat" | "aex" | "dll" | "ofx" | "so" | "dylib"
+            | "plugin" | "bundle" | "prm" | "8bf" | "zxp" | "ccx")
+            || (extension == "zip"
+                && effectcraft_ui_egui::plugin_migration::looks_like_plugin_archive(path));
+        if is_plugin {
+            if let Err(error) = effectcraft_ui_egui::menus::invoke(
+                &mut self.inner, ctx, "effect.plugins.load",
+                serde_json::json!({ "path": path }),
+            ) {
+                log::error!("Could not import the incoming plug-in {path}: {error}");
+            }
+        } else if let Err(error) = effectcraft_ui_egui::menus::import_incoming_project(&mut self.inner, path) {
             log::error!("Could not automatically import the incoming project {path}: {error}");
         }
 ''',

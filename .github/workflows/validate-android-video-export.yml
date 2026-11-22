@@ -1,0 +1,44 @@
+name: Validate Android video export pipeline
+
+on:
+  pull_request:
+    paths:
+      - '.github/scripts/rewrite_android_video_export_pipeline.py'
+      - '.github/workflows/validate-android-video-export.yml'
+      - 'vendor/effectcraft/crates/export/src/**'
+      - '.github/workflows/build-effectcraft-ai.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  patch-and-export-tests:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 45
+    steps:
+      - name: Check out EffectCraft integration scripts
+        uses: actions/checkout@v4
+      - name: Check out the exact upstream EffectCraft source baseline
+        uses: actions/checkout@v4
+        with:
+          repository: storytold/effectcraft
+          ref: v0.21.1
+          path: effectcraft-source
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate and apply Android video export rewrite
+        env:
+          EFFECTCRAFT_DIR: effectcraft-source
+        run: |
+          set -euo pipefail
+          python3 -m py_compile .github/scripts/rewrite_android_video_export_pipeline.py
+          python3 .github/scripts/rewrite_android_video_export_pipeline.py
+          grep -Fq 'EFFECTCRAFT_ANDROID_SEQUENTIAL_VIDEO_PIPELINE_V1' effectcraft-source/crates/export/src/pipeline.rs
+          grep -Fq 'EFFECTCRAFT_ANDROID_SEQUENTIAL_VIDEO_PIPELINE_V1' effectcraft-source/crates/export/src/lib.rs
+          grep -Fq 'EFFECTCRAFT_ATOMIC_EXPORT_OUTPUT_V1' effectcraft-source/crates/export/src/out.rs
+          grep -Fq 'android_atomic_output_tests' effectcraft-source/crates/export/src/out.rs
+      - name: Compile and run export crate tests
+        working-directory: effectcraft-source
+        run: cargo test --locked --manifest-path crates/export/Cargo.toml

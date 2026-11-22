@@ -44,21 +44,21 @@ pub(crate) enum MigrationMode {
 impl MigrationMode {
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::AutoBest => "自动比较并选择完整度最高的方案",
-            Self::CpuTranslation => "指令转译优先（Box64 / Box86 / FEX / QEMU）",
-            Self::ForceCompatibility => "强制兼容（运行库 / 接口 / 画面 / 渲染回退）",
-            Self::AggressivePort => "暴力移植 / 重构（PE 深度分析 + 已接入后端逐个试跑）",
-            Self::ManualBackend => "手动查看并指定转译后端",
+            Self::AutoBest => "自动推荐",
+            Self::CpuTranslation => "转译",
+            Self::ForceCompatibility => "强行兼容（内部阶段，不单独显示）",
+            Self::AggressivePort => "反编译+暴力移植+强行兼容",
+            Self::ManualBackend => "其他选项",
         }
     }
 
     pub(crate) fn description(self) -> &'static str {
         match self {
-            Self::AutoBest => "逐个测试适用路线，按功能完整度、画质、参数/关键帧和稳定性评分，自动选择最高分且通过硬性测试的方案。",
-            Self::CpuTranslation => "优先尝试适用的 CPU 指令动态转译路线；不兼容的系统 API 或插件宿主接口仍必须单独适配。",
-            Self::ForceCompatibility => "逐项尝试可选宿主接口、运行库、像素格式、CPU 特性和 CPU/串行渲染回退；不伪造必需接口。",
-            Self::AggressivePort => "逐个 AEX 执行 PE 分析与已安装 Wine/Proton + FEXCore/Box64 隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。只有提供可用源代码且依赖/授权允许时才另行重编译；未知闭源插件不承诺自动还原为 ARM64。",
-            Self::ManualBackend => "分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；目前尚未集成可执行后端，指定只记录选择意向，不会谎称已经转译。",
+            Self::AutoBest => "分析插件格式、架构、依赖和可用候选路线；优先推荐已接入且通过实测的路线，没有通过测试的路线不会被标记为可用。",
+            Self::CpuTranslation => "展示该插件适用的 CPU 转译候选路线，包括各路线的运行环境、前置条件和实测状态；未接入的路线只列为候选。",
+            Self::ForceCompatibility => "组合路线内部的兼容处理阶段；不作为独立选项显示。",
+            Self::AggressivePort => "组合路线内部按顺序处理：① Ghidra 深度分析插件结构、依赖、资源与控制流，并结合参考帧/参数行为重构效果算法；② 强行兼容运行库、插件宿主接口、像素格式、渲染与 CPU 特性；③ 前两阶段仍无法满足目标时，最后尝试 Remill + LLVM IR 暴力移植兜底。Ghidra 不作为独立顶层按钮；每阶段必须记录真实执行状态，未接入或未通过测试时明确标记未完成。",
+            Self::ManualBackend => "高级导入：分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；尚未接入的后端只记录选择意向。",
         }
     }
 }
@@ -465,8 +465,8 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     .order(Order::Foreground)
                     .movable(true)
                     .collapsible(false)
-                    .resizable(false)
-                    .default_width(330.0)
+                    .resizable(true)
+                    .default_width(360.0)
                     .default_pos(pos2(screen.center().x - 165.0, screen.center().y - 110.0))
                     .open(&mut open)
                     .show(ctx, |ui| {
@@ -477,12 +477,64 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.label("扫描完成后，结果页会展示检测到的每个插件的全部适用路线，不省略候选项。");
                         ui.radio_value(mode, MigrationMode::AutoBest, MigrationMode::AutoBest.label());
                         ui.radio_value(mode, MigrationMode::CpuTranslation, MigrationMode::CpuTranslation.label());
-                        ui.radio_value(mode, MigrationMode::ForceCompatibility, MigrationMode::ForceCompatibility.label());
-                        ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
                         ui.radio_value(mode, MigrationMode::ManualBackend, MigrationMode::ManualBackend.label());
+                        ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
                         ui.small(mode.description());
+                        if *mode == MigrationMode::ManualBackend {
+                            ui.add_space(6.0);
+                            ui.group(|ui| {
+                                ui.strong("其他原有导入路径（可上下滑动）");
+                                ui.label("以下列出完整路线目录；开始扫描后，会按插件实际格式和架构显示可选项。");
+                                egui::ScrollArea::vertical()
+                                    .id_salt("effectcraft-other-plugin-routes-scroll")
+                                    .max_height(190.0)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        ui.collapsing("Windows 64 位插件", |ui| {
+                                            ui.label("Wine64 + Box64：优先动态转译候选路线");
+                                            ui.label("Wine64 + FEX：备选动态转译路线");
+                                            ui.label("Wine64 + QEMU x86-64：兼容性对照路线");
+                                            ui.label("Remill + LLVM IR → ARM64：指令提升与重编译路线");
+                                            ui.label("Ghidra 深度分析 + 效果算法重写：效果重构路线");
+                                        });
+                                        ui.collapsing("Windows 32 位插件", |ui| {
+                                            ui.label("Wine32 + Box86：32 位动态转译路线");
+                                            ui.label("Wine WOW64 + Box64：实验性兼容路线");
+                                            ui.label("Wine32 + FEX：备选动态转译路线");
+                                            ui.label("Wine32 + QEMU i386：兼容性对照路线");
+                                            ui.label("Remill + LLVM IR → ARM64：指令提升与重编译路线");
+                                            ui.label("Ghidra 深度分析 + 效果算法重写：效果重构路线");
+                                        });
+                                        ui.collapsing("Linux 64 位插件", |ui| {
+                                            ui.label("Box64：x86-64 ELF 动态转译");
+                                            ui.label("FEX：x86-64 动态转译备选");
+                                            ui.label("QEMU x86-64：用户态兼容性对照");
+                                        });
+                                        ui.collapsing("Linux 32 位插件", |ui| {
+                                            ui.label("Box86：i386 ELF 动态转译");
+                                            ui.label("FEX i386：32 位动态转译备选");
+                                            ui.label("QEMU i386：用户态兼容性对照");
+                                        });
+                                        ui.collapsing("ARM64 原生路线", |ui| {
+                                            ui.label("Windows ARM64：原生指令 + Windows API 适配");
+                                            ui.label("Linux ARM64：原生加载 + Linux/Android ABI 适配");
+                                        });
+                                        ui.collapsing("苹果系统插件", |ui| {
+                                            ui.label("Mach-O 静态分析 + 源码重编译或效果重实现");
+                                        });
+                                        ui.separator();
+                                        ui.strong("兼容处理与重构子路径");
+                                        ui.label("旧版系统与运行库兼容（Windows API、合法运行库依赖）");
+                                        ui.label("插件宿主接口兼容（按宿主 ABI 适配，可选接口模拟）");
+                                        ui.label("画面格式适配（RGBA/BGRA、像素深度、Alpha、行跨度）");
+                                        ui.label("渲染兼容回退（GPU/CPU、并行/串行、逐帧/时间序列）");
+                                        ui.label("CPU 指令与功能降级（按设备能力选择可用特性）");
+                                        ui.label("源码重编译、二进制深度分析、指令提升及效果算法重构");
+                                    });
+                            });
+                        }
                         ui.add_space(6.0);
-                        ui.label("当前版本会分析架构、列出路线并保留原件；尚未接入的运行时/宿主接口会显示待实现，不会伪报成功。");
+                        ui.label("扫描会识别插件架构并列出适用路线；尚未接入或未通过实测的运行环境会明确标记，不会伪报成功。");
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
                             if ui.button("取消").clicked() { cancel = true; }
@@ -564,7 +616,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                                     }
                                     if !group.compatibility_profiles.is_empty() {
                                         ui.separator();
-                                        ui.strong("强制兼容 / 暴力移植子方案（全部展示）");
+                                        ui.strong("组合路线内部处理阶段（按顺序执行，不单独显示为入口）");
                                         for profile in group.compatibility_profiles.iter() {
                                             ui.small(format!("• {profile}"));
                                         }
@@ -574,7 +626,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                             }
                         });
                         ui.add_space(6.0);
-                        ui.small("AEX 原生插件可在已安装的隔离 Windows 环境中实测 FEXCore / Box64；Remill、Ghidra、Box86、QEMU 等其他路线仍按各自状态显示，不会伪报已执行。");
+                        ui.small("Ghidra 分析/算法重构、强行兼容和 Remill 暴力移植均属于组合路线内部阶段；只有实际接入并完成测试后才会显示执行通过。FEXCore / Box64 等运行时也按真实实测状态显示。");
                         ui.add_space(8.0);
                         if ui.button("确认选择并查看移植报告").clicked() { confirm = true; }
                     });

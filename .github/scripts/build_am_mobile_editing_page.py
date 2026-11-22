@@ -540,6 +540,15 @@ fn am_effect_browser(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             ui.ctx().request_repaint();
         }
     }
+    // Android touch scrolling can arrive as smooth-scroll deltas instead of a mouse wheel.
+    // Apply the delta to this browser's own PanelScroll offset; do not steal card taps.
+    if ui.input(|i| i.has_touch_screen()) && ui.input(|i| i.pointer_hover_pos().is_some_and(|pt| body.contains(pt))) {
+        let delta = ui.input(|i| i.smooth_scroll_delta.y);
+        if delta.abs() > 0.0 {
+            scroll.offset = (scroll.offset - delta).max(0.0);
+            ui.ctx().request_repaint();
+        }
+    }
     if pan.drag_stopped() {
         ui.ctx().data_mut(|d| d.remove::<f32>(pan_state));
     }
@@ -712,10 +721,17 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     };
     let duration = comp.duration.seconds().max(0.001);
     let view_id = Id::new("am-independent-timeline-view");
-    let mut view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id)).unwrap_or_default();
-    view.zoom = view.zoom.clamp(1.0, 16.0);
+    let stored_view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id));
+    let mut view = stored_view.unwrap_or_else(|| TimelineView {
+        // Start with roughly ten seconds visible, rather than fitting an hour-long
+        // composition into a few hundred pixels. This gives AM-style precise trimming.
+        start: 0.0,
+        zoom: (duration / 10.0).clamp(1.0, 3600.0),
+        scroll_y: 0.0,
+    });
+    view.zoom = view.zoom.clamp(1.0, 3600.0);
 
-    let label_w = NAME_W.min((rect.width() * 0.28).max(64.0));
+    let label_w = NAME_W.min((rect.width() * 0.22).max(56.0));
     let ruler_h = 28.0;
     let ruler = Rect::from_min_size(rect.min, vec2(rect.width(), ruler_h));
     let content = Rect::from_min_max(pos2(rect.min.x, ruler.max.y), rect.max);
@@ -782,12 +798,22 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         seek_to(app, target.clamp(0.0, duration));
     }
 
-    let tick_count = 5;
-    for i in 0..=tick_count {
-        let time = view.start + visible_secs * i as f64 / tick_count as f64;
-        let x = tracks.min.x + tracks.width() * i as f32 / tick_count as f32;
-        p.line_segment([pos2(x, ruler.min.y + 18.0), pos2(x, rect.max.y)], Stroke::new(1.0, t.separator.gamma_multiply(0.35)));
-        p.text(pos2(x + 3.0, ruler.min.y + 6.0), Align2::LEFT_TOP, format!("{time:.1}s"), Tokens::ui(9.0), t.text_faint);
+    // A second-based ruler with readable major labels and intermediate ticks.
+    // Do not divide the entire composition into only five huge jumps.
+    let tick_step = if visible_secs <= 12.0 { 1.0 } else if visible_secs <= 30.0 { 2.0 } else if visible_secs <= 90.0 { 5.0 } else { 10.0 };
+    let mut tick_time = (view.start / tick_step).floor() * tick_step;
+    while tick_time <= view.start + visible_secs + tick_step {
+        let x = tracks.min.x + ((tick_time - view.start) * pps) as f32;
+        if x >= tracks.min.x && x <= tracks.max.x {
+            let major = ((tick_time / tick_step).round() as i64) % 5 == 0;
+            let tick_y = if major { ruler.min.y + 15.0 } else { ruler.min.y + 21.0 };
+            p.line_segment([pos2(x, tick_y), pos2(x, rect.max.y)], Stroke::new(if major { 1.0 } else { 0.7 }, t.separator.gamma_multiply(if major { 0.55 } else { 0.25 })));
+            if major || tick_step >= 5.0 {
+                let seconds = tick_time.max(0.0) as u64;
+                p.text(pos2(x + 3.0, ruler.min.y + 4.0), Align2::LEFT_TOP, format!("{:02}:{:02}", seconds / 60, seconds % 60), Tokens::ui(8.5), t.text_faint);
+            }
+        }
+        tick_time += tick_step;
     }
 
     let row_count = comp.layers.len();
@@ -937,6 +963,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 am_toggle_multi_selected(app, ui.ctx(), layer.id.0);
             } else {
                 select_layer(app, layer.id.0);
+                // A clip tap opens its operation sheet; keyframes/curves live inside that sheet.
                 am_open_layer_actions(ui.ctx(), layer.id.0);
             }
         }
@@ -996,10 +1023,16 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                     ui.ctx().data(|d| d.get_temp::<(f32, Vec<u64>)>(drag_id)),
                 )
             {
-                let delta = (pt.x - last_x) as f64 / pps;
-                if delta.abs() > 0.00001 {
+                // Match AM's deliberate one-second trim steps. Keep the unconsumed
+                // finger movement by advancing the anchor only by whole seconds applied;
+                // tiny touch jitter cannot jump the clip by minutes or hours.
+                let raw_delta = (pt.x - last_x) as f64 / pps;
+                let whole_seconds = raw_delta.abs().floor();
+                if whole_seconds >= 1.0 {
+                    let delta = raw_delta.signum() * whole_seconds.min(60.0);
                     apply_timing(app, &ids, field, delta);
-                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, (pt.x, ids)));
+                    let consumed_px = (delta * pps) as f32;
+                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, (last_x + consumed_px, ids)));
                 }
             }
             if response.drag_stopped() {
@@ -1094,6 +1127,7 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         "controls" | "fill" | "border" | "shape" => Some(PanelKind::EffectControls),
         "project" => Some(PanelKind::Project),
         "keyframes" => Some(PanelKind::Timeline),
+        "curves" => Some(PanelKind::Timeline),
         "add" => None,
         _ => return,
     };
@@ -1116,25 +1150,12 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         "properties" => "属性",
         "project" => "项目",
         "keyframes" => "关键帧 / 曲线",
+        "curves" => "曲线",
         _ => "工具",
     };
     p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, title, Tokens::semibold(11.0), t.text);
 
-    // The portrait clip timeline remains quick to use; this button opens the original
-    // native Ae Timeline panel for detailed keyframe and graph/curve editing.
-    if kind != "add" {
-        let switch_rect = Rect::from_min_size(
-            pos2(header.max.x - 102.0, header.min.y + 2.0),
-            vec2(60.0, 28.0),
-        );
-        let switch_label = if kind == "keyframes" { "返回" } else { "关键帧" };
-        let switch = ui.put(switch_rect, egui::Button::new(switch_label).min_size(switch_rect.size()));
-        app.auto.add_response("am.drawer.keyframes", &switch, switch_label);
-        if switch.clicked() {
-            let next = if kind == "keyframes" { "controls" } else { "keyframes" };
-            ui.ctx().data_mut(|d| d.insert_temp(id, next.to_string()));
-        }
-    }
+    // Keyframes are opened only from the selected clip's action sheet below.
 
     let close = Rect::from_min_size(pos2(header.max.x - 36.0, header.min.y + 2.0), vec2(32.0, 28.0));
     let response = ui.put(close, egui::Button::new("×").min_size(close.size()));
@@ -1276,10 +1297,12 @@ fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, 
         ("编辑形状", "shape"),
         ("预设", "presets"),
         ("效果", "effects"),
+        ("关键帧", "keyframes"),
+        ("曲线", "curves"),
     ];
     let start_y = header.max.y + 43.0;
     for (index, (label, kind)) in cards.into_iter().enumerate() {
-        let (column, row, columns) = if index < 3 { (index, 0, 3) } else { (index - 3, 1, 4) };
+        let (column, row, columns) = (index % 3, index / 3, 3);
         let card_gap = 5.0;
         let card_w = ((rect.width() - 16.0 - card_gap * (columns - 1) as f32) / columns as f32).max(1.0);
         let r = Rect::from_min_size(
@@ -1290,7 +1313,15 @@ fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, 
         app.auto.add_response(&format!("am.layer.category.{kind}"), &response, label);
         if response.clicked() {
             // Keep AM_ACTIVE_LAYER_ID so closing the category drawer returns to this sheet.
-            if kind == "effects" { am_open_effect_browser(ui.ctx(), Some(layer_id)); } else { ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), kind.to_string())); }
+            if kind == "effects" {
+                am_open_effect_browser(ui.ctx(), Some(layer_id));
+            } else if kind == "keyframes" || kind == "curves" {
+                // Open the existing native Timeline panel for this selected layer,
+                // while retaining the clip-operation sheet context.
+                ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), kind.to_string()));
+            } else {
+                ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), kind.to_string()));
+            }
         }
     }
 }
@@ -1337,7 +1368,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let bottom_rect = Rect::from_min_size(pos2(rect.min.x, rect.max.y - BOTTOM_H), vec2(rect.width(), BOTTOM_H));
     let middle_bottom = bottom_rect.min.y;
     let available = (middle_bottom - top_rect.max.y - TRANSPORT_H - 8.0).max(210.0);
-    let preview_h = (available * 0.36).clamp(130.0, 260.0).min((available - 160.0).max(100.0));
+    let preview_h = (available * 0.28).clamp(112.0, 210.0).min((available - 190.0).max(92.0));
     let preview_rect = Rect::from_min_size(pos2(rect.min.x, top_rect.max.y + 4.0), vec2(rect.width(), preview_h));
     let transport_rect = Rect::from_min_size(pos2(rect.min.x, preview_rect.max.y), vec2(rect.width(), TRANSPORT_H));
     let timeline_rect = Rect::from_min_max(pos2(rect.min.x, transport_rect.max.y), pos2(rect.max.x, middle_bottom));
@@ -1370,9 +1401,11 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         .or_else(|| active_layer.map(|id| format!("layer:{id}")));
     let sheet_h = if let Some(kind) = drawer_kind.as_deref() {
         if kind == "keyframes" {
-            (rect.height() * 0.68).clamp(260.0, 500.0).min(timeline_rect.height().max(220.0))
+            // Keep the AM preview and most of its clip timeline visible while editing
+            // keyframes in the same page; never switch to a separate full-screen editor.
+            (rect.height() * 0.42).clamp(220.0, 360.0).min(rect.height() * 0.46)
         } else if kind == "controls" {
-            (rect.height() * 0.56).clamp(250.0, 440.0).min(timeline_rect.height().max(220.0))
+            (rect.height() * 0.62).clamp(280.0, 520.0).min(rect.height() * 0.72)
         } else {
             (rect.height() * 0.42).clamp(180.0, 340.0).min(timeline_rect.height().max(140.0))
         }
@@ -1384,7 +1417,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let slide_progress = am_bottom_sheet_progress(ui.ctx(), sheet_key);
     if sheet_h > 0.0 {
         let target_rect = Rect::from_min_max(
-            pos2(rect.min.x, timeline_rect.max.y - sheet_h),
+            pos2(rect.min.x, bottom_rect.min.y - sheet_h),
             pos2(rect.max.x, bottom_rect.min.y),
         );
         let slide_offset = (1.0 - slide_progress) * sheet_h;
@@ -1515,7 +1548,8 @@ def verify(root: Path) -> None:
         "am.timeline.eye.",
         "am.addLayer.",
         "PanelKind::Timeline",
-        "am.drawer.keyframes",
+        '("关键帧", "keyframes"),',
+        '("曲线", "curves"),',
         "Tool::Pen",
         "Tool::Puppet",
         "照片/视频",

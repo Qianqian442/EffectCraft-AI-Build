@@ -246,7 +246,13 @@ impl State<'_> {
 
 /// Frames per parallel batch.
 pub(crate) fn batch_size() -> u64 {
-    rayon::current_num_threads().clamp(2, 16) as u64
+    // Android exports use a strict single-frame pipeline. The previous desktop strategy
+    // rendered the next batch while encoding the previous one; on mobile this retained
+    // multiple full-resolution frame buffers and could trigger LMK/OOM during export.
+    #[cfg(target_os = "android")]
+    { return 1; }
+    #[cfg(not(target_os = "android"))]
+    { rayon::current_num_threads().clamp(2, 16) as u64 }
 }
 
 /// Crop/pad 8-bit RGBA to `w`×`h` (codec rounding).

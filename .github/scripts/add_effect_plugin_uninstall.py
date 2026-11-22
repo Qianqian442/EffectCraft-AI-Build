@@ -200,6 +200,15 @@ fn plugins_unload(s: &mut Session, p: &Value) -> Result<Value> {
 def patch_engine(path: Path) -> None:
     source = path.read_text(encoding="utf-8")
     if MARKER in source:
+        # Recover safely from an older partial application: the marker may exist
+        # even when the built-in-module protection constant was never inserted.
+        if "BUILTIN_EFFECT_MODULES" not in source:
+            constant_start = EFFECT_HELPERS.index("const BUILTIN_EFFECT_MODULES")
+            constant_end = EFFECT_HELPERS.index("\n\n/// Only user WASM/WAT modules", constant_start)
+            constant_block = EFFECT_HELPERS[constant_start:constant_end] + "\n\n"
+            anchor = "/// Only user WASM/WAT modules stored directly in Ae's app-owned Plug-ins folder can be deleted.\n"
+            source = replace_once(source, anchor, constant_block + anchor, "recover built-in plug-in protection list")
+            path.write_text(source, encoding="utf-8")
         return
     list_anchor = "/// " + chr(96) + "effect.plugins.list" + chr(96) + ": the registered plug-in effects (WebAssembly or Rust).\n"
     source = replace_once(source, list_anchor, EFFECT_HELPERS + list_anchor, "plug-in uninstall helpers")

@@ -151,7 +151,13 @@ pub(crate) struct Beside(Option<rayon::ThreadPool>);
 
 impl Beside {
     fn new() -> Beside {
-        Beside(rayon::ThreadPoolBuilder::new().thread_name(|i| format!("export-encode-{i}")).build().ok())
+        // Android uses a strictly sequential render/encode loop. Spawning a second pool to
+        // overlap encoding with the next render retains additional large frame buffers and
+        // increases native encoder pressure on mobile devices.
+        #[cfg(target_os = "android")]
+        { return Beside(None); }
+        #[cfg(not(target_os = "android"))]
+        { Beside(rayon::ThreadPoolBuilder::new().thread_name(|i| format!("export-encode-{i}")).build().ok()) }
     }
 
     /// The process's encode threads, started by the first movie export and shared by all.

@@ -10,8 +10,21 @@ use crate::{ExportError, Result, io};
 pub type Sink = dyn Fn(&str, Vec<u8>) + Send + Sync;
 
 /// One output file being written.
+struct AtomicOutput {
+    writer: Option<BufWriter<std::fs::File>>,
+    temporary: Option<std::path::PathBuf>,
+    destination: std::path::PathBuf,
+}
+
+impl Drop for AtomicOutput {
+    fn drop(&mut self) {
+        // A failed/cancelled export must not leave a truncated MP4/MOV at the final path.
+        if let Some(path) = &self.temporary { let _ = std::fs::remove_file(path); }
+    }
+}
+
 pub(crate) enum Out<'a> {
-    File(BufWriter<std::fs::File>),
+    File(AtomicOutput),
     Mem { path: String, cur: Cursor<Vec<u8>>, sink: &'a Sink },
 }
 
@@ -23,7 +36,25 @@ pub(crate) fn create<'a>(sink: Option<&'a Sink>, path: &str) -> Result<Out<'a>> 
             if let Some(dir) = std::path::Path::new(path).parent().filter(|d| !d.as_os_str().is_empty()) {
                 std::fs::create_dir_all(dir).map_err(io)?;
             }
-            Ok(Out::File(BufWriter::new(std::fs::File::create(path).map_err(io)?)))
+            // Write beside the destination, then atomically publish only after the muxer
+            // has finished and the file has been flushed. This prevents a crash or failed
+            // encoder from leaving a half-written movie that looks like a completed export.
+            static NEXT_TEMP: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+            let destination = std::path::PathBuf::from(path);
+            let parent = destination.parent().filter(|d| !d.as_os_str().is_empty()).unwrap_or_else(|| std::path::Path::new("."));
+            let name = destination.file_name().and_then(|n| n.to_str()).unwrap_or("effectcraft-export");
+            let mut created = None;
+            for _ in 0..32 {
+                let serial = NEXT_TEMP.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                let temporary = parent.join(format!(".{name}.{}.{}.partial", std::process::id(), serial));
+                match std::fs::OpenOptions::new().write(true).read(true).create_new(true).open(&temporary) {
+                    Ok(file) => { created = Some((temporary, file)); break; }
+                    Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                    Err(error) => return Err(io(error)),
+                }
+            }
+            let (temporary, file) = created.ok_or_else(|| ExportError::Io("无法创建视频临时文件，请检查存储空间和目录权限。".into()))?;
+            Ok(Out::File(AtomicOutput { writer: Some(BufWriter::new(file)), temporary: Some(temporary), destination }))
         }
     }
 }
@@ -37,10 +68,17 @@ impl Out<'_> {
     /// Flush and close; a sink receives the contents now. Returns the file size.
     pub(crate) fn finish(self) -> Result<u64> {
         match self {
-            Out::File(mut w) => {
-                w.flush().map_err(io)?;
-                let f = w.into_inner().map_err(|e| ExportError::Io(e.to_string()))?;
-                Ok(f.metadata().map(|m| m.len()).unwrap_or(0))
+            Out::File(mut output) => {
+                let mut writer = output.writer.take().ok_or_else(|| ExportError::Io("导出文件写入器状态无效。".into()))?;
+                writer.flush().map_err(io)?;
+                let file = writer.into_inner().map_err(|e| ExportError::Io(e.to_string()))?;
+                file.sync_all().map_err(io)?;
+                let bytes = file.metadata().map(|m| m.len()).unwrap_or(0);
+                drop(file);
+                std::fs::rename(output.temporary.as_ref().ok_or_else(|| ExportError::Io("视频临时文件状态无效。".into()))?, &output.destination).map_err(io)?;
+                // The rename succeeded; prevent Drop from trying to remove the now-published file.
+                output.temporary = None;
+                Ok(bytes)
             }
             Out::Mem { path, cur, sink } => {
                 let data = cur.into_inner();
@@ -55,13 +93,13 @@ impl Out<'_> {
 impl Write for Out<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self {
-            Out::File(w) => w.write(buf),
+            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.write(buf), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },
             Out::Mem { cur, .. } => cur.write(buf),
         }
     }
     fn flush(&mut self) -> std::io::Result<()> {
         match self {
-            Out::File(w) => w.flush(),
+            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.flush(), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },
             Out::Mem { .. } => Ok(()),
         }
     }
@@ -70,7 +108,7 @@ impl Write for Out<'_> {
 impl Seek for Out<'_> {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
         match self {
-            Out::File(w) => w.seek(pos),
+            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.seek(pos), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },
             Out::Mem { cur, .. } => cur.seek(pos),
         }
     }

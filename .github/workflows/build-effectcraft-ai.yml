@@ -56,6 +56,7 @@ on:
       - '.github/scripts/configure_android_storage_fallback.py'
       - '.github/scripts/enable_android_missing_footage_relink.py'
       - '.github/scripts/harden_android_export_frame_scheduling.py'
+      - '.github/scripts/rewrite_android_video_export_pipeline.py'
       - '.github/scripts/auto_prompt_aep_missing_media_relink.py'
       - '.github/scripts/integrate_p2p_bridge.py'
       - 'admin-app/app/src/main/**'
@@ -701,6 +702,7 @@ jobs:
           python3 -m py_compile \
             .github/scripts/patch_export_dialog.py \
             .github/scripts/fix_android_export_button_crash.py \
+            .github/scripts/rewrite_android_video_export_pipeline.py \
             .github/scripts/fix_android_aep_playback_crash.py \
             .github/scripts/verify_android_source_patches.py \
             .github/scripts/bump_ae_version.py \
@@ -1578,6 +1580,13 @@ jobs:
           ! grep -Fq '"app.about"' "$FRONTEND_RS"
           ! grep -Fq 'app.about' "$MENUS_RS"
           echo "Verified Home plug-in management is beside account management and About Ae is removed."
+
+      - name: Rebuild Android video export as a sequential transactional pipeline
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/rewrite_android_video_export_pipeline.py
+          python3 build-assets/.github/scripts/rewrite_android_video_export_pipeline.py
 
       - name: Guard the Export button against immediate crashes
         env:
