@@ -13,7 +13,7 @@ def require(source: str, fragment: str, label: str) -> None:
 
 def main() -> None:
     source = JAVA.read_text(encoding="utf-8")
-    start = source.index("                    for (int backendIndex = 0; backendIndex < containers.length; backendIndex++) {")
+    start = source.index("                    int[] backendOrder =")
     end = source.index("                    if (passedTrials.isEmpty())", start)
     route_loop = source[start:end]
 
@@ -22,7 +22,10 @@ def main() -> None:
     require(source, "for (int pluginIndex = 0; pluginIndex < plugins.size(); pluginIndex++)", "test every AEX in the package")
     require(source, "EXIT:2", "report partial package success honestly")
     require(source, "while (entries.hasMoreElements())", "scan the complete ZIP entry list")
-    require(route_loop, "runAexSmokeTest(", "execute every installed candidate")
+    require(route_loop, "for (int backendIndex : backendOrder)", "execute the selected backend or every automatic candidate")
+    require(route_loop, "runAexSmokeTest(", "execute isolated AEX runtime trials")
+    require(source, '"fexcore".equals(backendPreference)', "honor manual FEXCore selection")
+    require(source, '"box64".equals(backendPreference)', "honor manual Box64 selection")
     require(route_loop, "passedTrials.add(trial)", "record only completed trials")
     if "return;" in route_loop:
         raise SystemExit("Route loop must not stop after the first passing backend.")
@@ -41,7 +44,7 @@ def main() -> None:
     require(source, "guest.getExitCode()", "require a normal worker exit")
     require(source, "validPngOutput(outputPng)", "validate output PNG signature and size")
     require(source, "No visual-fidelity score is", "do not invent unavailable reference-image metrics")
-    print("Aggressive-port runtime trial checks passed: all available routes are attempted, parameter values round-trip, repeated CPU frames are verified, and only measured passing routes are ranked.")
+    print("Aggressive-port runtime trial checks passed: auto mode compares installed routes, manual mode honors FEXCore/Box64 selection, parameter values round-trip, repeated CPU frames are verified, and only measured passing routes are ranked.")
 
 
 if __name__ == "__main__":
