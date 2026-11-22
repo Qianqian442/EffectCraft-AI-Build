@@ -444,6 +444,15 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let assets_dir = plugins_dir.join("Imported-Assets").join(format!("desktop_{stamp}"));
     let originals_dir = plugins_dir.join("Desktop-Originals").join(format!("desktop_{stamp}"));
 
+    // Preserve the exact incoming package before inspecting individual entries.
+    // This keeps original names, nested folders, manifests and relative resource paths
+    // available for later Adobe-specific translators and retry/export.
+    std::fs::create_dir_all(&originals_dir)
+        .map_err(|error| bad(CMD, format!("无法创建原始插件包目录：{error}")))?;
+    let original_archive = originals_dir.join("original-package.zip");
+    std::fs::copy(archive_path, &original_archive)
+        .map_err(|error| bad(CMD, format!("无法保留原始插件包：{error}")))?;
+
     let archive_file = std::fs::File::open(archive_path)
         .map_err(|error| bad(CMD, format!("无法读取插件 ZIP：{error}")))?;
     let mut archive = zip::ZipArchive::new(archive_file)
@@ -495,20 +504,29 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let extension = relative.extension().and_then(|value| value.to_str())
             .unwrap_or_default().to_ascii_lowercase();
 
+        let lower_path = entry_name.to_ascii_lowercase();
+        let is_scriptui_panel = lower_path.split('/').any(|part| part == "scriptui panels");
+        let is_cep_resource = lower_path.split('/').any(|part| {
+            matches!(part, "csxs" | "cep" | "client" | "host" | "meta-inf")
+        });
+        // Adobe After Effects formats are classified separately from EffectCraft/WASM.
+        // JSX is a normal ExtendScript script by default; it is a dockable panel only
+        // when the package path explicitly places it under ScriptUI Panels.
         let kind = if extension == "wasm" { "wasm" }
             else if extension == "wat" { "wat" }
-            else if extension == "jsx" { "panel" }
-            else if extension == "js" { "script" }
+            else if extension == "jsx" && is_scriptui_panel { "panel" }
+            else if extension == "jsx" { "script" }
+            else if extension == "js" && !is_cep_resource { "script" }
             else if ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
-                || entry_name.to_ascii_lowercase().contains(".plugin/")
-                || entry_name.to_ascii_lowercase().contains(".ofx.bundle/") { "native" }
-            else if ["cube", "3dl", "lut", "look", "csp", "spi1d", "spi3d", "spimtx", "cc", "ccc", "cdl", "ocio",
+                || lower_path.contains(".plugin/")
+                || lower_path.contains(".ofx.bundle/") { "native" }
+            else if ["zxp", "ccx", "ffx", "jsxbin",
+                     "cube", "3dl", "lut", "look", "csp", "spi1d", "spi3d", "spimtx", "cc", "ccc", "cdl", "ocio",
                      "png", "jpg", "jpeg", "webp", "tif", "tiff", "exr", "ttf", "otf",
-                     "json", "xml", "txt", "md", "toml", "plist", "rsrc", "r", "rc", "strings", "manifest",
+                     "json", "xml", "html", "css", "js", "txt", "md", "toml", "plist", "rsrc", "r", "rc", "strings", "manifest",
                      "yaml", "yml", "ini", "config", "pdb", "map", "cmake", "mk", "sh", "py", "gradle",
                      "glsl", "frag", "vert", "wgsl", "hlsl", "dctl", "metal",
                      "fx", "osl", "h", "hpp", "c", "cpp", "rs", "sbsar"].contains(&extension.as_str()) { "asset" }
-            else if extension == "jsxbin" { "asset" }
             else { "unknown" };
 
         if kind == "unknown" {
@@ -722,6 +740,12 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         }
     }
 
+    // Adobe-specific handling: .aex is retained and analyzed as a native Windows plug-in
+    // candidate; it is NOT considered runnable merely because a CPU translation route exists.
+    // .jsx scripts and ScriptUI panels are installed by distinct routes above. CEP/UXP
+    // packages, .ffx presets and .jsxbin are preserved intact for their dedicated runtimes;
+    // they are not executed or translated by this generic importer yet.
+
     // Automatically rank tested routes; current unexecuted plans receive no score and no selection.
     rank_desktop_native_trials(&mut native_metadata);
     let compatibility_match_count = native_mappings.len();
@@ -773,8 +797,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let native_count = native_names.len();
     let skipped_count = skipped_names.len();
     let report = format!(
-        "电脑插件包分析报告\n时间：{stamp}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入脚本文件：{script_count}\n已归档素材和源码：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息统计：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\nCPU 转译目标为 Android ARM64（arm64-v8a）。导入分析会按文件格式建立候选路线：Windows x86-64 可比较 Wine+Box64、Wine+FEX、Wine+QEMU user-mode；Windows x86 可比较 Wine32+Box86、Wine WOW64+Box64、Wine32+FEX、Wine32+QEMU；Linux ELF 可比较 Box64/Box86、FEX、QEMU user-mode。只有系统 ABI、客体运行库、内核页大小和插件宿主接口满足条件时才属于可试路线。Box64/Box86/FEX/QEMU 是运行时动态转译/模拟，不会把原始插件文件改写成 ARM64 二进制。当前版本仅识别架构、生成候选顺序与强制兼容策略，并保存原件；所有候选路线均标记 not_run_runtime_not_integrated，translation_executed=false，尚未执行逐项试跑。\n.aex/.dll/.ofx/.plugin 等原生二进制不会在 Ae 主进程中加载或执行。OpenFX 插件需要独立 OFX Host API 桥接；.aex 还需要 Adobe After Effects SDK 宿主接口适配。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n移植策略：目标是逐个候选后端在隔离副本中进行同一套加载、宿主 API、参数、预览渲染、最终渲染、关键帧/时序、稳定性、画质和性能测试；按功能完整度与稳定性评分后仅导入通过硬性门槛的最高分方案。强制兼容模式会逐项尝试可选 API 兼容层、像素格式转换、CPU/串行渲染回退与源码重编译/二进制分析重构；不得伪造必需 API，不得绕过插件授权/DRM。当前候选路线和兼容配置只是试验计划，尚未执行。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并在内部分析；原始英文参数文字仅用于兼容匹配，不会显示在界面或报告中，也不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
-        assets_dir.display(), originals_dir.display()
+        "电脑插件包分析报告（含 Adobe After Effects 格式识别）\n时间：{stamp}\n原始压缩包完整保存在：{}\n\n已安装效果模块：{wasm_count}\n已安装脚本交互面板：{panel_count}\n已导入 ExtendScript 脚本：{script_count}\n已归档素材/CEP/UXP/FFX/JSXBIN 文件：{asset_count}\n已保存电脑原生插件原件：{native_count}\n已匹配内置兼容效果：{compatibility_match_count}\n{compatibility_summary}\n\n从电脑原生插件中提取的可读信息统计：{metadata_summary}\n跳过文件：{skipped_count}\n\n说明：只有效果模块、模块文本，以及本应用兼容的脚本和面板会进入对应导入流程。\nCPU 转译目标为 Android ARM64（arm64-v8a）。导入分析会按文件格式建立候选路线：Windows x86-64 可比较 Wine+Box64、Wine+FEX、Wine+QEMU user-mode；Windows x86 可比较 Wine32+Box86、Wine WOW64+Box64、Wine32+FEX、Wine32+QEMU；Linux ELF 可比较 Box64/Box86、FEX、QEMU user-mode。只有系统 ABI、客体运行库、内核页大小和插件宿主接口满足条件时才属于可试路线。Box64/Box86/FEX/QEMU 是运行时动态转译/模拟，不会把原始插件文件改写成 ARM64 二进制。当前版本仅识别架构、生成候选顺序与强制兼容策略，并保存原件；所有候选路线均标记 not_run_runtime_not_integrated，translation_executed=false，尚未执行逐项试跑。\n.aex/.dll/.ofx/.plugin 等原生二进制不会在 Ae 主进程中加载或执行。OpenFX 插件需要独立 OFX Host API 桥接；.aex 还需要 Adobe After Effects SDK 宿主接口适配。若文件名匹配到内置兼容效果，报告会列出替代效果；替代效果并非原厂插件。\n移植策略：目标是逐个候选后端在隔离副本中进行同一套加载、宿主 API、参数、预览渲染、最终渲染、关键帧/时序、稳定性、画质和性能测试；按功能完整度与稳定性评分后仅导入通过硬性门槛的最高分方案。强制兼容模式会逐项尝试可选 API 兼容层、像素格式转换、CPU/串行渲染回退与源码重编译/二进制分析重构；不得伪造必需 API，不得绕过插件授权/DRM。当前候选路线和兼容配置只是试验计划，尚未执行。\n.cube 文件可通过内置“应用颜色查找表”效果加载；.3dl/.csp/.spi1d/.spi3d/.spimtx/.cc/.ccc/.cdl 和 .ocio 等色彩配置文件保留给内置色彩管理与文件变换流程读取。插件资源信息、.r、.rc、.rsrc、.plist 属性清单文件和已编译脚本文件会归档并在内部分析；原始英文参数文字仅用于兼容匹配，不会显示在界面或报告中，也不会直接执行。纹理、字体和源码会作为素材保存，不会自动变成可运行插件。\n效果模块、脚本面板和素材存档目录位于：{}\n电脑版原生插件原件目录位于：{}\n",
+        original_archive.display(), assets_dir.display(), originals_dir.display()
     );
     std::fs::write(&report_path, report)
         .map_err(|error| bad(CMD, format!("无法保存插件分析报告：{error}")))?;
