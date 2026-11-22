@@ -16,8 +16,8 @@ from pathlib import Path
 MAX_FILE_BYTES = 64 * 1024 * 1024
 MAX_STRINGS = 512
 MAX_STRING_LENGTH = 240
-ASCII_RUN = re.compile(rb"[\\x20-\\x7e]{4,}")
-UTF16_RUN = re.compile(rb"(?:[\\x20-\\x7e]\\x00){4,}")
+ASCII_RUN = re.compile(rb"[\x20-\x7e]{4,}")
+UTF16_RUN = re.compile(rb"(?:[\x20-\x7e]\x00){4,}")
 
 
 def extract_strings(data: bytes) -> list[str]:
@@ -88,7 +88,7 @@ def main() -> None:
         }
     rendered = json.dumps(report, ensure_ascii=False, indent=2)
     if args.output:
-        args.output.write_text(rendered + "\\n", encoding="utf-8")
+        args.output.write_text(rendered + "\n", encoding="utf-8")
     else:
         print(rendered)
 
