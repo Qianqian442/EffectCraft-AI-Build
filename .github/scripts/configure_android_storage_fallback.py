@@ -612,8 +612,9 @@ def patch_builder(builder: Path) -> None:
                 && effectcraft_ui_egui::plugin_migration::looks_like_plugin_archive(path));
         let import_command = if is_plugin_archive
             || matches!(extension.as_str(),
-                "wasm" | "wat" | "aex" | "dll" | "ofx" | "so" | "dylib"
-                | "plugin" | "bundle" | "prm" | "8bf")
+                "wasm" | "wat" | "aex" | "pbk" | "pbg" | "8bi" | "8bf"
+                | "dll" | "ofx" | "so" | "dylib" | "plugin" | "bundle" | "prm"
+                | "jsxbin" | "ffx")
         {
             Some("effect.plugins.load")
         } else if matches!(extension.as_str(), "jsx" | "js") {
