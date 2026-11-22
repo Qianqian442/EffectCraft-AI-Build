@@ -47,6 +47,20 @@ class AdobeAeInventoryTests(unittest.TestCase):
             self.assertEqual(result["counts"]["project_not_plugin"], 1)
             self.assertEqual(len(result["skipped"]), 1)
 
+    def test_zxp_and_ccx_are_inspected_as_zip_archives_without_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for suffix, expected in ((".zxp", "cep_extension_candidate"), (".ccx", "uxp_extension_candidate")):
+                archive = Path(tmp) / f"extension{suffix}"
+                with zipfile.ZipFile(archive, "w") as zf:
+                    zf.writestr("manifest.json", '{"id":"example.panel","name":"Example"}')
+                    zf.writestr("assets/panel.js", "/* package resource */")
+                result = MODULE.inspect_zip(archive)
+                self.assertEqual(result["compatibility_status"], "inventory_only_not_executed")
+                self.assertFalse(result["execution_performed"])
+                self.assertEqual(result["counts"][expected], 1)
+                self.assertEqual(len(result["manifests"]), 1)
+                self.assertTrue(result["manifests"][0]["valid_json"])
+
 
 if __name__ == "__main__":
     unittest.main()
