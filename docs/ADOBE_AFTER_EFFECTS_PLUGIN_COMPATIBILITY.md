@@ -6,6 +6,9 @@ The compatibility target is Adobe After Effects (desktop), not EffectCraft or an
 
 ## Verified Adobe extension families
 
+Adobe's current SDK distinguishes effect plug-ins, general plug-ins (AEGPs), and input/output plug-ins (AEIOs). Effects add renderable image operations; AEGPs can add commands, panels, project operations and render-queue workflows; AEIOs add media-format support. Do not collapse all native .aex files into image effects.
+
+
 | Family | Desktop package/file | Desktop purpose | Android implementation target |
 |---|---|---|---|
 | Native AE plug-ins | Windows `.aex`; Adobe also documents `.pbk` and `.pbg` modules | Effects, file-format import/export, general host integration | Adobe SDK host adapter plus isolated Windows guest; actual support requires real host callbacks and a successful render/import test |
@@ -37,7 +40,7 @@ Do not merge these choices into one opaque button or silently remove any option.
 - Box64/Wine/FEX/QEMU are candidate guest/runtime components; none automatically provides the Adobe After Effects host SDK. Keep instruction translation, OS/API compatibility, and Adobe host-ABI emulation as separate layers.
 - Aggressive PE/IR reconstruction is a static analysis and porting aid, not proof that closed-source plug-ins have been automatically converted into ARM64 code. Never label a plugin as ported until the output passes host/API and render tests.
 - CEP and UXP are different runtimes. Do not conflate `.zxp` with `.ccx`, and do not treat archive extraction as successful panel execution.
-- UXP for After Effects is a recent evolving target; inspect the actual After Effects host/version declaration and supported API surface rather than assuming all UXP plug-ins for other Adobe apps work in AE.
+- UXP for After Effects is a new, version-sensitive rollout. Adobe's September 24, 2026 announcement describes a phased transition away from CEP; the public beta announcement says CEP plug-ins are expected to be rewritten for UXP while standalone ExtendScript scripts continue. Inspect the actual AE host/version declaration and supported API surface; do not assume UXP support in another Adobe app implies AE support.
 - `.ffx` is an animation preset, not an executable native plug-in. Translate supported preset constructs into native Ae effects/properties/keyframes; report unsupported constructs explicitly.
 - Do not execute imported packages automatically. Validate manifests, permissions, archive paths and size limits; retain the original package and isolate untrusted code.
 
