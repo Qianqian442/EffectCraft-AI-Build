@@ -83,6 +83,16 @@ pub(crate) enum ImportState {
         success: bool,
         groups: Vec<NativeRouteGroup>,
         selected_routes: Vec<String>,
+        path: String,
+        temporary_archive: bool,
+    },
+    AexRuntimeTesting {
+        title: String,
+        message: String,
+        success: bool,
+        request_id: String,
+        path: String,
+        temporary_archive: bool,
     },
     Result { title: String, message: String, success: bool },
 }
@@ -438,7 +448,8 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
         Scanned(String, MigrationMode, Result<ScanReport, String>),
         Close,
         Promote(String, String, bool),
-        RoutesConfirmed(String, String, bool, Vec<NativeRouteGroup>, Vec<String>),
+        RoutesConfirmed(String, String, bool, Vec<NativeRouteGroup>, Vec<String>, String, bool),
+        AexTestComplete(String, String, bool, String, String, bool),
     }
     let mut action: Option<Action> = None;
 
@@ -507,7 +518,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 ctx.request_repaint_after(Duration::from_millis(100));
                 if let Some(result) = received { action = Some(Action::Scanned(path.clone(), *mode, result)); }
             }
-            ImportState::RouteSelection { title, message, success, groups, selected_routes } => {
+            ImportState::RouteSelection { title, message, success, groups, selected_routes, path, temporary_archive } => {
                 let mut open = true;
                 let mut confirm = false;
                 let screen = ctx.content_rect();
@@ -563,7 +574,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                             }
                         });
                         ui.add_space(6.0);
-                        ui.small("说明：本版本可查看并保存你的路线偏好；Box64/Box86、FEX、QEMU、Wine 的实际执行器及插件宿主桥接尚未集成，未实测路线不会被标记为已移植。");
+                        ui.small("AEX 原生插件可在已安装的隔离 Windows 环境中实测 FEXCore / Box64；Remill、Ghidra、Box86、QEMU 等其他路线仍按各自状态显示，不会伪报已执行。");
                         ui.add_space(8.0);
                         if ui.button("确认选择并查看移植报告").clicked() { confirm = true; }
                     });
@@ -574,7 +585,41 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         *success,
                         groups.clone(),
                         selected_routes.clone(),
+                        path.clone(),
+                        *temporary_archive,
                     ));
+                }
+            }
+            ImportState::AexRuntimeTesting { title, message, success, request_id, path, temporary_archive } => {
+                let status = match crate::poll_windows_compat_runtime_install(request_id) {
+                    Ok(Some(value)) => value,
+                    Ok(None) => "正在等待隔离 AEX 宿主返回状态…".to_string(),
+                    Err(error) => format!("ERROR: {error}"),
+                };
+                let finished = status.starts_with("EXIT:") || status.starts_with("ERROR:");
+                let screen = ctx.content_rect();
+                egui::Window::new("Adobe AEX 原生插件实测")
+                    .id(Id::new("effectcraft-aex-runtime-testing"))
+                    .order(Order::Foreground)
+                    .movable(true)
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_width(370.0)
+                    .default_pos(pos2(screen.center().x - 185.0, screen.center().y - 110.0))
+                    .show(ctx, |ui| {
+                        ui.label("正在隔离测试插件加载、参数往返与重复 CPU 帧渲染。");
+                        ui.add_space(6.0);
+                        ui.spinner();
+                        egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+                            ui.label(status.as_str());
+                        });
+                    });
+                if finished {
+                    action = Some(Action::AexTestComplete(
+                        title.clone(), message.clone(), *success, status, path.clone(), *temporary_archive
+                    ));
+                } else {
+                    ctx.request_repaint_after(Duration::from_millis(300));
                 }
             }
             ImportState::ProgressComplete { title: _, message: _, success: _, since } => {
@@ -649,9 +694,6 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 let temporary_archive = Path::new(&path).file_name()
                     .is_some_and(|name| name.to_string_lossy().starts_with("effectcraft-desktop-plugin-"));
                 let import_result = crate::menus::invoke(app, ctx, "effect.plugins.load", json!({"path": path.clone()}));
-                if temporary_archive {
-                    let _ = std::fs::remove_file(&path);
-                }
                 match import_result {
                     Ok(value) => {
                         let (title, message, success) = result_summary(&scan, &value, mode);
@@ -664,14 +706,22 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                                 success,
                                 groups,
                                 selected_routes,
+                                path: path.clone(),
+                                temporary_archive,
                             });
-                        } else if success {
-                            app.plugin_import = Some(ImportState::ProgressComplete { title, message, success, since: Instant::now() });
                         } else {
-                            app.plugin_import = Some(ImportState::Result { title, message, success });
+                            if temporary_archive { let _ = std::fs::remove_file(&path); }
+                            if success {
+                                app.plugin_import = Some(ImportState::ProgressComplete { title, message, success, since: Instant::now() });
+                            } else {
+                                app.plugin_import = Some(ImportState::Result { title, message, success });
+                            }
                         }
                     }
-                    Err(error) => app.plugin_import = Some(ImportState::Result { title: "移植失败".into(), message: error, success: false }),
+                    Err(error) => {
+                        if temporary_archive { let _ = std::fs::remove_file(&path); }
+                        app.plugin_import = Some(ImportState::Result { title: "移植失败".into(), message: error, success: false });
+                    }
                 }
             }
         },
@@ -679,26 +729,85 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             app.ui.status = "电脑插件扫描和兼容内容处理已完成；请查看结果报告。".into();
             app.plugin_import = Some(ImportState::Result { title, message, success });
         },
-        Some(Action::RoutesConfirmed(title, message, success, groups, selected_routes)) => {
-            app.ui.status = "已记录各插件的路线选择；尚未接入的转译执行器不会被标记为已完成。".into();
+        Some(Action::RoutesConfirmed(title, message, success, groups, selected_routes, path, temporary_archive)) => {
+            app.ui.status = "已完成路线选择；正在启动适用的隔离 AEX 实测…".into();
             let mut final_message = message;
             final_message.push_str("\n\n本次路线选择记录：");
+            let mut chosen_backend: Option<&str> = None;
+            let mut backend_conflict = false;
+            let mut has_aex = false;
             for (index, group) in groups.iter().enumerate() {
                 let selected = selected_routes.get(index).map(String::as_str).unwrap_or("");
+                has_aex |= Path::new(&group.file).extension().is_some_and(|ext| ext.eq_ignore_ascii_case("aex"));
                 if selected.is_empty() {
                     if let Some(best) = group.routes.iter().find(|route| route.status == "passed" && route.score.is_some()) {
                         final_message.push_str(&format!("\n{}：自动优选为 {}（实测 {:.1}/100）。", group.file, best.backend, best.score.unwrap_or_default()));
                     } else {
-                        final_message.push_str(&format!("\n{}：选择自动优选；等待可执行后端完成真实试跑后再决定。", group.file));
+                        final_message.push_str(&format!("\n{}：选择自动比较；对已接入的 AEX 后端将进行真实试跑。", group.file));
                     }
-                } else if let Some(route) = group.routes.iter().find(|route| route.id == selected) {
+                    continue;
+                }
+                if let Some(route) = group.routes.iter().find(|route| route.id == selected) {
                     final_message.push_str(&format!("\n{}：你指定了 {}；当前状态：{}。", group.file, route.backend, route.status));
-                    final_message.push_str("该选择目前记录为优先路线，不代表已执行转译或已安装。");
+                    let preference = if route.id.contains("fex") { Some("fexcore") }
+                        else if route.id.contains("box64") { Some("box64") }
+                        else { None };
+                    if let Some(preference) = preference {
+                        if chosen_backend.is_some_and(|existing| existing != preference) { backend_conflict = true; }
+                        chosen_backend = Some(preference);
+                    } else {
+                        backend_conflict = true;
+                        final_message.push_str("该路线目前没有连接到 Android AEX 实测器。");
+                    }
                 } else {
-                    final_message.push_str(&format!("\n{}：已记录手动路线选择。", group.file));
+                    backend_conflict = true;
+                    final_message.push_str(&format!("\n{}：手动路线 ID 未识别，暂不执行。", group.file));
                 }
             }
-            app.plugin_import = Some(ImportState::Result { title, message: final_message, success });
+            if has_aex && !backend_conflict {
+                let preference = chosen_backend.unwrap_or("auto");
+                match crate::start_windows_compat_aex_test(&path, preference) {
+                    Ok(request_id) => {
+                        app.plugin_import = Some(ImportState::AexRuntimeTesting {
+                            title, message: final_message, success, request_id, path, temporary_archive
+                        });
+                    }
+                    Err(error) => {
+                        if temporary_archive { let _ = std::fs::remove_file(&path); }
+                        final_message.push_str(&format!("\n\nAEX 隔离实测未能启动：{error}"));
+                        app.plugin_import = Some(ImportState::Result { title, message: final_message, success });
+                    }
+                }
+            } else {
+                if temporary_archive { let _ = std::fs::remove_file(&path); }
+                if has_aex && backend_conflict {
+                    final_message.push_str("\n\n本次手动选择包含尚未接入 AEX 实测器的路线，未冒充执行；请改选自动比较、FEXCore 或 Box64 后端。");
+                } else {
+                    final_message.push_str("\n\n本次文件没有可交给 AEX 原生宿主的 .aex 项，已保留原件并完成静态分析。");
+                }
+                app.plugin_import = Some(ImportState::Result { title, message: final_message, success });
+            }
+        },
+        Some(Action::AexTestComplete(title, message, success, status, path, temporary_archive)) => {
+            if temporary_archive { let _ = std::fs::remove_file(&path); }
+            let passed = status.starts_with("EXIT:0");
+            let partial = status.starts_with("EXIT:2");
+            let mut final_message = message;
+            final_message.push_str("\n\nAdobe AEX 隔离实测结果：\n");
+            final_message.push_str(&status);
+            if passed {
+                final_message.push_str("\n实测通过：本次包内所有检测到的 AEX 至少有一条已接入路线通过加载、参数往返和重复 CPU 帧渲染。");
+            } else if partial {
+                final_message.push_str("\n部分通过：仍有 AEX 插件未通过；不能将整包标记为完全移植。");
+            } else {
+                final_message.push_str("\n未通过或运行环境未就绪；原始插件文件仍保留，可修复后重试。");
+            }
+            app.ui.status = if passed { "AEX 隔离实测通过".into() } else { "AEX 隔离实测结束；请查看详细报告".into() };
+            app.plugin_import = Some(ImportState::Result {
+                title,
+                message: final_message,
+                success: success || passed || partial,
+            });
         }
         None => {}
     }
