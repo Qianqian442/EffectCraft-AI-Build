@@ -74,7 +74,7 @@ def patch_frontend_pickers(root: Path) -> None:
     source = path.read_text(encoding="utf-8")
     mappings = [
         '        "file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"])),',
-        '        "file.importAepMobilePackage" => ("path", Ask::Open(&["zip"])),',
+        '        "file.importAepMobilePackage" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"])),',
         '        "file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"])),',
         '        "file.importNodeVideoProject" => ("path", Ask::Open(&["nv", "json", "zip"])),',
         '        "file.importCapCutProject" => ("path", Ask::Open(&["json", "zip"])),',
