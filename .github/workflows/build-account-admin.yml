@@ -37,7 +37,7 @@ jobs:
           SHARED_API_URL='https://ae-account-api-gateway.pages.dev'
           grep -Fq "AE_ACCOUNT_API_URL: $SHARED_API_URL" .github/workflows/build-account-admin.yml
           grep -Fq "AE_ACCOUNT_API_URL: $SHARED_API_URL" .github/workflows/build-effectcraft-ai.yml
-          grep -Fq 'service: "ae-cloud-account-api"' cloudflare-pages-proxy/wrangler.jsonc
+          grep -Fq '"service": "ae-cloud-account-api"' cloudflare-pages-proxy/wrangler.jsonc
           grep -Fq '"database_name": "ae-accounts"' cloudflare-worker/wrangler.jsonc
           echo "Main Ae APK and account-manager APK both target the same Pages gateway, Worker service binding, and D1 database."
 
