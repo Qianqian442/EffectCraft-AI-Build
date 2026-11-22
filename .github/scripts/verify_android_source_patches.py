@@ -189,7 +189,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified AM-style Undo/Redo buttons call the native edit history.")
     export_labels = [
         "导出 AE 电脑版工程",
-        "导出自有工程",
+        "导出Ae手机版工程",
         "导出 AM 工程",
         "导出 NV 工程",
         "导出 CapCut 工程",
