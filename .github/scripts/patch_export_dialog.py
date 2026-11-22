@@ -223,7 +223,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                     egui::Button::new("导出 AE 电脑版工程").min_size(vec2(250.0, 28.0)),
                 );
                 ui.small("AE 电脑版 .aep/.aepx 写出功能尚未实现；不会生成无效工程文件。");
-                if ui.add_sized(vec2(250.0, 28.0), egui::Button::new("导出自有工程")).clicked() {
+                if ui.add_sized(vec2(250.0, 28.0), egui::Button::new("导出Ae手机版工程")).clicked() {
                     export_mobile_project = true;
                 }
                 if ui.add_sized(vec2(250.0, 28.0), egui::Button::new("导出 AM 工程")).clicked() {
@@ -258,7 +258,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
         // only then does the Android Sharesheet open.
         match crate::menus::invoke(app, &ctx, "file.collectFiles", json!({"shareAfterCollect": true})) {
             Ok(_) => {
-                app.ui.status = "请选择自有工程的保存文件夹；收集完成后会打开 QQ/系统分享面板。".into();
+                app.ui.status = "请选择Ae手机版工程的保存文件夹；收集完成后会打开 QQ/系统分享面板。".into();
                 open = false;
             }
             Err(error) => app.ui.status = error,
@@ -932,7 +932,7 @@ if ai_assistant_path.is_file():
 
 required_project_buttons = [
     "导出 AE 电脑版工程",
-    "导出自有工程",
+    "导出Ae手机版工程",
     "导出 AM 工程",
     "导出 NV 工程",
     "导出 CapCut 工程",
