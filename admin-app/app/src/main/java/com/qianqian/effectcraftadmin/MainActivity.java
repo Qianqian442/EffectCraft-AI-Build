@@ -51,6 +51,8 @@ public final class MainActivity extends Activity {
     private String server = DEFAULT_SERVER;
     private String firstAdminPassword;
     private String adminToken = "";
+    // Keep a valid cloud admin session when a transient network error interrupts refresh.
+    private boolean hasLoadedUsers = false;
     private LinearLayout root;
     private LinearLayout rows;
     private EditText serverInput;
@@ -398,8 +400,8 @@ public final class MainActivity extends Activity {
             : "正在连接本机账号数据库，并通过 P2P 为其他手机提供加密账号服务。", 12, false));
         Button retry = button("重新连接");
         retry.setOnClickListener(v -> {
-            showConnecting("正在重新连接本机账号服务…");
-            loadUsers("");
+            showConnecting(isCloudflareMode() ? "正在重新连接云端账号数据库…" : "正在重新连接本机账号服务…");
+            loadUsers(searchInput == null ? "" : searchInput.getText().toString());
         });
         page.addView(retry, new LinearLayout.LayoutParams(-1, dp(48)));
         Button logout = button("返回管理员登录");
@@ -690,10 +692,20 @@ public final class MainActivity extends Activity {
         try { encoded = URLEncoder.encode(query, "UTF-8"); } catch (Exception e) { encoded = ""; }
         requestAsync("GET", "/v1/admin/users?q=" + encoded, null, true, result -> {
             if (result == null) {
-                // Do not leave the Activity blank or stuck on an expired token.
-                adminToken = "";
-                getPreferences(MODE_PRIVATE).edit().remove("admin_token").apply();
-                showLogin();
+                // requestAsync clears the token only for an actual 401/403 response.
+                // A timeout, DNS failure, proxy outage or HTTP 5xx must not log the
+                // administrator out or discard a still-valid cloud session.
+                if (adminToken.isEmpty()) {
+                    hasLoadedUsers = false;
+                    showLogin();
+                } else if (hasLoadedUsers) {
+                    // Keep the last successfully loaded list visible; the user can retry.
+                    toast("云端刷新暂时失败，已保留当前账号列表和登录状态，请检查网络后重试");
+                } else {
+                    showConnecting(isCloudflareMode()
+                        ? "云端连接暂时失败，管理员登录状态已保留，可点击重新连接。"
+                        : "账号服务暂时无法连接，管理员登录状态已保留，可点击重新连接。");
+                }
                 return;
             }
             JSONArray users = result.optJSONArray("users");
@@ -701,6 +713,7 @@ public final class MainActivity extends Activity {
             String latestCreatedAt = result.optString("latest_created_at", "");
             String accountSource = result.optString("account_source",
                 isCloudflareMode() ? "Cloudflare D1 云端共享账号库" : "管理员手机本机 SQLite 账号库");
+            hasLoadedUsers = true;
             showUsers(users, totalCount, latestCreatedAt, accountSource);
         });
     }

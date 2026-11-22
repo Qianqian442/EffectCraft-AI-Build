@@ -30,6 +30,16 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v4
+      - name: Verify both APKs use the same cloud account database
+        shell: bash
+        run: |
+          set -euo pipefail
+          SHARED_API_URL='https://ae-account-api-gateway.pages.dev'
+          grep -Fq "AE_ACCOUNT_API_URL: $SHARED_API_URL" .github/workflows/build-account-admin.yml
+          grep -Fq "AE_ACCOUNT_API_URL: $SHARED_API_URL" .github/workflows/build-effectcraft-ai.yml
+          grep -Fq '"service": "ae-cloud-account-api"' cloudflare-pages-proxy/wrangler.jsonc
+          grep -Fq '"database_name": "ae-accounts"' cloudflare-worker/wrangler.jsonc
+          echo "Main Ae APK and account-manager APK both target the same Pages gateway, Worker service binding, and D1 database."
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
