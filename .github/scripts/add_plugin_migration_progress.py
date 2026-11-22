@@ -749,6 +749,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                 }
                 if let Some(route) = group.routes.iter().find(|route| route.id == selected) {
                     final_message.push_str(&format!("\n{}：你指定了 {}；当前状态：{}。", group.file, route.backend, route.status));
+                    final_message.push_str("该选择目前记录为优先路线，不代表已执行转译或已安装。");
                     let preference = if route.id.contains("fex") { Some("fexcore") }
                         else if route.id.contains("box64") { Some("box64") }
                         else { None };
