@@ -18,6 +18,7 @@ on:
       - '.github/workflows/build-effectcraft-ai.yml'
       - 'docs/android-arm64-desktop-plugin-compatibility.md'
       - 'windows-compat/android-runtime/**'
+      - 'windows-compat/aex-reconstruction/**'
       - '.github/scripts/verify_aggressive_port_trial.py'
 
 concurrency:
