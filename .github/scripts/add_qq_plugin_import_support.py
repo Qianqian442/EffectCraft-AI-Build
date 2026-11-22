@@ -47,8 +47,8 @@ pub fn looks_like_plugin_archive(path: &str) -> bool {
     for index in 0..archive.len() {
         let Ok(entry) = archive.by_index(index) else { continue };
         if entry.is_dir() { continue; }
-        let Ok(name) = entry.name() else { continue };
-        let extension = Path::new(name.as_ref())
+        let name = entry.name();
+        let extension = Path::new(name)
             .extension()
             .and_then(|value| value.to_str())
             .unwrap_or_default()
