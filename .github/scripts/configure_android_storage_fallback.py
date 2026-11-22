@@ -685,7 +685,7 @@ def patch_builder(builder: Path) -> None:
     associations_path = builder / "lib/file_associations.py"
     associations = associations_path.read_text(encoding="utf-8")
     old_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate"],'
-    new_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate", "aep", "aepx", "zip", "zxp", "ccx", "nv", "xml", "alight"],'
+    new_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate", "aep", "aepx", "zip", "zxp", "ccx", "aex", "pbk", "pbg", "8bi", "8bf", "jsx", "jsxbin", "js", "ffx", "dll", "dylib", "plugin", "bundle", "wasm", "wat", "nv", "xml", "alight"],'
     if new_association not in associations:
         count = associations.count(old_association)
         if count != 1:
