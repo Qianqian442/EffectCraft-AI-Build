@@ -11,7 +11,7 @@ pub type Sink = dyn Fn(&str, Vec<u8>) + Send + Sync;
 
 /// One output file being written.
 struct AtomicOutput {
-    writer: BufWriter<std::fs::File>,
+    writer: Option<BufWriter<std::fs::File>>,
     temporary: Option<std::path::PathBuf>,
     destination: std::path::PathBuf,
 }
@@ -54,7 +54,7 @@ pub(crate) fn create<'a>(sink: Option<&'a Sink>, path: &str) -> Result<Out<'a>> 
                 }
             }
             let (temporary, file) = created.ok_or_else(|| ExportError::Io("无法创建视频临时文件，请检查存储空间和目录权限。".into()))?;
-            Ok(Out::File(AtomicOutput { writer: BufWriter::new(file), temporary: Some(temporary), destination }))
+            Ok(Out::File(AtomicOutput { writer: Some(BufWriter::new(file)), temporary: Some(temporary), destination }))
         }
     }
 }
@@ -69,8 +69,9 @@ impl Out<'_> {
     pub(crate) fn finish(self) -> Result<u64> {
         match self {
             Out::File(mut output) => {
-                output.writer.flush().map_err(io)?;
-                let file = output.writer.into_inner().map_err(|e| ExportError::Io(e.to_string()))?;
+                let mut writer = output.writer.take().ok_or_else(|| ExportError::Io("导出文件写入器状态无效。".into()))?;
+                writer.flush().map_err(io)?;
+                let file = writer.into_inner().map_err(|e| ExportError::Io(e.to_string()))?;
                 file.sync_all().map_err(io)?;
                 let bytes = file.metadata().map(|m| m.len()).unwrap_or(0);
                 drop(file);
@@ -92,13 +93,13 @@ impl Out<'_> {
 impl Write for Out<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         match self {
-            Out::File(w) => w.writer.write(buf),
+            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.write(buf), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },
             Out::Mem { cur, .. } => cur.write(buf),
         }
     }
     fn flush(&mut self) -> std::io::Result<()> {
         match self {
-            Out::File(w) => w.writer.flush(),
+            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.flush(), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },
             Out::Mem { .. } => Ok(()),
         }
     }
@@ -107,7 +108,7 @@ impl Write for Out<'_> {
 impl Seek for Out<'_> {
     fn seek(&mut self, pos: SeekFrom) -> std::io::Result<u64> {
         match self {
-            Out::File(w) => w.writer.seek(pos),
+            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.seek(pos), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },
             Out::Mem { cur, .. } => cur.seek(pos),
         }
     }
