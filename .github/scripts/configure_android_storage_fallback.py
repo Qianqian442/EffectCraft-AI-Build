@@ -607,8 +607,9 @@ def patch_builder(builder: Path) -> None:
             .to_ascii_lowercase();
         // QQ may pass a content:// URI for a downloaded plug-in. By the time the
         // Activity stages it, its real display filename (and extension) is preserved here.
-        let is_plugin_archive = extension == "zip"
-            && effectcraft_ui_egui::plugin_migration::looks_like_plugin_archive(path);
+        let is_plugin_archive = matches!(extension.as_str(), "zxp" | "ccx")
+            || (extension == "zip"
+                && effectcraft_ui_egui::plugin_migration::looks_like_plugin_archive(path));
         let import_command = if is_plugin_archive
             || matches!(extension.as_str(),
                 "wasm" | "wat" | "aex" | "dll" | "ofx" | "so" | "dylib"
@@ -683,7 +684,7 @@ def patch_builder(builder: Path) -> None:
     associations_path = builder / "lib/file_associations.py"
     associations = associations_path.read_text(encoding="utf-8")
     old_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate"],'
-    new_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate", "aep", "aepx", "zip", "nv", "xml", "alight"],'
+    new_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate", "aep", "aepx", "zip", "zxp", "ccx", "nv", "xml", "alight"],'
     if new_association not in associations:
         count = associations.count(old_association)
         if count != 1:
