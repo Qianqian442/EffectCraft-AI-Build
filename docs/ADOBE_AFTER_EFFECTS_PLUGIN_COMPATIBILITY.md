@@ -2,7 +2,7 @@
 
 ## Scope
 
-The compatibility target is Adobe After Effects (desktop), not EffectCraft or another host. Adobe plug-in support is additive. **Do not remove or replace any existing Ae feature, Windows compatibility feature, plug-in import control, translation backend, aggressive-port option, force-compatibility option, manual backend selection, or progress/report UI.** New Adobe-specific routes must be added alongside them.
+The compatibility target is Adobe After Effects (desktop), not EffectCraft or another host. Adobe plug-in support is additive. **Do not remove or replace any existing Ae feature, Windows compatibility feature, plug-in import control, translation backend, combined aggressive-port + force-compatibility action, manual backend selection, or progress/report UI.** New Adobe-specific routes must be added alongside them.
 
 ## Verified Adobe extension families
 
