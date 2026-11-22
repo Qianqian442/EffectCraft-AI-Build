@@ -44,21 +44,21 @@ pub(crate) enum MigrationMode {
 impl MigrationMode {
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::AutoBest => "自动比较并选择完整度最高的方案",
-            Self::CpuTranslation => "指令转译优先（Box64 / Box86 / FEX / QEMU）",
-            Self::ForceCompatibility => "强制兼容（运行库 / 接口 / 画面 / 渲染回退）",
-            Self::AggressivePort => "暴力移植 / 重构（PE 深度分析 + 已接入后端逐个试跑）",
-            Self::ManualBackend => "手动查看并指定转译后端",
+            Self::AutoBest => "普通导入",
+            Self::CpuTranslation => "普通导入",
+            Self::ForceCompatibility => "高级导入",
+            Self::AggressivePort => "反编译+暴力移植+强行兼容",
+            Self::ManualBackend => "高级导入",
         }
     }
 
     pub(crate) fn description(self) -> &'static str {
         match self {
-            Self::AutoBest => "逐个测试适用路线，按功能完整度、画质、参数/关键帧和稳定性评分，自动选择最高分且通过硬性测试的方案。",
-            Self::CpuTranslation => "优先尝试适用的 CPU 指令动态转译路线；不兼容的系统 API 或插件宿主接口仍必须单独适配。",
-            Self::ForceCompatibility => "逐项尝试可选宿主接口、运行库、像素格式、CPU 特性和 CPU/串行渲染回退；不伪造必需接口。",
-            Self::AggressivePort => "逐个 AEX 执行 PE 分析与已安装 Wine/Proton + FEXCore/Box64 隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。只有提供可用源代码且依赖/授权允许时才另行重编译；未知闭源插件不承诺自动还原为 ARM64。",
-            Self::ManualBackend => "分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；目前尚未集成可执行后端，指定只记录选择意向，不会谎称已经转译。",
+            Self::AutoBest => "按原有插件加载器执行普通导入；支持的 WASM、脚本和兼容组件仍按原规则验证。",
+            Self::CpuTranslation => "普通导入的兼容分析阶段；不额外启动桌面原生插件执行环境。",
+            Self::ForceCompatibility => "高级导入：展示架构、依赖、宿主接口和可用兼容路线，供进一步处理。",
+            Self::AggressivePort => "按顺序尝试：反编译/静态重构分析 → 强行兼容（运行库、宿主接口、像素格式与渲染回退）→ 前述路线失败后再进行暴力移植兜底。每一阶段都必须记录真实执行状态；未接入或未通过测试的阶段明确标记为未完成，不得伪报成功。",
+            Self::ManualBackend => "高级导入：分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；尚未接入的后端只记录选择意向。",
         }
     }
 }
@@ -476,10 +476,8 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.label("选择本次电脑插件移植方式；可按需切换，不会强制固定使用某一种转译器。");
                         ui.label("扫描完成后，结果页会展示检测到的每个插件的全部适用路线，不省略候选项。");
                         ui.radio_value(mode, MigrationMode::AutoBest, MigrationMode::AutoBest.label());
-                        ui.radio_value(mode, MigrationMode::CpuTranslation, MigrationMode::CpuTranslation.label());
-                        ui.radio_value(mode, MigrationMode::ForceCompatibility, MigrationMode::ForceCompatibility.label());
-                        ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
                         ui.radio_value(mode, MigrationMode::ManualBackend, MigrationMode::ManualBackend.label());
+                        ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
                         ui.small(mode.description());
                         ui.add_space(6.0);
                         ui.label("当前版本会分析架构、列出路线并保留原件；尚未接入的运行时/宿主接口会显示待实现，不会伪报成功。");
