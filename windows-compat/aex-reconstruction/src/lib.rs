@@ -4,7 +4,7 @@
 //! original binary and produces a bounded instruction/CFG report to guide a lawful ARM64 port.
 use std::collections::BTreeSet;
 
-use iced_x86::{Decoder, DecoderOptions, FlowControl};
+use iced_x86::{Decoder, DecoderOptions, FlowControl, Formatter, IntelFormatter};
 use serde_json::{json, Value};
 
 const MAX_EXECUTABLE_BYTES: usize = 64 * 1024 * 1024;
@@ -102,6 +102,95 @@ fn import_summary(bytes: &[u8], sections: &[Section], import_rva: u32) -> (usize
     (count, names)
 }
 
+
+/// Resolve a bounded sample of imported function names for API-compatibility planning.
+fn import_symbol_summary(
+    bytes: &[u8],
+    sections: &[Section],
+    import_rva: u32,
+    bitness: u32,
+) -> Vec<Value> {
+    let Some(mut descriptor_at) = rva_to_file(sections, import_rva) else { return Vec::new() };
+    let thunk_width = if bitness == 64 { 8usize } else { 4usize };
+    let ordinal_mask = if bitness == 64 { 1u64 << 63 } else { 1u64 << 31 };
+    let mut output = Vec::new();
+    for _ in 0..4096 {
+        let Some(descriptor) = bytes.get(descriptor_at..descriptor_at.saturating_add(20)) else { break };
+        let original_thunk = u32_at(descriptor, 0).unwrap_or(0);
+        let name_rva = u32_at(descriptor, 12).unwrap_or(0);
+        let first_thunk = u32_at(descriptor, 16).unwrap_or(0);
+        if original_thunk == 0 && name_rva == 0 && first_thunk == 0 { break; }
+        let dll_at = rva_to_file(sections, name_rva);
+        let dll = dll_at.map(|at| c_string(bytes, at, 260)).unwrap_or_default();
+        let thunk_rva = if original_thunk != 0 { original_thunk } else { first_thunk };
+        if let Some(mut thunk_at) = rva_to_file(sections, thunk_rva) {
+            for _ in 0..8192 {
+                let value = if thunk_width == 8 {
+                    let Some(raw) = bytes.get(thunk_at..thunk_at.saturating_add(8)) else { break };
+                    u64::from_le_bytes(raw.try_into().unwrap())
+                } else {
+                    let Some(raw) = bytes.get(thunk_at..thunk_at.saturating_add(4)) else { break };
+                    u32::from_le_bytes(raw.try_into().unwrap()) as u64
+                };
+                if value == 0 { break; }
+                let (name, ordinal) = if value & ordinal_mask != 0 {
+                    (String::new(), Some((value & 0xffff) as u16))
+                } else if let Ok(name_rva) = u32::try_from(value) {
+                    let name_at = rva_to_file(sections, name_rva);
+                    let name = name_at
+                        .and_then(|at| at.checked_add(2))
+                        .map(|at| c_string(bytes, at, 512))
+                        .unwrap_or_default();
+                    (name, None)
+                } else {
+                    (String::new(), None)
+                };
+                if !name.is_empty() || ordinal.is_some() {
+                    output.push(json!({"dll": dll, "name": name, "ordinal": ordinal}));
+                    if output.len() >= 8192 { return output; }
+                }
+                thunk_at = match thunk_at.checked_add(thunk_width) { Some(next) => next, None => break };
+            }
+        }
+        descriptor_at = match descriptor_at.checked_add(20) { Some(next) => next, None => break };
+    }
+    output
+}
+
+/// Summarize PE base relocations without applying or modifying them.
+fn relocation_summary(bytes: &[u8], sections: &[Section], relocation_rva: u32) -> (usize, Vec<Value>) {
+    let Some(mut offset) = rva_to_file(sections, relocation_rva) else { return (0, Vec::new()) };
+    let mut total = 0usize;
+    let mut sample = Vec::new();
+    for _ in 0..4096 {
+        let Some(header) = bytes.get(offset..offset.saturating_add(8)) else { break };
+        let page_rva = u32::from_le_bytes(header[0..4].try_into().unwrap());
+        let block_size = u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize;
+        if page_rva == 0 && block_size == 0 { break; }
+        if block_size < 8 || block_size % 2 != 0 || offset.saturating_add(block_size) > bytes.len() { break; }
+        for entry_at in (offset + 8..offset + block_size).step_by(2) {
+            let Some(raw) = u16_at(bytes, entry_at) else { break };
+            let kind = raw >> 12;
+            let within_page = raw & 0x0fff;
+            total = total.saturating_add(1);
+            if sample.len() < 2048 {
+                sample.push(json!({
+                    "type": kind,
+                    "type_name": match kind {
+                        0 => "ABSOLUTE",
+                        3 => "HIGHLOW",
+                        10 => "DIR64",
+                        _ => "OTHER_OR_ARCH_SPECIFIC"
+                    },
+                    "rva": format!("0x{:08x}", page_rva.saturating_add(within_page as u32))
+                }));
+            }
+        }
+        offset = match offset.checked_add(block_size) { Some(next) => next, None => break };
+    }
+    (total, sample)
+}
+
 fn export_summary(bytes: &[u8], sections: &[Section], export_rva: u32) -> (usize, Vec<String>) {
     let Some(offset) = rva_to_file(sections, export_rva) else { return (0, Vec::new()) };
     let Some(directory) = bytes.get(offset..offset + 40) else { return (0, Vec::new()) };
@@ -153,9 +242,12 @@ pub(crate) fn reconstruct_pe(bytes: &[u8]) -> Result<Value, String> {
     let directory_start = optional + directory_relative;
     let (export_rva, _) = directory_pair(bytes, directory_start, 0, directory_count);
     let (import_rva, _) = directory_pair(bytes, directory_start, 1, directory_count);
+    let (relocation_rva, _) = directory_pair(bytes, directory_start, 5, directory_count);
     let sections = parse_sections(bytes, optional + optional_size, section_count)?;
     let (import_count, imported_dlls) = import_summary(bytes, &sections, import_rva);
+    let imported_symbols = import_symbol_summary(bytes, &sections, import_rva, bitness);
     let (export_count, exported_symbols) = export_summary(bytes, &sections, export_rva);
+    let (relocation_count, relocation_entries) = relocation_summary(bytes, &sections, relocation_rva);
 
     let mut executable_bytes = 0usize;
     let mut instruction_count = 0usize;
@@ -165,6 +257,7 @@ pub(crate) fn reconstruct_pe(bytes: &[u8]) -> Result<Value, String> {
     let mut leaders = BTreeSet::new();
     let mut section_reports = Vec::new();
     let mut instruction_ir = Vec::new();
+    let mut formatter = IntelFormatter::new();
     let mut block_starts = Vec::new();
     let mut truncated = false;
 
@@ -202,9 +295,17 @@ pub(crate) fn reconstruct_pe(bytes: &[u8]) -> Result<Value, String> {
                 } else {
                     None
                 };
+                let mut assembly = String::new();
+                formatter.format(&instruction, &mut assembly);
+                let operands = (0..instruction.op_count())
+                    .map(|index| format!("{:?}", instruction.op_kind(index)))
+                    .collect::<Vec<_>>();
                 instruction_ir.push(json!({
                     "ip": format!("0x{:x}", instruction.ip()),
                     "mnemonic": format!("{:?}", instruction.mnemonic()),
+                    "assembly": assembly,
+                    "operand_count": instruction.op_count(),
+                    "operand_kinds": operands,
                     "flow": flow_name,
                     "branch_target": branch_target,
                     "size": instruction.len(),
@@ -284,13 +385,28 @@ pub(crate) fn reconstruct_pe(bytes: &[u8]) -> Result<Value, String> {
         "indirect_branch_count": indirect_branches,
         "imported_dll_count": import_count,
         "imported_dlls": imported_dlls,
+        "imported_symbol_count": imported_symbols.len(),
+        "imported_symbols": imported_symbols,
         "exported_symbol_count": export_count,
         "exported_symbols": exported_symbols,
+        "base_relocation_count": relocation_count,
+        "base_relocations": relocation_entries,
         "sections": section_reports,
         "instruction_ir": instruction_ir,
         "basic_block_starts": block_starts,
         "truncated": truncated,
         "status": "static_ir_recovered_not_native_recompiled",
+        "translation_pipeline": {
+            "pe_structure": "completed",
+            "import_export_and_relocation_inventory": "completed",
+            "x86_x64_instruction_decode": "completed",
+            "operand_and_assembly_ir": "completed",
+            "control_flow_candidates": "completed",
+            "windows_api_semantic_translation": "not_implemented",
+            "adobe_ae_sdk_host_translation": "not_implemented",
+            "arm64_recompilation": "not_implemented",
+            "reference_render_validation": "required_before_success"
+        },
         "notes": notes,
     }))
 }
