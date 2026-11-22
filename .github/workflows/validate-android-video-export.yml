@@ -30,7 +30,7 @@ jobs:
           python-version: '3.12'
       - name: Validate and apply Android video export rewrite
         env:
-          EFFECTCRAFT_DIR: \${{ github.workspace }}/effectcraft-source
+          EFFECTCRAFT_DIR: effectcraft-source
         run: |
           set -euo pipefail
           python3 -m py_compile .github/scripts/rewrite_android_video_export_pipeline.py
