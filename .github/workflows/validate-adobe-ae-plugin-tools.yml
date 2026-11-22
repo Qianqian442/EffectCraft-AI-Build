@@ -10,6 +10,8 @@ on:
       - '.github/scripts/test_inventory_adobe_ae_plugins.py'
       - '.github/scripts/inspect_adobe_ae_native_pe.py'
       - '.github/scripts/test_inspect_adobe_ae_native_pe.py'
+      - '.github/scripts/inspect_adobe_ffx_preset.py'
+      - '.github/scripts/test_inspect_adobe_ffx_preset.py'
       - '.github/workflows/validate-adobe-ae-plugin-tools.yml'
       - 'docs/ADOBE_AFTER_EFFECTS_PLUGIN_COMPATIBILITY.md'
   push:
@@ -19,6 +21,8 @@ on:
       - '.github/scripts/test_inventory_adobe_ae_plugins.py'
       - '.github/scripts/inspect_adobe_ae_native_pe.py'
       - '.github/scripts/test_inspect_adobe_ae_native_pe.py'
+      - '.github/scripts/inspect_adobe_ffx_preset.py'
+      - '.github/scripts/test_inspect_adobe_ffx_preset.py'
       - '.github/workflows/validate-adobe-ae-plugin-tools.yml'
 
 permissions:
@@ -40,8 +44,10 @@ jobs:
             .github/scripts/add_desktop_plugin_package_support.py \
             .github/scripts/test_inventory_adobe_ae_plugins.py \
             .github/scripts/inspect_adobe_ae_native_pe.py \
-            .github/scripts/test_inspect_adobe_ae_native_pe.py
+            .github/scripts/test_inspect_adobe_ae_native_pe.py \
+            .github/scripts/inspect_adobe_ffx_preset.py \
+            .github/scripts/test_inspect_adobe_ffx_preset.py
       - name: Run Adobe AE plugin intake and PE inspection tests
         run: |
           cd .github/scripts
-          python -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py
+          python -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py test_inspect_adobe_ffx_preset.py
