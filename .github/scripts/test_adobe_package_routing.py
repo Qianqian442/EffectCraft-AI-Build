@@ -49,6 +49,13 @@ class AdobePackageRoutingTests(unittest.TestCase):
         package = self.read("add_desktop_plugin_package_support.py")
         self.assertIn('matches!(extension.to_ascii_lowercase().as_str(), "zip" | "zxp" | "ccx")', package)
 
+
+    def test_android_open_with_associations_include_all_ae_payload_types(self):
+        source = self.read("configure_android_storage_fallback.py")
+        self.assertIn('"aex", "pbk", "pbg", "8bi", "8bf"', source)
+        self.assertIn('"jsx", "jsxbin", "js", "ffx"', source)
+        self.assertIn('"dll", "dylib", "plugin", "bundle"', source)
+
     def test_macos_plugin_bundle_resources_are_classified_as_native_candidates(self):
         inventory = self.read("inventory_adobe_ae_plugins.py")
         package = self.read("add_desktop_plugin_package_support.py")
