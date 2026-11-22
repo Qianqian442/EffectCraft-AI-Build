@@ -272,7 +272,7 @@ fn scan_archive(path: &str, progress: &AtomicUsize) -> Result<ScanReport, String
         let entry_name = entry.name().map(|name| name.into_owned()).map_err(|error| format!("读取 ZIP 文件名失败：{error}"))?;
         let lower = entry_name.to_ascii_lowercase();
         let extension = Path::new(&entry_name).extension().and_then(|value| value.to_str()).unwrap_or_default().to_ascii_lowercase();
-        let is_native = ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
+        let is_native = ["aex", "pbk", "pbg", "8bi", "8bf", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm"].contains(&extension.as_str())
             || lower.contains(".plugin/") || lower.contains(".ofx.bundle/");
         if is_native {
             native_count += 1;
