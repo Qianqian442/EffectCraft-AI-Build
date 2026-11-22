@@ -206,7 +206,7 @@ fn saf_open_plugin_paths(bridge: &saf::Bridge, state: &SafState) -> Vec<String> 
             FileDialog::Open { exts, many: false }
                 if exts.iter().any(|extension| matches!(
                     extension.as_str(),
-                    "wasm" | "wat" | "zip" | "aex" | "dll" | "ofx" | "so"
+                    "wasm" | "wat" | "zip" | "zxp" | "ccx" | "aex" | "dll" | "ofx" | "so"
                     | "dylib" | "plugin" | "bundle" | "prm" | "8bf" | "jsx" | "js"
                 ))
         );
