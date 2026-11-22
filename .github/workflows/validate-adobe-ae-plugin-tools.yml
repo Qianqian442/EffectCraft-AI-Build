@@ -7,6 +7,9 @@ on:
       - '.github/scripts/inventory_adobe_ae_plugins.py'
       - '.github/scripts/add_zip_plugin_support.py'
       - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/configure_android_storage_fallback.py'
+      - '.github/scripts/add_qq_plugin_import_support.py'
+      - '.github/scripts/test_adobe_package_routing.py'
       - '.github/scripts/test_inventory_adobe_ae_plugins.py'
       - '.github/scripts/inspect_adobe_ae_native_pe.py'
       - '.github/scripts/test_inspect_adobe_ae_native_pe.py'
@@ -42,6 +45,9 @@ jobs:
             .github/scripts/inventory_adobe_ae_plugins.py \
             .github/scripts/add_zip_plugin_support.py \
             .github/scripts/add_desktop_plugin_package_support.py \
+            .github/scripts/configure_android_storage_fallback.py \
+            .github/scripts/add_qq_plugin_import_support.py \
+            .github/scripts/test_adobe_package_routing.py \
             .github/scripts/test_inventory_adobe_ae_plugins.py \
             .github/scripts/inspect_adobe_ae_native_pe.py \
             .github/scripts/test_inspect_adobe_ae_native_pe.py \
@@ -50,4 +56,4 @@ jobs:
       - name: Run Adobe AE plugin intake and PE inspection tests
         run: |
           cd .github/scripts
-          python -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py test_inspect_adobe_ffx_preset.py
+          python -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py test_inspect_adobe_ffx_preset.py test_adobe_package_routing.py
