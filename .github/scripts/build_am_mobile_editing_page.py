@@ -1127,6 +1127,7 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         "controls" | "fill" | "border" | "shape" => Some(PanelKind::EffectControls),
         "project" => Some(PanelKind::Project),
         "keyframes" => Some(PanelKind::Timeline),
+        "curves" => Some(PanelKind::Timeline),
         "add" => None,
         _ => return,
     };
@@ -1149,6 +1150,7 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         "properties" => "属性",
         "project" => "项目",
         "keyframes" => "关键帧 / 曲线",
+        "curves" => "曲线",
         _ => "工具",
     };
     p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, title, Tokens::semibold(11.0), t.text);
