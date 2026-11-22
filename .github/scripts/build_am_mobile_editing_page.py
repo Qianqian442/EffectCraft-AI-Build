@@ -721,8 +721,15 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     };
     let duration = comp.duration.seconds().max(0.001);
     let view_id = Id::new("am-independent-timeline-view");
-    let mut view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id)).unwrap_or_default();
-    view.zoom = view.zoom.clamp(1.0, 16.0);
+    let stored_view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id));
+    let mut view = stored_view.unwrap_or_else(|| TimelineView {
+        // Start with roughly ten seconds visible, rather than fitting an hour-long
+        // composition into a few hundred pixels. This gives AM-style precise trimming.
+        start: 0.0,
+        zoom: (duration / 10.0).clamp(1.0, 3600.0),
+        scroll_y: 0.0,
+    });
+    view.zoom = view.zoom.clamp(1.0, 3600.0);
 
     let label_w = NAME_W.min((rect.width() * 0.22).max(56.0));
     let ruler_h = 28.0;
