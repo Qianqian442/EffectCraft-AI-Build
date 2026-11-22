@@ -40,6 +40,8 @@ on:
       - '.github/scripts/inspect_adobe_ffx_preset.py'
       - '.github/scripts/test_inspect_adobe_ffx_preset.py'
       - '.github/scripts/test_adobe_package_routing.py'
+      - '.github/scripts/inspect_adobe_extendscript.py'
+      - '.github/scripts/test_inspect_adobe_extendscript.py'
       - '.github/workflows/validate-adobe-ae-plugin-tools.yml'
       - 'docs/ADOBE_AFTER_EFFECTS_PLUGIN_COMPATIBILITY.md'
       - '.github/scripts/add_plugin_migration_progress.py'
@@ -963,10 +965,12 @@ jobs:
             build-assets/.github/scripts/inspect_adobe_ffx_preset.py \
             build-assets/.github/scripts/test_inspect_adobe_ffx_preset.py \
             build-assets/.github/scripts/test_adobe_package_routing.py \
+            build-assets/.github/scripts/inspect_adobe_extendscript.py \
+            build-assets/.github/scripts/test_inspect_adobe_extendscript.py \
             build-assets/.github/scripts/configure_android_storage_fallback.py \
             build-assets/.github/scripts/add_qq_plugin_import_support.py
           cd build-assets/.github/scripts
-          python3 -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py test_inspect_adobe_ffx_preset.py test_adobe_package_routing.py
+          python3 -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py test_inspect_adobe_ffx_preset.py test_inspect_adobe_extendscript.py test_adobe_package_routing.py
           cd "$GITHUB_WORKSPACE"
           echo "Adobe AE file-family and static PE inspection tests passed; no imported code was executed."
 

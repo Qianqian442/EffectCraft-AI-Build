@@ -14,6 +14,8 @@ on:
       - '.github/scripts/inspect_adobe_ae_native_pe.py'
       - '.github/scripts/test_inspect_adobe_ae_native_pe.py'
       - '.github/scripts/inspect_adobe_ffx_preset.py'
+      - '.github/scripts/inspect_adobe_extendscript.py'
+      - '.github/scripts/test_inspect_adobe_extendscript.py'
       - '.github/scripts/test_inspect_adobe_ffx_preset.py'
       - '.github/workflows/validate-adobe-ae-plugin-tools.yml'
       - 'docs/ADOBE_AFTER_EFFECTS_PLUGIN_COMPATIBILITY.md'
@@ -25,6 +27,8 @@ on:
       - '.github/scripts/inspect_adobe_ae_native_pe.py'
       - '.github/scripts/test_inspect_adobe_ae_native_pe.py'
       - '.github/scripts/inspect_adobe_ffx_preset.py'
+      - '.github/scripts/inspect_adobe_extendscript.py'
+      - '.github/scripts/test_inspect_adobe_extendscript.py'
       - '.github/scripts/test_inspect_adobe_ffx_preset.py'
       - '.github/workflows/validate-adobe-ae-plugin-tools.yml'
 
@@ -52,8 +56,10 @@ jobs:
             .github/scripts/inspect_adobe_ae_native_pe.py \
             .github/scripts/test_inspect_adobe_ae_native_pe.py \
             .github/scripts/inspect_adobe_ffx_preset.py \
+            .github/scripts/inspect_adobe_extendscript.py \
+            .github/scripts/test_inspect_adobe_extendscript.py \
             .github/scripts/test_inspect_adobe_ffx_preset.py
       - name: Run Adobe AE plugin intake and PE inspection tests
         run: |
           cd .github/scripts
-          python -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py test_inspect_adobe_ffx_preset.py test_adobe_package_routing.py
+          python -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py test_inspect_adobe_ffx_preset.py test_inspect_adobe_extendscript.py test_adobe_package_routing.py
