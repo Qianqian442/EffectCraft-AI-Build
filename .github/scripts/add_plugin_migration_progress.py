@@ -767,7 +767,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
             }
             if has_aex && !backend_conflict {
                 let preference = chosen_backend.unwrap_or("auto");
-                match crate::start_windows_compat_aex_test(&path, preference) {
+                match crate::start_windows_compat_aex_test_with_backend(&path, preference) {
                     Ok(request_id) => {
                         app.plugin_import = Some(ImportState::AexRuntimeTesting {
                             title, message: final_message, success, request_id, path, temporary_archive
