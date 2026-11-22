@@ -269,6 +269,12 @@ public final class WindowsCompatAndroidBridge {
 
     /** Starts isolated route trials for every AEX found in the selected file or ZIP. */
     public static void startAexPluginTest(String requestId, String sourcePath) {
+        startAexPluginTest(requestId, sourcePath, "auto");
+    }
+
+    /** Run only the selected backend, or compare both when preference is auto. */
+    public static void startAexPluginTest(
+            String requestId, String sourcePath, String backendPreference) {
         if (requestId == null || requestId.trim().isEmpty()
                 || sourcePath == null || sourcePath.trim().isEmpty()) return;
         Context context = applicationContext;
@@ -279,10 +285,15 @@ public final class WindowsCompatAndroidBridge {
             INSTALL_STATUS.put(requestId, "ERROR: 请先安装 Windows 兼容运行环境。");
             return;
         }
+        String preference = backendPreference == null ? "auto" : backendPreference.trim().toLowerCase(Locale.ROOT);
+        if (!preference.equals("auto") && !preference.equals("fexcore") && !preference.equals("box64")) {
+            INSTALL_STATUS.put(requestId, "ERROR: 当前 AEX 实测器不支持所选后端：" + preference);
+            return;
+        }
         if (!ACTIVE_REQUESTS.add(requestId)) return;
-        INSTALL_STATUS.put(requestId, "RUNNING: 正在提取 AEX 并按 FEXCore、Box64 顺序测试后端…");
+        INSTALL_STATUS.put(requestId, "RUNNING: 正在提取 AEX；实测后端：" + preference);
         INSTALL_EXECUTOR.execute(() -> runAexPluginTest(
-                context, manager, fexContainer, box64, requestId, sourcePath));
+                context, manager, fexContainer, box64, requestId, sourcePath, preference));
     }
 
     private static final class AexTrialResult {
@@ -329,7 +340,8 @@ public final class WindowsCompatAndroidBridge {
             WinlatorBionicRuntimeManager.Container fexContainer,
             WinlatorBionicRuntimeManager.Container box64Container,
             String requestId,
-            String sourcePath) {
+            String sourcePath,
+            String backendPreference) {
         Path pluginDirectory = null;
         try {
             Path root = context.getFilesDir().toPath().resolve("windows-compat");
@@ -371,8 +383,13 @@ public final class WindowsCompatAndroidBridge {
                     java.util.List<AexTrialResult> passedTrials = new java.util.ArrayList<>();
                     StringBuilder attemptLog = new StringBuilder();
 
-                    // Run every installed backend for this plug-in; never stop at first success.
-                    for (int backendIndex = 0; backendIndex < containers.length; backendIndex++) {
+                    // Auto compares every installed backend. Manual mode runs only the chosen backend.
+                    int[] backendOrder = "fexcore".equals(backendPreference)
+                            ? new int[] {0}
+                            : "box64".equals(backendPreference)
+                                    ? new int[] {1}
+                                    : new int[] {0, 1};
+                    for (int backendIndex : backendOrder) {
                         WinlatorBionicRuntimeManager.Container candidate = containers[backendIndex];
                         if (candidate == null) {
                             attemptLog.append(backendNames[backendIndex]).append("：运行环境未安装，跳过。\n");
