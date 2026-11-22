@@ -188,6 +188,7 @@ pub(crate) enum Out<'a> {
         source += r"""
 // EFFECTCRAFT_ATOMIC_EXPORT_OUTPUT_TESTS_V1
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod android_atomic_output_tests {
     use super::*;
     use std::io::Write;
