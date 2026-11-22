@@ -5,6 +5,8 @@ on:
     branches: [main]
     paths:
       - '.github/scripts/inventory_adobe_ae_plugins.py'
+      - '.github/scripts/add_zip_plugin_support.py'
+      - '.github/scripts/add_desktop_plugin_package_support.py'
       - '.github/scripts/test_inventory_adobe_ae_plugins.py'
       - '.github/scripts/inspect_adobe_ae_native_pe.py'
       - '.github/scripts/test_inspect_adobe_ae_native_pe.py'
@@ -34,6 +36,8 @@ jobs:
         run: |
           python -m py_compile \
             .github/scripts/inventory_adobe_ae_plugins.py \
+            .github/scripts/add_zip_plugin_support.py \
+            .github/scripts/add_desktop_plugin_package_support.py \
             .github/scripts/test_inventory_adobe_ae_plugins.py \
             .github/scripts/inspect_adobe_ae_native_pe.py \
             .github/scripts/test_inspect_adobe_ae_native_pe.py
