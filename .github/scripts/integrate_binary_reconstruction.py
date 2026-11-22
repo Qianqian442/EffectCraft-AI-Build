@@ -91,12 +91,15 @@ def main() -> None:
         '            progress.store(value, Ordering::Release);\n        }\n        if let Some(data) = pe_bytes {\n            match crate::windows_binary_reconstruction::reconstruct_pe(&data) {\n                Ok(report) => {\n                    let architecture = report.get("architecture").and_then(Value::as_str).unwrap_or("unknown");\n                    let instructions = report.get("instruction_count").and_then(Value::as_u64).unwrap_or(0);\n                    let blocks = report.get("basic_block_candidates").and_then(Value::as_u64).unwrap_or(0);\n                    let imports = report.get("imported_dll_count").and_then(Value::as_u64).unwrap_or(0);\n                    let exports = report.get("exported_symbol_count").and_then(Value::as_u64).unwrap_or(0);\n                    let import_symbols = report.get("imported_symbol_count").and_then(Value::as_u64).unwrap_or(0);\n                    let relocations = report.get("base_relocation_count").and_then(Value::as_u64).unwrap_or(0);\n                    let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_millis();\n                    let report_path = std::env::temp_dir().join(format!("ae-pe-rebuild-{index}-{stamp}.json"));\n                    let report_saved = serde_json::to_vec_pretty(&report).ok().and_then(|bytes| std::fs::write(&report_path, bytes).ok()).is_some();\n                    binary_reconstruction.push(format!("{}：{} PE；指令 {} 条；基本块候选 {}；导入 DLL {} 个 / API 符号 {} 个；导出符号 {} 个；基址重定位 {} 项；IR 报告 {}", entry_name, architecture, instructions, blocks, imports, import_symbols, exports, relocations, if report_saved { report_path.display().to_string() } else { "保存失败".to_string() }));\n                }\n                Err(error) => binary_reconstruction.push(format!("{}：未识别为可分析的 x86/x64 PE；{}", entry_name, error)),\n            }\n        }\n    }\n    progress.store(SCAN_PROGRESS_MAX, Ordering::Release);\n    Ok(ScanReport { file_count, native_count, native_names, total_bytes, binary_reconstruction })',
         "write reconstruction JSON report and return summary",
     )
-    script = replace_once(
-        script,
-        '    lines.push("注意：当前构建已加入方式选择和报告记录；Box64/Box86/FEX/QEMU/Wine 的实际运行时试跑、后端手动切换和暴力二进制重建引擎尚未集成，不会伪称已执行。".into());',
-        '    if !scan.binary_reconstruction.is_empty() {\n        lines.push("暴力二进制结构重建：已在本机离线解析 PE 导入/导出表、解码 x86/x64 指令并恢复基本块候选；生成的 JSON IR 报告保存在下面的应用临时目录。".into());\n        lines.extend(scan.binary_reconstruction.iter().cloned());\n        lines.push("重要：这是静态 IR 恢复，不等于自动重编译成 ARM64，也不证明 Windows API/AEX 宿主语义已移植。".into());\n    } else {\n        lines.push("暴力二进制重建仅在选择该模式时执行；当前结果不包含静态 PE 重建报告。".into());\n    }',
-        "replace stale unintegrated-engine disclaimer",
-    )
+    report_anchor = '    lines.push(format!("方式说明：{}", mode.description()));'
+    report_insertion = report_anchor + '\n' + '''    if !scan.binary_reconstruction.is_empty() {
+        lines.push("暴力二进制结构重建：已在本机离线解析 PE 导入/导出表、解码 x86/x64 指令并恢复基本块候选；生成的 JSON IR 报告保存在下面的应用临时目录。".into());
+        lines.extend(scan.binary_reconstruction.iter().cloned());
+        lines.push("重要：这是静态 IR 恢复，不等于自动重编译成 ARM64，也不证明 Windows API/AEX 宿主语义已移植。".into());
+    } else {
+        lines.push("暴力二进制重建仅在选择该模式时执行；当前结果不包含静态 PE 重建报告。".into());
+    }'''
+    script = replace_once(script, report_anchor, report_insertion, "insert reconstruction report display")
     migration_script.write_text(script, encoding="utf-8")
 
     # The build order generates plugin_migration.rs before this integration script runs.
@@ -141,8 +144,8 @@ def main() -> None:
             "generated PE decode and JSON report",
         ),
         (
-            '    lines.push("注意：当前构建已加入方式选择和报告记录；Box64/Box86/FEX/QEMU/Wine 的实际运行时试跑、后端手动切换和暴力二进制重建引擎尚未集成，不会伪称已执行。".into());',
-            '    if !scan.binary_reconstruction.is_empty() {\n        lines.push("暴力二进制结构重建：已在本机离线解析 PE 导入/导出表、解码 x86/x64 指令并恢复基本块候选；生成的 JSON IR 报告保存在下面的应用临时目录。".into());\n        lines.extend(scan.binary_reconstruction.iter().cloned());\n        lines.push("重要：这是静态 IR 恢复，不等于自动重编译成 ARM64，也不证明 Windows API/AEX 宿主语义已移植。".into());\n    } else {\n        lines.push("暴力二进制重建仅在选择该模式时执行；当前结果不包含静态 PE 重建报告。".into());\n    }',
+            '    lines.push(format!("方式说明：{}", mode.description()));',
+            '    lines.push(format!("方式说明：{}", mode.description()));\n    if !scan.binary_reconstruction.is_empty() {\n        lines.push("暴力二进制结构重建：已在本机离线解析 PE 导入/导出表、解码 x86/x64 指令并恢复基本块候选；生成的 JSON IR 报告保存在下面的应用临时目录。".into());\n        lines.extend(scan.binary_reconstruction.iter().cloned());\n        lines.push("重要：这是静态 IR 恢复，不等于自动重编译成 ARM64，也不证明 Windows API/AEX 宿主语义已移植。".into());\n    } else {\n        lines.push("暴力二进制重建仅在选择该模式时执行；当前结果不包含静态 PE 重建报告。".into());\n    }',
             "generated reconstruction report display",
         ),
     ]
