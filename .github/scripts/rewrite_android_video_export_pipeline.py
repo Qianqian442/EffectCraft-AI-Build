@@ -186,7 +186,7 @@ pub(crate) enum Out<'a> {
     tests_marker = "EFFECTCRAFT_ATOMIC_EXPORT_OUTPUT_TESTS_V1"
     if tests_marker not in source:
         source += r"""
-
+// EFFECTCRAFT_ATOMIC_EXPORT_OUTPUT_TESTS_V1
 #[cfg(test)]
 mod android_atomic_output_tests {
     use super::*;
@@ -205,12 +205,12 @@ mod android_atomic_output_tests {
     fn final_movie_appears_only_after_atomic_finish() {
         let path = test_path("commit");
         let _ = std::fs::remove_file(&path);
-        let mut output = create(None, path.to_str().unwrap_or_default()).unwrap();
+        let mut output = match create(None, path.to_str().unwrap_or_default()) { Ok(value) => value, Err(error) => { assert!(false, "{error}"); return; } };
         output.write_all(b"complete-movie").unwrap();
         assert!(!path.exists(), "partial movie must not be visible at its final path");
-        assert_eq!(output.finish().unwrap(), 14);
-        assert_eq!(std::fs::read(&path).unwrap(), b"complete-movie");
-        std::fs::remove_file(path).unwrap();
+        assert_eq!(output.finish().ok(), Some(14));
+        assert_eq!(std::fs::read(&path).ok(), Some(b"complete-movie".to_vec()));
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -218,13 +218,13 @@ mod android_atomic_output_tests {
         let path = test_path("rollback");
         std::fs::write(&path, b"previous-valid-movie").unwrap();
         {
-            let mut output = create(None, path.to_str().unwrap_or_default()).unwrap();
+            let mut output = match create(None, path.to_str().unwrap_or_default()) { Ok(value) => value, Err(error) => { assert!(false, "{error}"); return; } };
             output.write_all(b"incomplete").unwrap();
         }
-        assert_eq!(std::fs::read(&path).unwrap(), b"previous-valid-movie");
-        let partials = std::fs::read_dir(path.parent().unwrap())
-            .unwrap()
-            .filter_map(Result::ok)
+        assert_eq!(std::fs::read(&path).ok(), Some(b"previous-valid-movie".to_vec()));
+        let Some(parent) = path.parent() else { assert!(false, "test path has no parent"); return; };
+        let partials = match std::fs::read_dir(parent) { Ok(entries) => entries, Err(error) => { assert!(false, "{error}"); return; } }
+            .filter_map(|entry| entry.ok())
             .filter(|entry| entry.file_name().to_string_lossy().starts_with(
                 &format!(".{}.{}.", path.file_name().unwrap().to_string_lossy(), std::process::id())
             ))
@@ -234,8 +234,6 @@ mod android_atomic_output_tests {
     }
 }
 """
-        # Keep the test marker in the generated Rust source without exposing it as a Rust item.
-        source = source.replace("#[cfg(test)]\\nmod android_atomic_output_tests", "// " + tests_marker + "\\n#[cfg(test)]\\nmod android_atomic_output_tests", 1)
     out.write_text(source, encoding="utf-8")
     print("Android video export uses one-frame sequential render/encode and atomically publishes only complete output files.")
     print("Desktop parallel export, codec selection, resolution/FPS controls, audio and AI features are unchanged.")
