@@ -57,7 +57,7 @@ impl MigrationMode {
             Self::AutoBest => "分析插件格式、架构、依赖和可用候选路线；优先推荐已接入且通过实测的路线，没有通过测试的路线不会被标记为可用。",
             Self::CpuTranslation => "展示该插件适用的 CPU 转译候选路线，包括各路线的运行环境、前置条件和实测状态；未接入的路线只列为候选。",
             Self::ForceCompatibility => "组合路线内部的兼容处理阶段；不作为独立选项显示。",
-            Self::AggressivePort => "按顺序尝试：反编译/静态重构分析 → 强行兼容（运行库、宿主接口、像素格式与渲染回退）→ 前述路线失败后再进行暴力移植兜底。每一阶段都必须记录真实执行状态；未接入或未通过测试的阶段明确标记为未完成，不得伪报成功。",
+            Self::AggressivePort => "组合路线内部按顺序处理：① Ghidra 深度分析插件结构、依赖、资源与控制流，并结合参考帧/参数行为重构效果算法；② 强行兼容运行库、插件宿主接口、像素格式、渲染与 CPU 特性；③ 前两阶段仍无法满足目标时，最后尝试 Remill + LLVM IR 暴力移植兜底。Ghidra 不作为独立顶层按钮；每阶段必须记录真实执行状态，未接入或未通过测试时明确标记未完成。",
             Self::ManualBackend => "高级导入：分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；尚未接入的后端只记录选择意向。",
         }
     }
@@ -616,7 +616,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                                     }
                                     if !group.compatibility_profiles.is_empty() {
                                         ui.separator();
-                                        ui.strong("强制兼容 / 暴力移植子方案（全部展示）");
+                                        ui.strong("组合路线内部处理阶段（按顺序执行，不单独显示为入口）");
                                         for profile in group.compatibility_profiles.iter() {
                                             ui.small(format!("• {profile}"));
                                         }
@@ -626,7 +626,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                             }
                         });
                         ui.add_space(6.0);
-                        ui.small("AEX 原生插件可在已安装的隔离 Windows 环境中实测 FEXCore / Box64；Remill、Ghidra、Box86、QEMU 等其他路线仍按各自状态显示，不会伪报已执行。");
+                        ui.small("Ghidra 分析/算法重构、强行兼容和 Remill 暴力移植均属于组合路线内部阶段；只有实际接入并完成测试后才会显示执行通过。FEXCore / Box64 等运行时也按真实实测状态显示。");
                         ui.add_space(8.0);
                         if ui.button("确认选择并查看移植报告").clicked() { confirm = true; }
                     });
