@@ -51,12 +51,6 @@ def main() -> None:
     script = migration_script.read_text(encoding="utf-8")
     script = replace_once(
         script,
-        '            Self::AggressivePort => "逐个 AEX 执行 PE 分析与已安装 Wine/Proton + FEXCore/Box64 隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。只有提供可用源代码且依赖/授权允许时才另行重编译；未知闭源插件不承诺自动还原为 ARM64。",',
-        '            Self::AggressivePort => "逐个 AEX 执行 PE 导入/导出、指令/控制流分析，并在 Android 上对已安装 Wine/Proton + FEXCore/Box64 宿主路线隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。静态 IR 和样本试跑不等于自动重编译任意闭源插件；只有可用源码且依赖/授权允许时才考虑 ARM64 重编译。",',
-        "aggressive reconstruction mode description",
-    )
-    script = replace_once(
-        script,
         'struct ScanReport {\n    file_count: usize,\n    native_count: usize,\n    native_names: Vec<String>,\n    total_bytes: u64,\n}',
         'struct ScanReport {\n    file_count: usize,\n    native_count: usize,\n    native_names: Vec<String>,\n    total_bytes: u64,\n    binary_reconstruction: Vec<String>,\n}',
         "reconstruction scan report",
@@ -82,7 +76,7 @@ def main() -> None:
     script = replace_once(
         script,
         '        if is_native {\n            native_count += 1;\n            if native_names.len() < 8 { native_names.push(entry_name.clone()); }\n        }\n        loop {',
-        '        if is_native {\n            native_count += 1;\n            if native_names.len() < 8 { native_names.push(entry_name.clone()); }\n        }\n        let extension_is_pe = ["aex", "dll", "ofx"].contains(&extension.as_str());\n        let mut pe_bytes = if mode == MigrationMode::AggressivePort && extension_is_pe && entry.size() <= MAX_ENTRY_BYTES {\n            Some(Vec::with_capacity(entry.size() as usize))\n        } else { None };\n        loop {',
+        '        if is_native {\n            native_count += 1;\n            if native_names.len() < 8 { native_names.push(entry_name.clone()); }\n        }\n        let extension_is_pe = ["aex", "dll", "ofx"].contains(&extension.as_str());\n        let mut pe_bytes = if mode == MigrationMode::JointDecompileForcePort && extension_is_pe && entry.size() <= MAX_ENTRY_BYTES {\n            Some(Vec::with_capacity(entry.size() as usize))\n        } else { None };\n        loop {',
         "capture native PE bytes for aggressive analysis",
     )
     script = replace_once(
@@ -112,11 +106,6 @@ def main() -> None:
     module_source = generated_module.read_text(encoding="utf-8")
     module_replacements = [
         (
-            '            Self::AggressivePort => "逐个 AEX 执行 PE 分析与已安装 Wine/Proton + FEXCore/Box64 隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。只有提供可用源代码且依赖/授权允许时才另行重编译；未知闭源插件不承诺自动还原为 ARM64。",',
-            '            Self::AggressivePort => "逐个 AEX 执行 PE 导入/导出、指令/控制流分析，并在 Android 上对已安装 Wine/Proton + FEXCore/Box64 宿主路线隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。静态 IR 和样本试跑不等于自动重编译任意闭源插件；只有可用源码且依赖/授权允许时才考虑 ARM64 重编译。",',
-            "generated aggressive-mode description",
-        ),
-        (
             'struct ScanReport {\n    file_count: usize,\n    native_count: usize,\n    native_names: Vec<String>,\n    total_bytes: u64,\n}',
             'struct ScanReport {\n    file_count: usize,\n    native_count: usize,\n    native_names: Vec<String>,\n    total_bytes: u64,\n    binary_reconstruction: Vec<String>,\n}',
             "generated reconstruction scan report",
@@ -138,7 +127,7 @@ def main() -> None:
         ),
         (
             '        if is_native {\n            native_count += 1;\n            if native_names.len() < 8 { native_names.push(entry_name.clone()); }\n        }\n        loop {',
-            '        if is_native {\n            native_count += 1;\n            if native_names.len() < 8 { native_names.push(entry_name.clone()); }\n        }\n        let extension_is_pe = ["aex", "dll", "ofx"].contains(&extension.as_str());\n        let mut pe_bytes = if mode == MigrationMode::AggressivePort && extension_is_pe && entry.size() <= MAX_ENTRY_BYTES {\n            Some(Vec::with_capacity(entry.size() as usize))\n        } else { None };\n        loop {',
+            '        if is_native {\n            native_count += 1;\n            if native_names.len() < 8 { native_names.push(entry_name.clone()); }\n        }\n        let extension_is_pe = ["aex", "dll", "ofx"].contains(&extension.as_str());\n        let mut pe_bytes = if mode == MigrationMode::JointDecompileForcePort && extension_is_pe && entry.size() <= MAX_ENTRY_BYTES {\n            Some(Vec::with_capacity(entry.size() as usize))\n        } else { None };\n        loop {',
             "generated PE byte capture",
         ),
         (
