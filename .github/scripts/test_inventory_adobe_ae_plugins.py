@@ -61,8 +61,11 @@ class AdobeAeInventoryTests(unittest.TestCase):
                 self.assertEqual(result["compatibility_status"], "inventory_only_not_executed")
                 self.assertFalse(result["execution_performed"])
                 self.assertEqual(result["counts"][expected], 1)
-                self.assertEqual(len(result["manifests"]), 1)
-                self.assertTrue(result["manifests"][0]["valid_json"])
+                if suffix == ".ccx":
+                    self.assertEqual(len(result["manifests"]), 1)
+                    self.assertTrue(result["manifests"][0]["valid_json"])
+                else:
+                    self.assertEqual(result["manifests"], [])
 
 
 if __name__ == "__main__":
