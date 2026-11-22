@@ -449,7 +449,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     // available for later Adobe-specific translators and retry/export.
     std::fs::create_dir_all(&originals_dir)
         .map_err(|error| bad(CMD, format!("无法创建原始插件包目录：{error}")))?;
-    let original_archive = originals_dir.join("original-package.zip");
+    let original_extension = Path::new(archive_path).extension().and_then(|value| value.to_str()).filter(|value| matches!(value.to_ascii_lowercase().as_str(), "zip" | "zxp" | "ccx")).unwrap_or("zip");
+    let original_archive = originals_dir.join(format!("original-package.{original_extension}"));
     std::fs::copy(archive_path, &original_archive)
         .map_err(|error| bad(CMD, format!("无法保留原始插件包：{error}")))?;
 
