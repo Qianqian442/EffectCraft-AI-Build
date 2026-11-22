@@ -19,6 +19,7 @@ MACHINE = {
     0x01C4: "armv7",
     0xAA64: "arm64",
 }
+MAX_FILE_BYTES = 256 * 1024 * 1024
 MAX_SECTIONS = 96
 MAX_IMPORTS = 4096
 MAX_EXPORTS = 8192
@@ -50,6 +51,9 @@ def cstring(data: bytes, offset: int, limit: int = 4096) -> str:
 
 
 def inspect_pe(path: Path) -> dict:
+    size = path.stat().st_size
+    if size > MAX_FILE_BYTES:
+        raise PEError(f"file exceeds {MAX_FILE_BYTES // (1024 * 1024)} MiB static-inspection limit")
     data = path.read_bytes()
     result = {
         "file": path.name,
