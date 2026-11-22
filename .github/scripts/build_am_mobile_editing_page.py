@@ -1005,10 +1005,16 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                     ui.ctx().data(|d| d.get_temp::<(f32, Vec<u64>)>(drag_id)),
                 )
             {
-                let delta = (pt.x - last_x) as f64 / pps;
-                if delta.abs() > 0.00001 {
+                // Match AM's deliberate one-second trim steps. Keep the unconsumed
+                // finger movement by advancing the anchor only by whole seconds applied;
+                // tiny touch jitter cannot jump the clip by minutes or hours.
+                let raw_delta = (pt.x - last_x) as f64 / pps;
+                let whole_seconds = raw_delta.abs().floor();
+                if whole_seconds >= 1.0 {
+                    let delta = raw_delta.signum() * whole_seconds.min(60.0);
                     apply_timing(app, &ids, field, delta);
-                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, (pt.x, ids)));
+                    let consumed_px = (delta * pps) as f32;
+                    ui.ctx().data_mut(|d| d.insert_temp(drag_id, (last_x + consumed_px, ids)));
                 }
             }
             if response.drag_stopped() {
