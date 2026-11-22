@@ -867,7 +867,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
     replacement = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
     if let Some(path) = str_p(p, "path")
-        && Path::new(path).extension().is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "zip" | "zxp" | "ccx"))
+        && Path::new(path).extension().and_then(|extension| extension.to_str())
+            .is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "zip" | "zxp" | "ccx"))
     {
         return install_desktop_plugin_archive(s, path);
     }
