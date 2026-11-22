@@ -33,7 +33,7 @@ class AdobePackageRoutingTests(unittest.TestCase):
         self.assertIn('".aex", ".pbk", ".pbg", ".8bi"', inventory)
         self.assertIn('"aex", "pbk", "pbg", "8bi"', package)
         self.assertIn('"aex", "pbk", "pbg", "8bi"', migration)
-        self.assertIn('"pbk" | "pbg" | "8bi"', qq)
+        self.assertIn('"aex", "pbk", "pbg", "8bi"', qq)
 
     def test_single_jsxbin_and_ffx_are_preserved_not_claimed_as_executable(self):
         migration = self.read("add_plugin_migration_progress.py")
