@@ -1142,21 +1142,7 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     };
     p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, title, Tokens::semibold(11.0), t.text);
 
-    // The portrait clip timeline remains quick to use; this button opens the original
-    // native Ae Timeline panel for detailed keyframe and graph/curve editing.
-    if kind != "add" {
-        let switch_rect = Rect::from_min_size(
-            pos2(header.max.x - 102.0, header.min.y + 2.0),
-            vec2(60.0, 28.0),
-        );
-        let switch_label = if kind == "keyframes" { "返回" } else { "关键帧" };
-        let switch = ui.put(switch_rect, egui::Button::new(switch_label).min_size(switch_rect.size()));
-        app.auto.add_response("am.drawer.keyframes", &switch, switch_label);
-        if switch.clicked() {
-            let next = if kind == "keyframes" { "controls" } else { "keyframes" };
-            ui.ctx().data_mut(|d| d.insert_temp(id, next.to_string()));
-        }
-    }
+    // Keyframes are opened only from the selected clip's action sheet below.
 
     let close = Rect::from_min_size(pos2(header.max.x - 36.0, header.min.y + 2.0), vec2(32.0, 28.0));
     let response = ui.put(close, egui::Button::new("×").min_size(close.size()));
@@ -1259,6 +1245,13 @@ fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, 
     let header = Rect::from_min_size(rect.min, vec2(rect.width(), 32.0));
     p.line_segment([header.left_bottom(), header.right_bottom()], Stroke::new(1.0, t.separator));
     p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, layer_name, Tokens::semibold(11.0), t.text);
+
+    let keyframe_rect = Rect::from_min_size(pos2(header.max.x - 108.0, header.min.y + 2.0), vec2(68.0, 28.0));
+    let keyframe = ui.put(keyframe_rect, egui::Button::new("关键帧 / 曲线").min_size(keyframe_rect.size()));
+    app.auto.add_response("am.layer.actions.keyframes", &keyframe, "编辑当前图层关键帧和曲线");
+    if keyframe.clicked() {
+        ui.ctx().data_mut(|d| d.insert_temp(Id::new("am-mobile-tool-drawer"), "keyframes".to_string()));
+    }
 
     let close_rect = Rect::from_min_size(pos2(header.max.x - 34.0, header.min.y + 2.0), vec2(30.0, 28.0));
     let close = ui.put(close_rect, egui::Button::new("×").min_size(close_rect.size()));
@@ -1392,7 +1385,9 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         .or_else(|| active_layer.map(|id| format!("layer:{id}")));
     let sheet_h = if let Some(kind) = drawer_kind.as_deref() {
         if kind == "keyframes" {
-            (rect.height() * 0.76).clamp(300.0, 620.0).min(rect.height() * 0.82)
+            // Keep the AM preview and most of its clip timeline visible while editing
+            // keyframes in the same page; never switch to a separate full-screen editor.
+            (rect.height() * 0.42).clamp(220.0, 360.0).min(rect.height() * 0.46)
         } else if kind == "controls" {
             (rect.height() * 0.62).clamp(280.0, 520.0).min(rect.height() * 0.72)
         } else {
