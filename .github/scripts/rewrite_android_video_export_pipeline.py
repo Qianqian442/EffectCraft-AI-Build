@@ -118,7 +118,7 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
 }""",
             """/// EFFECTCRAFT_ATOMIC_EXPORT_OUTPUT_V1
 struct AtomicOutput {
-    writer: BufWriter<std::fs::File>,
+    writer: Option<BufWriter<std::fs::File>>,
     temporary: Option<std::path::PathBuf>,
     destination: std::path::PathBuf,
 }
@@ -156,7 +156,7 @@ pub(crate) enum Out<'a> {
                 }
             }
             let (temporary, file) = created.ok_or_else(|| ExportError::Io("无法创建导出临时文件，请检查存储空间和目录权限。".into()))?;
-            Ok(Out::File(AtomicOutput { writer: BufWriter::new(file), temporary: Some(temporary), destination }))""",
+            Ok(Out::File(AtomicOutput { writer: Some(BufWriter::new(file)), temporary: Some(temporary), destination }))""",
             "Atomic output creation",
         )
         source = once(
@@ -167,8 +167,9 @@ pub(crate) enum Out<'a> {
                 Ok(f.metadata().map(|m| m.len()).unwrap_or(0))
             }""",
             """            Out::File(mut output) => {
-                output.writer.flush().map_err(io)?;
-                let file = output.writer.into_inner().map_err(|e| ExportError::Io(e.to_string()))?;
+                let mut writer = output.writer.take().ok_or_else(|| ExportError::Io("导出文件写入器状态无效。".into()))?;
+                writer.flush().map_err(io)?;
+                let file = writer.into_inner().map_err(|e| ExportError::Io(e.to_string()))?;
                 file.sync_all().map_err(io)?;
                 let bytes = file.metadata().map(|m| m.len()).unwrap_or(0);
                 drop(file);
@@ -179,9 +180,9 @@ pub(crate) enum Out<'a> {
             }""",
             "Atomic output commit",
         )
-        source = once(source, "            Out::File(w) => w.write(buf),", "            Out::File(w) => w.writer.write(buf),", "Atomic output write")
-        source = once(source, "            Out::File(w) => w.flush(),", "            Out::File(w) => w.writer.flush(),", "Atomic output flush")
-        source = once(source, "            Out::File(w) => w.seek(pos),", "            Out::File(w) => w.writer.seek(pos),", "Atomic output seek")
+        source = once(source, "            Out::File(w) => w.write(buf),", "            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.write(buf), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },", "Atomic output write")
+        source = once(source, "            Out::File(w) => w.flush(),", "            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.flush(), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },", "Atomic output flush")
+        source = once(source, "            Out::File(w) => w.seek(pos),", "            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.seek(pos), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },", "Atomic output seek")
     tests_marker = "EFFECTCRAFT_ATOMIC_EXPORT_OUTPUT_TESTS_V1"
     if tests_marker not in source:
         source += r"""
