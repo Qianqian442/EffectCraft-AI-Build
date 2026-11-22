@@ -1549,7 +1549,7 @@ def verify(root: Path) -> None:
         "am.addLayer.",
         "PanelKind::Timeline",
         '("关键帧", "keyframes"),',
-        '("曲线", "curves"),'
+        '("曲线", "curves"),',
         "Tool::Pen",
         "Tool::Puppet",
         "照片/视频",
