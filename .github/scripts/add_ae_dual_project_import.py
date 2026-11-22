@@ -81,7 +81,8 @@ def main() -> None:
                 let mut found = false;
                 for index in 0..package.len() {
                     let Ok(entry) = package.by_index(index) else { continue; };
-                    let name = entry.name().to_ascii_lowercase();
+                    let Ok(name) = entry.name() else { continue; };
+                    let name = name.to_ascii_lowercase();
                     if name.ends_with(".ecproj") || name.ends_with(".ecprojx") {
                         found = true;
                         break;
