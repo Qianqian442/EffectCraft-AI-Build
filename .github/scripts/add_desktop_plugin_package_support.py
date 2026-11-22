@@ -514,13 +514,14 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         // when the package path explicitly places it under ScriptUI Panels.
         let kind = if extension == "wasm" { "wasm" }
             else if extension == "wat" { "wat" }
+            else if extension == "jsx" && is_cep_resource { "asset" }
             else if extension == "jsx" && is_scriptui_panel { "panel" }
             else if extension == "jsx" { "script" }
             else if extension == "js" && !is_cep_resource { "script" }
             else if ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
                 || lower_path.contains(".plugin/")
                 || lower_path.contains(".ofx.bundle/") { "native" }
-            else if ["zxp", "ccx", "ffx", "jsxbin",
+            else if ["zxp", "ccx", "ffx", "jsxbin", "jsx",
                      "cube", "3dl", "lut", "look", "csp", "spi1d", "spi3d", "spimtx", "cc", "ccc", "cdl", "ocio",
                      "png", "jpg", "jpeg", "webp", "tif", "tiff", "exr", "ttf", "otf",
                      "json", "xml", "html", "css", "js", "txt", "md", "toml", "plist", "rsrc", "r", "rc", "strings", "manifest",
