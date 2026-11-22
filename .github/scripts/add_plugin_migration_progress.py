@@ -44,9 +44,9 @@ pub(crate) enum MigrationMode {
 impl MigrationMode {
     pub(crate) fn label(self) -> &'static str {
         match self {
-            Self::AutoBest => "普通导入",
-            Self::CpuTranslation => "普通导入",
-            Self::ForceCompatibility => "高级导入",
+            Self::AutoBest => "自动推荐",
+            Self::CpuTranslation => "转译",
+            Self::ForceCompatibility => "强行兼容（内部阶段，不单独显示）",
             Self::AggressivePort => "反编译+暴力移植+强行兼容",
             Self::ManualBackend => "高级导入",
         }
@@ -54,9 +54,9 @@ impl MigrationMode {
 
     pub(crate) fn description(self) -> &'static str {
         match self {
-            Self::AutoBest => "按原有插件加载器执行普通导入；支持的 WASM、脚本和兼容组件仍按原规则验证。",
-            Self::CpuTranslation => "普通导入的兼容分析阶段；不额外启动桌面原生插件执行环境。",
-            Self::ForceCompatibility => "高级导入：展示架构、依赖、宿主接口和可用兼容路线，供进一步处理。",
+            Self::AutoBest => "分析插件格式、架构、依赖和可用候选路线；优先推荐已接入且通过实测的路线，没有通过测试的路线不会被标记为可用。",
+            Self::CpuTranslation => "展示该插件适用的 CPU 转译候选路线，包括各路线的运行环境、前置条件和实测状态；未接入的路线只列为候选。",
+            Self::ForceCompatibility => "组合路线内部的兼容处理阶段；不作为独立选项显示。",
             Self::AggressivePort => "按顺序尝试：反编译/静态重构分析 → 强行兼容（运行库、宿主接口、像素格式与渲染回退）→ 前述路线失败后再进行暴力移植兜底。每一阶段都必须记录真实执行状态；未接入或未通过测试的阶段明确标记为未完成，不得伪报成功。",
             Self::ManualBackend => "高级导入：分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；尚未接入的后端只记录选择意向。",
         }
@@ -476,6 +476,7 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.label("选择本次电脑插件移植方式；可按需切换，不会强制固定使用某一种转译器。");
                         ui.label("扫描完成后，结果页会展示检测到的每个插件的全部适用路线，不省略候选项。");
                         ui.radio_value(mode, MigrationMode::AutoBest, MigrationMode::AutoBest.label());
+                        ui.radio_value(mode, MigrationMode::CpuTranslation, MigrationMode::CpuTranslation.label());
                         ui.radio_value(mode, MigrationMode::ManualBackend, MigrationMode::ManualBackend.label());
                         ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
                         ui.small(mode.description());
