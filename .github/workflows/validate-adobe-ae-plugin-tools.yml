@@ -1,0 +1,43 @@
+name: Validate Adobe After Effects plugin compatibility tools
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/scripts/inventory_adobe_ae_plugins.py'
+      - '.github/scripts/test_inventory_adobe_ae_plugins.py'
+      - '.github/scripts/inspect_adobe_ae_native_pe.py'
+      - '.github/scripts/test_inspect_adobe_ae_native_pe.py'
+      - '.github/workflows/validate-adobe-ae-plugin-tools.yml'
+      - 'docs/ADOBE_AFTER_EFFECTS_PLUGIN_COMPATIBILITY.md'
+  push:
+    branches: [ae-adobe-plugin-compat]
+    paths:
+      - '.github/scripts/inventory_adobe_ae_plugins.py'
+      - '.github/scripts/test_inventory_adobe_ae_plugins.py'
+      - '.github/scripts/inspect_adobe_ae_native_pe.py'
+      - '.github/scripts/test_inspect_adobe_ae_native_pe.py'
+      - '.github/workflows/validate-adobe-ae-plugin-tools.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Check Python syntax
+        run: |
+          python -m py_compile \
+            .github/scripts/inventory_adobe_ae_plugins.py \
+            .github/scripts/test_inventory_adobe_ae_plugins.py \
+            .github/scripts/inspect_adobe_ae_native_pe.py \
+            .github/scripts/test_inspect_adobe_ae_native_pe.py
+      - name: Run Adobe AE plugin intake and PE inspection tests
+        run: |
+          cd .github/scripts
+          python -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py
