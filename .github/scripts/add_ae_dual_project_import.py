@@ -71,28 +71,47 @@ def main() -> None:
             path_patch,
             "allow direct native mobile-project files from the mobile Ae button",
         )
-        archive_anchor = """    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|e| err(format!("手机版 AE 工程包不是有效 ZIP：{e}")))?;
-    let mut names = Vec::new();"""
-        archive_patch = """    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
-        .map_err(|e| err(format!("手机版 AE 工程包不是有效 ZIP：{e}")))?;
-    let mut contains_self_project = false;
-    for index in 0..archive.len() {
-        let Ok(entry) = archive.by_index(index) else { continue; };
-        let name = entry.name().to_ascii_lowercase();
-        if name.ends_with(".ecproj") || name.ends_with(".ecprojx") {
-            contains_self_project = true;
-            break;
-        }
-    }
+        size_anchor = """    const MAX_MOBILE_AE_ZIP_BYTES: u64 = 128 * 1024 * 1024;"""
+        size_patch = """    // Detect Ae's own project package using the ZIP directory only. The self-export
+    // package may include large collected footage, so it uses the streaming extractor
+    // and is not constrained by the small Adobe-mobile package inspection limit.
+    let contains_self_project = match std::fs::File::open(&path) {
+        Ok(file) => match zip::ZipArchive::new(file) {
+            Ok(mut package) => {
+                let mut found = false;
+                for index in 0..package.len() {
+                    let Ok(entry) = package.by_index(index) else { continue; };
+                    let name = entry.name().to_ascii_lowercase();
+                    if name.ends_with(".ecproj") || name.ends_with(".ecprojx") {
+                        found = true;
+                        break;
+                    }
+                }
+                found
+            }
+            Err(_) => false,
+        },
+        Err(_) => false,
+    };
     if contains_self_project {
-        drop(archive);
         let (actual, _package_root) = extract_project_zip(s, &path)?;
         if !matches!(ext(&actual).as_str(), "ecproj" | "ecprojx") {
             return Err(err("ZIP 中检测到了自有工程，但未能安全提取 .ecproj/.ecprojx 文件"));
         }
         return super::import_project::import_project(s, &json!({"path": actual}));
     }
+    const MAX_MOBILE_AE_ZIP_BYTES: u64 = 128 * 1024 * 1024;"""
+        replace_once(
+            am_nv,
+            size_anchor,
+            size_patch,
+            "streaming self-project detection before the Adobe mobile ZIP size limit",
+        )
+        archive_anchor = """    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| err(format!("手机版 AE 工程包不是有效 ZIP：{e}")))?;
+    let mut names = Vec::new();"""
+        archive_patch = """    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| err(format!("手机版 AE 工程包不是有效 ZIP：{e}")))?;
     let mut names = Vec::new();"""
         replace_once(
             am_nv,
