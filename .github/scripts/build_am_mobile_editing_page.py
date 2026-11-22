@@ -540,6 +540,15 @@ fn am_effect_browser(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             ui.ctx().request_repaint();
         }
     }
+    // Android touch scrolling can arrive as smooth-scroll deltas instead of a mouse wheel.
+    // Apply the delta to this browser's own PanelScroll offset; do not steal card taps.
+    if ui.input(|i| i.has_touch_screen()) && ui.input(|i| i.pointer_hover_pos().is_some_and(|pt| body.contains(pt))) {
+        let delta = ui.input(|i| i.smooth_scroll_delta.y);
+        if delta.abs() > 0.0 {
+            scroll.offset = (scroll.offset - delta).max(0.0);
+            ui.ctx().request_repaint();
+        }
+    }
     if pan.drag_stopped() {
         ui.ctx().data_mut(|d| d.remove::<f32>(pan_state));
     }
@@ -715,7 +724,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let mut view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id)).unwrap_or_default();
     view.zoom = view.zoom.clamp(1.0, 16.0);
 
-    let label_w = NAME_W.min((rect.width() * 0.28).max(64.0));
+    let label_w = NAME_W.min((rect.width() * 0.22).max(56.0));
     let ruler_h = 28.0;
     let ruler = Rect::from_min_size(rect.min, vec2(rect.width(), ruler_h));
     let content = Rect::from_min_max(pos2(rect.min.x, ruler.max.y), rect.max);
@@ -1337,7 +1346,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let bottom_rect = Rect::from_min_size(pos2(rect.min.x, rect.max.y - BOTTOM_H), vec2(rect.width(), BOTTOM_H));
     let middle_bottom = bottom_rect.min.y;
     let available = (middle_bottom - top_rect.max.y - TRANSPORT_H - 8.0).max(210.0);
-    let preview_h = (available * 0.36).clamp(130.0, 260.0).min((available - 160.0).max(100.0));
+    let preview_h = (available * 0.28).clamp(112.0, 210.0).min((available - 190.0).max(92.0));
     let preview_rect = Rect::from_min_size(pos2(rect.min.x, top_rect.max.y + 4.0), vec2(rect.width(), preview_h));
     let transport_rect = Rect::from_min_size(pos2(rect.min.x, preview_rect.max.y), vec2(rect.width(), TRANSPORT_H));
     let timeline_rect = Rect::from_min_max(pos2(rect.min.x, transport_rect.max.y), pos2(rect.max.x, middle_bottom));
@@ -1370,9 +1379,9 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         .or_else(|| active_layer.map(|id| format!("layer:{id}")));
     let sheet_h = if let Some(kind) = drawer_kind.as_deref() {
         if kind == "keyframes" {
-            (rect.height() * 0.68).clamp(260.0, 500.0).min(timeline_rect.height().max(220.0))
+            (rect.height() * 0.76).clamp(300.0, 620.0).min(rect.height() * 0.82)
         } else if kind == "controls" {
-            (rect.height() * 0.56).clamp(250.0, 440.0).min(timeline_rect.height().max(220.0))
+            (rect.height() * 0.62).clamp(280.0, 520.0).min(rect.height() * 0.72)
         } else {
             (rect.height() * 0.42).clamp(180.0, 340.0).min(timeline_rect.height().max(140.0))
         }
@@ -1384,7 +1393,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let slide_progress = am_bottom_sheet_progress(ui.ctx(), sheet_key);
     if sheet_h > 0.0 {
         let target_rect = Rect::from_min_max(
-            pos2(rect.min.x, timeline_rect.max.y - sheet_h),
+            pos2(rect.min.x, bottom_rect.min.y - sheet_h),
             pos2(rect.max.x, bottom_rect.min.y),
         );
         let slide_offset = (1.0 - slide_progress) * sheet_h;
