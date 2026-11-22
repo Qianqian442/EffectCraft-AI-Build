@@ -542,7 +542,7 @@ fn am_effect_browser(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     }
     // Android touch scrolling can arrive as smooth-scroll deltas instead of a mouse wheel.
     // Apply the delta to this browser's own PanelScroll offset; do not steal card taps.
-    if ui.input(|i| i.has_touch_screen()) && ui.input(|i| i.pointer_hover_pos().is_some_and(|pt| body.contains(pt))) {
+    if ui.input(|i| i.has_touch_screen()) && ui.input(|i| i.pointer.hover_pos().is_some_and(|pt| body.contains(pt))) {
         let delta = ui.input(|i| i.smooth_scroll_delta.y);
         if delta.abs() > 0.0 {
             scroll.offset = (scroll.offset - delta).max(0.0);
