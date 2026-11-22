@@ -540,6 +540,15 @@ fn am_effect_browser(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             ui.ctx().request_repaint();
         }
     }
+    // Android touch scrolling can arrive as smooth-scroll deltas instead of a mouse wheel.
+    // Apply the delta to this browser's own PanelScroll offset; do not steal card taps.
+    if ui.input(|i| i.has_touch_screen()) && ui.input(|i| i.pointer_hover_pos().is_some_and(|pt| body.contains(pt))) {
+        let delta = ui.input(|i| i.smooth_scroll_delta.y);
+        if delta.abs() > 0.0 {
+            scroll.offset = (scroll.offset - delta).max(0.0);
+            ui.ctx().request_repaint();
+        }
+    }
     if pan.drag_stopped() {
         ui.ctx().data_mut(|d| d.remove::<f32>(pan_state));
     }
@@ -715,7 +724,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let mut view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id)).unwrap_or_default();
     view.zoom = view.zoom.clamp(1.0, 16.0);
 
-    let label_w = NAME_W.min((rect.width() * 0.28).max(64.0));
+    let label_w = NAME_W.min((rect.width() * 0.22).max(56.0));
     let ruler_h = 28.0;
     let ruler = Rect::from_min_size(rect.min, vec2(rect.width(), ruler_h));
     let content = Rect::from_min_max(pos2(rect.min.x, ruler.max.y), rect.max);
@@ -1337,7 +1346,7 @@ pub fn show(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let bottom_rect = Rect::from_min_size(pos2(rect.min.x, rect.max.y - BOTTOM_H), vec2(rect.width(), BOTTOM_H));
     let middle_bottom = bottom_rect.min.y;
     let available = (middle_bottom - top_rect.max.y - TRANSPORT_H - 8.0).max(210.0);
-    let preview_h = (available * 0.36).clamp(130.0, 260.0).min((available - 160.0).max(100.0));
+    let preview_h = (available * 0.28).clamp(112.0, 210.0).min((available - 190.0).max(92.0));
     let preview_rect = Rect::from_min_size(pos2(rect.min.x, top_rect.max.y + 4.0), vec2(rect.width(), preview_h));
     let transport_rect = Rect::from_min_size(pos2(rect.min.x, preview_rect.max.y), vec2(rect.width(), TRANSPORT_H));
     let timeline_rect = Rect::from_min_max(pos2(rect.min.x, transport_rect.max.y), pos2(rect.max.x, middle_bottom));
