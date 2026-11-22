@@ -33,6 +33,12 @@ on:
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_zip_plugin_support.py'
       - '.github/scripts/add_desktop_plugin_package_support.py'
+      - '.github/scripts/inventory_adobe_ae_plugins.py'
+      - '.github/scripts/test_inventory_adobe_ae_plugins.py'
+      - '.github/scripts/inspect_adobe_ae_native_pe.py'
+      - '.github/scripts/test_inspect_adobe_ae_native_pe.py'
+      - '.github/workflows/validate-adobe-ae-plugin-tools.yml'
+      - 'docs/ADOBE_AFTER_EFFECTS_PLUGIN_COMPATIBILITY.md'
       - '.github/scripts/add_plugin_migration_progress.py'
       - '.github/scripts/add_windows_runtime_ui.py'
       - '.github/scripts/integrate_windows_compat_runtime.py'
@@ -939,6 +945,20 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+
+      - name: Validate Adobe After Effects plug-in inventory and native PE inspection
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m py_compile \
+            build-assets/.github/scripts/inventory_adobe_ae_plugins.py \
+            build-assets/.github/scripts/test_inventory_adobe_ae_plugins.py \
+            build-assets/.github/scripts/inspect_adobe_ae_native_pe.py \
+            build-assets/.github/scripts/test_inspect_adobe_ae_native_pe.py
+          cd build-assets/.github/scripts
+          python3 -m unittest -v test_inventory_adobe_ae_plugins.py test_inspect_adobe_ae_native_pe.py
+          cd "$GITHUB_WORKSPACE"
+          echo "Adobe AE file-family and static PE inspection tests passed; no imported code was executed."
 
       - name: Set app and workspace version to Ae 0.22.1
         env:
