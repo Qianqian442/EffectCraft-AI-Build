@@ -52,7 +52,10 @@ class AdobeAeInventoryTests(unittest.TestCase):
             for suffix, expected in ((".zxp", "cep_extension_candidate"), (".ccx", "uxp_extension_candidate")):
                 archive = Path(tmp) / f"extension{suffix}"
                 with zipfile.ZipFile(archive, "w") as zf:
-                    zf.writestr("manifest.json", '{"id":"example.panel","name":"Example"}')
+                    if suffix == ".zxp":
+                        zf.writestr("CSXS/manifest.xml", "<ExtensionManifest/>")
+                    else:
+                        zf.writestr("manifest.json", '{"id":"example.panel","name":"Example"}')
                     zf.writestr("assets/panel.js", "/* package resource */")
                 result = MODULE.inspect_zip(archive)
                 self.assertEqual(result["compatibility_status"], "inventory_only_not_executed")
