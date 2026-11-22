@@ -150,9 +150,9 @@ jobs:
           grep -Fq '"translation_executed": false' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'not_run_runtime_not_integrated' effectcraft/crates/engine/src/cmd/effect.rs
           grep -Fq 'AexRuntimeTesting' effectcraft/crates/ui-egui/src/plugin_migration.rs
-          grep -Fq 'crate::start_windows_compat_aex_test(&path, preference)' effectcraft/crates/ui-egui/src/plugin_migration.rs
+          grep -Fq 'crate::start_windows_compat_aex_test_with_backend(&path, preference)' effectcraft/crates/ui-egui/src/plugin_migration.rs
           grep -Fq 'crate::poll_windows_compat_runtime_install(request_id)' effectcraft/crates/ui-egui/src/plugin_migration.rs
-          grep -Fq 'start_windows_compat_aex_test(source_path: &str, backend_preference: &str)' .github/scripts/integrate_windows_compat_runtime.py
+          grep -Fq 'start_windows_compat_aex_test_with_backend(' .github/scripts/integrate_windows_compat_runtime.py
           grep -Fq 'jni::jni_sig!("(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V")' .github/scripts/windows_compat_android.rs
           grep -Fq 'int[] backendOrder' windows-compat/android-runtime/src/main/java/com/artcraft/effectcraft/WindowsCompatAndroidBridge.java
           # Static PE analysis must be patched into the generated Ae UI module, not only the generator script.
