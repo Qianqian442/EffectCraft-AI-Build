@@ -180,9 +180,9 @@ pub(crate) enum Out<'a> {
             }""",
             "Atomic output commit",
         )
-        source = once(source, "            Out::File(w) => w.write(buf),", "            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.write(buf), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },", "Atomic output write")
-        source = once(source, "            Out::File(w) => w.flush(),", "            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.flush(), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },", "Atomic output flush")
-        source = once(source, "            Out::File(w) => w.seek(pos),", "            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.seek(pos), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },", "Atomic output seek")
+        source = once(source, "            Out::File(w) => w.write(buf),", """            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.write(buf), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },""", "Atomic output write")
+        source = once(source, "            Out::File(w) => w.flush(),", """            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.flush(), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },""", "Atomic output flush")
+        source = once(source, "            Out::File(w) => w.seek(pos),", """            Out::File(w) => match w.writer.as_mut() { Some(writer) => writer.seek(pos), None => Err(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "export output is already finalized")) },""", "Atomic output seek")
     tests_marker = "EFFECTCRAFT_ATOMIC_EXPORT_OUTPUT_TESTS_V1"
     if tests_marker not in source:
         source += r"""
