@@ -15,8 +15,8 @@ class AdobeAeInventoryTests(unittest.TestCase):
         self.assertEqual(MODULE.family_for("Plug-ins/Glow.aex"), "native_ae_plugin_candidate")
         self.assertEqual(MODULE.family_for("Plug-ins/Module.pbk"), "native_ae_plugin_candidate")
         self.assertEqual(MODULE.family_for("Plug-ins/Module.pbg"), "native_ae_plugin_candidate")
-        self.assertEqual(MODULE.family_for("Plug-ins/Legacy.8bi"), "native_ae_plugin_candidate")
-        self.assertEqual(MODULE.family_for("Plug-ins/Legacy.8bf"), "native_ae_plugin_candidate")
+        self.assertEqual(MODULE.family_for("Plug-ins/Legacy.8bi"), "legacy_photoshop_filter_candidate")
+        self.assertEqual(MODULE.family_for("Plug-ins/Legacy.8bf"), "legacy_photoshop_filter_candidate")
         self.assertEqual(MODULE.family_for("Vendor.plugin/Contents/MacOS/Effect"), "native_ae_plugin_candidate")
         self.assertEqual(MODULE.family_for("Project.aep"), "project_not_plugin")
 
@@ -50,7 +50,8 @@ class AdobeAeInventoryTests(unittest.TestCase):
             result = MODULE.inspect_zip(archive)
             self.assertEqual(result["compatibility_status"], "inventory_only_not_executed")
             self.assertFalse(result["execution_performed"])
-            self.assertEqual(result["counts"]["native_ae_plugin_candidate"], 3)
+            self.assertEqual(result["counts"]["native_ae_plugin_candidate"], 2)
+            self.assertEqual(result["counts"]["legacy_photoshop_filter_candidate"], 1)
             self.assertEqual(result["counts"]["project_not_plugin"], 1)
             self.assertEqual(len(result["skipped"]), 1)
 
