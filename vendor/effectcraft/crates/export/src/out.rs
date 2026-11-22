@@ -12,14 +12,14 @@ pub type Sink = dyn Fn(&str, Vec<u8>) + Send + Sync;
 /// One output file being written.
 struct AtomicOutput {
     writer: BufWriter<std::fs::File>,
-    temporary: std::path::PathBuf,
+    temporary: Option<std::path::PathBuf>,
     destination: std::path::PathBuf,
 }
 
 impl Drop for AtomicOutput {
     fn drop(&mut self) {
         // A failed/cancelled export must not leave a truncated MP4/MOV at the final path.
-        let _ = std::fs::remove_file(&self.temporary);
+        if let Some(path) = &self.temporary { let _ = std::fs::remove_file(path); }
     }
 }
 
@@ -54,7 +54,7 @@ pub(crate) fn create<'a>(sink: Option<&'a Sink>, path: &str) -> Result<Out<'a>> 
                 }
             }
             let (temporary, file) = created.ok_or_else(|| ExportError::Io("无法创建视频临时文件，请检查存储空间和目录权限。".into()))?;
-            Ok(Out::File(AtomicOutput { writer: BufWriter::new(file), temporary, destination }))
+            Ok(Out::File(AtomicOutput { writer: BufWriter::new(file), temporary: Some(temporary), destination }))
         }
     }
 }
@@ -74,9 +74,9 @@ impl Out<'_> {
                 file.sync_all().map_err(io)?;
                 let bytes = file.metadata().map(|m| m.len()).unwrap_or(0);
                 drop(file);
-                std::fs::rename(&output.temporary, &output.destination).map_err(io)?;
+                std::fs::rename(output.temporary.as_ref().ok_or_else(|| ExportError::Io("视频临时文件状态无效。".into()))?, &output.destination).map_err(io)?;
                 // The rename succeeded; prevent Drop from trying to remove the now-published file.
-                output.temporary = output.destination.clone().with_extension("effectcraft-published");
+                output.temporary = None;
                 Ok(bytes)
             }
             Out::Mem { path, cur, sink } => {
