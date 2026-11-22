@@ -41,8 +41,8 @@ pub fn looks_like_plugin_archive(path: &str) -> bool {
     let Ok(file) = File::open(path) else { return false };
     let Ok(mut archive) = ZipArchive::new(file) else { return false };
     const PLUGIN_EXTENSIONS: &[&str] = &[
-        "wasm", "wat", "jsx", "js", "aex", "dll", "ofx", "so",
-        "dylib", "plugin", "bundle", "prm", "8bf",
+        "wasm", "wat", "jsx", "js", "aex", "pbk", "pbg", "8bi", "8bf", "dll", "ofx", "so",
+        "dylib", "plugin", "bundle", "prm", "jsxbin", "ffx",
     ];
     for index in 0..archive.len() {
         let Ok(entry) = archive.by_index(index) else { continue };
