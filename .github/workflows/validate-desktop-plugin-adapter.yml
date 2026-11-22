@@ -14,6 +14,9 @@ on:
       - '.github/scripts/add_plugin_import_button.py'
       - '.github/scripts/add_qq_plugin_import_support.py'
       - '.github/scripts/configure_android_storage_fallback.py'
+      - '.github/scripts/add_ae_dual_project_import.py'
+      - '.github/scripts/add_five_project_import_buttons.py'
+      - '.github/scripts/verify_android_source_patches.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - '.github/workflows/build-effectcraft-ai.yml'
       - 'docs/android-arm64-desktop-plugin-compatibility.md'
@@ -257,6 +260,9 @@ jobs:
           grep -F '"file.importProject" => ("path", Ask::Open(&["ecproj", "ecprojx", "nv", "zip", "rar", "amproj", "xml", "alight", "aep", "aepx", "json"])),' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F '"file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"])),' effectcraft/crates/ui-egui/src/menus/frontend.rs
           grep -F 'AM 工程支持 .amproj' .github/scripts/am_nv.rs
+          grep -F 'EFFECTCRAFT_ANDROID_MOBILE_IMPORT_ACCEPTS_SELF_EXPORT_V1' effectcraft/crates/engine/src/cmd/am_nv.rs
+          grep -F 'contains_self_project' effectcraft/crates/engine/src/cmd/am_nv.rs
+          grep -F '"file.importAepMobilePackage" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"]))' effectcraft/crates/ui-egui/src/menus/frontend.rs
 
       - name: Apply standalone DeepSeek AI plugin bridge
         env:
