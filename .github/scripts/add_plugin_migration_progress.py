@@ -465,8 +465,8 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                     .order(Order::Foreground)
                     .movable(true)
                     .collapsible(false)
-                    .resizable(false)
-                    .default_width(330.0)
+                    .resizable(true)
+                    .default_width(360.0)
                     .default_pos(pos2(screen.center().x - 165.0, screen.center().y - 110.0))
                     .open(&mut open)
                     .show(ctx, |ui| {
@@ -480,8 +480,61 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.radio_value(mode, MigrationMode::ManualBackend, MigrationMode::ManualBackend.label());
                         ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
                         ui.small(mode.description());
+                        if *mode == MigrationMode::ManualBackend {
+                            ui.add_space(6.0);
+                            ui.group(|ui| {
+                                ui.strong("其他原有导入路径（可上下滑动）");
+                                ui.label("以下列出完整路线目录；开始扫描后，会按插件实际格式和架构显示可选项。");
+                                egui::ScrollArea::vertical()
+                                    .id_salt("effectcraft-other-plugin-routes-scroll")
+                                    .max_height(190.0)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        ui.collapsing("Windows 64 位插件", |ui| {
+                                            ui.label("Wine64 + Box64：优先动态转译候选路线");
+                                            ui.label("Wine64 + FEX：备选动态转译路线");
+                                            ui.label("Wine64 + QEMU x86-64：兼容性对照路线");
+                                            ui.label("Remill + LLVM IR → ARM64：指令提升与重编译路线");
+                                            ui.label("Ghidra 深度分析 + 效果算法重写：效果重构路线");
+                                        });
+                                        ui.collapsing("Windows 32 位插件", |ui| {
+                                            ui.label("Wine32 + Box86：32 位动态转译路线");
+                                            ui.label("Wine WOW64 + Box64：实验性兼容路线");
+                                            ui.label("Wine32 + FEX：备选动态转译路线");
+                                            ui.label("Wine32 + QEMU i386：兼容性对照路线");
+                                            ui.label("Remill + LLVM IR → ARM64：指令提升与重编译路线");
+                                            ui.label("Ghidra 深度分析 + 效果算法重写：效果重构路线");
+                                        });
+                                        ui.collapsing("Linux 64 位插件", |ui| {
+                                            ui.label("Box64：x86-64 ELF 动态转译");
+                                            ui.label("FEX：x86-64 动态转译备选");
+                                            ui.label("QEMU x86-64：用户态兼容性对照");
+                                        });
+                                        ui.collapsing("Linux 32 位插件", |ui| {
+                                            ui.label("Box86：i386 ELF 动态转译");
+                                            ui.label("FEX i386：32 位动态转译备选");
+                                            ui.label("QEMU i386：用户态兼容性对照");
+                                        });
+                                        ui.collapsing("ARM64 原生路线", |ui| {
+                                            ui.label("Windows ARM64：原生指令 + Windows API 适配");
+                                            ui.label("Linux ARM64：原生加载 + Linux/Android ABI 适配");
+                                        });
+                                        ui.collapsing("苹果系统插件", |ui| {
+                                            ui.label("Mach-O 静态分析 + 源码重编译或效果重实现");
+                                        });
+                                        ui.separator();
+                                        ui.strong("兼容处理与重构子路径");
+                                        ui.label("旧版系统与运行库兼容（Windows API、合法运行库依赖）");
+                                        ui.label("插件宿主接口兼容（按宿主 ABI 适配，可选接口模拟）");
+                                        ui.label("画面格式适配（RGBA/BGRA、像素深度、Alpha、行跨度）");
+                                        ui.label("渲染兼容回退（GPU/CPU、并行/串行、逐帧/时间序列）");
+                                        ui.label("CPU 指令与功能降级（按设备能力选择可用特性）");
+                                        ui.label("源码重编译、二进制深度分析、指令提升及效果算法重构");
+                                    });
+                            });
+                        }
                         ui.add_space(6.0);
-                        ui.label("当前版本会分析架构、列出路线并保留原件；尚未接入的运行时/宿主接口会显示待实现，不会伪报成功。");
+                        ui.label("扫描会识别插件架构并列出适用路线；尚未接入或未通过实测的运行环境会明确标记，不会伪报成功。");
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
                             if ui.button("取消").clicked() { cancel = true; }
