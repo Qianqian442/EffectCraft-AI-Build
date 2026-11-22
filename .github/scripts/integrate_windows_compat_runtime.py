@@ -163,7 +163,13 @@ pub(crate) fn poll_windows_compat_runtime_install(request_id: &str) -> Result<Op
     windows_compat_android::poll_runtime_install(request_id)
 }
 
-pub(crate) fn start_windows_compat_aex_test(source_path: &str, backend_preference: &str) -> Result<String, String> {
+pub(crate) fn start_windows_compat_aex_test(source_path: &str) -> Result<String, String> {
+    windows_compat_android::start_aex_plugin_test(source_path, "auto")
+}
+
+pub(crate) fn start_windows_compat_aex_test_with_backend(
+    source_path: &str, backend_preference: &str
+) -> Result<String, String> {
     windows_compat_android::start_aex_plugin_test(source_path, backend_preference)
 }
 """
