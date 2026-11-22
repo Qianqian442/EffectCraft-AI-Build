@@ -186,8 +186,9 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let ext = extension.to_ascii_lowercase();
         let host = match ext.as_str() {
             "ofx" => "OpenFX 1.x Host API 桥接（C ABI）",
-            "aex" => "Adobe After Effects SDK 宿主桥接（尚未实现）",
-            "8bf" => "Photoshop Filter SDK 宿主桥接（尚未实现）",
+            "aex" => "Adobe After Effects SDK 宿主桥接（AEXLO 有限效果接口；不代表完整 SDK）",
+            "pbk" | "pbg" => "Adobe After Effects 原生模块宿主适配（需识别具体模块类型与 SDK 接口）",
+            "8bi" | "8bf" => "旧版 Photoshop Filter/Format 宿主适配（Adobe 已弃用相关旧接口）",
             "prm" => "Premiere 插件宿主 ABI 桥接（尚未实现）",
             _ => "需先识别并实现该插件对应的宿主 ABI",
         };
@@ -249,7 +250,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let host = match ext.as_str() {
             "ofx" => "OpenFX 1.x host adapter",
             "aex" => "Adobe After Effects SDK host adapter",
-            "8bf" => "Photoshop Filter SDK host adapter",
+            "pbk" | "pbg" => "Adobe After Effects native module host adapter (type-specific; not the AEX effect host)",
+            "8bi" | "8bf" => "Legacy Photoshop Filter/Format host adapter (deprecated API family)",
             "prm" => "Premiere plug-in host adapter",
             _ => "format-specific plug-in host adapter",
         };
@@ -371,7 +373,8 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
         let host_profile = match ext.as_str() {
             "ofx" => "OpenFX suite capability negotiation and optional-suite shims",
             "aex" => "Adobe SDK suite compatibility adapter; only documented/legally usable interfaces",
-            "8bf" => "Photoshop Filter host callback adapter",
+            "pbk" | "pbg" => "Adobe After Effects module-specific host callbacks; identify exact module role first",
+            "8bi" | "8bf" => "Legacy Photoshop Filter/Format host callbacks; deprecated and isolated",
             "prm" => "Premiere host callback adapter",
             _ => "format-specific host callback adapter",
         };
@@ -543,9 +546,9 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
             else if extension == "jsx" && is_scriptui_panel { "panel" }
             else if extension == "jsx" { "script" }
             else if extension == "js" && !is_cep_resource { "script" }
-            else if ["aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"].contains(&extension.as_str())
+            else if ["aex", "pbk", "pbg", "8bi", "8bf", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm"].contains(&extension.as_str())
                 || lower_path.contains(".plugin/")
-                || lower_path.contains(".ofx.bundle/") { "native" }
+                || lower_path.contains(".bundle/") { "native" }
             else if ["zxp", "ccx", "ffx", "jsxbin", "jsx",
                      "cube", "3dl", "lut", "look", "csp", "spi1d", "spi3d", "spimtx", "cc", "ccc", "cdl", "ocio",
                      "png", "jpg", "jpeg", "webp", "tif", "tiff", "exr", "ttf", "otf",
@@ -864,7 +867,7 @@ fn install_desktop_plugin_archive(s: &mut Session, archive_path: &str) -> Result
     let files: Vec<String> = match (str_p(p, "path"), str_p(p, "folder")) {'''
     replacement = '''    let loader = s.plugin_loader.ok_or_else(|| EngineError::Other("WebAssembly effect plug-ins are not available in this build".into()))?;
     if let Some(path) = str_p(p, "path")
-        && Path::new(path).extension().is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+        && Path::new(path).extension().is_some_and(|extension| matches!(extension.to_ascii_lowercase().as_str(), "zip" | "zxp" | "ccx"))
     {
         return install_desktop_plugin_archive(s, path);
     }
