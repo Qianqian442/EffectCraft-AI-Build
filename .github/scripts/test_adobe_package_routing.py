@@ -27,6 +27,22 @@ class AdobePackageRoutingTests(unittest.TestCase):
         self.assertIn('"zip" | "zxp" | "ccx"', package)
         self.assertIn('original-package.{original_extension}', package)
 
+    def test_other_options_route_catalog_is_scrollable_and_complete(self):
+        source = self.read("add_plugin_migration_progress.py")
+        self.assertIn('if *mode == MigrationMode::ManualBackend', source)
+        self.assertIn('egui::ScrollArea::vertical()', source)
+        self.assertIn('effectcraft-other-plugin-routes-scroll', source)
+        self.assertIn('Wine64 + Box64', source)
+        self.assertIn('Wine32 + Box86', source)
+        self.assertIn('QEMU x86-64', source)
+        self.assertIn('QEMU i386', source)
+        self.assertIn('Remill + LLVM IR', source)
+        self.assertIn('Ghidra 深度分析', source)
+        self.assertIn('旧版系统与运行库兼容', source)
+        self.assertIn('渲染兼容回退', source)
+        self.assertIn('ui.button("取消")', source)
+        self.assertIn('ui.button("按此方式开始")', source)
+
 
 if __name__ == "__main__":
     unittest.main()
