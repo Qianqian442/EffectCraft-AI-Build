@@ -36,7 +36,7 @@ Do not merge these choices into one opaque button or silently remove any option.
 
 ## Platform constraints and honest status
 
-- A Windows `.aex` is native code. CPU translation alone is insufficient: the host must implement the relevant Adobe SDK suites/callback ABI, parameter lifecycle, pixel buffers/color depths, render lifecycle, threading, and any UI or OS integration the plug-in uses. Android ARM64 cannot directly load a Windows x86-64 DLL.
+- A Windows `.aex` is native code. CPU translation alone is insufficient: the host must implement the relevant Adobe SDK suites/callback ABI, parameter lifecycle, pixel buffers/color depths, render lifecycle, threading, and any UI or OS integration the plug-in uses. Android ARM64 cannot directly load a Windows x86-64 DLL. The Android migration flow now connects eligible imported AEX packages to the isolated `aexlo` host worker and can trial the installed ARM64EC/FEXCore or x86-64/Box64 route; a passing smoke test covers only the tested plug-in's load, supported parameter round-trip and repeated CPU-frame render, not full AE compatibility.
 - Box64/Wine/FEX/QEMU are candidate guest/runtime components; none automatically provides the Adobe After Effects host SDK. Keep instruction translation, OS/API compatibility, and Adobe host-ABI emulation as separate layers.
 - Aggressive PE/IR reconstruction is a static analysis and porting aid, not proof that closed-source plug-ins have been automatically converted into ARM64 code. Never label a plugin as ported until the output passes host/API and render tests.
 - CEP and UXP are different runtimes. Do not conflate `.zxp` with `.ccx`, and do not treat archive extraction as successful panel execution.
@@ -50,7 +50,7 @@ Do not merge these choices into one opaque button or silently remove any option.
 2. **Preset route**: inspect `.ffx` structure and build a compatibility report, then implement translation of supported constructs into Ae's model.
 3. **Script route**: implement a restricted ExtendScript-compatible runtime and AE scripting DOM mapping. Unsupported APIs must be reported, not silently ignored.
 4. **Panel route**: implement CEP and UXP as distinct runtime projects, beginning with manifest validation and a minimal panel that invokes a safe subset of Ae operations.
-5. **Native plug-in route**: implement the relevant Adobe SDK host adapter, then connect the existing CPU translation / Windows guest routes and aggressive reconstruction tools. Add real effect and AEIO/AEGP host tests.
+5. **Native plug-in route**: use the current isolated `aexlo` worker for eligible x86/x64 AEX smoke trials on FEXCore/Box64, then expand the Adobe SDK host adapter coverage. Keep Remill/LLVM lifting, Ghidra reconstruction and other runtime backends as separate candidate routes until implemented. Add real effect and AEIO/AEGP host tests.
 6. **Regression and release**: preserve all existing features and migration controls; build APK; validate package integrity, signing, import flows, runtime execution, and actual effect rendering.
 
 ## Acceptance criteria
