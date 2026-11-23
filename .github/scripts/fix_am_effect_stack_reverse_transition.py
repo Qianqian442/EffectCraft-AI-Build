@@ -156,9 +156,9 @@ def patch_vertical_scrub(source: str) -> str:
                 || ui.data(|d| d.get_temp::<f64>(am_press_time_id)).is_none()
             {
                 ui.data_mut(|d| d.insert_temp(am_press_time_id, now));
-            }
-            if let Some(pos) = resp.interact_pointer_pos() {
-                ui.data_mut(|d| d.insert_temp(am_last_pointer_id, pos));
+                if let Some(pos) = resp.interact_pointer_pos() {
+                    ui.data_mut(|d| d.insert_temp(am_last_pointer_id, pos));
+                }
             }
         } else {
             ui.data_mut(|d| {
