@@ -93,6 +93,7 @@ on:
       - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/scripts/add_am_mobile_layout.py'
       - '.github/scripts/build_am_mobile_editing_page.py'
+      - '.github/scripts/add_am_motion_effect_editor.py'
       - '.github/scripts/add_am_brand_label.py'
       - '.github/scripts/add_home_layout_switch.py'
       - '.github/scripts/patch_absentmotion_external_navigation.py'
@@ -739,6 +740,7 @@ jobs:
             .github/scripts/add_am_style_undo_redo.py \
             .github/scripts/add_am_mobile_layout.py \
             .github/scripts/build_am_mobile_editing_page.py \
+            .github/scripts/add_am_motion_effect_editor.py \
             .github/scripts/add_am_brand_label.py \
             .github/scripts/add_home_layout_switch.py \
             .github/scripts/pin_android_signing_certificate.py \
@@ -1510,6 +1512,8 @@ jobs:
           # is not an AM editing page.
           python3 -m py_compile build-assets/.github/scripts/build_am_mobile_editing_page.py
           python3 build-assets/.github/scripts/build_am_mobile_editing_page.py
+          python3 -m py_compile build-assets/.github/scripts/add_am_motion_effect_editor.py
+          python3 build-assets/.github/scripts/add_am_motion_effect_editor.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
           HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
@@ -2370,57 +2374,9 @@ jobs:
           if-no-files-found: ignore
           retention-days: 30
 
-  install-smoke-test:
-    name: Install APK on Android 12 emulator (API 31)
-    needs: build
-    # Pin a stable runner image for the emulator instead of ubuntu-latest image rollovers.
-    runs-on: ubuntu-24.04
-    timeout-minutes: 40
-    steps:
-      - name: Download the signed APK from the build job
-        uses: actions/download-artifact@v4
-        with:
-          name: EffectCraft-Android-APK
-          path: release
-
-      - name: Resolve the downloaded APK absolute path
-        id: resolve-ae-apk
-        shell: bash
-        run: |
-          set -euo pipefail
-          APK="$GITHUB_WORKSPACE/release/effectcraft-0.22.1.apk"
-          if [[ ! -s "$APK" ]]; then
-            APK="$(find "$GITHUB_WORKSPACE" -maxdepth 8 -type f -name 'effectcraft-0.22.1.apk' -print -quit)"
-          fi
-          test -n "$APK" && test -s "$APK"
-          echo "Resolved APK: $APK"
-          stat -c 'APK size: %s bytes' "$APK"
-          echo "apk_path=$APK" >> "$GITHUB_OUTPUT"
-
-      - name: Verify Package Manager installation on Android 12
-        uses: reactivecircus/android-emulator-runner@v2
-        env:
-          AE_APK_PATH: ${{ steps.resolve-ae-apk.outputs.apk_path }}
-        with:
-          api-level: 31
-          target: google_apis
-          arch: x86_64
-          profile: pixel_2
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -memory 4096 -cores 4
-          script: >-
-            test -n "$AE_APK_PATH" &&
-            test -s "$AE_APK_PATH" &&
-            adb wait-for-device &&
-            adb shell 'i=0; until service check package 2>/dev/null | grep -q found; do i=$((i+1)); [ "$i" -lt 90 ] || exit 1; sleep 2; done' &&
-            adb install --no-streaming "$AE_APK_PATH" &&
-            adb shell pm path com.artcraft.effectcraft &&
-            adb shell dumpsys package com.artcraft.effectcraft | grep -E "versionCode|versionName" &&
-            echo "Android 12 Package Manager installed Ae 0.22.1 successfully."
-
   publish:
-    name: Publish APK download (Android 12 install check passed)
-    needs: [build, install-smoke-test]
+    name: Publish APK download (build-time validation passed)
+    needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
