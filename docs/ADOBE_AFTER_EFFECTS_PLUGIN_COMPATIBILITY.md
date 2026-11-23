@@ -2,7 +2,7 @@
 
 ## Scope
 
-The compatibility target is Adobe After Effects (desktop), not EffectCraft or another host. Adobe plug-in support is additive. **Do not remove or replace any existing Ae feature, Windows compatibility feature, plug-in import control, translation backend, aggressive-port option, force-compatibility option, manual backend selection, or progress/report UI.** New Adobe-specific routes must be added alongside them.
+The compatibility target is Adobe After Effects (desktop), not EffectCraft or another host. Adobe plug-in support is additive. **Do not remove or replace any existing Ae feature, Windows compatibility feature, plug-in import control, translation backend, combined aggressive-port + force-compatibility action, manual backend selection, or progress/report UI.** New Adobe-specific routes must be added alongside them.
 
 ## Verified Adobe extension families
 
@@ -26,19 +26,18 @@ Keep every existing route and its separate user-selectable action:
 
 1. **Automatic comparison / best route** — inspect applicable routes, compare verified functional completeness and choose only a route that passes the required tests.
 2. **CPU instruction translation** — preserve Box64, Box86, FEXCore and QEMU candidate/installed routes and their architecture-specific handling.
-3. **Force compatibility** — preserve the existing runtime, API, graphics, pixel-format, CPU-feature and serial-render fallback experiments.
-4. **Aggressive port / reconstruction** — preserve PE parsing, import/export inspection, x86/x64 instruction decoding, control-flow/basic-block reconstruction, intermediate-representation output, source-assisted recompilation where source and license permit, and isolated runtime trials.
-5. **Manual backend selection** — preserve the ability to inspect and choose among applicable backends.
+3. **Combined “暴力移植+强行兼容” engine** — expose one user-facing action while keeping the two engines internally distinct. Decompilation/static reconstruction continuously feeds both engines with PE structure, imports/exports, relocations, disassembly and instruction IR. Force compatibility probes runtime/API/ABI/graphics/Adobe host-bridge alternatives while aggressive porting explores binary reconstruction, module replacement and source-assisted recompilation where source and license permit. The engines share findings and iterate together; do not present a button rename as implementation.
+4. **Manual backend selection** — preserve the ability to inspect and choose among applicable backends.
 6. **Windows runtime installation and isolated testing** — preserve Wine/Proton, Box64/BOX32, FEXCore and the separate Box86/QEMU experiments and their progress/results UI.
 7. **Migration progress, detailed report, retry and original-package retention** — keep these capabilities.
 
-Do not merge these choices into one opaque button or silently remove any option. Adobe-specific adapters are additional routes, not replacements for the existing migration modes. Where a route is not yet executable, retain the option and clearly show its actual status and prerequisites.
+The combined button is intentionally one entry point for force compatibility + aggressive porting; the underlying subsystems remain separately implemented and observable in the report. Keep automatic comparison, CPU translation and manual backend selection as separate options. Adobe-specific adapters are additional routes, not replacements for the existing migration modes. Where a route is not yet executable, retain its candidate status and prerequisites.
 
 ## Platform constraints and honest status
 
 - A Windows `.aex` is native code. CPU translation alone is insufficient: the host must implement the relevant Adobe SDK suites/callback ABI, parameter lifecycle, pixel buffers/color depths, render lifecycle, threading, and any UI or OS integration the plug-in uses. Android ARM64 cannot directly load a Windows x86-64 DLL. The Android migration flow now connects eligible imported AEX packages to the isolated `aexlo` host worker and can trial the installed ARM64EC/FEXCore or x86-64/Box64 route; a passing smoke test covers only the tested plug-in's load, supported parameter round-trip and repeated CPU-frame render, not full AE compatibility.
 - Box64/Wine/FEX/QEMU are candidate guest/runtime components; none automatically provides the Adobe After Effects host SDK. Keep instruction translation, OS/API compatibility, and Adobe host-ABI emulation as separate layers.
-- Aggressive PE/IR reconstruction, Remill lifting and Ghidra analysis are porting aids, not proof that closed-source plug-ins have been automatically converted into ARM64 code. The Remill/LLVM route is a candidate only until instruction semantics, imports, relocations, Windows APIs and Adobe host callbacks are implemented and a reference render passes. Never label a plugin as ported until the output passes host/API and render tests.
+- Decompilation is a coordinated analysis input, not a promise to recover original source code. Aggressive PE/IR reconstruction, Remill lifting and Ghidra analysis are porting aids, not proof that closed-source plug-ins have been automatically converted into ARM64 code. The Remill/LLVM route is a candidate only until instruction semantics, imports, relocations, Windows APIs and Adobe host callbacks are implemented and a reference render passes. Never label a plugin as ported until the output passes host/API and render tests.
 - CEP and UXP are different runtimes. Do not conflate `.zxp` with `.ccx`, and do not treat archive extraction as successful panel execution.
 - UXP for After Effects is a new, version-sensitive rollout. Adobe's September 24, 2026 announcement describes a phased transition away from CEP; the public beta announcement says CEP plug-ins are expected to be rewritten for UXP while standalone ExtendScript scripts continue. Inspect the actual AE host/version declaration and supported API surface; do not assume UXP support in another Adobe app implies AE support.
 - `.ffx` is an animation preset, not an executable native plug-in. Translate supported preset constructs into native Ae effects/properties/keyframes; report unsupported constructs explicitly.
@@ -56,7 +55,7 @@ Do not merge these choices into one opaque button or silently remove any option.
 ## Acceptance criteria
 
 - Import results distinguish: recognized, extracted, manifest validated, runtime initialized, host APIs available, script/panel/effect executed, and output/render verified.
-- No route is marked successful solely from extension recognition, architecture detection, static strings, PE reconstruction, or archive extraction.
+- No route is marked successful solely from extension recognition, architecture detection, static strings, PE reconstruction, decompilation output, or archive extraction.
 - Unsupported or failed imports retain the original package for retry and show a specific reason.
 - Existing automatic comparison, instruction translation, force compatibility, aggressive port/reconstruction, manual backend selection, Windows runtime install/testing, progress UI and detailed reports remain present.
 - No existing editing, project import/export, AI, network, or other app feature is removed.

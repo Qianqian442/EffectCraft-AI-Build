@@ -36,8 +36,7 @@ const SCAN_PROGRESS_MAX: usize = 9_000;
 pub(crate) enum MigrationMode {
     AutoBest,
     CpuTranslation,
-    ForceCompatibility,
-    AggressivePort,
+    JointDecompileForcePort,
     ManualBackend,
 }
 
@@ -46,8 +45,7 @@ impl MigrationMode {
         match self {
             Self::AutoBest => "自动比较并选择完整度最高的方案",
             Self::CpuTranslation => "指令转译优先（Box64 / Box86 / FEX / QEMU）",
-            Self::ForceCompatibility => "强制兼容（运行库 / 接口 / 画面 / 渲染回退）",
-            Self::AggressivePort => "暴力移植 / 重构（PE 深度分析 + 已接入后端逐个试跑）",
+            Self::JointDecompileForcePort => "暴力移植+强行兼容",
             Self::ManualBackend => "手动查看并指定转译后端",
         }
     }
@@ -56,8 +54,7 @@ impl MigrationMode {
         match self {
             Self::AutoBest => "逐个测试适用路线，按功能完整度、画质、参数/关键帧和稳定性评分，自动选择最高分且通过硬性测试的方案。",
             Self::CpuTranslation => "优先尝试适用的 CPU 指令动态转译路线；不兼容的系统 API 或插件宿主接口仍必须单独适配。",
-            Self::ForceCompatibility => "逐项尝试可选宿主接口、运行库、像素格式、CPU 特性和 CPU/串行渲染回退；不伪造必需接口。",
-            Self::AggressivePort => "逐个 AEX 执行 PE 分析与已安装 Wine/Proton + FEXCore/Box64 隔离试跑，检查参数往返、重复 CPU 帧渲染与正常退出。只有提供可用源代码且依赖/授权允许时才另行重编译；未知闭源插件不承诺自动还原为 ARM64。",
+            Self::JointDecompileForcePort => "联合引擎：反编译/反汇编与 PE、导入表、重定位、指令 IR 分析持续提供共享结构；强行兼容与暴力移植协同尝试运行库、Windows API、Adobe SDK 宿主接口、ABI、依赖、指令转译和模块重构。两套技术可以围绕同一份分析结果迭代配合，不把静态分析或文件接收冒充运行成功。当前已接入 PE/指令 IR 静态分析及有限 AEX 隔离烟雾测试；通用源码级反编译、完整 Adobe SDK 宿主实现和任意插件自动重建仍需逐步接入。",
             Self::ManualBackend => "分析后展示该插件全部适用的转译后端、所需运行环境和实测状态，供你比较与指定；目前尚未集成可执行后端，指定只记录选择意向，不会谎称已经转译。",
         }
     }
@@ -326,7 +323,11 @@ fn result_summary(scan: &ScanReport, value: &Value, mode: MigrationMode) -> (Str
         format!("已扫描 {} 个文件，共 {:.1} MB。", scan.file_count, scan.total_bytes as f64 / (1024.0 * 1024.0)),
     ];
     lines.push(format!("方式说明：{}", mode.description()));
-    lines.push("注意：当前构建已加入方式选择和报告记录；Box64/Box86/FEX/QEMU/Wine 的实际运行时试跑、后端手动切换和暴力二进制重建引擎尚未集成，不会伪称已执行。".into());
+    if mode == MigrationMode::JointDecompileForcePort {
+        lines.push("联合处理阶段：反编译/静态重建持续分析；强行兼容与暴力移植共享导入、依赖、接口和指令信息并协同迭代。当前实际能力以每个阶段的执行状态和 AEX 隔离测试结果为准。".into());
+        lines.push("反编译状态：已使用 PE 结构、导入/导出、重定位及 x86/x64 指令 IR 进行静态重建；尚未完成任意闭源插件的通用源码级反编译。".into());
+    }
+    lines.push("注意：当前 AEX 隔离试跑已连接 FEXCore/Box64 的有限加载、参数往返与重复 CPU 帧测试；Box86/QEMU/Remill/Ghidra 等路线仍按实际集成状态显示，不能将候选路线视为已执行。".into());
     lines.push(format!("可用模块：WASM {wasm} 个、WAT {wat} 个、AE 面板 {panels} 个、脚本 {scripts} 个。"));
     if assets > 0 { lines.push(format!("另行保存素材/源码 {assets} 个。")); }
     if matched > 0 {
@@ -477,12 +478,11 @@ pub(crate) fn show(app: &mut EffectcraftApp, ctx: &egui::Context) {
                         ui.label("扫描完成后，结果页会展示检测到的每个插件的全部适用路线，不省略候选项。");
                         ui.radio_value(mode, MigrationMode::AutoBest, MigrationMode::AutoBest.label());
                         ui.radio_value(mode, MigrationMode::CpuTranslation, MigrationMode::CpuTranslation.label());
-                        ui.radio_value(mode, MigrationMode::ForceCompatibility, MigrationMode::ForceCompatibility.label());
-                        ui.radio_value(mode, MigrationMode::AggressivePort, MigrationMode::AggressivePort.label());
+                        ui.radio_value(mode, MigrationMode::JointDecompileForcePort, MigrationMode::JointDecompileForcePort.label());
                         ui.radio_value(mode, MigrationMode::ManualBackend, MigrationMode::ManualBackend.label());
                         ui.small(mode.description());
                         ui.add_space(6.0);
-                        ui.label("当前版本会分析架构、列出路线并保留原件；尚未接入的运行时/宿主接口会显示待实现，不会伪报成功。");
+                        ui.label("联合引擎会共享反编译分析结果，让强行兼容与暴力移植协同工作；未实现的接口或路线会明确标记，不会伪报成功。");
                         ui.add_space(10.0);
                         ui.horizontal(|ui| {
                             if ui.button("取消").clicked() { cancel = true; }

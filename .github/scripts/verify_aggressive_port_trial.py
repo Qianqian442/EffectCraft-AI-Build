@@ -44,7 +44,14 @@ def main() -> None:
     require(source, "guest.getExitCode()", "require a normal worker exit")
     require(source, "validPngOutput(outputPng)", "validate output PNG signature and size")
     require(source, "No visual-fidelity score is", "do not invent unavailable reference-image metrics")
-    print("Aggressive-port runtime trial checks passed: auto mode compares installed routes, manual mode honors FEXCore/Box64 selection, parameter values round-trip, repeated CPU frames are verified, and only measured passing routes are ranked.")
+    migration_generator = (ROOT / ".github/scripts/add_plugin_migration_progress.py").read_text(encoding="utf-8")
+    require(migration_generator, "暴力移植+强行兼容", "single combined user-facing action")
+    require(migration_generator, "JointDecompileForcePort", "dedicated joint-engine migration mode")
+    require(migration_generator, "反编译/反汇编与 PE、导入表、重定位、指令 IR 分析", "decompilation and reconstruction stage")
+    require(migration_generator, "强行兼容与暴力移植协同尝试", "coordinated compatibility and aggressive-port stages")
+    if "MigrationMode::ForceCompatibility" in migration_generator or "MigrationMode::AggressivePort" in migration_generator:
+        raise SystemExit("The old separate force-compatibility/aggressive-port buttons must not remain.")
+    print("Aggressive-port runtime and joint-engine checks passed: FEXCore/Box64 trial execution is measured, the combined action exposes decompilation plus coordinated compatibility/porting, and unsupported stages remain honestly labeled.")
 
 
 if __name__ == "__main__":
