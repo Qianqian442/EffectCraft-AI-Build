@@ -41,8 +41,8 @@ pub fn looks_like_plugin_archive(path: &str) -> bool {
     let Ok(file) = File::open(path) else { return false };
     let Ok(mut archive) = ZipArchive::new(file) else { return false };
     const PLUGIN_EXTENSIONS: &[&str] = &[
-        "wasm", "wat", "jsx", "js", "aex", "dll", "ofx", "so",
-        "dylib", "plugin", "bundle", "prm", "8bf",
+        "wasm", "wat", "jsx", "js", "aex", "pbk", "pbg", "8bi", "8bf", "dll", "ofx", "so",
+        "dylib", "plugin", "bundle", "prm", "jsxbin", "ffx",
     ];
     for index in 0..archive.len() {
         let Ok(entry) = archive.by_index(index) else { continue };
@@ -206,8 +206,8 @@ fn saf_open_plugin_paths(bridge: &saf::Bridge, state: &SafState) -> Vec<String> 
             FileDialog::Open { exts, many: false }
                 if exts.iter().any(|extension| matches!(
                     extension.as_str(),
-                    "wasm" | "wat" | "zip" | "zxp" | "ccx" | "aex" | "dll" | "ofx" | "so"
-                    | "dylib" | "plugin" | "bundle" | "prm" | "8bf" | "jsx" | "js"
+                    "wasm" | "wat" | "zip" | "zxp" | "ccx" | "aex" | "pbk" | "pbg" | "8bi" | "8bf" | "dll" | "ofx" | "so"
+                    | "dylib" | "plugin" | "bundle" | "prm" | "jsxbin" | "ffx" | "jsx" | "js"
                 ))
         );
         let paths = if is_plugin_dialog {

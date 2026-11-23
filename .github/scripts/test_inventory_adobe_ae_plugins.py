@@ -13,6 +13,11 @@ SPEC.loader.exec_module(MODULE)
 class AdobeAeInventoryTests(unittest.TestCase):
     def test_native_plugin_is_not_confused_with_project(self):
         self.assertEqual(MODULE.family_for("Plug-ins/Glow.aex"), "native_ae_plugin_candidate")
+        self.assertEqual(MODULE.family_for("Plug-ins/Module.pbk"), "native_ae_plugin_candidate")
+        self.assertEqual(MODULE.family_for("Plug-ins/Module.pbg"), "native_ae_plugin_candidate")
+        self.assertEqual(MODULE.family_for("Plug-ins/Legacy.8bi"), "legacy_photoshop_filter_candidate")
+        self.assertEqual(MODULE.family_for("Plug-ins/Legacy.8bf"), "legacy_photoshop_filter_candidate")
+        self.assertEqual(MODULE.family_for("Vendor.plugin/Contents/MacOS/Effect"), "native_ae_plugin_candidate")
         self.assertEqual(MODULE.family_for("Project.aep"), "project_not_plugin")
 
     def test_script_and_preset_families(self):
@@ -37,13 +42,16 @@ class AdobeAeInventoryTests(unittest.TestCase):
             with zipfile.ZipFile(archive, "w") as zf:
                 zf.writestr("CSXS/manifest.xml", "<ExtensionManifest/>")
                 zf.writestr("Plug-ins/Glow.aex", b"not executable here")
+                zf.writestr("Plug-ins/Module.pbk", b"metadata module")
+                zf.writestr("Plug-ins/Legacy.8bi", b"legacy filter")
                 zf.writestr("Scripts/Tool.jsx", "app.project.numItems;")
                 zf.writestr("Project.aep", b"project")
                 zf.writestr("../bad.aex", b"bad")
             result = MODULE.inspect_zip(archive)
             self.assertEqual(result["compatibility_status"], "inventory_only_not_executed")
             self.assertFalse(result["execution_performed"])
-            self.assertEqual(result["counts"]["native_ae_plugin_candidate"], 1)
+            self.assertEqual(result["counts"]["native_ae_plugin_candidate"], 2)
+            self.assertEqual(result["counts"]["legacy_photoshop_filter_candidate"], 1)
             self.assertEqual(result["counts"]["project_not_plugin"], 1)
             self.assertEqual(len(result["skipped"]), 1)
 

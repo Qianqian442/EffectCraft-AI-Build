@@ -275,7 +275,7 @@ def patch_picker(root: Path) -> None:
                 continue
             entries = match.group(1)
             present = set(re.findall(r'"([^"]+)"', entries))
-            wanted = ["zip", "zxp", "ccx", "aex", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "8bf"]
+            wanted = ["zip", "zxp", "ccx", "aex", "pbk", "pbg", "8bi", "8bf", "dll", "ofx", "so", "dylib", "plugin", "bundle", "prm", "jsxbin", "ffx"]
             missing = [extension for extension in wanted if extension not in present]
             if not missing:
                 print(f"Effect plug-in picker already accepts ZIP and desktop binary files: {path}")
@@ -298,7 +298,7 @@ def main() -> None:
     patch_manifests(root)
     patch_effect_loader(root)
     patch_picker(root)
-    print("The single plug-in import flow now accepts .wasm, .wat, .zip and standalone .aex/.dll/.ofx desktop plug-in files.")
+    print("The plug-in import flow accepts WASM/WAT, ZIP/ZXP/CCX packages, AE native modules (.aex/.pbk/.pbg), legacy filters, JSXBIN/FFX, and desktop native bundle candidates.")
     print("ZIP archives are safely scanned and their WASM/WAT effect modules are extracted to the persistent Plug-ins folder.")
     print("DeepSeek's signed AI ZIP continues through its dedicated Android package installer flow.")
 

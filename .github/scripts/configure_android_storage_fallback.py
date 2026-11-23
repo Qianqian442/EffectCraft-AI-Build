@@ -612,8 +612,9 @@ def patch_builder(builder: Path) -> None:
                 && effectcraft_ui_egui::plugin_migration::looks_like_plugin_archive(path));
         let import_command = if is_plugin_archive
             || matches!(extension.as_str(),
-                "wasm" | "wat" | "aex" | "dll" | "ofx" | "so" | "dylib"
-                | "plugin" | "bundle" | "prm" | "8bf")
+                "wasm" | "wat" | "aex" | "pbk" | "pbg" | "8bi" | "8bf"
+                | "dll" | "ofx" | "so" | "dylib" | "plugin" | "bundle" | "prm"
+                | "jsxbin" | "ffx")
         {
             Some("effect.plugins.load")
         } else if matches!(extension.as_str(), "jsx" | "js") {
@@ -684,7 +685,7 @@ def patch_builder(builder: Path) -> None:
     associations_path = builder / "lib/file_associations.py"
     associations = associations_path.read_text(encoding="utf-8")
     old_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate"],'
-    new_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate", "aep", "aepx", "zip", "zxp", "ccx", "nv", "xml", "alight"],'
+    new_association = '    "effectcraft": ["ecproj", "ecprojx", "ectemplate", "aep", "aepx", "zip", "zxp", "ccx", "aex", "pbk", "pbg", "8bi", "8bf", "jsx", "jsxbin", "js", "ffx", "dll", "dylib", "plugin", "bundle", "wasm", "wat", "nv", "xml", "alight"],'
     if new_association not in associations:
         count = associations.count(old_association)
         if count != 1:
