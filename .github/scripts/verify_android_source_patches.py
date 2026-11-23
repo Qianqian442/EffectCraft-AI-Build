@@ -656,11 +656,15 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         '"keys.setSegmentCurve"',
         '"keys.velocity"',
         '"am-motion-transform-control"',
-        "am_open_effect_browser(&ctx,Some(layer_id))",
         "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1",
     ):
         if token not in am_editor:
             raise SystemExit(f"AM single motion workspace is missing a required interaction: {token}")
+    if not re.search(
+        r"am_open_effect_browser\s*\(\s*&ctx\s*,\s*Some\s*\(\s*layer_id\s*\)\s*\)",
+        am_editor,
+    ):
+        raise SystemExit("AM single motion workspace is missing its effect-browser action.")
     if '("变换", "transform")' in am_editor or '("关键帧 / 曲线", "keyframes")' in am_editor:
         raise SystemExit("AM Move & Transform must be one workspace, not three tabs.")
     if 'if self.ui.workspace != "AM 竖屏" {' not in frame:
