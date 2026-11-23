@@ -199,7 +199,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             ui.painter().circle_filled(c, radius + 13.0, t.panel_bg);
             ui.painter().circle_stroke(c, radius, Stroke::new(2.0, t.separator));
             ui.painter().circle_stroke(c, radius * 0.68, Stroke::new(1.0, t.separator));
-            let angle = rotation.to_radians();
+            let angle = rotation.to_radians() as f32;
             let handle = pos2(c.x + angle.cos() * radius, c.y + angle.sin() * radius);
             ui.painter().line_segment([c, handle], Stroke::new(2.0, t.accent));
             ui.painter().circle_filled(handle, 7.0, t.accent);
