@@ -18,6 +18,7 @@ on:
       - '.github/scripts/add_five_project_import_buttons.py'
       - '.github/scripts/verify_android_source_patches.py'
       - '.github/scripts/add_am_motion_effect_editor.py'
+      - '.github/scripts/add_am_single_motion_surface.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - '.github/workflows/build-effectcraft-ai.yml'
       - 'docs/android-arm64-desktop-plugin-compatibility.md'
@@ -90,6 +91,7 @@ jobs:
             .github/scripts/add_am_mobile_layout.py \
             .github/scripts/build_am_mobile_editing_page.py \
             .github/scripts/add_am_motion_effect_editor.py \
+            .github/scripts/add_am_single_motion_surface.py \
             .github/scripts/add_windows_runtime_ui.py \
             .github/scripts/integrate_windows_compat_runtime.py \
             .github/scripts/integrate_binary_reconstruction.py \
@@ -295,16 +297,21 @@ jobs:
           python3 .github/scripts/add_am_mobile_layout.py
           python3 .github/scripts/build_am_mobile_editing_page.py
           python3 .github/scripts/add_am_motion_effect_editor.py
+          python3 .github/scripts/add_am_single_motion_surface.py
           # Ae×am uses its own portrait editing shell while retaining the original Ae DockArea.
           grep -Fq "crate::am_editor::show(self, ui, full);" effectcraft/crates/ui-egui/src/app/frame.rs
           grep -Fq "pub mod am_editor;" effectcraft/crates/ui-egui/src/lib.rs
           test -s effectcraft/crates/ui-egui/src/am_editor.rs
           grep -Fq "EFFECTCRAFT_AM_MOTION_EFFECT_EDITOR_V1" effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "EFFECTCRAFT_AM_SINGLE_MOTION_WORKSPACE_V1" effectcraft/crates/ui-egui/src/am_editor.rs
           grep -Fq '("移动与效果", "motion")' effectcraft/crates/ui-egui/src/am_editor.rs
           grep -Fq "fn am_motion_editor" effectcraft/crates/ui-egui/src/am_editor.rs
-          grep -Fq "PanelKind::Properties" effectcraft/crates/ui-egui/src/am_editor.rs
           grep -Fq "PanelKind::EffectControls" effectcraft/crates/ui-egui/src/am_editor.rs
-          grep -Fq "PanelKind::Timeline" effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "滑动此处以移动图层" effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "am.motion.effects.open" effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "keys.setSegmentCurve" effectcraft/crates/ui-egui/src/am_editor.rs
+          grep -Fq "keys.velocity" effectcraft/crates/ui-egui/src/am_editor.rs
+          ! grep -Fq '("关键帧 / 曲线", "keyframes")' effectcraft/crates/ui-egui/src/am_editor.rs
           grep -Fq "Tool::Pen" effectcraft/crates/ui-egui/src/am_editor.rs
           grep -Fq "Tool::Puppet" effectcraft/crates/ui-egui/src/am_editor.rs
           grep -Fq "EFFECTCRAFT_AM_PORTRAIT_HOME_V1" effectcraft/crates/ui-egui/src/panels/home.rs
