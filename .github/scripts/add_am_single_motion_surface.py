@@ -65,12 +65,12 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let position = if separate {
             [scalar("transform/positionX"), scalar("transform/positionY"), scalar("transform/positionZ")]
         } else { vec("transform/position", [0.0; 3]) };
-        let prop = layer.props.prop(path).or_else(|| if mode == "move" { layer.props.prop("transform/positionX") } else { None });
+        let prop = layer.props.prop(path).or_else(|| if mode == "move" || mode == "curve" { layer.props.prop("transform/positionX") } else { None });
         let segment = prop.and_then(|q| q.keys.windows(2).enumerate().find_map(|(i, pair)| {
             let a = layer.comp_time(pair[0].time); let b = layer.comp_time(pair[1].time);
             if time > a.min(b) && time < a.max(b) { Some((q.uid, pair[0].time.seconds(), pair[1].time.seconds(), i + 1, i + 2)) } else { None }
         }));
-        let has_key = if mode == "move" && separate {
+        let has_key = if (mode == "move" || mode == "curve") && separate {
             ["transform/positionX", "transform/positionY", "transform/positionZ"].iter().filter_map(|p| layer.props.prop(p)).any(|p| p.keys.iter().any(|k| k.time == lt))
         } else { prop.is_some_and(|p| p.keys.iter().any(|k| k.time == lt)) };
         Some((separate, position, scalar("transform/rotation"), vec("transform/scale", [100.0; 3]),
@@ -92,7 +92,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                     if action == "remove" && !has_key { app.ui.status = "当前时间没有此属性的关键帧。".into(); }
                     else {
                         match mode.as_str() {
-                            "move" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"position"})),
+                            "move" | "curve" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"position"})),
                             "rotate" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"rotation"})),
                             "scale" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"scale"})),
                             _ => invoke(app, &ctx, "prop.toggleKey", json!({"layer":layer_id, "path":path})),
@@ -209,6 +209,10 @@ def replace_function(source: str) -> str:
     return source[:start] + WORKSPACE.strip() + "\n" + source[end:]
 
 
+    title_line = '    p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, title, Tokens::semibold(11.0), t.text);'
+    title_expr = '    let title = if kind == "motion" && ui.ctx().data(|d| d.get_temp::<String>(Id::new(AM_MOTION_TAB_ID))).as_deref() == Some("effects") { "效果参数" } else { title };\n' + title_line
+    if title_line in source and title_expr not in source:
+        source = source.replace(title_line, title_expr, 1)
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     path = root / "crates/ui-egui/src/am_editor.rs"
