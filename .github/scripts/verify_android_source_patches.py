@@ -633,7 +633,7 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         "颜色和填充",
         "边框和阴影",
         "混合和不透明度",
-        "移动和转换",
+        "移动与效果",
         "编辑形状",
         "预设",
         "效果",
@@ -645,22 +645,24 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
 
     for token in (
         "EFFECTCRAFT_AM_MOTION_EFFECT_EDITOR_V1",
+        "EFFECTCRAFT_AM_SINGLE_MOTION_WORKSPACE_V1",
         '("移动与效果", "motion")',
         "fn am_motion_editor",
         "AM_MOTION_TAB_ID",
-        '("变换", "transform")',
-        '("效果", "effects")',
-        '("关键帧 / 曲线", "keyframes")',
-        "PanelKind::Properties",
+        "Sense::drag()",
+        "滑动此处以移动图层",
         "PanelKind::EffectControls",
-        "PanelKind::Timeline",
-        '"layer.setSwitch"',
-        '"transform/scale"',
-        '"prop.set"',
-        "am_open_effect_browser(&ctx, Some(layer_id))",
+        '"keys.toggleTransform"',
+        '"keys.setSegmentCurve"',
+        '"keys.velocity"',
+        '"am-motion-transform-control"',
+        "am_open_effect_browser(&ctx,Some(layer_id))",
+        "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1",
     ):
         if token not in am_editor:
-            raise SystemExit(f"AM unified motion/effect editor is missing a required interaction: {token}")
+            raise SystemExit(f"AM single motion workspace is missing a required interaction: {token}")
+    if '("变换", "transform")' in am_editor or '("关键帧 / 曲线", "keyframes")' in am_editor:
+        raise SystemExit("AM Move & Transform must be one workspace, not three tabs.")
     if 'if self.ui.workspace != "AM 竖屏" {' not in frame:
         raise SystemExit("The Ae toolbar must be hidden on both the AM Home and AM editor.")
     if "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" not in header:
