@@ -189,7 +189,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     print("Verified AM-style Undo/Redo buttons call the native edit history.")
     export_labels = [
         "导出 AE 电脑版工程",
-        "导出自有工程",
+        "导出Ae手机版工程",
         "导出 AM 工程",
         "导出 NV 工程",
         "导出 CapCut 工程",
@@ -324,7 +324,7 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if '"file.extractProjectArchive" => ("path", Ask::Open(&["zip", "rar"]))' not in aep_picker:
         raise SystemExit("ZIP/RAR project packages are not selectable from File > Import.")
     for mapping in (
-        '"file.importAepMobilePackage" => ("path", Ask::Open(&["zip"]))',
+        '"file.importAepMobilePackage" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"]))',
         '"file.importAlightMotionProject" => ("path", Ask::Open(&["amproj", "xml", "alight", "zip"]))',
         '"file.importNodeVideoProject" => ("path", Ask::Open(&["nv", "json", "zip"]))',
         '"file.importCapCutProject" => ("path", Ask::Open(&["json", "zip"]))',
@@ -342,6 +342,12 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The native RAR reader dependency is missing.")
     if '"ecproj" | "ecprojx"' not in mobile_importer or '"zip" =>' not in mobile_importer:
         raise SystemExit("The native self-owned project importer no longer recognizes its project packages.")
+    if "EFFECTCRAFT_ANDROID_MOBILE_IMPORT_ACCEPTS_SELF_EXPORT_V1" not in mobile_importer:
+        raise SystemExit("The mobile-Ae import button does not dispatch native self-export projects.")
+    if "contains_self_project" not in mobile_importer:
+        raise SystemExit("The mobile-Ae ZIP importer does not inspect archive entries for .ecproj/.ecprojx.")
+    if '"file.importAepMobilePackage" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"]))' not in aep_picker:
+        raise SystemExit("The mobile-Ae picker must accept native .ecproj/.ecprojx files and ZIP packages.")
     if 'super::import_project::import_project(s, &json!({"path": actual}))' not in mobile_importer:
         raise SystemExit("The self-owned project is not routed to the native project reader.")
     for command in ("file.importAepMobilePackage", "file.importAlightMotionProject", "file.importNodeVideoProject", "file.importCapCutProject"):

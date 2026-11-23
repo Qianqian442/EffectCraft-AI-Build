@@ -50,6 +50,78 @@ def main() -> None:
     # packages the collected .ecproj and its Footage directory into a ZIP. Import those
     # formats through the existing native EffectCraft project reader, never the AEP parser.
     am_nv_source = am_nv.read_text(encoding="utf-8")
+
+    # The "导入手机版Ae工程" entry also accepts an Ae-native mobile project exported
+    # by this app. Detect .ecproj/.ecprojx inside ZIP first, then dispatch to the native
+    # EffectCraft reader. Genuine Adobe mobile ZIPs retain the existing separate inspection
+    # path; do not route arbitrary ZIP files through the desktop AEP parser.
+    mobile_self_marker = "EFFECTCRAFT_ANDROID_MOBILE_IMPORT_ACCEPTS_SELF_EXPORT_V1"
+    if mobile_self_marker not in am_nv_source:
+        path_anchor = """    let path = selected_project_path(p)?;
+    if ext(&path) != "zip" {"""
+        path_patch = """    let path = selected_project_path(p)?;
+    // EFFECTCRAFT_ANDROID_MOBILE_IMPORT_ACCEPTS_SELF_EXPORT_V1
+    if matches!(ext(&path).as_str(), "ecproj" | "ecprojx") {
+        return super::import_project::import_project(s, &json!({"path": path}));
+    }
+    if ext(&path) != "zip" {"""
+        replace_once(
+            am_nv,
+            path_anchor,
+            path_patch,
+            "allow direct native mobile-project files from the mobile Ae button",
+        )
+        size_anchor = """    const MAX_MOBILE_AE_ZIP_BYTES: u64 = 128 * 1024 * 1024;"""
+        size_patch = """    // Detect Ae's own project package using the ZIP directory only. The self-export
+    // package may include large collected footage, so it uses the streaming extractor
+    // and is not constrained by the small Adobe-mobile package inspection limit.
+    let contains_self_project = match std::fs::File::open(&path) {
+        Ok(file) => match zip::ZipArchive::new(file) {
+            Ok(mut package) => {
+                let mut found = false;
+                for index in 0..package.len() {
+                    let Ok(entry) = package.by_index(index) else { continue; };
+                    let Ok(name) = entry.name() else { continue; };
+                    let name = name.to_ascii_lowercase();
+                    if name.ends_with(".ecproj") || name.ends_with(".ecprojx") {
+                        found = true;
+                        break;
+                    }
+                }
+                found
+            }
+            Err(_) => false,
+        },
+        Err(_) => false,
+    };
+    if contains_self_project {
+        let (actual, _package_root) = extract_project_zip(s, &path)?;
+        if !matches!(ext(&actual).as_str(), "ecproj" | "ecprojx") {
+            return Err(err("ZIP 中检测到了自有工程，但未能安全提取 .ecproj/.ecprojx 文件"));
+        }
+        return super::import_project::import_project(s, &json!({"path": actual}));
+    }
+    const MAX_MOBILE_AE_ZIP_BYTES: u64 = 128 * 1024 * 1024;"""
+        replace_once(
+            am_nv,
+            size_anchor,
+            size_patch,
+            "streaming self-project detection before the Adobe mobile ZIP size limit",
+        )
+        archive_anchor = """    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| err(format!("手机版 AE 工程包不是有效 ZIP：{e}")))?;
+    let mut names = Vec::new();"""
+        archive_patch = """    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(bytes))
+        .map_err(|e| err(format!("手机版 AE 工程包不是有效 ZIP：{e}")))?;
+    let mut names = Vec::new();"""
+        replace_once(
+            am_nv,
+            archive_anchor,
+            archive_patch,
+            "detect and import self-owned project ZIP inside the mobile Ae button",
+        )
+        am_nv_source = am_nv.read_text(encoding="utf-8")
+
     if "file.importEffectCraftMobile" not in am_nv_source:
         mobile_command = """fn import_effectcraft_mobile_project(s: &mut Session, p: &J) -> Result<J> {
     let path = p.get("path").and_then(J::as_str)
