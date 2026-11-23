@@ -68,6 +68,7 @@ source when distributing modified binaries.
 |---|---|---|
 | Mobile editing surface | Independent AM top bar, preview, transport, layer timeline and bottom tools; no Ae DockArea or Ae timeline renderer | In progress |
 | Multi-layer media | Graphics, image, video and audio layers; reorder, select, hide, lock, solo and mute | Partial |
+| Unified Move & Effects sheet | One AM layer-action entry opens transform, effects, and keyframe/curve tabs; transform supports position, rotation, scale link, 3D X/Y tilt and horizontal/vertical mirroring | In progress |
 | Vector editing | Shapes, custom vector/freehand paths, Bézier handles, fills, strokes and multi-border | Not complete |
 | Effect catalogue | AM effect IDs, every parameter, defaults, ranges, units, enums and presets; no silent drops | Not complete |
 | Keyframes | AM-style per-property keyframe tracks with touch selection, add/move/duplicate/delete and interpolation editing; do not reuse the Ae Timeline UI as the AM interface | Not complete |
@@ -84,6 +85,12 @@ source when distributing modified binaries.
 | Project package | Read/write AM project packages with media, fonts, nested scenes and metadata preserved | Partial |
 | Ae coexistence | Switching back restores the original Ae layout and all Ae tools; project data remains shared and intact | In progress |
 | Regression coverage | Representative AM sample projects, effect-by-effect render comparisons and import/export round-trip tests | Not complete |
+
+## Current Move & Effects integration boundary
+
+The AM layer-action sheet is being consolidated behind one **移动与效果** entry. Its AM-owned drawer is split into **变换**, **效果**, and **关键帧 / 曲线** tabs. The transform tab uses the shared, engine-backed property editor (including per-property keyframe controls, linked scale, 3D X/Y rotation and scale-based horizontal/vertical mirroring); the effects tab uses the shared effect browser and parameter editor, whose parameters expose their own keyframe controls.
+
+The keyframe/curve tab currently embeds the existing Timeline panel inside the AM sheet. It provides working access to the existing keyframe and curve commands, but it is still a temporary bridge—not the dedicated AM-style touch timeline/graph editor required by the full acceptance gate. Do not mark Keyframes or Easing and curves complete until that dedicated AM editor and its drag/curve-handle behavior are implemented and verified on an Android handset.
 
 ## Known importer limitations that must be removed before claiming parity
 
