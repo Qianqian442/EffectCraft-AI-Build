@@ -19,6 +19,7 @@ on:
       - '.github/scripts/verify_android_source_patches.py'
       - '.github/scripts/add_am_motion_effect_editor.py'
       - '.github/scripts/add_am_single_motion_surface.py'
+      - '.github/scripts/add_am_effect_stack_navigation.py'
       - '.github/workflows/validate-desktop-plugin-adapter.yml'
       - '.github/workflows/build-effectcraft-ai.yml'
       - 'docs/android-arm64-desktop-plugin-compatibility.md'
