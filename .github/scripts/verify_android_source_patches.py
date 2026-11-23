@@ -642,6 +642,25 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     ):
         if token not in am_editor:
             raise SystemExit(f"Independent AM editor is missing a required mobile editing feature: {token}")
+
+    for token in (
+        "EFFECTCRAFT_AM_MOTION_EFFECT_EDITOR_V1",
+        '("移动与效果", "motion")',
+        "fn am_motion_editor",
+        "AM_MOTION_TAB_ID",
+        '("变换", "transform")',
+        '("效果", "effects")',
+        '("关键帧 / 曲线", "keyframes")',
+        "PanelKind::Properties",
+        "PanelKind::EffectControls",
+        "PanelKind::Timeline",
+        '"layer.setSwitch"',
+        '"transform/scale"',
+        '"prop.set"',
+        "am_open_effect_browser(&ctx, Some(layer_id))",
+    ):
+        if token not in am_editor:
+            raise SystemExit(f"AM unified motion/effect editor is missing a required interaction: {token}")
     if 'if self.ui.workspace != "AM 竖屏" {' not in frame:
         raise SystemExit("The Ae toolbar must be hidden on both the AM Home and AM editor.")
     if "EFFECTCRAFT_ANDROID_RESPONSIVE_HEADER_SCROLL_V1" not in header:
