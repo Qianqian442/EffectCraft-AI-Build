@@ -96,6 +96,7 @@ on:
       - '.github/scripts/add_am_motion_effect_editor.py'
       - '.github/scripts/add_am_single_motion_surface.py'
       - '.github/scripts/add_am_effect_stack_navigation.py'
+      - '.github/scripts/fix_am_effect_stack_reverse_transition.py'
       - '.github/scripts/add_am_brand_label.py'
       - '.github/scripts/add_home_layout_switch.py'
       - '.github/scripts/patch_absentmotion_external_navigation.py'
@@ -1520,6 +1521,8 @@ jobs:
           python3 build-assets/.github/scripts/add_am_single_motion_surface.py
           python3 -m py_compile build-assets/.github/scripts/add_am_effect_stack_navigation.py
           python3 build-assets/.github/scripts/add_am_effect_stack_navigation.py
+          python3 -m py_compile build-assets/.github/scripts/fix_am_effect_stack_reverse_transition.py
+          python3 build-assets/.github/scripts/fix_am_effect_stack_reverse_transition.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
           HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
