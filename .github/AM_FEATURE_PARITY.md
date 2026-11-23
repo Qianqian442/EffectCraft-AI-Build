@@ -68,7 +68,7 @@ source when distributing modified binaries.
 |---|---|---|
 | Mobile editing surface | Independent AM top bar, preview, transport, layer timeline and bottom tools; no Ae DockArea or Ae timeline renderer | In progress |
 | Multi-layer media | Graphics, image, video and audio layers; reorder, select, hide, lock, solo and mute | Partial |
-| Unified Move & Effects sheet | One AM layer-action entry opens transform, effects, and keyframe/curve tabs; transform supports position, rotation, scale link, 3D X/Y tilt and horizontal/vertical mirroring | In progress |
+| Unified Move & Transform workspace | One AM layer-action entry opens one bottom-up sheet: left keyframe/curve rail, centre touch pad and numeric controls, right transform-mode rail; a bottom-right Effects button opens the effect browser and effect parameters scroll vertically | In progress |
 | Vector editing | Shapes, custom vector/freehand paths, Bézier handles, fills, strokes and multi-border | Not complete |
 | Effect catalogue | AM effect IDs, every parameter, defaults, ranges, units, enums and presets; no silent drops | Not complete |
 | Keyframes | AM-style per-property keyframe tracks with touch selection, add/move/duplicate/delete and interpolation editing; do not reuse the Ae Timeline UI as the AM interface | Not complete |
@@ -86,11 +86,11 @@ source when distributing modified binaries.
 | Ae coexistence | Switching back restores the original Ae layout and all Ae tools; project data remains shared and intact | In progress |
 | Regression coverage | Representative AM sample projects, effect-by-effect render comparisons and import/export round-trip tests | Not complete |
 
-## Current Move & Effects integration boundary
+## Current Move & Transform integration boundary
 
-The AM layer-action sheet is being consolidated behind one **移动与效果** entry. Its AM-owned drawer is split into **变换**, **效果**, and **关键帧 / 曲线** tabs. The transform tab uses the shared, engine-backed property editor (including per-property keyframe controls, linked scale, 3D X/Y rotation and scale-based horizontal/vertical mirroring); the effects tab uses the shared effect browser and parameter editor, whose parameters expose their own keyframe controls.
+The AM layer-action sheet opens one full-height, bottom-up **移动与变换** workspace. It is not split into Transform / Effects / Keyframes tabs. The left rail provides add/remove keyframe, curve access and one-frame key positioning; the centre work area changes with the selected control and uses a finger-drag touch pad plus numeric sliders; the right rail switches Position, Rotation, Scale, X/Y Tilt, 3D and horizontal/vertical flip modes. A persistent **＋ 效果** action sits at the bottom-right. It opens the AM effect browser; after applying an effect, the selected layer returns to its scrollable effect-parameter controls. Effect parameters use the AM-only touch-scroll context and must not intercept slider drags.
 
-The keyframe/curve tab currently embeds the existing Timeline panel inside the AM sheet. It provides working access to the existing keyframe and curve commands, but it is still a temporary bridge—not the dedicated AM-style touch timeline/graph editor required by the full acceptance gate. Do not mark Keyframes or Easing and curves complete until that dedicated AM editor and its drag/curve-handle behavior are implemented and verified on an Android handset.
+The touch pad writes through shared engine property commands at the current playhead, so animated properties receive edits at that time. The left keyframe actions use native per-property / transform keyframe commands. The curve work area resolves the adjacent keyframe segment around the playhead and exposes interpolation presets and incoming/outgoing influence controls. This first implementation remains subject to source validation and handset interaction checks; do not mark all AM keyframe/curve acceptance criteria complete until marker dragging, full Bézier handle behavior, and effect-parameter animation are verified.
 
 ## Known importer limitations that must be removed before claiming parity
 
