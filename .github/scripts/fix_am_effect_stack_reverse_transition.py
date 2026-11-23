@@ -9,6 +9,7 @@ MARKER = "EFFECTCRAFT_AM_EFFECT_STACK_REVERSE_SLIDE_V1"
 WIDGET_MARKER = "EFFECTCRAFT_AM_EFFECT_VALUE_VERTICAL_SCRUB_V1"
 
 REVERSE_SLIDE = r'''
+    // EFFECTCRAFT_AM_EFFECT_STACK_NAV_V1
     // EFFECTCRAFT_AM_EFFECT_STACK_REVERSE_SLIDE_V1
     if section == "effects" {
         let params_open = ctx.data(|d| d.get_temp::<bool>(Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_OPEN")).unwrap_or(false));
@@ -105,18 +106,18 @@ REVERSE_SLIDE = r'''
             if add.clicked() {
                 am_open_effect_browser(&ctx, Some(layer_id));
             }
-        }
-        let back = ui.put(
-            Rect::from_min_size(pos2(center.min.x + 5.0, center.min.y + 3.0), vec2(94.0, 28.0)),
-            egui::Button::new("‹ 返回变换"),
-        );
-        app.auto.add_response("am.motion.effects.back", &back, "关闭效果面板并返回移动与变换");
-        if back.clicked() {
-            ctx.data_mut(|d| {
-                d.insert_temp(Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_OPEN"), false);
-                d.insert_temp(Id::new(AM_MOTION_TAB_ID), "transform".to_string());
-            });
-            section = "transform".into();
+            let back = ui.put(
+                Rect::from_min_size(pos2(center.min.x + 5.0, center.min.y + 3.0), vec2(94.0, 28.0)),
+                egui::Button::new("‹ 返回变换"),
+            );
+            app.auto.add_response("am.motion.effects.back", &back, "关闭效果面板并返回移动与变换");
+            if back.clicked() {
+                ctx.data_mut(|d| {
+                    d.insert_temp(Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_OPEN"), false);
+                    d.insert_temp(Id::new(AM_MOTION_TAB_ID), "transform".to_string());
+                });
+                section = "transform".into();
+            }
         }
         return;
     }
