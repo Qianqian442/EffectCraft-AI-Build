@@ -16,6 +16,8 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     };
     let mut section = ctx.data(|d| d.get_temp::<String>(Id::new(AM_MOTION_TAB_ID))).unwrap_or_else(|| "transform".into());
     let mut mode = ctx.data(|d| d.get_temp::<String>(Id::new("am-motion-transform-control"))).unwrap_or_else(|| "move".into());
+    let mut curve_target = ctx.data(|d| d.get_temp::<String>(Id::new("am-motion-curve-target"))).unwrap_or_else(|| "move".into());
+    let property_mode = if mode == "curve" { curve_target.as_str() } else { mode.as_str() };
     let mut linked = ctx.data(|d| d.get_temp::<bool>(Id::new("am-motion-linked-scale"))).unwrap_or(true);
     let t = app.tokens;
     let left_w = 42.0;
@@ -51,7 +53,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     }
 
     let time = app.session.time();
-    let path = match mode.as_str() {
+    let path = match property_mode {
         "rotate" => "transform/rotation", "scale" => "transform/scale",
         "tilt_x" => "transform/rotationX", "tilt_y" => "transform/rotationY",
         _ => "transform/position",
@@ -65,12 +67,12 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let position = if separate {
             [scalar("transform/positionX"), scalar("transform/positionY"), scalar("transform/positionZ")]
         } else { vec("transform/position", [0.0; 3]) };
-        let prop = layer.props.prop(path).or_else(|| if mode == "move" || mode == "curve" { layer.props.prop("transform/positionX") } else { None });
+        let prop = layer.props.prop(path).or_else(|| if property_mode == "move" { layer.props.prop("transform/positionX") } else { None });
         let segment = prop.and_then(|q| q.keys.windows(2).enumerate().find_map(|(i, pair)| {
             let a = layer.comp_time(pair[0].time); let b = layer.comp_time(pair[1].time);
             if time > a.min(b) && time < a.max(b) { Some((q.uid, pair[0].time.seconds(), pair[1].time.seconds(), i + 1, i + 2)) } else { None }
         }));
-        let has_key = if (mode == "move" || mode == "curve") && separate {
+        let has_key = if property_mode == "move" && separate {
             ["transform/positionX", "transform/positionY", "transform/positionZ"].iter().filter_map(|p| layer.props.prop(p)).any(|p| p.keys.iter().any(|k| k.time == lt))
         } else { prop.is_some_and(|p| p.keys.iter().any(|k| k.time == lt)) };
         Some((separate, position, scalar("transform/rotation"), vec("transform/scale", [100.0; 3]),
@@ -89,17 +91,27 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         if response.clicked() {
             match action {
                 "add" | "remove" => {
-                    if action == "remove" && !has_key { app.ui.status = "当前时间没有此属性的关键帧。".into(); }
-                    else {
-                        match mode.as_str() {
-                            "move" | "curve" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"position"})),
+                    if action == "add" && has_key {
+                        app.ui.status = "当前时间已经有这个属性的关键帧。".into();
+                    } else if action == "remove" && !has_key {
+                        app.ui.status = "当前时间没有此属性的关键帧。".into();
+                    } else {
+                        match property_mode {
+                            "move" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"position"})),
                             "rotate" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"rotation"})),
                             "scale" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"scale"})),
                             _ => invoke(app, &ctx, "prop.toggleKey", json!({"layer":layer_id, "path":path})),
                         }
                     }
                 }
-                "curve" => { mode = "curve".into(); ctx.data_mut(|d| d.insert_temp(Id::new("am-motion-transform-control"), mode.clone())); }
+                "curve" => {
+                    if mode != "curve" {
+                        curve_target = mode.clone();
+                        ctx.data_mut(|d| d.insert_temp(Id::new("am-motion-curve-target"), curve_target.clone()));
+                    }
+                    mode = "curve".into();
+                    ctx.data_mut(|d| d.insert_temp(Id::new("am-motion-transform-control"), mode.clone()));
+                }
                 "prev" | "next" => {
                     if let (Some(uid), Some((_, first, second, _, _))) = (prop_uid, segment) {
                         let at = if action == "prev" { first } else { second };
@@ -181,11 +193,33 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         let drag=ui.interact(pad,Id::new(("am-motion-touch-pad",mode.as_str())),Sense::drag());
         ui.painter().rect_filled(pad,9.0,t.field_bg);
         ui.painter().rect_stroke(pad,9.0,Stroke::new(1.0,t.separator),StrokeKind::Inside);
-        ui.painter().text(pad.center(),Align2::CENTER_CENTER,match mode.as_str(){"rotate"=>"拖动此处以旋转图层","scale"=>"拖动此处以放大或缩小","tilt_x"|"tilt_y"=>"拖动此处以调整倾斜",_=>"滑动此处以移动图层"},Tokens::ui(10.0),t.text_dim);
+        if mode == "rotate" {
+            let c = pad.center();
+            let radius = (pad.width().min(pad.height()) * 0.34).max(22.0);
+            ui.painter().circle_filled(c, radius + 13.0, t.panel_bg);
+            ui.painter().circle_stroke(c, radius, Stroke::new(2.0, t.separator));
+            ui.painter().circle_stroke(c, radius * 0.68, Stroke::new(1.0, t.separator));
+            let angle = rotation.to_radians();
+            let handle = pos2(c.x + angle.cos() * radius, c.y + angle.sin() * radius);
+            ui.painter().line_segment([c, handle], Stroke::new(2.0, t.accent));
+            ui.painter().circle_filled(handle, 7.0, t.accent);
+            ui.painter().text(c, Align2::CENTER_CENTER, format!("{rotation:.1}°"), Tokens::semibold(15.0), t.text);
+            ui.painter().text(pos2(c.x, pad.max.y - 8.0), Align2::CENTER_BOTTOM, "拖动圆盘以旋转图层", Tokens::ui(9.5), t.text_dim);
+        } else {
+            ui.painter().text(pad.center(),Align2::CENTER_CENTER,match mode.as_str(){"scale"=>"拖动此处以放大或缩小","tilt_x"|"tilt_y"=>"拖动此处以调整倾斜",_=>"滑动此处以移动图层"},Tokens::ui(10.0),t.text_dim);
+        }
         if drag.dragged() {
             let d=ctx.input(|i|i.pointer.delta());
             match mode.as_str() {
-                "rotate"=>{rotation+=d.x as f64*0.55;invoke(app,&ctx,"prop.set",json!({"layer":layer_id,"path":"transform/rotation","value":rotation,"merge":"am-motion-rotate"}));}
+                "rotate"=>{
+                    if let Some(pointer) = ctx.input(|i| i.pointer.interact_pos()) {
+                        let c = pad.center();
+                        rotation = (pointer.y - c.y).atan2(pointer.x - c.x).to_degrees() as f64;
+                    } else {
+                        rotation += d.x as f64 * 0.55;
+                    }
+                    invoke(app,&ctx,"prop.set",json!({"layer":layer_id,"path":"transform/rotation","value":rotation,"merge":"am-motion-rotate"}));
+                }
                 "scale"=>{let k=(d.x-d.y) as f64*0.35;scale[0]+=k;if linked{scale[1]+=k;}else{scale[1]-=d.y as f64*0.35;}invoke(app,&ctx,"prop.set",json!({"layer":layer_id,"path":"transform/scale","value":scale,"merge":"am-motion-scale"}));}
                 "tilt_x"=>{tilt_x-=d.y as f64*0.55;invoke(app,&ctx,"prop.set",json!({"layer":layer_id,"path":"transform/rotationX","value":tilt_x,"merge":"am-motion-tilt-x"}));}
                 "tilt_y"=>{tilt_y+=d.x as f64*0.55;invoke(app,&ctx,"prop.set",json!({"layer":layer_id,"path":"transform/rotationY","value":tilt_y,"merge":"am-motion-tilt-y"}));}
