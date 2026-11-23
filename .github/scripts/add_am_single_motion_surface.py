@@ -209,10 +209,6 @@ def replace_function(source: str) -> str:
     return source[:start] + WORKSPACE.strip() + "\n" + source[end:]
 
 
-    title_line = '    p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, title, Tokens::semibold(11.0), t.text);'
-    title_expr = '    let title = if kind == "motion" && ui.ctx().data(|d| d.get_temp::<String>(Id::new(AM_MOTION_TAB_ID))).as_deref() == Some("effects") { "效果参数" } else { title };\n' + title_line
-    if title_line in source and title_expr not in source:
-        source = source.replace(title_line, title_expr, 1)
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     path = root / "crates/ui-egui/src/am_editor.rs"
@@ -223,6 +219,10 @@ def main() -> None:
         print("AM single motion workspace already installed.")
         return
     source = replace_function(source)
+    title_line = '    p.text(pos2(header.min.x + 10.0, header.center().y), Align2::LEFT_CENTER, title, Tokens::semibold(11.0), t.text);'
+    title_expr = '    let title = if kind == "motion" && ui.ctx().data(|d| d.get_temp::<String>(Id::new(AM_MOTION_TAB_ID))).as_deref() == Some("effects") { "效果参数" } else { title };\n' + title_line
+    if title_line in source and title_expr not in source:
+        source = source.replace(title_line, title_expr, 1)
     source = source.replace('        "motion" => "移动与效果",', '        "motion" => "移动与变换",', 1)
     source = source.replace('    if kind != "add" {', '    if kind != "add" && kind != "motion" {', 1)
     old_height = '''        if kind == "motion" {
