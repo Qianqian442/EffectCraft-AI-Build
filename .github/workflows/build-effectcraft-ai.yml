@@ -129,7 +129,7 @@ concurrency:
 
 jobs:
   build-box64-box32:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !((github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]')) }}
     name: Build Android ARM64 Box64 with 32-bit x86 ELF support
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -191,7 +191,7 @@ jobs:
           retention-days: 30
 
   build-box86-armv7:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !((github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]')) }}
     name: Build optional Box86 Android ARMv7 Bionic runtime
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -287,7 +287,7 @@ jobs:
           retention-days: 30
 
   build-qemu-user-android:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !((github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]')) }}
     name: Build optional QEMU x86-64 Linux-user fallback for Android
     runs-on: ubuntu-22.04
     timeout-minutes: 180
@@ -504,7 +504,7 @@ jobs:
           retention-days: 30
 
   build-fexcore-arm64ec:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !((github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]')) }}
     name: Build and validate full FEXCore ARM64EC and WoW64 PE backends
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 150
@@ -614,7 +614,7 @@ jobs:
           retention-days: 30
 
   build-aex-host:
-    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !((github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]')) }}
     name: Build and smoke-test x64 and x86 Windows AEX hosts
     runs-on: windows-latest
     timeout-minutes: 120
