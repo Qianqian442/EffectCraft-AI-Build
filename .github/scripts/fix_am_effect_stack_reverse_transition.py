@@ -206,7 +206,7 @@ def patch_vertical_scrub(source: str) -> str:
         });
         let delta = if am_vertical_scrub {
             let started = ui.data(|d| d.get_temp::<f64>(am_press_time_id)).unwrap_or_else(|| ui.input(|i| i.time));
-            if ui.input(|i| i.time) - started >= 0.28 {
+            if ui.input(|i| i.time) - started >= 0.12 {
                 if let Some(current) = resp.interact_pointer_pos() {
                     let previous = ui.data(|d| d.get_temp::<egui::Pos2>(am_last_pointer_id));
                     ui.data_mut(|d| d.insert_temp(am_last_pointer_id, current));

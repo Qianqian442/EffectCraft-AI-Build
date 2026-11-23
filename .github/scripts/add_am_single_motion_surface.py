@@ -263,7 +263,7 @@ def main() -> None:
             (rect.height() * 0.74).clamp(340.0, 680.0).min(rect.height() * 0.84)
         } else if kind == "keyframes" {'''
     new_height = '''        if kind == "motion" {
-            (rect.height() * 0.86).clamp(420.0, 760.0).min(rect.height() * 0.90)
+            (rect.height() * 0.54).clamp(220.0, 420.0).min(timeline_rect.height().max(0.0))
         } else if kind == "keyframes" {'''
     if old_height in source:
         source = source.replace(old_height, new_height, 1)

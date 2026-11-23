@@ -248,7 +248,22 @@ def patch_module(root: Path) -> None:
         // All three tabs are hosted by the AM-owned sheet; only the inner editing widgets
         // are shared. Keep Android touch scrolling scoped to this AM sheet.
         ui.ctx().data_mut(|d| d.insert_temp(Id::new("EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1"), true));
-        am_motion_editor(app, ui, body);
+        // EFFECTCRAFT_AM_MOTION_PANIC_BOUNDARY_V1
+        // Isolate recoverable Rust panics in the AM-specific controls before they
+        // unwind through the Android editor event loop. Keep the shared project intact.
+        if let Err(payload) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            am_motion_editor(app, ui, body);
+        })) {
+            let detail = payload.downcast_ref::<String>().map(String::as_str)
+                .or_else(|| payload.downcast_ref::<&str>().copied()).unwrap_or("unknown panic");
+            log::error!("AM Move & Transform panel panic isolated: {detail}");
+            app.ui.status = "移动与变换面板出现异常，已保护工程并关闭面板。".to_string();
+            ui.ctx().data_mut(|d| {
+                d.remove::<String>(Id::new("am-mobile-tool-drawer"));
+                d.remove::<bool>(Id::new("EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1"));
+                d.remove::<bool>(Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY"));
+            });
+        }
         ui.ctx().data_mut(|d| d.remove::<bool>(Id::new("EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1")));
     } else if let Some(panel) = panel {
         let mut child = ui.new_child(egui::UiBuilder::new().max_rect(body));
