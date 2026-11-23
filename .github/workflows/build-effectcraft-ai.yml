@@ -94,6 +94,9 @@ on:
       - '.github/scripts/add_am_mobile_layout.py'
       - '.github/scripts/build_am_mobile_editing_page.py'
       - '.github/scripts/add_am_motion_effect_editor.py'
+      - '.github/scripts/add_am_single_motion_surface.py'
+      - '.github/scripts/add_am_effect_stack_navigation.py'
+      - '.github/scripts/fix_am_effect_stack_reverse_transition.py'
       - '.github/scripts/add_am_brand_label.py'
       - '.github/scripts/add_home_layout_switch.py'
       - '.github/scripts/patch_absentmotion_external_navigation.py'
@@ -1514,6 +1517,12 @@ jobs:
           python3 build-assets/.github/scripts/build_am_mobile_editing_page.py
           python3 -m py_compile build-assets/.github/scripts/add_am_motion_effect_editor.py
           python3 build-assets/.github/scripts/add_am_motion_effect_editor.py
+          python3 -m py_compile build-assets/.github/scripts/add_am_single_motion_surface.py
+          python3 build-assets/.github/scripts/add_am_single_motion_surface.py
+          python3 -m py_compile build-assets/.github/scripts/add_am_effect_stack_navigation.py
+          python3 build-assets/.github/scripts/add_am_effect_stack_navigation.py
+          python3 -m py_compile build-assets/.github/scripts/fix_am_effect_stack_reverse_transition.py
+          python3 build-assets/.github/scripts/fix_am_effect_stack_reverse_transition.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
           HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
@@ -1532,6 +1541,10 @@ jobs:
           grep -Fq 'crate::am_editor::show(self, ui, full);' "$FRAME_RS"
           grep -Fq 'pub mod am_editor;' "$LIB_RS"
           grep -Fq 'EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1' "$AM_RS"
+          grep -Fq 'EFFECTCRAFT_AM_SINGLE_MOTION_WORKSPACE_V1' "$AM_RS"
+          grep -Fq '滑动此处以移动图层' "$AM_RS"
+          grep -Fq 'am.motion.effects.open' "$AM_RS"
+          grep -Fq 'EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1' "$AM_RS"
           echo "Verified AM routes to its own portrait editor while the original Ae DockArea remains intact."
 
       - name: Keep layout switching in the editing toolbar, not on Home
