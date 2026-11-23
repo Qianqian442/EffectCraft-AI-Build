@@ -17,7 +17,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let mut section = ctx.data(|d| d.get_temp::<String>(Id::new(AM_MOTION_TAB_ID))).unwrap_or_else(|| "transform".into());
     let mut mode = ctx.data(|d| d.get_temp::<String>(Id::new("am-motion-transform-control"))).unwrap_or_else(|| "move".into());
     let mut curve_target = ctx.data(|d| d.get_temp::<String>(Id::new("am-motion-curve-target"))).unwrap_or_else(|| "move".into());
-    let property_mode = if mode == "curve" { curve_target.as_str() } else { mode.as_str() };
+    let property_mode = if mode == "curve" { curve_target.clone() } else { mode.clone() };
     let mut linked = ctx.data(|d| d.get_temp::<bool>(Id::new("am-motion-linked-scale"))).unwrap_or(true);
     let t = app.tokens;
     let left_w = 42.0;
@@ -53,7 +53,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     }
 
     let time = app.session.time();
-    let path = match property_mode {
+    let path = match property_mode.as_str() {
         "rotate" => "transform/rotation", "scale" => "transform/scale",
         "tilt_x" => "transform/rotationX", "tilt_y" => "transform/rotationY",
         _ => "transform/position",
@@ -96,7 +96,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                     } else if action == "remove" && !has_key {
                         app.ui.status = "当前时间没有此属性的关键帧。".into();
                     } else {
-                        match property_mode {
+                        match property_mode.as_str() {
                             "move" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"position"})),
                             "rotate" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"rotation"})),
                             "scale" => invoke(app, &ctx, "keys.toggleTransform", json!({"layers":[layer_id], "prop":"scale"})),
