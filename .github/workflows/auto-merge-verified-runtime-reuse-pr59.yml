@@ -1,0 +1,38 @@
+name: Auto-merge verified runtime reuse fix
+
+on:
+  workflow_run:
+    workflows:
+      - Validate desktop plug-in compatibility adapter
+    types:
+      - completed
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  merge-verified-pr59:
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.head_branch == 'fix/am-effect-browser-verifier-whitespace'
+          && github.event.workflow_run.head_sha == 'f08a58038f455cc45b98a80ce9d7eb880882f2d6' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Merge only the exact validated PR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED_BRANCH: fix/am-effect-browser-verifier-whitespace
+          EXPECTED_HEAD_SHA: f08a58038f455cc45b98a80ce9d7eb880882f2d6
+        shell: bash
+        run: |
+          set -euo pipefail
+          PR_JSON="$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$EXPECTED_BRANCH" --state open --json number,headRefOid)"
+          PR_NUMBER="$(jq -r --arg sha "$EXPECTED_HEAD_SHA" '[.[] | select(.headRefOid == $sha)] | if length == 1 then .[0].number else empty end' <<< "$PR_JSON")"
+          if [[ -z "$PR_NUMBER" ]]; then
+            echo "No unique open PR with the exact validated head SHA was found."
+            exit 1
+          fi
+          gh pr merge "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --squash \
+            --subject "[reuse-runtime-artifacts] Merge validated PR #59" \
+            --body "Merge the verified AM effect-browser source-check fix and reuse the runtime artifacts from build run 45193406383. This merge was triggered only after the exact PR head passed the desktop plug-in compatibility validation workflow."
