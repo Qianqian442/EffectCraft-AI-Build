@@ -148,19 +148,25 @@ def patch_vertical_scrub(source: str) -> str:
         d.get_temp::<bool>(egui::Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY")).unwrap_or(false)
     });
     let am_press_time_id = id.with("am-vertical-press-time");
+    let am_last_pointer_id = id.with("am-vertical-last-pointer");
     if am_vertical_scrub {
         if resp.is_pointer_button_down_on() {
             let now = ui.input(|i| i.time);
-            if ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary)) {
-                ui.data_mut(|d| d.insert_temp(am_press_time_id, now));
-            } else if ui.data(|d| d.get_temp::<f64>(am_press_time_id)).is_none() {
+            if ui.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary))
+                || ui.data(|d| d.get_temp::<f64>(am_press_time_id)).is_none()
+            {
                 ui.data_mut(|d| d.insert_temp(am_press_time_id, now));
             }
+            if let Some(pos) = resp.interact_pointer_pos() {
+                ui.data_mut(|d| d.insert_temp(am_last_pointer_id, pos));
+            }
         } else {
-            ui.data_mut(|d| d.remove::<f64>(am_press_time_id));
+            ui.data_mut(|d| {
+                d.remove::<f64>(am_press_time_id);
+                d.remove::<egui::Pos2>(am_last_pointer_id);
+            });
         }
-    }
-''', 1)
+    }''', 1)
     source = source.replace(
         '    if resp.hovered() || resp.dragged() {\n        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);\n    }',
         '''    if resp.hovered() || resp.dragged() {
@@ -201,8 +207,17 @@ def patch_vertical_scrub(source: str) -> str:
         let delta = if am_vertical_scrub {
             let started = ui.data(|d| d.get_temp::<f64>(am_press_time_id)).unwrap_or_else(|| ui.input(|i| i.time));
             if ui.input(|i| i.time) - started >= 0.28 {
-                -(resp.drag_delta().y as f64)
+                if let Some(current) = resp.interact_pointer_pos() {
+                    let previous = ui.data(|d| d.get_temp::<egui::Pos2>(am_last_pointer_id));
+                    ui.data_mut(|d| d.insert_temp(am_last_pointer_id, current));
+                    previous.map(|last| (last.y - current.y) as f64).unwrap_or(0.0)
+                } else {
+                    0.0
+                }
             } else {
+                if let Some(current) = resp.interact_pointer_pos() {
+                    ui.data_mut(|d| d.insert_temp(am_last_pointer_id, current));
+                }
                 0.0
             }
         } else {
