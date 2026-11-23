@@ -109,6 +109,12 @@ on:
       - '.github/scripts/looks_compat_pack.rs'
       - '.github/scripts/build_looks_compat_pack.py'
   workflow_dispatch:
+    inputs:
+      reuse_runtime_run_id:
+        description: 'Reuse the five verified runtime artifacts from this run ID'
+        required: true
+        default: '45193406383'
+        type: string
 
 permissions:
   contents: write
@@ -123,7 +129,7 @@ concurrency:
 
 jobs:
   build-box64-box32:
-    if: ${{ !contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
     name: Build Android ARM64 Box64 with 32-bit x86 ELF support
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -185,7 +191,7 @@ jobs:
           retention-days: 30
 
   build-box86-armv7:
-    if: ${{ !contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
     name: Build optional Box86 Android ARMv7 Bionic runtime
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -281,7 +287,7 @@ jobs:
           retention-days: 30
 
   build-qemu-user-android:
-    if: ${{ !contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
     name: Build optional QEMU x86-64 Linux-user fallback for Android
     runs-on: ubuntu-22.04
     timeout-minutes: 180
@@ -498,7 +504,7 @@ jobs:
           retention-days: 30
 
   build-fexcore-arm64ec:
-    if: ${{ !contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
     name: Build and validate full FEXCore ARM64EC and WoW64 PE backends
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 150
@@ -608,7 +614,7 @@ jobs:
           retention-days: 30
 
   build-aex-host:
-    if: ${{ !contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && !(github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') }}
     name: Build and smoke-test x64 and x86 Windows AEX hosts
     runs-on: windows-latest
     timeout-minutes: 120
@@ -765,7 +771,7 @@ jobs:
 
   build:
     needs: [validate-patches, validate-desktop-plugin-adapter, validate-main-workflow, validate-sapphire-compat, build-box64-box32, build-fexcore-arm64ec, build-box86-armv7, build-qemu-user-android, build-aex-host]
-    if: ${{ always() && needs.validate-patches.result == 'success' && needs.validate-desktop-plugin-adapter.result == 'success' && needs.validate-main-workflow.result == 'success' && needs.validate-sapphire-compat.result == 'success' && (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') || (needs.build-box64-box32.result == 'success' && needs.build-fexcore-arm64ec.result == 'success' && needs.build-aex-host.result == 'success')) }}
+    if: ${{ always() && needs.validate-patches.result == 'success' && needs.validate-desktop-plugin-adapter.result == 'success' && needs.validate-main-workflow.result == 'success' && needs.validate-sapphire-compat.result == 'success' && ((github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') || contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') || (needs.build-box64-box32.result == 'success' && needs.build-fexcore-arm64ec.result == 'success' && needs.build-aex-host.result == 'success')) }}
     # Wait for the optional QEMU job so its artifact is available when it succeeds.
     # The QEMU job itself remains continue-on-error, and its download remains optional;
     # a QEMU failure therefore cannot block the main APK build.
@@ -815,7 +821,7 @@ jobs:
           name: EffectCraft-Box64-BOX32-Android-ARM64
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
           path: runtime-artifacts/box32
 
       - name: Download optional Box86 ARMv7 Bionic runtime
@@ -825,7 +831,7 @@ jobs:
           name: EffectCraft-Box86-Android-ARMv7-Optional
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
           path: runtime-artifacts/box86
           if-no-artifact-found: ignore
 
@@ -835,7 +841,7 @@ jobs:
           name: EffectCraft-FEXCore-Arm64EC-WoW64-CurrentMain
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
           path: runtime-artifacts/fexcore
 
       - name: Download optional QEMU x86-64 Linux-user packages
@@ -845,7 +851,7 @@ jobs:
           name: EffectCraft-QEMU-x86-64-Android-Fallback
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
           path: runtime-artifacts/qemu
           if-no-artifact-found: ignore
 
@@ -855,7 +861,7 @@ jobs:
           name: EffectCraft-AE-Host-Binaries
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
           path: runtime-artifacts/aex-hosts
 
       - name: Check out pinned native AbsentMotion source
