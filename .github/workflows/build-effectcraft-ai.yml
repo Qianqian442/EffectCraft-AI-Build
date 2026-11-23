@@ -93,6 +93,7 @@ on:
       - '.github/scripts/add_am_style_undo_redo.py'
       - '.github/scripts/add_am_mobile_layout.py'
       - '.github/scripts/build_am_mobile_editing_page.py'
+      - '.github/scripts/add_am_motion_effect_editor.py'
       - '.github/scripts/add_am_brand_label.py'
       - '.github/scripts/add_home_layout_switch.py'
       - '.github/scripts/patch_absentmotion_external_navigation.py'
@@ -739,6 +740,7 @@ jobs:
             .github/scripts/add_am_style_undo_redo.py \
             .github/scripts/add_am_mobile_layout.py \
             .github/scripts/build_am_mobile_editing_page.py \
+            .github/scripts/add_am_motion_effect_editor.py \
             .github/scripts/add_am_brand_label.py \
             .github/scripts/add_home_layout_switch.py \
             .github/scripts/pin_android_signing_certificate.py \
@@ -1510,6 +1512,8 @@ jobs:
           # is not an AM editing page.
           python3 -m py_compile build-assets/.github/scripts/build_am_mobile_editing_page.py
           python3 build-assets/.github/scripts/build_am_mobile_editing_page.py
+          python3 -m py_compile build-assets/.github/scripts/add_am_motion_effect_editor.py
+          python3 build-assets/.github/scripts/add_am_motion_effect_editor.py
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
           HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
