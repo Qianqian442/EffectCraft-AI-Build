@@ -24,6 +24,7 @@ The pre-AM history boundary is commit `6c9f7c2178466b09a51874aae82a8a91f8417b30`
 - Add dedicated AM-layout access to vector drawing and Puppet Pin editing, including Pen/vector path creation and Puppet Pin / Bend / Starch / Overlap tools. They belong in AM's bottom tool navigation, Add/Draw/Puppet drawers, or contextual editing controls—not in Ae's top tool strip.
 - Keyframes and curves must get an AM-style mobile interaction surface: select a layer/property, add/move/delete keyframes, edit interpolation/easing and curves using touch-friendly controls. Do not merely open Ae's desktop Timeline panel and label it AM keyframes.
 - The Effects browser and parameter drawers must scroll vertically by finger swipe. Effect rows should respond to taps without hijacking vertical swipes; sliders, curve handles and drag controls must keep their own gestures.
+- After tapping a timeline layer, its contextual action sheet must expose one **移动与效果** entry. Tapping it opens an AM-owned sheet with **变换 / 效果 / 关键帧与曲线** tabs: position, rotation, size, 3D X/Y tilt and mirroring; effect selection and parameter animation; and keyframe/curve controls. Do not leave transform and effect editing as unrelated cards. The sheet must not alter Ae-mode layout or behavior.
 - Keep Ae and AM presentations independent while sharing the project model, rendering/effect engine and core edit commands where appropriate.
 
 ## Preservation and acceptance
