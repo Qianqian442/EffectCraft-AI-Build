@@ -358,7 +358,6 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                         self.banned_until.clear();
                         self.ban_reason.clear();
                         self.status.clear();
-                        self.clear_cached_ban(config);
                         self.persist(config);''',
         '''                        self.user = Some(user);
                         self.mode = Mode::Editor;
@@ -377,7 +376,6 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                         self.ban_reason.clear();
                         ACCOUNT_VERIFY_ATTEMPTED.store(true, Ordering::Release);
                         self.password.clear();
-                        self.clear_cached_ban(config);
                         self.persist(config);''',
         '''                        self.token = Some(token);
                         self.user = user;
