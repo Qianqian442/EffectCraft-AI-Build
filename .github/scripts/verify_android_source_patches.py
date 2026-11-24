@@ -677,6 +677,13 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         '"keys.velocity"',
         '"am-motion-transform-control"',
         "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1",
+        "let puppet_tools = [",
+        '("控点", Tool::Puppet,',
+        '("弯曲", Tool::PuppetBend,',
+        '("固定", Tool::PuppetStarch,',
+        '("重叠", Tool::PuppetOverlap,',
+        "app.ui.tool = tool;",
+        "am.motion.puppet.",
     ):
         if token not in am_editor:
             raise SystemExit(f"AM single motion workspace is missing a required interaction: {token}")
