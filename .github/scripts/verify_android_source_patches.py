@@ -619,7 +619,7 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     if "let tabs = [" in am_editor_source or '"关键帧 / 曲线", "keyframes"' in am_editor_source:
         raise SystemExit("AM Move & Transform must stay one workspace; do not add a separate keyframe/curve tab.")
     layer_commands = (root / "crates/engine/src/cmd/layer.rs").read_text(encoding="utf-8")
-    for token in ("EFFECTCRAFT_AM_LAYER_DELETE_COMMAND_V1", '"layer.delete"', "state.selected_keys.retain"):
+    for token in ("EFFECTCRAFT_AM_LAYER_DELETE_COMMAND_V1", '"layer.delete"', "let (cid, ids) = layers_p(s, p)?;", "state.selected_keys.retain"):
         if token not in layer_commands:
             raise SystemExit(f"AM layer deletion is not wired to the native engine: {token}")
     effect_commands = (root / "crates/engine/src/cmd/effect.rs").read_text(encoding="utf-8")
