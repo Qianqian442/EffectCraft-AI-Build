@@ -613,7 +613,7 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     if not am_editor_path.is_file():
         raise SystemExit("The independent AM editor is missing.")
     am_editor_source = am_editor_path.read_text(encoding="utf-8")
-    for token in ("EFFECTCRAFT_AM_TIMELINE_KEYFRAME_MARKERS_V1", "am_collect_keyframe_times(&layer.props, layer, &mut key_times)", '"loop_cycle"', '"loop_pingpong"', '"bounce"', '"layer.delete"', '"edit": true'):
+    for token in ("EFFECTCRAFT_AM_TIMELINE_KEYFRAME_MARKERS_V1", "EFFECTCRAFT_AM_KEYFRAME_FOCUS_DIMMING_V1", "focused_key_times.iter().any", "am_collect_keyframe_times(&layer.props, layer, &mut key_times)", '"loop_cycle"', '"loop_pingpong"', '"bounce"', '"layer.delete"', '"edit": true'):
         if token not in am_editor_source:
             raise SystemExit(f"AM timeline, curves, deletion or text creation regression: {token}")
     if "let tabs = [" in am_editor_source or '"关键帧 / 曲线", "keyframes"' in am_editor_source:
