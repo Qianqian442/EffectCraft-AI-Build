@@ -42,6 +42,36 @@ fn with(p: &Value, key: &str, v: Value) -> Value {
     p
 }
 
+// EFFECTCRAFT_AM_LAYER_DELETE_COMMAND_V1
+/// Delete selected composition layers without deleting their Project-panel source items.
+fn delete_layers(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "layer.delete";
+    let cid = comp_id(s, p)?;
+    let ids = layers_p(s, p, C)?;
+    if ids.is_empty() {
+        return Err(bad(C, "no layers selected"));
+    }
+    let count = ids.len();
+    s.edit("Delete Layers", None, |project, state| {
+        let comp = project.comp_mut(cid).ok_or(EngineError::Other("composition vanished".into()))?;
+        comp.layers.retain(|layer| !ids.contains(&layer.id));
+        for layer in &mut comp.layers {
+            if layer.parent.is_some_and(|parent| ids.contains(&parent)) {
+                layer.parent = None;
+            }
+            if layer.track_matte.is_some_and(|matte| ids.contains(&matte.layer)) {
+                layer.track_matte = None;
+            }
+        }
+        state.selected_layers.retain(|layer| !ids.contains(layer));
+        state.selected_props.retain(|(layer, _)| !ids.contains(layer));
+        state.selected_keys.retain(|key| !ids.contains(&key.layer));
+        Ok(())
+    })?;
+    s.sanitize_state();
+    Ok(json!({"deleted": count}))
+}
+
 pub fn specs() -> Vec<CommandSpec> {
     vec![
         cmd!(
@@ -92,6 +122,7 @@ pub fn specs() -> Vec<CommandSpec> {
             has_replace_source,
             replace_source
         ),
+        cmd!("layer.delete", "Delete Layers", [], None, "{layers?: [id|name|#n] (default: selected)}", has_layers, delete_layers),
         cmd!("layer.select", "Select Layers", [], None, "{layers: [id|name|#n], add?, toggle?}", has_comp, select),
         cmd!("layer.selectNext", "Select Next Layer", [], Some("Cmd+ArrowDown"), "{add?}", has_comp, select_next),
         cmd!("layer.selectPrevious", "Select Previous Layer", [], Some("Cmd+ArrowUp"), "{add?}", has_comp, select_prev),
