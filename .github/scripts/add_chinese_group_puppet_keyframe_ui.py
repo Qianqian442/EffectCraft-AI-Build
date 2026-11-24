@@ -856,14 +856,26 @@ def patch_native_keyframe_color(root: Path) -> None:
     // Muted keys stay visible and editable but no longer drive the value.
     let kcol = if k.muted { kcol.gamma_multiply(0.35) } else { kcol };
 """
-    new = """    // EFFECTCRAFT_ANDROID_AM_FOCUSED_KEYFRAME_OPACITY_V2
-    // AM dims unrelated properties while an effect/property is focused; keys remain
-    // visible and editable. Outside that sheet, preserve the native theme/label colours.
+    new = """    // EFFECTCRAFT_ANDROID_AM_FOCUSED_KEYFRAME_OPACITY_V3
+    // A selected effect/group focuses all of its child properties as one stack.
+    // A selected individual property focuses only that property's keys.
     let am_effect_params = g.tl.ctx.data(|d| {
         d.get_temp::<bool>(egui::Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY")).unwrap_or(false)
     });
+    fn group_contains_key_property(group: &PropGroup, uid: u64) -> bool {
+        group.children.iter().any(|node| match node {
+            Node::Prop(prop) => prop.uid == uid,
+            Node::Group(child) => group_contains_key_property(child, uid),
+        })
+    }
     let focused = match &rc.row.kind {
-        RowKind::Prop { uid } => g.selected_props.contains(&(rc.layer.id, *uid)),
+        RowKind::Prop { uid } => g.selected_props.iter().any(|(layer_id, selected_uid)| {
+            *layer_id == rc.layer.id && (
+                *selected_uid == *uid
+                || rc.layer.props.find_group(*selected_uid)
+                    .is_some_and(|group| group_contains_key_property(group, *uid))
+            )
+        }),
         _ => false,
     };
     let kcol = if am_effect_params {
