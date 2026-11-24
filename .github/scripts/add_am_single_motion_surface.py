@@ -139,7 +139,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     if flip_v.clicked() { am_flip_scale(app, &ctx, layer_id, 1); }
 
     if mode == "curve" {
-        if let Some((uid, first, second, _, _)) = segment {
+        if let Some((uid, first, second, first_index, second_index)) = segment {
             let graph = Rect::from_min_max(pos2(center.min.x + 10.0, center.min.y + 10.0), pos2(center.max.x - 10.0, center.min.y + 105.0));
             let gp = ui.painter().with_clip_rect(graph);
             gp.line_segment([graph.left_bottom(), graph.right_bottom()], Stroke::new(1.0, t.separator));
