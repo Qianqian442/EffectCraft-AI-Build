@@ -67,9 +67,36 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
 """
         source = replace_once(source, test_anchor, tests + test_anchor, "Android export scheduling regression tests")
 
+    cpu_marker = "EFFECTCRAFT_ANDROID_EXPORT_CPU_RENDER_FALLBACK_V1"
+    if cpu_marker not in source:
+        source = replace_once(source,
+            "let backend = if self.project.settings.gpu_acceleration { Backend::Gpu } else { Backend::Cpu };",
+            'let backend = if cfg!(target_os = "android") { Backend::Cpu } else if self.project.settings.gpu_acceleration { Backend::Gpu } else { Backend::Cpu };',
+            "Use software renderer for Android video export",
+        )
+        source = replace_once(source,
+            "        r.accel = self.job.accel;",
+            "        // EFFECTCRAFT_ANDROID_EXPORT_CPU_RENDER_FALLBACK_V1\n        // Keep preview GPU acceleration, but render exported frames through the stable software backend on Android.\n        r.accel = if cfg!(target_os = \"android\") { None } else { self.job.accel };",
+            "Disable Android GPU accelerator in export renderer",
+        )
+        source = replace_once(source,
+            "        effectcraft_render::passes::is_deferred(self.job.accel)",
+            "        !cfg!(target_os = \"android\") && effectcraft_render::passes::is_deferred(self.job.accel)",
+            "Disable deferred GPU export readbacks on Android",
+        )
+        source = replace_once(source,
+            "        let gpu_live = || self.job.accel.is_none_or(|a| a.available());",
+            "        let gpu_live = || !cfg!(target_os = \"android\") && self.job.accel.is_none_or(|a| a.available());",
+            "Use CPU-only Android export frame scheduler",
+        )
     required = (
         marker,
+        cpu_marker,
         "pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Option<usize>",
+        'let backend = if cfg!(target_os = "android") { Backend::Cpu } else if self.project.settings.gpu_acceleration { Backend::Gpu } else { Backend::Cpu }',
+        'r.accel = if cfg!(target_os = "android") { None } else { self.job.accel };',
+        '!cfg!(target_os = "android") && effectcraft_render::passes::is_deferred(self.job.accel)',
+        'let gpu_live = || !cfg!(target_os = "android") && self.job.accel.is_none_or(|a| a.available());'
         'cpu_inflight_for_platform(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref(), cfg!(target_os = "android"))',
         "android_export_defaults_to_one_in_flight_frame_without_overriding_explicit_settings",
     )
