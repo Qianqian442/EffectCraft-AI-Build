@@ -30,22 +30,24 @@ def main() -> None:
     let prompt_media_relink = !res.report.missing_footage.is_empty();""",
             "AEP missing-media relink trigger",
         )
-        source = replace_once(
-            source,
-            """    s.toast(if losses == 0 {
+        old_import_tail = """    s.toast(if losses == 0 {
         format!("Imported {name}")
     } else {
         format!("Imported {name} ({losses} unsupported item{} not imported)", if losses == 1 { "" } else { "s" })
     });
-    // Avoid queuing a frontend-only picker event from the engine command.
-    // It is not handled in every host and previously aborted AM project imports.
-    // The native Relink Missing Footage command remains available after import.
+    Ok(json!({"""
+        new_import_tail = """    s.toast(if losses == 0 {
+        format!("Imported {name}")
+    } else {
+        format!("Imported {name} ({losses} unsupported item{} not imported)", if losses == 1 { "" } else { "s" })
+    });
+    // Never enqueue a frontend-only picker command from the engine import command.
+    // Keep the imported project intact and direct users to the native relink menu.
     if prompt_media_relink {
         s.toast("工程已导入，但部分素材缺失。请使用“文件 → 重新链接缺失素材”选择素材文件夹。");
     }
-    Ok(json!({""",
-            "AEP post-import missing-media folder picker",
-        )
+    Ok(json!({"""
+        source = replace_once(source, old_import_tail, new_import_tail, "AEP post-import missing-media guidance")
 
     required = (
         marker,
