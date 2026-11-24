@@ -210,12 +210,23 @@ def patch_account_source(effectcraft: Path) -> None:
     if ACCOUNT_PATCH_MARKER in source:
         return
 
-    source = replace_once(
-        source,
-        "use std::time::Duration;\n",
-        "use std::time::Duration;\nuse base64::Engine as _;\n",
-        "avatar base64 import",
-    )
+    if "use base64::Engine as _;" not in source:
+        modern_time_import = "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n"
+        legacy_time_import = "use std::time::Duration;\n"
+        if modern_time_import in source:
+            source = replace_once(
+                source,
+                modern_time_import,
+                modern_time_import + "use base64::Engine as _;\n",
+                "avatar base64 import",
+            )
+        else:
+            source = replace_once(
+                source,
+                legacy_time_import,
+                legacy_time_import + "use base64::Engine as _;\n",
+                "avatar base64 import",
+            )
     source = replace_once(
         source,
         "pub(crate) struct AccountState {\n",
