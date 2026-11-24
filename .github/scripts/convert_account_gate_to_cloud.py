@@ -40,9 +40,11 @@ def main() -> None:
         "use std::io::{Read, Write};\n"
         "use std::net::{TcpStream, ToSocketAddrs};\n"
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::time::Duration;\n",
+        "use std::sync::atomic::{AtomicBool, Ordering};\n"
+        "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n",
         "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::time::Duration;\n"
+        "use std::sync::atomic::{AtomicBool, Ordering};\n"
+        "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n"
         "use tungstenite::client::IntoClientRequest;\n"
         "use tungstenite::http::HeaderValue;\n"
         "use tungstenite::Message;\n",
