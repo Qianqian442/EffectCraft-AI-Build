@@ -844,12 +844,13 @@ def verify_aep_post_import_media_prompt(root: Path) -> None:
     for token in (
         "EFFECTCRAFT_AEP_AUTO_PROMPT_MISSING_MEDIA_RELINK_V1",
         "let prompt_media_relink = !res.report.missing_footage.is_empty();",
-        'command: "file.relinkFootage".into(),',
-        "params: json!({}),",
+        's.toast("工程已导入，但部分素材缺失。请使用“文件 → 重新链接缺失素材”选择素材文件夹。");',
     ):
         if token not in aep:
             raise SystemExit(f"AEP import does not offer missing-media relinking: {token}")
-    print("Verified AEP import automatically offers the existing relink-folder picker when external media is missing.")
+    if 'command: "file.relinkFootage".into(),' in aep:
+        raise SystemExit("AEP import must not enqueue an unsupported frontend-only relink event.")
+    print("Verified AEP import completes safely and directs missing-media users to the native relink command.")
 
 
 def verify_android_aep_media_relink(root: Path) -> None:
