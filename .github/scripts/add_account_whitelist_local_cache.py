@@ -69,14 +69,14 @@ fn identifier_digest(kind: &str, value: &str) -> String {
     )
     source = replace_once(
         source,
-        "    ban_reason: String,\n    status: String,",
-        "    ban_reason: String,\n    whitelist: SavedWhitelist,\n    whitelist_ready: bool,\n    status: String,",
+        "    ban_reason: String,\n    verified_at: u64,\n    status: String,",
+        "    ban_reason: String,\n    verified_at: u64,\n    whitelist: SavedWhitelist,\n    whitelist_ready: bool,\n    status: String,",
         "add local whitelist state",
     )
     source = replace_once(
         source,
-        "            ban_reason: String::new(),\n            status: String::new(),",
-        "            ban_reason: String::new(),\n            whitelist: SavedWhitelist::default(),\n            whitelist_ready: false,\n            status: String::new(),",
+        "            ban_reason: String::new(),\n            verified_at: 0,\n            status: String::new(),",
+        "            ban_reason: String::new(),\n            verified_at: 0,\n            whitelist: SavedWhitelist::default(),\n            whitelist_ready: false,\n            status: String::new(),",
         "initialize local whitelist state",
     )
 
