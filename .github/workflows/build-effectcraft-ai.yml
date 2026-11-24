@@ -3,6 +3,7 @@
 # Manual reuse trigger: 2026-11-23 PR #59 validated; reuse runtime artifacts from run 45193406383.
 name: Build Ae Android APK with shared compatibility validation
 # Runtime integration: build Box64/BOX32 and isolated x86/x64 AEX workers before assembling the ARM64 APK.
+# Reuse mode: a push commit containing [reuse-runtime-artifacts] skips runtime rebuild jobs and downloads the verified bundle from run 45193406383.
 
 on:
   push:
