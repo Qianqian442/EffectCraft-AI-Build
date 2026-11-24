@@ -1007,6 +1007,32 @@ fn localized_effect_parameter_label(source: &str) -> String {
         source = replace_once(source, "p.with_clip_rect(name_clip.intersect(p.clip_rect())).text(pos2(swr.max.x + 6.0, cy), Align2::LEFT_CENTER, &prop.name, Tokens::ui(12.0), t.text);", "p.with_clip_rect(name_clip.intersect(p.clip_rect())).text(pos2(swr.max.x + 6.0, cy), Align2::LEFT_CENTER, &shown_name, Tokens::ui(12.0), t.text);", "Chinese property label drawing")
         source = replace_once(source, "    p.text(pos2(cr.max.x + 6.0, cy), Align2::LEFT_CENTER, &prop.name, Tokens::ui(12.0), t.text_dim);", "    let shown_name = localized_effect_parameter_label(&prop.name);\n    p.text(pos2(cr.max.x + 6.0, cy), Align2::LEFT_CENTER, &shown_name, Tokens::ui(12.0), t.text_dim);", "Chinese toggle parameter label")
         source = replace_once(source, "                    let name = p.text(pos2(tw.max.x + 6.0, r.center().y), Align2::LEFT_CENTER, &sg.name, Tokens::ui(12.0), t.text);", "                    let shown_group_name = localized_effect_parameter_label(&sg.name);\n                    let name = p.text(pos2(tw.max.x + 6.0, r.center().y), Align2::LEFT_CENTER, &shown_group_name, Tokens::ui(12.0), t.text);", "Chinese effect subgroup label")
+        old_popup = """    if let ParamUi::Popup { options } = &prop.ui {
+        let widest = options.iter().map(|o| p.layout_no_wrap(o.clone(), Tokens::ui(11.5), t.text).size().x).fold(0.0, f32::max);
+        let dr = Rect::from_min_size(pos2(vx, cy - 9.0), vec2((widest + 30.0).clamp(80.0, (r.max.x - vx - 56.0).max(80.0)), 18.0));
+        let pop = egui::Id::unique(("ec-epop", uid));
+        if widgets::dropdown(ui, dr, options.get(*i as usize).map(String::as_str).unwrap_or(""), &t, egui::Id::unique(("ec-e", uid))).clicked() {
+            widgets::open_popup(ui, pop);
+        }
+        app.auto.add(&format!("effectControls.prop.{uid}.value"), dr, &prop.name);
+        if let Some(ni) = widgets::popup_menu(ui, pop, dr.left_bottom(), options, Some(*i as usize)) {
+            cx.set_step(actions, json!(ni));
+        }
+    }"""
+        new_popup = """    if let ParamUi::Popup { options } = &prop.ui {
+        let shown_options: Vec<String> = options.iter().map(|option| localized_effect_parameter_label(option)).collect();
+        let widest = shown_options.iter().map(|o| p.layout_no_wrap(o.clone(), Tokens::ui(11.5), t.text).size().x).fold(0.0, f32::max);
+        let dr = Rect::from_min_size(pos2(vx, cy - 9.0), vec2((widest + 30.0).clamp(80.0, (r.max.x - vx - 56.0).max(80.0)), 18.0));
+        let pop = egui::Id::unique(("ec-epop", uid));
+        if widgets::dropdown(ui, dr, shown_options.get(*i as usize).map(String::as_str).unwrap_or(""), &t, egui::Id::unique(("ec-e", uid))).clicked() {
+            widgets::open_popup(ui, pop);
+        }
+        app.auto.add(&format!("effectControls.prop.{uid}.value"), dr, &prop.name);
+        if let Some(ni) = widgets::popup_menu(ui, pop, dr.left_bottom(), &shown_options, Some(*i as usize)) {
+            cx.set_step(actions, json!(ni));
+        }
+    }"""
+        source = replace_once(source, old_popup, new_popup, "Chinese effect parameter popup choices")
         path.write_text(source, encoding="utf-8")
 
 
