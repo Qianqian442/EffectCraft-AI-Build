@@ -238,8 +238,9 @@ def patch_parameter_list_touch_scroll(source: str) -> str:
     marker = "EFFECTCRAFT_AM_PARAMS_LIST_TOUCH_SCROLL_V1"
     if marker in source:
         return source
-    anchor = """        if ui.rect_contains_pointer(area):
+    anchor = """        if ui.rect_contains_pointer(area) {
             offset -= ui.input(|i| i.smooth_scroll_delta.y);
+        }
 """
     if source.count(anchor) != 1:
         raise SystemExit("PanelScroll touch-scroll anchor was not found exactly once")
