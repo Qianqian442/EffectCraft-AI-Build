@@ -410,6 +410,26 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     if not am_editor_path.is_file():
         raise SystemExit("The independent AM editor is missing.")
     am_editor = am_editor_path.read_text(encoding="utf-8")
+    # Focused keyframe opacity must follow the selected AM effect group as well as
+    # individual selected properties; leaving the parameter page restores native colors.
+    keyframe_focus_required = (
+        "EFFECTCRAFT_ANDROID_AM_FOCUSED_KEYFRAME_OPACITY_V3",
+        "EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY",
+        "EFFECTCRAFT_AM_SELECTED_EFFECT_ID",
+        "group_contains_key_property",
+        "Color32::WHITE.gamma_multiply(0.30)",
+        "if am_effect_params",
+    )
+    missing_keyframe_focus = [token for token in keyframe_focus_required if token not in timeline]
+    if missing_keyframe_focus:
+        raise SystemExit(
+            "AM keyframe focus/dimming is incomplete or not connected to the selected effect: "
+            + "; ".join(missing_keyframe_focus)
+        )
+    if "EFFECTCRAFT_AM_SELECTED_EFFECT_ID" not in am_editor or "effect_params" not in am_editor:
+        raise SystemExit("AM effect parameter selection is not connected to keyframe focus state.")
+    if "EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY" not in am_editor:
+        raise SystemExit("Leaving the AM effect parameter page cannot restore normal keyframe opacity.")
     if "EFFECTCRAFT_AM_EFFECT_BROWSER_V1" not in am_editor or "am_effect_browser" not in am_editor:
         raise SystemExit("The AM-owned visual effect browser is missing.")
     if "EFFECTCRAFT_AM_TOUCH_DRAW_CONTEXT_V1" not in widgets or "PanelScroll::begin" not in effect_controls:
