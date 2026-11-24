@@ -37,19 +37,11 @@ def main() -> None:
     } else {
         format!("Imported {name} ({losses} unsupported item{} not imported)", if losses == 1 { "" } else { "s" })
     });
-    Ok(json!({""",
-            """    s.toast(if losses == 0 {
-        format!("Imported {name}")
-    } else {
-        format!("Imported {name} ({losses} unsupported item{} not imported)", if losses == 1 { "" } else { "s" })
-    });
-    // Let the user locate external media after the project and its placeholder items exist.
-    // Cancel keeps the project imported; the Relink Missing Footage menu remains available.
+    // Avoid queuing a frontend-only picker event from the engine command.
+    // It is not handled in every host and previously aborted AM project imports.
+    // The native Relink Missing Footage command remains available after import.
     if prompt_media_relink {
-        s.events.push(crate::Event::Frontend {
-            command: "file.relinkFootage".into(),
-            params: json!({}),
-        });
+        s.toast("工程已导入，但部分素材缺失。请使用“文件 → 重新链接缺失素材”选择素材文件夹。");
     }
     Ok(json!({""",
             "AEP post-import missing-media folder picker",
@@ -58,8 +50,7 @@ def main() -> None:
     required = (
         marker,
         "let prompt_media_relink = !res.report.missing_footage.is_empty();",
-        'command: "file.relinkFootage".into(),',
-        'params: json!({}),',
+        's.toast("工程已导入，但部分素材缺失。请使用“文件 → 重新链接缺失素材”选择素材文件夹。");',
     )
     for token in required:
         if token not in source:
