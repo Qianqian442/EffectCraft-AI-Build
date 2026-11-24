@@ -4,6 +4,40 @@ use super::{
     icons, json, pos2, vec2, widgets,
 };
 
+// EFFECTCRAFT_ANDROID_CHINESE_EFFECT_PARAMETER_LABELS_V1
+/// Translate dynamic effect parameter names without showing the English source as a comparison.
+fn localized_effect_parameter_label(source: &str) -> String {
+    let catalog = crate::i18n::tr(source);
+    if catalog != source {
+        return catalog.to_string();
+    }
+    let mut value = source.to_string();
+    for (english, chinese) in [
+        ("Opacity", "不透明度"), ("Radius", "半径"), ("Amount", "数量"),
+        ("Angle", "角度"), ("Position", "位置"), ("Scale", "缩放"),
+        ("Intensity", "强度"), ("Threshold", "阈值"), ("Width", "宽度"),
+        ("Height", "高度"), ("Feather", "羽化"), ("Blur", "模糊"),
+        ("Exposure", "曝光"), ("Contrast", "对比度"), ("Saturation", "饱和度"),
+        ("Rotation", "旋转"), ("Frequency", "频率"), ("Strength", "强度"),
+        ("Distance", "距离"), ("Color", "颜色"), ("Colour", "颜色"),
+        ("Tint", "色调"), ("Speed", "速度"), ("Time", "时间"),
+        ("Phase", "相位"), ("Offset", "偏移"), ("Center", "中心"),
+        ("Centre", "中心"), ("Start", "起点"), ("End", "终点"),
+        ("Mix", "混合"), ("Blend", "混合"), ("Mode", "模式"),
+        ("Level", "级别"), ("Gamma", "伽马"), ("Gain", "增益"),
+        ("Highlights", "高光"), ("Shadows", "阴影"), ("Midtones", "中间调"),
+        ("Temperature", "色温"), ("Turbulence", "湍流"), ("Evolution", "演化"),
+        ("Iterations", "迭代次数"), ("Amplitude", "振幅"),
+        ("X", "横向"), ("Y", "纵向"), ("Z", "深度"),
+    ] {
+        value = value.replace(english, chinese);
+    }
+    if value.chars().any(|ch| ch.is_ascii_alphabetic()) {
+        "参数".to_string()
+    } else {
+        value
+    }
+}
 fn triangle(p: &egui::Painter, c: egui::Pos2, left: bool, col: Color32) {
     let (dx, h) = (if left { -3.5 } else { 3.5 }, 4.0);
     p.add(egui::Shape::convex_polygon(vec![pos2(c.x + dx, c.y), pos2(c.x - dx, c.y - h), pos2(c.x - dx, c.y + h)], col, Stroke::NONE));
@@ -147,6 +181,7 @@ fn prop_row(
     let mut dims = vec![];
     let cy = r.center().y;
     let uid = prop.uid;
+    let shown_name = localized_effect_parameter_label(&prop.name);
     if ui.input(|i| i.pointer.primary_pressed()) && ui.rect_contains_pointer(r) {
         let add = ui.input(|i| i.modifiers.shift || i.modifiers.command);
         actions.push(("prop.select".into(), json!({"layer": layer.id.0, "prop": uid, "add": add})));
@@ -204,7 +239,7 @@ fn prop_row(
     };
     let name_clip = Rect::from_min_max(pos2(swr.max.x + 6.0, r.min.y), pos2(vx - 6.0, r.max.y));
     app.auto.add(&format!("effectControls.prop.{uid}.name"), name_clip, &prop.name);
-    p.with_clip_rect(name_clip.intersect(p.clip_rect())).text(pos2(swr.max.x + 6.0, cy), Align2::LEFT_CENTER, &prop.name, Tokens::ui(12.0), t.text);
+    p.with_clip_rect(name_clip.intersect(p.clip_rect())).text(pos2(swr.max.x + 6.0, cy), Align2::LEFT_CENTER, &shown_name, Tokens::ui(12.0), t.text);
     let name_response = ui.interact(name_clip, egui::Id::unique(("ec-prop-name", uid)), Sense::click());
     if name_response.double_clicked() {
         app.ui.timeline.search.clear();
@@ -390,7 +425,8 @@ fn value_toggle(app: &mut EffectcraftApp, ui: &mut egui::Ui, cx: &PropCx, value:
     if widgets::checkbox(ui, cr, *b, &t, egui::Id::unique(("ec-b", uid))).changed() {
         cx.set_step(actions, json!(!b));
     }
-    p.text(pos2(cr.max.x + 6.0, cy), Align2::LEFT_CENTER, &prop.name, Tokens::ui(12.0), t.text_dim);
+    let shown_name = localized_effect_parameter_label(&prop.name);
+    p.text(pos2(cr.max.x + 6.0, cy), Align2::LEFT_CENTER, &shown_name, Tokens::ui(12.0), t.text_dim);
     app.auto.add(&format!("effectControls.prop.{uid}.value"), cr, &prop.name);
 }
 
@@ -746,7 +782,8 @@ pub(super) fn group_rows(
                     if widgets::twirl(ui, tw, open, egui::Id::unique(("ec-g", sg.uid)), &t).clicked() {
                         toggle_closed(app, sg, open, ui.input(|i| i.modifiers.alt || i.modifiers.command));
                     }
-                    let name = p.text(pos2(tw.max.x + 6.0, r.center().y), Align2::LEFT_CENTER, &sg.name, Tokens::ui(12.0), t.text);
+                    let shown_group_name = localized_effect_parameter_label(&sg.name);
+                    let name = p.text(pos2(tw.max.x + 6.0, r.center().y), Align2::LEFT_CENTER, &shown_group_name, Tokens::ui(12.0), t.text);
                     app.auto.add(&format!("effectControls.group.{}.name", sg.uid), name, &sg.name);
                 }
                 if open {
