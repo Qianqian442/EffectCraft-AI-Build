@@ -312,6 +312,7 @@ def main() -> None:
         MARKER, 'Sense::drag()', '"滑动此处以移动图层"', 'PanelKind::EffectControls',
         'am_open_effect_browser(&ctx,Some(layer_id))', '"keys.toggleTransform"',
         '"keys.setSegmentCurve"', '"keys.velocity"',
+        '"loop_cycle"', '"loop_pingpong"', '"bounce"',
         'Tool::Puppet', 'am.motion.puppet', '木偶控点：单击添加控点',
     )
     # keys.velocity is wired through the native curve influence sliders.
