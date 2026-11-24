@@ -918,8 +918,7 @@ def patch_am_layer_delete_command(root: Path) -> None:
 /// Delete selected composition layers without deleting their Project-panel source items.
 fn delete_layers(s: &mut Session, p: &Value) -> Result<Value> {
     const C: &str = "layer.delete";
-    let cid = comp_id(s, p)?;
-    let ids = layers_p(s, p, C)?;
+    let (cid, ids) = layers_p(s, p)?;
     if ids.is_empty() { return Err(bad(C, "no layers selected")); }
     let count = ids.len();
     s.edit("Delete Layers", None, |project, state| {
