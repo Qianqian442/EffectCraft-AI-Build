@@ -605,6 +605,9 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     window = (root / "crates/ui-egui/src/app/window.rs").read_text(encoding="utf-8")
     app = (root / "crates/ui-egui/src/app.rs").read_text(encoding="utf-8")
     store = (root / "crates/ui-egui/src/workspace_state.rs").read_text(encoding="utf-8")
+    window = (root / "crates/ui-egui/src/app/window.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_PERSIST_WORKSPACE_IMMEDIATELY_V1" not in window or "self.save_workspace_state();" not in window:
+        raise SystemExit("AM/Ae layout selection is not persisted immediately for Android force-stop/relaunch.")
     timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
     am_editor_path = root / "crates/ui-egui/src/am_editor.rs"
     if not am_editor_path.is_file():
@@ -621,6 +624,9 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     for token in ("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY", "am_effect_params && !prop.static_only", "key_navigator(app, ui, p"):
         if token not in effect_rows:
             raise SystemExit(f"AM effect parameters lack add/remove keyframe controls: {token}")
+    for token in ("EFFECTCRAFT_ANDROID_CHINESE_EFFECT_PARAMETER_LABELS_V1", "localized_effect_parameter_label", "let shown_name = localized_effect_parameter_label(&prop.name);"):
+        if token not in effect_rows:
+            raise SystemExit(f"AM effect parameter labels are not fully localized: {token}")
     for token in ("fn draw_timeline", "am-mobile-trim", "layer.timing", "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1"):
         if token not in am_editor_source:
             raise SystemExit(f"AM's independent timeline is missing its own clip-edge editing support: {token}")
