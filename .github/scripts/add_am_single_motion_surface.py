@@ -155,11 +155,36 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 invoke(app,&ctx,"keys.select",json!({"keys":[{"layer":layer_id,"prop":uid,"time":first},{"layer":layer_id,"prop":uid,"time":second}],"timeBase":"layer","selectProperties":true}));
                 invoke(app,&ctx,"keys.velocity",json!({"inInfluence":[in_inf as f64],"outInfluence":[out_inf as f64]}));
             }
-            for (i,(label,curve)) in [("线性","linear"),("缓入","ease_in"),("缓出","ease_out"),("缓入缓出","ease"),("贝塞尔","bezier"),("连续","continuous"),("自动","auto"),("保持","hold")].into_iter().enumerate() {
-                let col=i%2; let row=i/2;
-                let r=Rect::from_min_size(pos2(center.min.x+8.0+col as f32*(center.width()-20.0)/2.0,center.min.y+169.0+row as f32*29.0),vec2((center.width()-25.0)/2.0,25.0));
+            for (i,(label,curve)) in [("线性","linear"),("缓入","ease_in"),("缓出","ease_out"),("缓入缓出","ease"),("贝塞尔","bezier"),("连续","continuous"),("自动","auto"),("保持","hold"),("周期循环","loop_cycle"),("往返周期","loop_pingpong"),("弹跳曲线","bounce")].into_iter().enumerate() {
+                let columns = 3;
+                let col = i % columns;
+                let row = i / columns;
+                let gap = 4.0;
+                let button_w = ((center.width() - 16.0 - gap * (columns - 1) as f32) / columns as f32).max(1.0);
+                let r=Rect::from_min_size(pos2(center.min.x+8.0+col as f32*(button_w+gap),center.min.y+169.0+row as f32*29.0),vec2(button_w,25.0));
                 let response=ui.put(r,egui::Button::new(label).min_size(r.size()));
-                if response.clicked() { invoke(app,&ctx,"keys.setSegmentCurve",json!({"layer":layer_id,"prop":uid,"first":first,"second":second,"curve":curve})); }
+                if response.clicked() {
+                    let result = match curve {
+                        "loop_cycle" | "loop_pingpong" => {
+                            let base = app.session.execute("keys.setSegmentCurve",json!({"layer":layer_id,"prop":uid,"first":first,"second":second,"curve":"bezier"}));
+                            match base {
+                                Err(error) => Err(error),
+                                Ok(_) => {
+                                    let expression = if curve == "loop_cycle" { "loopOut(\\"cycle\\")" } else { "loopOut(\\"pingpong\\")" };
+                                    app.session.execute("prop.setExpression",json!({"layer":layer_id,"prop":uid,"expression":expression,"enabled":true}))
+                                }
+                            }
+                        }
+                        "bounce" => {
+                            let expression = format!("var a = key({}); var b = key({}); var r = value; if (time >= a.time && time <= b.time) {{ var t = clamp((time-a.time)/(b.time-a.time),0,1); var n = 7.5625; var d = 2.75; var p; if (t < 1/d) p = n*t*t; else if (t < 2/d) {{ t -= 1.5/d; p = n*t*t + 0.75; }} else if (t < 2.5/d) {{ t -= 2.25/d; p = n*t*t + 0.9375; }} else {{ t -= 2.625/d; p = n*t*t + 0.984375; }} r = a.value + (b.value-a.value)*p; }} r;", first_index, second_index);
+                            app.session.execute("prop.setExpression",json!({"layer":layer_id,"prop":uid,"expression":expression,"enabled":true}))
+                        }
+                        _ => app.session.execute("keys.setSegmentCurve",json!({"layer":layer_id,"prop":uid,"first":first,"second":second,"curve":curve})),
+                    };
+                    if let Err(error) = result { app.ui.status = error.to_string(); }
+                    else if curve == "bounce" { app.ui.status = "已应用弹跳曲线".into(); }
+                    else if curve.starts_with("loop_") { app.ui.status = "已应用周期曲线".into(); }
+                }
             }
         } else { ui.painter().text(center.center(),Align2::CENTER_CENTER,"请将播放头移到同一属性的两个关键帧之间。",Tokens::ui(10.5),t.text_dim); }
     } else {
