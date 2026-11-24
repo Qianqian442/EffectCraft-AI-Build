@@ -1043,9 +1043,9 @@ def patch_am_effect_application_enable(root: Path) -> None:
     if marker in source:
         return
     old = '            let l = layer_mut(proj, cid, *lid)?;\n            let fx = l.props.sub_mut("effects")'
-    new = '            let l = layer_mut(proj, cid, *lid)?;\n            // Applying an effect should make it visible immediately, even if the layer\\\'s FX switch was previously off.\n            l.switches.effects = true;\n            let fx = l.props.sub_mut("effects")'
+    new = '            let l = layer_mut(proj, cid, *lid)?;\n            // Applying an effect makes the layer FX switch active immediately.\n            l.switches.effects = true;\n            let fx = l.props.sub_mut("effects")'
     source = replace_once(source, old, new, "Enable layer effects when applying an effect")
-    source = source.replace("fn apply(s: &mut Session, p: &Value)", marker + "\\nfn apply(s: &mut Session, p: &Value)", 1)
+    source = source.replace("fn apply(s: &mut Session, p: &Value)", "// " + marker + "\nfn apply(s: &mut Session, p: &Value)", 1)
     path.write_text(source, encoding="utf-8")
 
 
