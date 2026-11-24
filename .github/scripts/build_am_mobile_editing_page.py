@@ -711,6 +711,25 @@ fn am_group_selected_layers(app: &mut EffectcraftApp, ctx: &egui::Context) {
     }
 }
 
+// EFFECTCRAFT_AM_TIMELINE_KEYFRAME_MARKERS_V1
+/// Collect all animated property key times for a layer, including nested effect properties.
+fn am_collect_keyframe_times(
+    group: &effectcraft_engine::project::PropGroup,
+    layer: &effectcraft_engine::project::Layer,
+    out: &mut Vec<f64>,
+) {
+    for node in &group.children {
+        match node {
+            effectcraft_engine::project::Node::Prop(prop) => {
+                out.extend(prop.keys.iter().map(|key| layer.comp_time(key.time).seconds()));
+            }
+            effectcraft_engine::project::Node::Group(child) => {
+                am_collect_keyframe_times(child, layer, out);
+            }
+        }
+    }
+}
+
 fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let t = app.tokens;
     let p = ui.painter().with_clip_rect(rect);
@@ -936,6 +955,29 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 Tokens::ui(9.5),
                 Color32::WHITE,
             );
+        }
+
+        // Show every transform and effect-property keyframe directly on its layer clip.
+        // The marker is independent of the selected-property editor and never hides keys.
+        let mut key_times = Vec::new();
+        am_collect_keyframe_times(&layer.props, layer, &mut key_times);
+        key_times.sort_by(f64::total_cmp);
+        key_times.dedup_by(|a, b| (*a - *b).abs() < 0.000001);
+        for key_time in key_times {
+            if key_time < view.start || key_time > view.start + visible_secs {
+                continue;
+            }
+            let key_x = tracks.min.x + ((key_time - view.start) * pps) as f32;
+            if key_x < tracks.min.x + 3.0 || key_x > tracks.max.x - 3.0 {
+                continue;
+            }
+            let c = pos2(key_x, bar.center().y);
+            let d = 4.6;
+            p.add(egui::Shape::convex_polygon(
+                vec![c + vec2(0.0, -d), c + vec2(d, 0.0), c + vec2(0.0, d), c + vec2(-d, 0.0)],
+                Color32::from_rgb(255, 220, 92),
+                Stroke::new(0.8, Color32::from_rgb(255, 248, 218)),
+            ));
         }
 
         // Body movement: a horizontal drag moves the whole selected layer group together.
