@@ -173,12 +173,15 @@ impl AccountState {
                 }
             }
         }
-        if self.mode == Mode::Banned {
+        if self.mode == Mode::Banned && ACCOUNT_VERIFY_ATTEMPTED.load(Ordering::Acquire) {
             return;
         }
         if self.token.is_some() {
             if !ACCOUNT_VERIFY_ATTEMPTED.swap(true, Ordering::AcqRel) {
-                self.mode = Mode::Checking;
+                // Keep a previously cached ban lock visible while the new process rechecks it.
+                if self.mode != Mode::Banned {
+                    self.mode = Mode::Checking;
+                }
                 self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
             } else if self.user.is_some() {
                 // Activity recreation after a successful verification must not call the server again.
@@ -287,7 +290,9 @@ impl AccountState {
                 self.status = format!("无法连接家中的账号服务器：{error}");
                 if matches!(action, Action::Verify) {
                     self.user = None;
-                    self.mode = Mode::Unavailable;
+                    if self.mode != Mode::Banned {
+                        self.mode = Mode::Unavailable;
+                    }
                     self.persist(config);
                 }
             }
