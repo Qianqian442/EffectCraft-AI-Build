@@ -33,6 +33,8 @@ def main() -> None:
     saved_types = r"""
 // EFFECTCRAFT_LOCAL_WHITELIST_AND_OFFLINE_BAN_V1
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
+static ACCOUNT_WHITELIST_REFRESH_ATTEMPTED: AtomicBool = AtomicBool::new(false);
+
 struct SavedWhitelist {
     #[serde(default)]
     revision: String,
@@ -80,21 +82,34 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         "initialize local whitelist state",
     )
 
-    old_startup = '''        if self.token.is_some() {
-            self.mode = Mode::Checking;
-            self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+    old_startup = '''        if self.mode == Mode::Banned && ACCOUNT_VERIFY_ATTEMPTED.load(Ordering::Acquire) {
+            return;
+        }
+        if self.token.is_some() {
+            if !ACCOUNT_VERIFY_ATTEMPTED.swap(true, Ordering::AcqRel) {
+                // Keep a previously cached ban lock visible while the new process rechecks it.
+                if self.mode != Mode::Banned {
+                    self.mode = Mode::Checking;
+                }
+                self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+            } else if self.user.is_some() {
+                // Activity recreation after a successful verification must not call the server again.
+                self.mode = Mode::Editor;
+            } else {
+                self.mode = Mode::Unavailable;
+                self.status = "账号验证正在本次应用进程中处理，请稍后重试。".to_string();
+            }
         } else {
             self.mode = Mode::Auth;
         }'''
-    new_startup = r'''        // A previously received ban is stored in app-private config. Display it
-        // immediately when reopening, without contacting Cloudflare.
+    new_startup = r'''        // Restore the last server ban before any network request. The editor remains locked
+        // while the current process performs its single authoritative refresh.
         if let Some(raw) = config.and_then(|store| store.read("effectcraft-account-ban.json")) {
             if let Ok(saved_ban) = serde_json::from_str::<SavedBan>(&raw) {
                 self.banned_until = saved_ban.until;
                 self.ban_reason = saved_ban.reason;
                 self.mode = Mode::Banned;
                 self.status.clear();
-                return;
             }
         }
         if let Some(raw) = config.and_then(|store| store.read("effectcraft-account-whitelist.json")) {
@@ -103,12 +118,30 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                 self.whitelist = saved;
             }
         }
-        self.mode = if self.token.is_some() { Mode::Checking } else { Mode::Auth };
-        // Refresh the local whitelist once on startup. If this request fails, the
-        // previously downloaded app-private hash snapshot remains available.
-        self.send(Action::Whitelist, "GET", "/v1/whitelist", Value::Null, config);'''
-    source = replace_once(source, old_startup, new_startup, "load local ban and refresh whitelist on startup")
-
+        // Activity recreation and quick re-entry must not repeatedly fetch the whitelist
+        // or verify the same account. One whitelist refresh is allowed per process.
+        if !ACCOUNT_WHITELIST_REFRESH_ATTEMPTED.swap(true, Ordering::AcqRel) {
+            if self.token.is_some() && self.mode != Mode::Banned {
+                self.mode = Mode::Checking;
+            }
+            self.send(Action::Whitelist, "GET", "/v1/whitelist", Value::Null, config);
+            return;
+        }
+        if self.token.is_some() {
+            if !ACCOUNT_VERIFY_ATTEMPTED.swap(true, Ordering::AcqRel) {
+                if self.mode != Mode::Banned {
+                    self.mode = Mode::Checking;
+                }
+                self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+            } else if self.user.is_some() && self.mode != Mode::Banned {
+                self.mode = Mode::Editor;
+            } else if self.mode != Mode::Banned {
+                self.mode = Mode::Unavailable;
+                self.status = "账号验证正在本次应用进程中处理，请稍后重试。".to_string();
+            }
+        } else if self.mode != Mode::Banned {
+            self.mode = Mode::Auth;
+        }'''
     methods = r'''
     fn whitelist_has(&self, kind: &str, value: &str) -> bool {
         if !self.whitelist_ready || value.trim().is_empty() { return false; }
@@ -253,9 +286,13 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                     if self.whitelist_ready {
                         self.status = "白名单更新失败，当前使用上次下载的本地白名单。".to_string();
                         if self.token.is_some() {
-                            self.mode = Mode::Checking;
-                            self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
-                        } else {
+                            if !ACCOUNT_VERIFY_ATTEMPTED.swap(true, Ordering::AcqRel) {
+                                if self.mode != Mode::Banned { self.mode = Mode::Checking; }
+                                self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+                            } else if self.user.is_some() && self.mode != Mode::Banned {
+                                self.mode = Mode::Editor;
+                            }
+                        } else if self.mode != Mode::Banned {
                             self.mode = Mode::Auth;
                         }
                     } else {
