@@ -30,6 +30,9 @@ impl EffectcraftApp {
         self.ui.workspace = name.to_string();
         self.ui.dock = self.ui.saved_workspaces.get(name).cloned().unwrap_or_else(|| dock::Workspace::new(dock::workspace(name)));
         self.ui.maximized = None;
+        // Persist layout selection synchronously. The normal one-second idle autosave can
+        // be skipped when Android is swiped away or force-stopped immediately after switching.
+        self.save_workspace_state();
     }
 
     /// Built-in workspaces followed by the saved ones (Window ▸ Workspace ▸ Save as New Workspace).
