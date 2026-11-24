@@ -253,8 +253,12 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                 let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
                 self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
+                self.user = None;
+                self.verified_at = 0;
+                self.persist_ban(config);
                 self.mode = Mode::Banned;
                 self.status.clear();
+                self.persist(config);
             }''',
         '''            Ok(response) if response.status == 423 => {
                 let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
