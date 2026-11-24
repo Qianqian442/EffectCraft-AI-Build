@@ -898,6 +898,28 @@ def verify_android_aep_playback_guard(root: Path) -> None:
     print("Verified Android imported-AEP playback: two frame workers, 256 MiB GPU preview budget, and regression tests.")
 
 
+
+def verify_account_verification_cache(root: Path) -> None:
+    account = (root / "crates/ui-egui/src/account.rs").read_text(encoding="utf-8")
+    required = (
+        "static ACCOUNT_VERIFY_ATTEMPTED: AtomicBool = AtomicBool::new(false);",
+        "user: Option<User>",
+        "banned: bool",
+        "ACCOUNT_VERIFY_ATTEMPTED.swap(true, Ordering::AcqRel)",
+        "else if self.user.is_some()",
+        "self.mode = Mode::Editor;",
+        "banned: self.mode == Mode::Banned",
+        "self.persist(config);",
+    )
+    missing = [token for token in required if token not in account]
+    if missing:
+        raise SystemExit("Account verification cache is incomplete: " + "; ".join(missing))
+    if "self.mode = Mode::Checking;\\n            self.send(Action::Verify" in account:
+        raise SystemExit("Account verification still unconditionally contacts the server on every AccountState creation.")
+    print("Verified one account verification per process, cached profile restoration across Activity recreation, and persisted ban state.")
+
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -918,6 +940,7 @@ def main() -> None:
     verify_chinese_default(root)
     verify_am_workspace_and_android_integrity(root)
     verify_account_security(root)
+    verify_account_verification_cache(root)
 
     parity = root / "docs/localization-parity.md"
     if parity.is_file():
