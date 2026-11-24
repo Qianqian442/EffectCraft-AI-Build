@@ -35,21 +35,42 @@ def main() -> None:
         "//! when a saved account cannot be checked against the cloud server, the editor stays locked.",
         "module documentation",
     )
-    source = replace_once(
-        source,
-        "use std::io::{Read, Write};\n"
-        "use std::net::{TcpStream, ToSocketAddrs};\n"
-        "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::sync::atomic::{AtomicBool, Ordering};\n"
-        "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n",
-        "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
-        "use std::sync::atomic::{AtomicBool, Ordering};\n"
-        "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n"
-        "use tungstenite::client::IntoClientRequest;\n"
-        "use tungstenite::http::HeaderValue;\n"
-        "use tungstenite::Message;\n",
-        "cloud client imports",
-    )
+    base64_import = "use base64::Engine as _;\n"
+    if base64_import in source:
+        old_imports = (
+            "use std::io::{Read, Write};\n"
+            "use std::net::{TcpStream, ToSocketAddrs};\n"
+            "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
+            "use std::sync::atomic::{AtomicBool, Ordering};\n"
+            "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n"
+            + base64_import
+        )
+        new_imports = (
+            "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
+            "use std::sync::atomic::{AtomicBool, Ordering};\n"
+            "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n"
+            + base64_import
+            + "use tungstenite::client::IntoClientRequest;\n"
+            "use tungstenite::http::HeaderValue;\n"
+            "use tungstenite::Message;\n"
+        )
+    else:
+        old_imports = (
+            "use std::io::{Read, Write};\n"
+            "use std::net::{TcpStream, ToSocketAddrs};\n"
+            "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
+            "use std::sync::atomic::{AtomicBool, Ordering};\n"
+            "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n"
+        )
+        new_imports = (
+            "use std::sync::mpsc::{self, Receiver, TryRecvError};\n"
+            "use std::sync::atomic::{AtomicBool, Ordering};\n"
+            "use std::time::{Duration, SystemTime, UNIX_EPOCH};\n"
+            "use tungstenite::client::IntoClientRequest;\n"
+            "use tungstenite::http::HeaderValue;\n"
+            "use tungstenite::Message;\n"
+        )
+    source = replace_once(source, old_imports, new_imports, "cloud client imports")
     source = replace_once(
         source,
         'const DEFAULT_SERVER: &str = "p2p://auto";',
