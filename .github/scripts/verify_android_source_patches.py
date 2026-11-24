@@ -610,6 +610,17 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     if not am_editor_path.is_file():
         raise SystemExit("The independent AM editor is missing.")
     am_editor_source = am_editor_path.read_text(encoding="utf-8")
+    for token in ("EFFECTCRAFT_AM_TIMELINE_KEYFRAME_MARKERS_V1", "am_collect_keyframe_times(&layer.props, layer, &mut key_times)", '"loop_cycle"', '"loop_pingpong"', '"bounce"', '"layer.delete"', '"edit": true'):
+        if token not in am_editor_source:
+            raise SystemExit(f"AM timeline, curves, deletion or text creation regression: {token}")
+    layer_commands = (root / "crates/engine/src/cmd/layer.rs").read_text(encoding="utf-8")
+    for token in ("EFFECTCRAFT_AM_LAYER_DELETE_COMMAND_V1", '"layer.delete"', "state.selected_keys.retain"):
+        if token not in layer_commands:
+            raise SystemExit(f"AM layer deletion is not wired to the native engine: {token}")
+    effect_rows = (root / "crates/ui-egui/src/panels/effect_controls/rows.rs").read_text(encoding="utf-8")
+    for token in ("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY", "am_effect_params && !prop.static_only", "key_navigator(app, ui, p"):
+        if token not in effect_rows:
+            raise SystemExit(f"AM effect parameters lack add/remove keyframe controls: {token}")
     for token in ("fn draw_timeline", "am-mobile-trim", "layer.timing", "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1"):
         if token not in am_editor_source:
             raise SystemExit(f"AM's independent timeline is missing its own clip-edge editing support: {token}")
