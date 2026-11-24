@@ -32,9 +32,9 @@ def main() -> None:
 
     saved_types = r"""
 // EFFECTCRAFT_LOCAL_WHITELIST_AND_OFFLINE_BAN_V1
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 static ACCOUNT_WHITELIST_REFRESH_ATTEMPTED: AtomicBool = AtomicBool::new(false);
 
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 struct SavedWhitelist {
     #[serde(default)]
     revision: String,
@@ -255,7 +255,6 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
                 self.user = None;
                 self.verified_at = 0;
-                self.persist_ban(config);
                 self.mode = Mode::Banned;
                 self.status.clear();
                 self.persist(config);
@@ -264,9 +263,12 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                 let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
                 self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
+                self.user = None;
+                self.verified_at = 0;
                 self.persist_ban(config);
                 self.mode = Mode::Banned;
                 self.status.clear();
+                self.persist(config);
             }''',
         "persist server ban state locally",
     )
@@ -351,8 +353,12 @@ fn identifier_digest(kind: &str, value: &str) -> String {
     source = replace_once(
         source,
         '''                        self.user = Some(user);
+                        self.verified_at = account_now_secs();
                         self.mode = Mode::Editor;
+                        self.banned_until.clear();
+                        self.ban_reason.clear();
                         self.status.clear();
+                        self.clear_cached_ban(config);
                         self.persist(config);''',
         '''                        self.user = Some(user);
                         self.mode = Mode::Editor;
@@ -365,8 +371,13 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         source,
         '''                        self.token = Some(token);
                         self.user = user;
+                        self.verified_at = account_now_secs();
                         self.mode = Mode::Success;
+                        self.banned_until.clear();
+                        self.ban_reason.clear();
+                        ACCOUNT_VERIFY_ATTEMPTED.store(true, Ordering::Release);
                         self.password.clear();
+                        self.clear_cached_ban(config);
                         self.persist(config);''',
         '''                        self.token = Some(token);
                         self.user = user;
