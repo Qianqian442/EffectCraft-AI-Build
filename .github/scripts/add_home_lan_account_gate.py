@@ -18,10 +18,14 @@ use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 // One verification per process; AM/Ae Activity recreation reuses the cached profile.
 static ACCOUNT_VERIFY_ATTEMPTED: AtomicBool = AtomicBool::new(false);
+
+fn account_now_secs() -> u64 {
+    SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs()
+}
 
 const DEFAULT_SERVER: &str = "p2p://auto";
 
@@ -73,6 +77,10 @@ struct SavedAccount {
     #[serde(default)]
     banned: bool,
     #[serde(default)]
+    verified: bool,
+    #[serde(default)]
+    verified_at: u64,
+    #[serde(default)]
     banned_until: String,
     #[serde(default)]
     ban_reason: String,
@@ -105,6 +113,7 @@ pub(crate) struct AccountState {
     new_password: String,
     banned_until: String,
     ban_reason: String,
+    verified_at: u64,
     status: String,
     pending: Option<Receiver<Result<HttpResult, String>>>,
     pending_action: Option<Action>,
@@ -134,6 +143,7 @@ impl Default for AccountState {
             new_password: String::new(),
             banned_until: String::new(),
             ban_reason: String::new(),
+            verified_at: 0,
             status: String::new(),
             pending: None,
             pending_action: None,
@@ -167,8 +177,16 @@ impl AccountState {
                     self.user = saved.user;
                     self.banned_until = saved.banned_until;
                     self.ban_reason = saved.ban_reason;
+                    self.verified_at = saved.verified_at;
                     if saved.banned {
                         self.mode = Mode::Banned;
+                    } else if saved.verified && self.user.is_some()
+                        && account_now_secs().saturating_sub(saved.verified_at) < 24 * 60 * 60
+                    {
+                        // A verified session survives Android process recreation. Recheck at
+                        // most once per 24 hours, not every resume or one-second relaunch.
+                        self.mode = Mode::Editor;
+                        ACCOUNT_VERIFY_ATTEMPTED.store(true, Ordering::Release);
                     }
                 }
             }
@@ -204,6 +222,8 @@ impl AccountState {
             token: token.clone(),
             user: self.user.clone(),
             banned: self.mode == Mode::Banned,
+            verified: self.mode == Mode::Editor && self.user.is_some() && self.verified_at > 0,
+            verified_at: self.verified_at,
             banned_until: self.banned_until.clone(),
             ban_reason: self.ban_reason.clone(),
         };
@@ -290,6 +310,7 @@ impl AccountState {
                 self.status = format!("无法连接家中的账号服务器：{error}");
                 if matches!(action, Action::Verify) {
                     self.user = None;
+                    self.verified_at = 0;
                     if self.mode != Mode::Banned {
                         self.mode = Mode::Unavailable;
                     }
@@ -301,9 +322,18 @@ impl AccountState {
                 self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
                 self.user = None;
+                self.verified_at = 0;
                 self.mode = Mode::Banned;
                 self.status.clear();
                 self.persist(config);
+            }
+            Ok(response) if response.status == 401 && matches!(action, Action::Verify) => {
+                self.token = None;
+                self.user = None;
+                self.verified_at = 0;
+                self.mode = Mode::Auth;
+                self.status = "登录已过期，请重新登录。".to_string();
+                self.remove_saved(config);
             }
             Ok(response) if !(200..300).contains(&response.status) => {
                 let detail = response.body.get("detail").and_then(Value::as_str)
@@ -318,6 +348,7 @@ impl AccountState {
                 Action::Verify => {
                     if let Some(user) = response.body.get("user").cloned().and_then(|v| serde_json::from_value::<User>(v).ok()) {
                         self.user = Some(user);
+                        self.verified_at = account_now_secs();
                         self.mode = Mode::Editor;
                         self.banned_until.clear();
                         self.ban_reason.clear();
@@ -337,6 +368,7 @@ impl AccountState {
                     } else {
                         self.token = Some(token);
                         self.user = user;
+                        self.verified_at = account_now_secs();
                         self.mode = Mode::Success;
                         self.banned_until.clear();
                         self.ban_reason.clear();
@@ -348,6 +380,7 @@ impl AccountState {
                 Action::Profile => {
                     if let Some(user) = response.body.get("user").cloned().and_then(|v| serde_json::from_value::<User>(v).ok()) {
                         self.user = Some(user);
+                        self.verified_at = account_now_secs();
                         self.edit_open = false;
                         self.current_password.clear();
                         self.new_password.clear();
