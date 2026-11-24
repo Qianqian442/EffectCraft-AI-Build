@@ -847,7 +847,12 @@ def verify_android_export_frame_scheduling(root: Path) -> None:
     tests = pipeline[pipeline.find("#[cfg(test)]"):]
     required = (
         "EFFECTCRAFT_ANDROID_EXPORT_FRAME_SCHEDULING_V1",
+        "EFFECTCRAFT_ANDROID_EXPORT_CPU_RENDER_FALLBACK_V1",
         "pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Option<usize>",
+        'let backend = if cfg!(target_os = "android") { Backend::Cpu } else if self.project.settings.gpu_acceleration { Backend::Gpu } else { Backend::Cpu }',
+        'r.accel = if cfg!(target_os = "android") { None } else { self.job.accel };',
+        '!cfg!(target_os = "android") && effectcraft_render::passes::is_deferred(self.job.accel)',
+        'let gpu_live = || !cfg!(target_os = "android") && self.job.accel.is_none_or(|a| a.available());',
         'cpu_inflight_for_platform(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref(), cfg!(target_os = "android"))',
         "android_export_defaults_to_one_in_flight_frame_without_overriding_explicit_settings",
     )
@@ -856,7 +861,7 @@ def verify_android_export_frame_scheduling(root: Path) -> None:
             raise SystemExit(f"Android export scheduling protection is incomplete: {token}")
     if "cpu_inflight_for_platform(None, true), Some(1)" not in tests or "cpu_inflight_for_platform(None, false), None" not in tests:
         raise SystemExit("Android/desktop export scheduling regression assertions are missing.")
-    print("Verified Android export frame scheduling: one frame in flight by default; explicit setting overrides and desktop behavior are preserved.")
+    print("Verified Android export uses the software renderer, disables deferred GPU readbacks, and caps CPU frames in flight at one; desktop behavior is preserved.")
 
 
 def verify_aep_post_import_media_prompt(root: Path) -> None:
