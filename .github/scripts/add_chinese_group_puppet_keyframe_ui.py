@@ -868,14 +868,24 @@ def patch_native_keyframe_color(root: Path) -> None:
             Node::Group(child) => group_contains_key_property(child, uid),
         })
     }
+    let selected_effect_uid = g.tl.ctx.data(|d| {
+        d.get_temp::<u64>(egui::Id::new("EFFECTCRAFT_AM_SELECTED_EFFECT_ID"))
+    });
     let focused = match &rc.row.kind {
-        RowKind::Prop { uid } => g.selected_props.iter().any(|(layer_id, selected_uid)| {
-            *layer_id == rc.layer.id && (
-                *selected_uid == *uid
-                || rc.layer.props.find_group(*selected_uid)
+        RowKind::Prop { uid } => {
+            let property_selected = g.selected_props.iter().any(|(layer_id, selected_uid)| {
+                *layer_id == rc.layer.id && (
+                    *selected_uid == *uid
+                    || rc.layer.props.find_group(*selected_uid)
+                        .is_some_and(|group| group_contains_key_property(group, *uid))
+                )
+            });
+            let effect_selected = selected_effect_uid.is_some_and(|effect_uid| {
+                rc.layer.props.find_group(effect_uid)
                     .is_some_and(|group| group_contains_key_property(group, *uid))
-            )
-        }),
+            });
+            property_selected || effect_selected
+        }
         _ => false,
     };
     let kcol = if am_effect_params {
