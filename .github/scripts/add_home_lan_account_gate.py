@@ -17,7 +17,11 @@ use serde_json::{Value, json};
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
+
+// One verification per process; AM/Ae Activity recreation reuses the cached profile.
+static ACCOUNT_VERIFY_ATTEMPTED: AtomicBool = AtomicBool::new(false);
 
 const DEFAULT_SERVER: &str = "p2p://auto";
 
@@ -64,6 +68,14 @@ struct User {
 struct SavedAccount {
     server_url: String,
     token: String,
+    #[serde(default)]
+    user: Option<User>,
+    #[serde(default)]
+    banned: bool,
+    #[serde(default)]
+    banned_until: String,
+    #[serde(default)]
+    ban_reason: String,
 }
 
 struct HttpResult {
@@ -152,12 +164,29 @@ impl AccountState {
                     if !saved.token.is_empty() {
                         self.token = Some(saved.token);
                     }
+                    self.user = saved.user;
+                    self.banned_until = saved.banned_until;
+                    self.ban_reason = saved.ban_reason;
+                    if saved.banned {
+                        self.mode = Mode::Banned;
+                    }
                 }
             }
         }
+        if self.mode == Mode::Banned {
+            return;
+        }
         if self.token.is_some() {
-            self.mode = Mode::Checking;
-            self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+            if !ACCOUNT_VERIFY_ATTEMPTED.swap(true, Ordering::AcqRel) {
+                self.mode = Mode::Checking;
+                self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+            } else if self.user.is_some() {
+                // Activity recreation after a successful verification must not call the server again.
+                self.mode = Mode::Editor;
+            } else {
+                self.mode = Mode::Unavailable;
+                self.status = "账号验证正在本次应用进程中处理，请稍后重试。".to_string();
+            }
         } else {
             self.mode = Mode::Auth;
         }
@@ -167,7 +196,14 @@ impl AccountState {
         let (Some(store), Some(token)) = (config, self.token.as_ref()) else {
             return;
         };
-        let saved = SavedAccount { server_url: self.server_url.clone(), token: token.clone() };
+        let saved = SavedAccount {
+            server_url: self.server_url.clone(),
+            token: token.clone(),
+            user: self.user.clone(),
+            banned: self.mode == Mode::Banned,
+            banned_until: self.banned_until.clone(),
+            ban_reason: self.ban_reason.clone(),
+        };
         if let Ok(data) = serde_json::to_string(&saved) {
             let _ = store.write("effectcraft-home-account.json", &data);
         }
@@ -250,15 +286,19 @@ impl AccountState {
             Err(error) => {
                 self.status = format!("无法连接家中的账号服务器：{error}");
                 if matches!(action, Action::Verify) {
+                    self.user = None;
                     self.mode = Mode::Unavailable;
+                    self.persist(config);
                 }
             }
             Ok(response) if response.status == 423 => {
                 let detail = response.body.get("detail").cloned().unwrap_or(Value::Null);
                 self.banned_until = detail.get("until").and_then(Value::as_str).unwrap_or("时间未知").to_string();
                 self.ban_reason = detail.get("reason").and_then(Value::as_str).unwrap_or("未填写原因").to_string();
+                self.user = None;
                 self.mode = Mode::Banned;
                 self.status.clear();
+                self.persist(config);
             }
             Ok(response) if !(200..300).contains(&response.status) => {
                 let detail = response.body.get("detail").and_then(Value::as_str)
@@ -274,6 +314,8 @@ impl AccountState {
                     if let Some(user) = response.body.get("user").cloned().and_then(|v| serde_json::from_value::<User>(v).ok()) {
                         self.user = Some(user);
                         self.mode = Mode::Editor;
+                        self.banned_until.clear();
+                        self.ban_reason.clear();
                         self.status.clear();
                         self.persist(config);
                     } else {
@@ -291,6 +333,9 @@ impl AccountState {
                         self.token = Some(token);
                         self.user = user;
                         self.mode = Mode::Success;
+                        self.banned_until.clear();
+                        self.ban_reason.clear();
+                        ACCOUNT_VERIFY_ATTEMPTED.store(true, Ordering::Release);
                         self.password.clear();
                         self.persist(config);
                     }
