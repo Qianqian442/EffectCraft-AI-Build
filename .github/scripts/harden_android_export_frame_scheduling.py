@@ -96,7 +96,7 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
         'let backend = if cfg!(target_os = "android") { Backend::Cpu } else if self.project.settings.gpu_acceleration { Backend::Gpu } else { Backend::Cpu }',
         'r.accel = if cfg!(target_os = "android") { None } else { self.job.accel };',
         '!cfg!(target_os = "android") && effectcraft_render::passes::is_deferred(self.job.accel)',
-        'let gpu_live = || !cfg!(target_os = "android") && self.job.accel.is_none_or(|a| a.available());'
+        'let gpu_live = || !cfg!(target_os = "android") && self.job.accel.is_none_or(|a| a.available());',
         'cpu_inflight_for_platform(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref(), cfg!(target_os = "android"))',
         "android_export_defaults_to_one_in_flight_frame_without_overriding_explicit_settings",
     )
