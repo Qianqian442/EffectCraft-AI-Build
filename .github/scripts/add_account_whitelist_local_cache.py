@@ -330,9 +330,13 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                         }
                         self.status.clear();
                         if self.token.is_some() {
-                            self.mode = Mode::Checking;
-                            self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
-                        } else {
+                            if !ACCOUNT_VERIFY_ATTEMPTED.swap(true, Ordering::AcqRel) {
+                                if self.mode != Mode::Banned { self.mode = Mode::Checking; }
+                                self.send(Action::Verify, "GET", "/v1/me", Value::Null, config);
+                            } else if self.user.is_some() && self.mode != Mode::Banned {
+                                self.mode = Mode::Editor;
+                            }
+                        } else if self.mode != Mode::Banned {
                             self.mode = Mode::Auth;
                         }
                     }
