@@ -620,6 +620,9 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     for token in ("EFFECTCRAFT_AM_LAYER_DELETE_COMMAND_V1", '"layer.delete"', "state.selected_keys.retain"):
         if token not in layer_commands:
             raise SystemExit(f"AM layer deletion is not wired to the native engine: {token}")
+    effect_commands = (root / "crates/engine/src/cmd/effect.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_AM_ENABLE_LAYER_EFFECTS_ON_APPLY_V1" not in effect_commands or "l.switches.effects = true;" not in effect_commands:
+        raise SystemExit("Applying an effect does not ensure the target layer effect switch is enabled.")
     effect_rows = (root / "crates/ui-egui/src/panels/effect_controls/rows.rs").read_text(encoding="utf-8")
     for token in ("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY", "am_effect_params && !prop.static_only", "key_navigator(app, ui, p"):
         if token not in effect_rows:
