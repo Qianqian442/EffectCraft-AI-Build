@@ -170,7 +170,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                             match base {
                                 Err(error) => Err(error),
                                 Ok(_) => {
-                                    let expression = if curve == "loop_cycle" { "loopOut(\\"cycle\\")" } else { "loopOut(\\"pingpong\\")" };
+                                    let expression = if curve == "loop_cycle" { "loopOut(\"cycle\")" } else { "loopOut(\"pingpong\")" };
                                     app.session.execute("prop.setExpression",json!({"layer":layer_id,"prop":uid,"expression":expression,"enabled":true}))
                                 }
                             }
@@ -268,6 +268,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         app.ui.tool = Tool::Puppet;
         app.ui.status = "已启用木偶控点：请在预览画面中点击添加控点，拖动控点调整变形。".into();
     }
+    let effect_w = 100.0;
     let effect=ui.put(Rect::from_min_size(pos2(footer.max.x-effect_w-5.0,footer.min.y+5.0),vec2(effect_w,32.0)),egui::Button::new("＋ 效果"));
     app.auto.add_response("am.motion.effects.open",&effect,"打开效果浏览器");
     if effect.clicked(){section="effects".into();ctx.data_mut(|d|d.insert_temp(Id::new(AM_MOTION_TAB_ID),section));am_open_effect_browser(&ctx,Some(layer_id));}
