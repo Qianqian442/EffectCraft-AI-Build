@@ -959,6 +959,20 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
 
         // Show every transform and effect-property keyframe directly on its layer clip.
         // The marker is independent of the selected-property editor and never hides keys.
+        // EFFECTCRAFT_AM_KEYFRAME_FOCUS_DIMMING_V1
+        // While an effect is being edited, keep its keyframes bright and dim the rest.
+        let effect_params_active = ui.ctx().data(|d| {
+            d.get_temp::<String>(Id::new(AM_MOTION_TAB_ID)).is_some_and(|tab| tab == "effect_params")
+        });
+        let selected_effect_uid = ui.ctx().data(|d| d.get_temp::<u64>(Id::new("EFFECTCRAFT_AM_SELECTED_EFFECT_ID")));
+        let mut focused_key_times = Vec::new();
+        if effect_params_active {
+            if let Some(uid) = selected_effect_uid {
+                if let Some(group) = layer.props.find_group(uid) {
+                    am_collect_keyframe_times(group, layer, &mut focused_key_times);
+                }
+            }
+        }
         let mut key_times = Vec::new();
         am_collect_keyframe_times(&layer.props, layer, &mut key_times);
         key_times.sort_by(f64::total_cmp);
@@ -973,10 +987,14 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             }
             let c = pos2(key_x, bar.center().y);
             let d = 4.6;
+            let focused = focused_key_times.iter().any(|time| (*time - key_time).abs() < 0.000001);
+            let dim = effect_params_active && !focused;
+            let marker_fill = if dim { Color32::from_rgba_unmultiplied(255, 220, 92, 76) } else { Color32::from_rgb(255, 220, 92) };
+            let marker_stroke = if dim { Color32::from_rgba_unmultiplied(255, 248, 218, 86) } else { Color32::from_rgb(255, 248, 218) };
             p.add(egui::Shape::convex_polygon(
                 vec![c + vec2(0.0, -d), c + vec2(d, 0.0), c + vec2(0.0, d), c + vec2(-d, 0.0)],
-                Color32::from_rgb(255, 220, 92),
-                Stroke::new(0.8, Color32::from_rgb(255, 248, 218)),
+                marker_fill,
+                Stroke::new(0.8, marker_stroke),
             ));
         }
 
