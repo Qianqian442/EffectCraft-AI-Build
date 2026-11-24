@@ -823,12 +823,27 @@ fn android_layer_keyframe_marks(g: &Rw, rc: &RowCtx<'_>, bar: Rect) {
 
 
 def patch_native_keyframe_color(root: Path) -> None:
-    """Make the original property-row keyframe glyphs white, not theme/label coloured."""
+    """Keep keyframes readable and dim unrelated properties while an AM effect is focused."""
     path = root / "crates/ui-egui/src/panels/timeline.rs"
     source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_ANDROID_WHITE_KEYFRAMES_V1"
+    marker = "EFFECTCRAFT_ANDROID_AM_FOCUSED_KEYFRAME_OPACITY_V2"
     if marker in source:
         return
+
+    # Carry selected property IDs into the timeline painter. The native selected_props
+    # state is the source of truth, so focus follows the actual property/effect selection.
+    source = replace_once(
+        source,
+        "    sel_keys: Vec<effectcraft_engine::KeyRef>,\n",
+        "    sel_keys: Vec<effectcraft_engine::KeyRef>,\n    selected_props: Vec<(LayerId, u64)>,\n",
+        "carry focused property IDs into keyframe painter",
+    )
+    source = replace_once(
+        source,
+        "        sel_keys: app.session.state.selected_keys.clone(),\n",
+        "        sel_keys: app.session.state.selected_keys.clone(),\n        selected_props: app.session.state.selected_props.clone(),\n",
+        "initialize focused property IDs for keyframe painter",
+    )
     old = """    // Labelled keys take their label colour (brighter when selected).
     let kcol = match effectcraft_engine::color::Label::ALL.get(k.label as usize).filter(|_| k.label > 0) {
         Some(l) => {
@@ -841,24 +856,34 @@ def patch_native_keyframe_color(root: Path) -> None:
     // Muted keys stay visible and editable but no longer drive the value.
     let kcol = if k.muted { kcol.gamma_multiply(0.35) } else { kcol };
 """
-    new = """    // EFFECTCRAFT_ANDROID_WHITE_KEYFRAMES_V1
-    // All timeline keyframe markers use solid white for a consistent, easy-to-see appearance.
-    let kcol = Color32::WHITE;
+    new = """    // EFFECTCRAFT_ANDROID_AM_FOCUSED_KEYFRAME_OPACITY_V2
+    // AM dims unrelated properties while an effect/property is focused; keys remain
+    // visible and editable. Outside that sheet, preserve the native theme/label colours.
+    let am_effect_params = g.tl.ctx.data(|d| {
+        d.get_temp::<bool>(egui::Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY")).unwrap_or(false)
+    });
+    let focused = match &rc.row.kind {
+        RowKind::Prop { uid } => g.selected_props.contains(&(rc.layer.id, *uid)),
+        _ => false,
+    };
+    let kcol = if am_effect_params {
+        if focused { Color32::WHITE } else { Color32::WHITE.gamma_multiply(0.30) }
+    } else {
+        match effectcraft_engine::color::Label::ALL.get(k.label as usize).filter(|_| k.label > 0) {
+            Some(l) => {
+                let c = t.label(*l);
+                if ks { c } else { c.gamma_multiply(0.75) }
+            }
+            None if ks => t.keyframe_selected,
+            None => t.keyframe,
+        }
+    };
+    let kcol = if k.muted { kcol.gamma_multiply(0.35) } else { kcol };
 """
-    source = replace_once(source, old, new, "White native timeline keyframe markers")
-    source = replace_once(
-        source,
-        "fn key_paint(g: &Rw, rc: &RowCtx<'_>, k: &effectcraft_engine::keyframe::Keyframe, x: f32, ks: bool) -> Rect {",
-        "fn key_paint(g: &Rw, rc: &RowCtx<'_>, k: &effectcraft_engine::keyframe::Keyframe, x: f32, _ks: bool) -> Rect {",
-        "Remove unused selected-state parameter after setting every keyframe white",
-    )
-    source = replace_once(
-        source,
-        "    let t = g.tl.t;\n    let gp = g.gp.clone();",
-        "    let gp = g.gp.clone();",
-        "Remove unused timeline theme binding after setting keyframes white",
-    )
+    source = replace_once(source, old, new, "AM focused keyframe opacity")
     path.write_text(source, encoding="utf-8")
+
+
 
 
 def main() -> None:
