@@ -84,10 +84,20 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
             "        !cfg!(target_os = \"android\") && effectcraft_render::passes::is_deferred(self.job.accel)",
             "Disable deferred GPU export readbacks on Android",
         )
+        gpu_live_old = "        let gpu_live = || self.job.accel.is_none_or(|a| a.available());"
+        gpu_live_new = "        let gpu_live = || !cfg!(target_os = \"android\") && self.job.accel.is_none_or(|a| a.available());"
+        if source.count(gpu_live_old) != 2:
+            raise SystemExit("Expected both Android export frame loops to have a GPU-live guard.")
+        source = source.replace(gpu_live_old, gpu_live_new)
         source = replace_once(source,
-            "        let gpu_live = || self.job.accel.is_none_or(|a| a.available());",
-            "        let gpu_live = || !cfg!(target_os = \"android\") && self.job.accel.is_none_or(|a| a.available());",
-            "Use CPU-only Android export frame scheduler",
+            "        cache.set_gate(job.accel.and_then(|a| a.miss_gate()));",
+            "        cache.set_gate(if cfg!(target_os = \"android\") { None } else { job.accel.and_then(|a| a.miss_gate()) });",
+            "Disable deferred cache gates for Android CPU export",
+        )
+        source = replace_once(source,
+            "(self.job.accel.is_some() && self.project.settings.gpu_acceleration).then(|| gpu_inflight(std::env::var(GPU_INFLIGHT_ENV).ok().as_deref()))",
+            "(!cfg!(target_os = \"android\") && self.job.accel.is_some() && self.project.settings.gpu_acceleration).then(|| gpu_inflight(std::env::var(GPU_INFLIGHT_ENV).ok().as_deref()))",
+            "Disable Android GPU frame cap in export scheduler",
         )
     required = (
         marker,
@@ -96,6 +106,8 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
         'let backend = if cfg!(target_os = "android") { Backend::Cpu } else if self.project.settings.gpu_acceleration { Backend::Gpu } else { Backend::Cpu }',
         'r.accel = if cfg!(target_os = "android") { None } else { self.job.accel };',
         '!cfg!(target_os = "android") && effectcraft_render::passes::is_deferred(self.job.accel)',
+        'cache.set_gate(if cfg!(target_os = "android") { None } else { job.accel.and_then(|a| a.miss_gate()) });',
+        '(!cfg!(target_os = "android") && self.job.accel.is_some() && self.project.settings.gpu_acceleration).then(|| gpu_inflight(std::env::var(GPU_INFLIGHT_ENV).ok().as_deref()))',
         'let gpu_live = || !cfg!(target_os = "android") && self.job.accel.is_none_or(|a| a.available());',
         'cpu_inflight_for_platform(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref(), cfg!(target_os = "android"))',
         "android_export_defaults_to_one_in_flight_frame_without_overriding_explicit_settings",
