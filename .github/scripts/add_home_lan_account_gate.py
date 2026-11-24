@@ -222,7 +222,7 @@ impl AccountState {
             token: token.clone(),
             user: self.user.clone(),
             banned: self.mode == Mode::Banned,
-            verified: self.mode == Mode::Editor && self.user.is_some() && self.verified_at > 0,
+            verified: matches!(self.mode, Mode::Editor | Mode::Success) && self.user.is_some() && self.verified_at > 0,
             verified_at: self.verified_at,
             banned_until: self.banned_until.clone(),
             ban_reason: self.ban_reason.clone(),
