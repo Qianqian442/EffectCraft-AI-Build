@@ -171,7 +171,13 @@ fn prop_row(
             actions.push(("prop.toggleAnimation".into(), json!({"layer": layer.id.0, "prop": uid, "selected": true})));
         }
     }
-    if prop.is_animated() {
+    // The AM effect-parameter sheet must allow the first keyframe to be created too.
+    // Ae keeps its original behavior; only the AM-only parameter sheet exposes the navigator
+    // for non-animated, keyframe-capable properties.
+    let am_effect_params = ui.ctx().data(|d| {
+        d.get_temp::<bool>(egui::Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY")).unwrap_or(false)
+    });
+    if prop.is_animated() || (am_effect_params && !prop.static_only) {
         let half = ectx.comp.frame_duration().0 / 2;
         let on_key = prop.keys.iter().any(|k| (layer.comp_time(k.time).0 - ectx.time.0).abs() <= half);
         key_navigator(app, ui, p, KeyNav { layer_id: layer.id.0, on_key }, prop, r, actions);
