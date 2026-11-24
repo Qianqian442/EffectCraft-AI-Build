@@ -1036,6 +1036,19 @@ fn localized_effect_parameter_label(source: &str) -> String {
         path.write_text(source, encoding="utf-8")
 
 
+def patch_am_effect_application_enable(root: Path) -> None:
+    path = root / "crates/engine/src/cmd/effect.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_AM_ENABLE_LAYER_EFFECTS_ON_APPLY_V1"
+    if marker in source:
+        return
+    old = '            let l = layer_mut(proj, cid, *lid)?;\n            let fx = l.props.sub_mut("effects")'
+    new = '            let l = layer_mut(proj, cid, *lid)?;\n            // Applying an effect should make it visible immediately, even if the layer\\\'s FX switch was previously off.\n            l.switches.effects = true;\n            let fx = l.props.sub_mut("effects")'
+    source = replace_once(source, old, new, "Enable layer effects when applying an effect")
+    source = source.replace("fn apply(s: &mut Session, p: &Value)", marker + "\\nfn apply(s: &mut Session, p: &Value)", 1)
+    path.write_text(source, encoding="utf-8")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -1054,6 +1067,7 @@ def main() -> None:
     patch_am_layer_delete_command(root)
     patch_am_effect_parameter_keyframes(root)
     patch_chinese_effect_parameter_labels(root)
+    patch_am_effect_application_enable(root)
     print("Default interface language set to Simplified Chinese.")
     print("Added one-tap access to the original native Puppet Position Pin tool.")
     print("Added long-press project grouping and folder ungrouping.")
