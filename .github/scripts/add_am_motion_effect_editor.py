@@ -70,11 +70,14 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let tab_rect = Rect::from_min_size(rect.min, vec2(rect.width(), tab_h));
     let p = ui.painter().with_clip_rect(tab_rect);
     p.rect_filled(tab_rect, 0.0, app.tokens.header_bg);
-    let tab_w = (tab_rect.width() / tabs.len() as f32).max(1.0);
+    // Responsive, non-overlapping hit rectangles: the gap is reserved before
+    // calculating each tab width, so narrow screens never push a tab outside the sheet.
+    let tab_gap = 4.0_f32.min((tab_rect.width() / 12.0).max(0.5));
+    let tab_w = ((tab_rect.width() - tab_gap * 2.0) / tabs.len() as f32).max(0.0);
     for (index, (label, value)) in tabs.into_iter().enumerate() {
         let r = Rect::from_min_size(
-            pos2(tab_rect.min.x + index as f32 * tab_w + 3.0, tab_rect.min.y + 3.0),
-            vec2((tab_w - 6.0).max(1.0), tab_h - 6.0),
+            pos2(tab_rect.min.x + index as f32 * (tab_w + tab_gap), tab_rect.min.y + 3.0),
+            vec2((tab_w - tab_gap).max(0.0), tab_h - 6.0),
         );
         let selected = active == value;
         let response = ui.interact(r, Id::new(("am-motion-tab", value)), Sense::click());
@@ -108,11 +111,12 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 ("水平翻转", "flip_x"),
                 ("垂直翻转", "flip_y"),
             ];
-            let gap = 4.0;
-            let width = ((toolbar.width() - 16.0 - gap * 2.0) / 3.0).max(1.0);
+            let gap = 4.0_f32.min((toolbar.width() / 16.0).max(0.5));
+            let margin = gap;
+            let width = ((toolbar.width() - margin * 2.0 - gap * 2.0) / 3.0).max(0.0);
             for (index, (label, action)) in buttons.into_iter().enumerate() {
                 let r = Rect::from_min_size(
-                    pos2(toolbar.min.x + 6.0 + index as f32 * (width + gap), toolbar.min.y + 4.0),
+                    pos2(toolbar.min.x + margin + index as f32 * (width + gap), toolbar.min.y + 4.0),
                     vec2(width, toolbar.height() - 8.0),
                 );
                 let response = ui.put(r, egui::Button::new(label).min_size(r.size()));
