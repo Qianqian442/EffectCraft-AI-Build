@@ -908,6 +908,108 @@ def patch_native_keyframe_color(root: Path) -> None:
 
 
 
+def patch_am_layer_delete_command(root: Path) -> None:
+    path = root / "crates/engine/src/cmd/layer.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_AM_LAYER_DELETE_COMMAND_V1"
+    if marker not in source:
+        helper = r"""
+// EFFECTCRAFT_AM_LAYER_DELETE_COMMAND_V1
+/// Delete selected composition layers without deleting their Project-panel source items.
+fn delete_layers(s: &mut Session, p: &Value) -> Result<Value> {
+    const C: &str = "layer.delete";
+    let cid = comp_id(s, p)?;
+    let ids = layers_p(s, p, C)?;
+    if ids.is_empty() { return Err(bad(C, "no layers selected")); }
+    let count = ids.len();
+    s.edit("Delete Layers", None, |project, state| {
+        let comp = project.comp_mut(cid).ok_or(EngineError::Other("composition vanished".into()))?;
+        comp.layers.retain(|layer| !ids.contains(&layer.id));
+        for layer in &mut comp.layers {
+            if layer.parent.is_some_and(|parent| ids.contains(&parent)) { layer.parent = None; }
+            if layer.track_matte.is_some_and(|matte| ids.contains(&matte.layer)) { layer.track_matte = None; }
+        }
+        state.selected_layers.retain(|layer| !ids.contains(layer));
+        state.selected_props.retain(|(layer, _)| !ids.contains(layer));
+        state.selected_keys.retain(|key| !ids.contains(&key.layer));
+        Ok(())
+    })?;
+    s.sanitize_state();
+    Ok(json!({"deleted": count}))
+}
+"""
+        source = replace_once(source, "pub fn specs() -> Vec<CommandSpec> {", helper + "\npub fn specs() -> Vec<CommandSpec> {", "AM native layer deletion command")
+        select_spec = '        cmd!("layer.select", "Select Layers", [], None, "{layers: [id|name|#n], add?, toggle?}", has_comp, select),'
+        delete_spec = '        cmd!("layer.delete", "Delete Layers", [], None, "{layers?: [id|name|#n] (default: selected)}", has_layers, delete_layers),\n' + select_spec
+        source = replace_once(source, select_spec, delete_spec, "AM layer deletion command registration")
+        path.write_text(source, encoding="utf-8")
+
+
+def patch_am_effect_parameter_keyframes(root: Path) -> None:
+    path = root / "crates/ui-egui/src/panels/effect_controls/rows.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_AM_EFFECT_PARAMETER_KEY_NAVIGATOR_V1"
+    if marker not in source:
+        old = """    if prop.is_animated() {
+        let half = ectx.comp.frame_duration().0 / 2;
+        let on_key = prop.keys.iter().any(|k| (layer.comp_time(k.time).0 - ectx.time.0).abs() <= half);
+        key_navigator(app, ui, p, KeyNav { layer_id: layer.id.0, on_key }, prop, r, actions);
+    }"""
+        new = """    // EFFECTCRAFT_AM_EFFECT_PARAMETER_KEY_NAVIGATOR_V1
+    // AM exposes the first add/remove keyframe control on every keyframe-capable parameter.
+    let am_effect_params = ui.ctx().data(|d| {
+        d.get_temp::<bool>(egui::Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY")).unwrap_or(false)
+    });
+    if prop.is_animated() || (am_effect_params && !prop.static_only) {
+        let half = ectx.comp.frame_duration().0 / 2;
+        let on_key = prop.keys.iter().any(|k| (layer.comp_time(k.time).0 - ectx.time.0).abs() <= half);
+        key_navigator(app, ui, p, KeyNav { layer_id: layer.id.0, on_key }, prop, r, actions);
+    }"""
+        source = replace_once(source, old, new, "AM effect parameter add/remove keyframe controls")
+        path.write_text(source, encoding="utf-8")
+
+
+def patch_chinese_effect_parameter_labels(root: Path) -> None:
+    path = root / "crates/ui-egui/src/panels/effect_controls/rows.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_CHINESE_EFFECT_PARAMETER_LABELS_V1"
+    if marker not in source:
+        helper = r"""
+// EFFECTCRAFT_ANDROID_CHINESE_EFFECT_PARAMETER_LABELS_V1
+/// Translate dynamic parameter names without showing English source labels.
+fn localized_effect_parameter_label(source: &str) -> String {
+    let catalog = crate::i18n::tr(source);
+    if catalog != source { return catalog.to_string(); }
+    let mut value = source.to_string();
+    for (english, chinese) in [
+        ("Opacity", "不透明度"), ("Radius", "半径"), ("Amount", "数量"),
+        ("Angle", "角度"), ("Position", "位置"), ("Scale", "缩放"),
+        ("Intensity", "强度"), ("Threshold", "阈值"), ("Width", "宽度"),
+        ("Height", "高度"), ("Feather", "羽化"), ("Blur", "模糊"),
+        ("Exposure", "曝光"), ("Contrast", "对比度"), ("Saturation", "饱和度"),
+        ("Rotation", "旋转"), ("Frequency", "频率"), ("Strength", "强度"),
+        ("Distance", "距离"), ("Color", "颜色"), ("Colour", "颜色"),
+        ("Tint", "色调"), ("Speed", "速度"), ("Time", "时间"),
+        ("Phase", "相位"), ("Offset", "偏移"), ("Center", "中心"),
+        ("Centre", "中心"), ("Start", "起点"), ("End", "终点"),
+        ("Mix", "混合"), ("Blend", "混合"), ("Mode", "模式"),
+        ("Level", "级别"), ("Gamma", "伽马"), ("Gain", "增益"),
+        ("Highlights", "高光"), ("Shadows", "阴影"), ("Midtones", "中间调"),
+        ("Temperature", "色温"), ("Turbulence", "湍流"), ("Evolution", "演化"),
+        ("Iterations", "迭代次数"), ("Amplitude", "振幅"),
+        ("X", "横向"), ("Y", "纵向"), ("Z", "深度"),
+    ] { value = value.replace(english, chinese); }
+    if value.chars().any(|ch| ch.is_ascii_alphabetic()) { "参数".to_string() } else { value }
+}
+"""
+        source = replace_once(source, "fn triangle(p: &egui::Painter, c: egui::Pos2, left: bool, col: Color32) {", helper + "\nfn triangle(p: &egui::Painter, c: egui::Pos2, left: bool, col: Color32) {", "Chinese dynamic effect parameter labels")
+        source = replace_once(source, "    let uid = prop.uid;\n    if ui.input(|i| i.pointer.primary_pressed())", "    let uid = prop.uid;\n    let shown_name = localized_effect_parameter_label(&prop.name);\n    if ui.input(|i| i.pointer.primary_pressed())", "Chinese property label binding")
+        source = replace_once(source, "p.with_clip_rect(name_clip.intersect(p.clip_rect())).text(pos2(swr.max.x + 6.0, cy), Align2::LEFT_CENTER, &prop.name, Tokens::ui(12.0), t.text);", "p.with_clip_rect(name_clip.intersect(p.clip_rect())).text(pos2(swr.max.x + 6.0, cy), Align2::LEFT_CENTER, &shown_name, Tokens::ui(12.0), t.text);", "Chinese property label drawing")
+        source = replace_once(source, "    p.text(pos2(cr.max.x + 6.0, cy), Align2::LEFT_CENTER, &prop.name, Tokens::ui(12.0), t.text_dim);", "    let shown_name = localized_effect_parameter_label(&prop.name);\n    p.text(pos2(cr.max.x + 6.0, cy), Align2::LEFT_CENTER, &shown_name, Tokens::ui(12.0), t.text_dim);", "Chinese toggle parameter label")
+        source = replace_once(source, "                    let name = p.text(pos2(tw.max.x + 6.0, r.center().y), Align2::LEFT_CENTER, &sg.name, Tokens::ui(12.0), t.text);", "                    let shown_group_name = localized_effect_parameter_label(&sg.name);\n                    let name = p.text(pos2(tw.max.x + 6.0, r.center().y), Align2::LEFT_CENTER, &shown_group_name, Tokens::ui(12.0), t.text);", "Chinese effect subgroup label")
+        path.write_text(source, encoding="utf-8")
+
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     if not root.is_dir():
@@ -923,6 +1025,9 @@ def main() -> None:
     patch_timeline_keyframe_button(root)
     patch_layer_keyframe_markers(root)
     patch_native_keyframe_color(root)
+    patch_am_layer_delete_command(root)
+    patch_am_effect_parameter_keyframes(root)
+    patch_chinese_effect_parameter_labels(root)
     print("Default interface language set to Simplified Chinese.")
     print("Added one-tap access to the original native Puppet Position Pin tool.")
     print("Added long-press project grouping and folder ungrouping.")
