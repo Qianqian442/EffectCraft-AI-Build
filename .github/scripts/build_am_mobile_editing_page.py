@@ -1222,7 +1222,7 @@ fn tool_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 match action {
                     "media" => invoke(app, ui.ctx(), "file.import", json!({"picturesAndVideos": true})),
                     "audio" => invoke(app, ui.ctx(), "file.import", json!({})),
-                    "text" => invoke(app, ui.ctx(), "layer.newText", json!({})),
+                    "text" => invoke(app, ui.ctx(), "layer.newText", json!({"edit": true})),
                     "shape" => invoke(app, ui.ctx(), "layer.newShape", json!({"kind": "rect"})),
                     "null" => invoke(app, ui.ctx(), "layer.newNull", json!({})),
                     "pen" => app.ui.tool = Tool::Pen,
@@ -1267,6 +1267,8 @@ fn am_layer_quick_action(app: &mut EffectcraftApp, layer_id: u64, action: &str) 
         "mute" => app.session.execute("layer.setSwitch", json!({
             "layers": [layer_id], "switch": "audio", "value": !audio
         })).map(|_| if audio { "图层音频已静音" } else { "图层音频已恢复" }.to_string()),
+        "delete" => app.session.execute("layer.delete", json!({"layers": [layer_id]}))
+            .map(|_| "已删除所选图层素材".to_string()),
         _ => return,
     };
     match result {
@@ -1304,9 +1306,10 @@ fn layer_action_drawer(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, 
         ("裁出", "trim_out"),
         ("反向", "reverse"),
         ("静音", "mute"),
+        ("删除", "delete"),
     ];
     let gap = 3.0;
-    let quick_w = ((rect.width() - 16.0 - gap * 4.0) / 5.0).max(1.0);
+    let quick_w = ((rect.width() - 16.0 - gap * 5.0) / 6.0).max(1.0);
     for (index, (label, action)) in quick.into_iter().enumerate() {
         let r = Rect::from_min_size(
             pos2(rect.min.x + 8.0 + index as f32 * (quick_w + gap), header.max.y + 5.0),
