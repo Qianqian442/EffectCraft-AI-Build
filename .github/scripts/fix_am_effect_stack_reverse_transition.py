@@ -233,6 +233,33 @@ def patch_vertical_scrub(source: str) -> str:
     source = source.replace(old, new, 1)
     return source
 
+
+def patch_parameter_list_touch_scroll(source: str) -> str:
+    marker = "EFFECTCRAFT_AM_PARAMS_LIST_TOUCH_SCROLL_V1"
+    if marker in source:
+        return source
+    anchor = """        if ui.rect_contains_pointer(area):
+            offset -= ui.input(|i| i.smooth_scroll_delta.y);
+"""
+    if source.count(anchor) != 1:
+        raise SystemExit("PanelScroll touch-scroll anchor was not found exactly once")
+    replacement = anchor + r'''        // EFFECTCRAFT_AM_PARAMS_LIST_TOUCH_SCROLL_V1
+        // In the AM effect-parameter sheet, a normal finger drag scrolls the whole
+        // parameter list immediately. The numeric hot-text widget retains its own
+        // deliberate long-press vertical scrub gesture.
+        let am_effect_params = ui.ctx().data(|d| {
+            d.get_temp::<bool>(egui::Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY")).unwrap_or(false)
+        });
+        if am_effect_params && ui.input(|i| i.has_touch_screen()) {
+            let touch_scroll = ui.interact(area, id.with("am-params-touch-scroll"), egui::Sense::drag());
+            if touch_scroll.dragged() {
+                offset = (offset - ui.input(|i| i.pointer.delta().y)).max(0.0);
+                ui.ctx().request_repaint();
+            }
+        }
+'''
+    return source.replace(anchor, replacement, 1)
+
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
     editor = root / "crates/ui-egui/src/am_editor.rs"
@@ -241,6 +268,7 @@ def main() -> None:
         raise SystemExit("AM editor or shared widgets source not found")
     editor_source = replace_effect_view(editor.read_text(encoding="utf-8"))
     widgets_source = patch_vertical_scrub(widgets.read_text(encoding="utf-8"))
+    widgets_source = patch_parameter_list_touch_scroll(widgets_source)
     editor.write_text(editor_source, encoding="utf-8")
     widgets.write_text(widgets_source, encoding="utf-8")
     print("Installed reverse AM effect/parameter slide and long-press vertical value scrubbing.")
