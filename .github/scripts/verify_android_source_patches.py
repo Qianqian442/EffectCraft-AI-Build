@@ -906,18 +906,22 @@ def verify_account_verification_cache(root: Path) -> None:
         "static ACCOUNT_VERIFY_ATTEMPTED: AtomicBool = AtomicBool::new(false);",
         "user: Option<User>",
         "banned: bool",
+        "verified: bool",
+        "verified_at: u64",
+        "account_now_secs().saturating_sub(saved.verified_at) < 24 * 60 * 60",
         "ACCOUNT_VERIFY_ATTEMPTED.swap(true, Ordering::AcqRel)",
         "else if self.user.is_some()",
         "self.mode = Mode::Editor;",
         "banned: self.mode == Mode::Banned",
         "self.persist(config);",
+        "response.status == 401 && matches!(action, Action::Verify)",
     )
     missing = [token for token in required if token not in account]
     if missing:
         raise SystemExit("Account verification cache is incomplete: " + "; ".join(missing))
     if "self.mode = Mode::Checking;\\n            self.send(Action::Verify" in account:
         raise SystemExit("Account verification still unconditionally contacts the server on every AccountState creation.")
-    print("Verified one account verification per process, cached profile restoration across Activity recreation, and persisted ban state.")
+    print("Verified persisted 24-hour account sessions, no repeat verification on quick app restart, token-expiry handling, and ban persistence.")
 
 
 
