@@ -27,6 +27,7 @@ on:
       - '.github/scripts/add_ai_assistant_fullscreen_drag.py'
       - '.github/scripts/ai_assistant_local.rs'
       - 'assets/ae-avatar.png'
+      - 'vendor/effectcraft/**'
       - '.github/native/**'
       - '.github/scripts/integrate_video_ai.py'
       - '.github/scripts/restore_android_plugins.py'

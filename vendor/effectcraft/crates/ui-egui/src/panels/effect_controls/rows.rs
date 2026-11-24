@@ -212,7 +212,8 @@ fn prop_row(
     let am_effect_params = ui.ctx().data(|d| {
         d.get_temp::<bool>(egui::Id::new("EFFECTCRAFT_AM_EFFECT_PARAMS_ONLY")).unwrap_or(false)
     });
-    if prop.is_animated() || (am_effect_params && !prop.static_only) {
+    let has_key_navigator = prop.is_animated() || (am_effect_params && !prop.static_only);
+    if has_key_navigator {
         let half = ectx.comp.frame_duration().0 / 2;
         let on_key = prop.keys.iter().any(|k| (layer.comp_time(k.time).0 - ectx.time.0).abs() <= half);
         key_navigator(app, ui, p, KeyNav { layer_id: layer.id.0, on_key }, prop, r, actions);
@@ -232,7 +233,7 @@ fn prop_row(
                 .take(shown_dims(layer, prop, &value))
                 .map(|v| p.layout_no_wrap(format!("{v:.1}"), Tokens::ui(12.0), t.hot_text).size().x + 12.0)
                 .sum();
-            let right = r.max.x - if prop.is_animated() { 52.0 } else { 8.0 };
+            let right = r.max.x - if has_key_navigator { 52.0 } else { 8.0 };
             vx.min(right - point - fields + 8.0).max(swr.max.x + 60.0)
         }
         _ => vx,
