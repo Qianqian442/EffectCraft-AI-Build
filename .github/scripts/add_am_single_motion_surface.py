@@ -228,34 +228,20 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
     }
 
-    // Native Ae Puppet tools are exposed inside this AM Move & Transform workspace.
-    // Selecting one activates the shared editor tool, so taps add real pins and drags
-    // edit the selected layer's actual puppet mesh; this is not a decorative overlay.
-    let puppet_tools = [
-        ("控点", Tool::Puppet, "位置控点：点击画面添加控点，拖动控点调整变形"),
-        ("弯曲", Tool::PuppetBend, "弯曲控点：调整控点影响区域"),
-        ("固定", Tool::PuppetStarch, "固定控点：保持指定区域稳定"),
-        ("重叠", Tool::PuppetOverlap, "重叠控点：调整图层变形区域的前后关系"),
-    ];
-    let effect_w = 90.0_f32;
-    let effect_gap = 5.0_f32;
-    let tools_left = footer.min.x + 5.0;
-    let tools_right = footer.max.x - effect_w - effect_gap - 5.0;
-    let tools_gap = 3.0_f32.min((footer.width() / 80.0).max(0.5));
-    let tool_w = ((tools_right - tools_left - tools_gap * 3.0) / 4.0).max(0.0);
-    for (index, (label, tool, hint)) in puppet_tools.into_iter().enumerate() {
-        let r = Rect::from_min_size(
-            pos2(tools_left + index as f32 * (tool_w + tools_gap), footer.min.y + 5.0),
-            vec2(tool_w, 32.0),
-        );
-        let selected = app.ui.tool == tool;
-        let response = ui.put(r, egui::Button::new(if selected { format!("● {label}") } else { label.to_string() }).min_size(r.size()))
-            .on_hover_text(hint);
-        app.auto.add_response(&format!("am.motion.puppet.{}", index), &response, hint);
-        if response.clicked() {
-            app.ui.tool = tool;
-            app.ui.status = format!("已启用{label}工具：请在预览画面中直接编辑当前图层。");
-        }
+    // Match the original Ae layout: one native Puppet Pin shortcut, not four mode buttons.
+    let puppet_rect = Rect::from_min_size(
+        pos2(footer.min.x + 7.0, footer.min.y + 5.0),
+        vec2((footer.width() - 112.0).max(72.0), 32.0),
+    );
+    let puppet_response = ui.put(
+        puppet_rect,
+        egui::Button::new(if app.ui.tool == Tool::Puppet { "● 木偶控点" } else { "木偶控点" })
+            .min_size(puppet_rect.size()),
+    ).on_hover_text("木偶控点：单击添加控点，拖动控点调整图层变形");
+    app.auto.add_response("am.motion.puppet", &puppet_response, "木偶控点工具");
+    if puppet_response.clicked() {
+        app.ui.tool = Tool::Puppet;
+        app.ui.status = "已启用木偶控点：请在预览画面中点击添加控点，拖动控点调整变形。".into();
     }
     let effect=ui.put(Rect::from_min_size(pos2(footer.max.x-effect_w-5.0,footer.min.y+5.0),vec2(effect_w,32.0)),egui::Button::new("＋ 效果"));
     app.auto.add_response("am.motion.effects.open",&effect,"打开效果浏览器");
@@ -301,8 +287,7 @@ def main() -> None:
         MARKER, 'Sense::drag()', '"滑动此处以移动图层"', 'PanelKind::EffectControls',
         'am_open_effect_browser(&ctx,Some(layer_id))', '"keys.toggleTransform"',
         '"keys.setSegmentCurve"', '"keys.velocity"',
-        'Tool::Puppet', 'Tool::PuppetBend', 'Tool::PuppetStarch', 'Tool::PuppetOverlap',
-        'am.motion.puppet.', '位置控点：点击画面添加控点',
+        'Tool::Puppet', 'am.motion.puppet', '木偶控点：单击添加控点',
     )
     # keys.velocity is wired through the native curve influence sliders.
     missing = [x for x in required if x not in source]
