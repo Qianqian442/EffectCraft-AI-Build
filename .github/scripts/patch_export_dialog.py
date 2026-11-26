@@ -314,67 +314,108 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                 Ok(added) => {
                     // The engine returns the newly created queue row as "item", not "id".
                     if let Some(item_id) = added.get("item").and_then(|value| value.as_u64()) {
-                        // Use the Render Queue item's own output path: render the final video file
-                        // directly, without replacing it with a second private staging path.
-                        open = false;
-                        // Temporarily unqueue older jobs so this button exports only the item just created.
-                        for queued_id in &previous_queued_ids {
-                            let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
-                                json!({"item": queued_id, "render": false}));
-                        }
-                        ctx.data_mut(|data| {
-                            data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
-                            data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), vec![item_id]);
-                            data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
-                            data.insert_temp(egui::Id::new("effectcraft-export-progress-start-time"), ctx.input(|input| input.time));
-                        });
-                        // EFFECTCRAFT_ANDROID_EXPORT_START_PANIC_GUARD_V1
-                        // A synchronous engine panic while creating the render job must
-                        // become a visible export error, not terminate the editor process.
-                        let render_start = std::panic::catch_unwind(
-                            std::panic::AssertUnwindSafe(|| {
-                                crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false}))
-                            }),
+                        // Resolve the normal output name and use the Android Save hook.
+                        // Android SAF routes video saves to the private staging file; MediaStore
+                        // publishes the completed file to DCIM/EffectCraft after rendering.
+                        let default_output = app.session.project.render_queue.iter()
+                            .find(|item| item.id == item_id)
+                            .and_then(|item| app.session.resolve_output(item))
+                            .unwrap_or_else(|| "Ae.mp4".to_string());
+                        let save_result = std::panic::catch_unwind(
+                            std::panic::AssertUnwindSafe(|| app.hooks.save_dialog(&default_output)),
                         );
-                        match render_start {
-                            Ok(Ok(result)) => {
-                                let started_ids: Vec<u64> = result.get("items")
-                                    .and_then(|items| items.as_array())
-                                    .map(|items| items.iter()
-                                        .filter_map(|item| item.get("id").and_then(|id| id.as_u64()))
-                                        .collect())
-                                    .unwrap_or_default();
-                                let ids = if started_ids.is_empty() { vec![item_id] } else { started_ids };
-                                ctx.data_mut(|data| {
-                                    data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), ids);
-                                });
-                            }
-                            Ok(Err(error)) => {
-                                let _ = crate::menus::invoke(
-                                    app, &ctx, "renderQueue.setRender",
-                                    json!({"item": item_id, "render": false}),
-                                );
-                                app.ui.status = error.clone();
-                                ctx.data_mut(|data| {
-                                    data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
-                                });
+                        let output_path = match save_result {
+                            Ok(Some(Some(path))) if !path.trim().is_empty() => Some(path),
+                            Ok(Some(_)) | Ok(None) => {
+                                app.ui.status = "已取消视频保存位置选择，未开始导出。".into();
+                                None
                             }
                             Err(_) => {
-                                let _ = crate::menus::invoke(
-                                    app, &ctx, "renderQueue.setRender",
-                                    json!({"item": item_id, "render": false}),
-                                );
-                                let error = "启动视频渲染时发生内部异常；编辑器已拦截该异常，请检查格式和参数后重试。".to_string();
-                                app.ui.status = error.clone();
-                                ctx.data_mut(|data| {
-                                    data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
-                                });
+                                app.ui.status = "打开视频保存位置时发生异常，未开始导出。".into();
+                                None
                             }
-                        }
-                        // Restore older queued jobs after the current export has started.
-                        for queued_id in &previous_queued_ids {
+                        };
+                        if let Some(output_path) = output_path {
+                            // Set Output To before Render. Otherwise the queue item can stay
+                            // NeedsOutput and the progress UI never advances beyond 0%.
+                            let set_output = std::panic::catch_unwind(
+                                std::panic::AssertUnwindSafe(|| crate::menus::invoke(
+                                    app, &ctx, "renderQueue.setOutput",
+                                    json!({"item": item_id, "path": output_path}),
+                                )),
+                            );
+                            match set_output {
+                                Ok(Ok(_)) => {
+                                    open = false;
+                                    for queued_id in &previous_queued_ids {
+                                        let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
+                                            json!({"item": queued_id, "render": false}));
+                                    }
+                                    ctx.data_mut(|data| {
+                                        data.insert_temp(egui::Id::new("effectcraft-export-progress-open"), true);
+                                        data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), vec![item_id]);
+                                        data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Option::<String>::None);
+                                        data.insert_temp(egui::Id::new("effectcraft-export-progress-start-time"), ctx.input(|input| input.time));
+                                    });
+                                    // EFFECTCRAFT_ANDROID_EXPORT_START_PANIC_GUARD_V1
+                                    let render_start = std::panic::catch_unwind(
+                                        std::panic::AssertUnwindSafe(|| {
+                                            crate::menus::invoke(app, &ctx, "renderQueue.render", json!({"wait": false}))
+                                        }),
+                                    );
+                                    match render_start {
+                                        Ok(Ok(result)) => {
+                                            let started_ids: Vec<u64> = result.get("items")
+                                                .and_then(|items| items.as_array())
+                                                .map(|items| items.iter()
+                                                    .filter_map(|item| item.get("id").and_then(|id| id.as_u64()))
+                                                    .collect())
+                                                .unwrap_or_default();
+                                            let ids = if started_ids.is_empty() { vec![item_id] } else { started_ids };
+                                            ctx.data_mut(|data| {
+                                                data.insert_temp(egui::Id::new("effectcraft-export-progress-items"), ids);
+                                            });
+                                        }
+                                        Ok(Err(error)) => {
+                                            let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
+                                                json!({"item": item_id, "render": false}));
+                                            app.ui.status = error.clone();
+                                            ctx.data_mut(|data| {
+                                                data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
+                                            });
+                                        }
+                                        Err(_) => {
+                                            let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
+                                                json!({"item": item_id, "render": false}));
+                                            let error = "启动视频渲染时发生内部异常；编辑器已拦截该异常，请检查格式和参数后重试。".to_string();
+                                            app.ui.status = error.clone();
+                                            ctx.data_mut(|data| {
+                                                data.insert_temp(egui::Id::new("effectcraft-export-progress-error"), Some(error));
+                                            });
+                                        }
+                                    }
+                                    for queued_id in &previous_queued_ids {
+                                        let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
+                                            json!({"item": queued_id, "render": true}));
+                                    }
+                                }
+                                Ok(Err(error)) => {
+                                    let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
+                                        json!({"item": item_id, "render": false}));
+                                    app.ui.status = format!("设置视频输出文件失败：{error}");
+                                    open = false;
+                                }
+                                Err(_) => {
+                                    let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
+                                        json!({"item": item_id, "render": false}));
+                                    app.ui.status = "设置视频输出文件时发生内部异常，未开始导出。".into();
+                                    open = false;
+                                }
+                            }
+                        } else {
                             let _ = crate::menus::invoke(app, &ctx, "renderQueue.setRender",
-                                json!({"item": queued_id, "render": true}));
+                                json!({"item": item_id, "render": false}));
+                            open = false;
                         }
                     } else {
                         app.ui.status = "导出任务已创建，但没有取得队列项目编号，未开始渲染。".into();
@@ -946,4 +987,17 @@ if 'ComboBox::from_id_salt("effectcraft-project-export-choice")' in dialog_fn:
     raise SystemExit("Project export must use five independent buttons.")
 
 print("Export dialog patched with five independent project-export buttons; AE desktop export remains explicitly disabled until a genuine AEP writer exists.")
+# Regression guard: quick export must set a real destination before starting the queue.
+required_export_flow = (
+    "app.hooks.save_dialog(&default_output)",
+    '"renderQueue.setOutput"',
+    '"renderQueue.add"',
+    '"renderQueue.render"',
+    "已取消视频保存位置选择，未开始导出。",
+    "EFFECTCRAFT_ANDROID_EXPORT_START_PANIC_GUARD_V1",
+)
+missing_export_flow = [needle for needle in required_export_flow if needle not in header]
+if missing_export_flow:
+    raise SystemExit("Quick export flow is incomplete: " + "; ".join(missing_export_flow))
+
 print("Project open/import pathways preserved; video frame-rate UI capped at 240 FPS.")
