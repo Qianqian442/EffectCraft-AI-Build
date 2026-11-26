@@ -208,102 +208,115 @@ fn am_text_voice_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect,
         .unwrap_or_default();
     let text_id = Id::new(("am-text-voice-content", layer_id));
     let mut text = ctx.data(|d| d.get_temp::<String>(text_id)).unwrap_or(initial);
-    let p = ui.painter().with_clip_rect(rect);
-    let t = app.tokens;
-    p.rect_filled(rect, 0.0, t.panel_bg);
-
-    let edit_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, rect.min.y + 7.0), vec2(rect.width() - 20.0, 76.0));
-    let edit = ui.put(edit_rect, egui::TextEdit::multiline(&mut text)
-        .desired_rows(3).font(Tokens::ui(11.0)).hint_text("在这里编辑文字内容"));
-    if edit.changed() {
-        ctx.data_mut(|d| d.insert_temp(text_id, text.clone()));
-        if let Err(error) = app.session.execute("layer.setText", json!({
-            "layer": layer_id, "text": text.clone(), "merge": "am-text-voice"
-        })) {
-            app.ui.status = format!("文字修改失败：{error}");
-        } else {
-            ctx.request_repaint();
-        }
-    }
-
     let mut pitch = ctx.data(|d| d.get_temp::<f32>(Id::new(("am-text-voice-pitch", layer_id)))).unwrap_or(1.0);
     let mut rate = ctx.data(|d| d.get_temp::<f32>(Id::new(("am-text-voice-rate", layer_id)))).unwrap_or(1.0);
-    let pitch_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, edit_rect.max.y + 5.0), vec2(rect.width() - 20.0, 24.0));
-    let rate_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, pitch_rect.max.y + 3.0), vec2(rect.width() - 20.0, 24.0));
-    let pitch_response = ui.put(pitch_rect, egui::Slider::new(&mut pitch, 0.5..=2.0).text("音调"));
-    let rate_response = ui.put(rate_rect, egui::Slider::new(&mut rate, 0.5..=2.0).text("语速"));
-    if pitch_response.changed() { ctx.data_mut(|d| d.insert_temp(Id::new(("am-text-voice-pitch", layer_id)), pitch)); }
-    if rate_response.changed() { ctx.data_mut(|d| d.insert_temp(Id::new(("am-text-voice-rate", layer_id)), rate)); }
-
-    let note_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, rate_rect.max.y + 2.0), vec2(rect.width() - 20.0, 32.0));
-    p.text(note_rect.left_top(), Align2::LEFT_TOP,
-        "使用手机当前语音引擎；可将 CloneTTS 等离线 AI 语音设为系统默认引擎。",
-        Tokens::ui(9.0), t.text_dim);
-
-    let buttons_y = note_rect.max.y + 3.0;
-    let gap = 5.0;
-    let button_w = (rect.width() - 20.0 - gap * 2.0) / 3.0;
-    let edit_button_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, buttons_y), vec2(button_w, 34.0));
-    let music_button_rect = Rect::from_min_size(pos2(edit_button_rect.max.x + gap, buttons_y), vec2(button_w, 34.0));
-    let voice_button_rect = Rect::from_min_size(pos2(music_button_rect.max.x + gap, buttons_y), vec2(button_w, 34.0));
-    let edit_button = ui.put(edit_button_rect, egui::Button::new("画布编辑文字"));
-    let music_button = ui.put(music_button_rect, egui::Button::new("导入背景音乐"));
-    let voice_button = ui.put(voice_button_rect, egui::Button::new("生成 AI 配音"));
-    app.auto.add_response("am.textvoice.canvas-edit", &edit_button, "进入画布文字编辑");
-    app.auto.add_response("am.textvoice.music", &music_button, "导入背景音乐素材");
-    app.auto.add_response("am.textvoice.generate", &voice_button, "使用当前系统语音引擎生成配音");
-    if edit_button.clicked() {
-        invoke(app, &ctx, "text.edit", json!({"layer": layer_id}));
-        ctx.data_mut(|d| {
-            d.remove::<String>(Id::new("am-mobile-tool-drawer"));
-            d.remove::<u64>(Id::new(AM_ACTIVE_LAYER_ID));
-        });
-        return;
-    }
-    if music_button.clicked() {
-        invoke(app, &ctx, "file.import", json!({}));
-    }
-
     let pending_id = Id::new(("am-text-voice-pending", layer_id));
-    if voice_button.clicked() && !text.trim().is_empty() {
-        let request_id = format!("am-tts-{layer_id}-{}", app.session.revision);
-        match crate::android_gallery::start_tts(&text, pitch, rate, &request_id) {
-            Ok(()) => {
-                ctx.data_mut(|d| d.insert_temp(pending_id, request_id));
-                app.ui.status = "正在生成配音…".into();
-            }
-            Err(error) => app.ui.status = format!("无法启动配音：{error}"),
-        }
-    } else if voice_button.clicked() {
-        app.ui.status = "请先输入需要配音的文字。".into();
-    }
+    let t = app.tokens;
+    ui.painter().with_clip_rect(rect).rect_filled(rect, 0.0, t.panel_bg);
+
+    // Two side-by-side pages inside one compact sheet: swipe horizontally to move
+    // between text editing and AI voice settings. The sheet never exceeds the timeline.
+    let mut pages = ui.new_child(egui::UiBuilder::new().max_rect(rect.shrink2(vec2(8.0, 6.0))));
+    egui::ScrollArea::horizontal()
+        .id_salt("am-text-voice-horizontal-pages")
+        .auto_shrink([false, false])
+        .drag_to_scroll(true)
+        .show(&mut pages, |pages_ui| {
+            let page_w = rect.width() - 16.0;
+            let page_h = rect.height() - 12.0;
+            pages_ui.set_min_width(page_w * 2.0);
+            pages_ui.horizontal(|pages_ui| {
+                pages_ui.allocate_ui_with_layout(
+                    vec2(page_w, page_h),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |page| {
+                        page.label("文字内容 · 向左滑动进入配音");
+                        let edit = page.add_sized(
+                            [page_w - 12.0, (page_h - 66.0).max(74.0)],
+                            egui::TextEdit::multiline(&mut text)
+                                .desired_rows(3)
+                                .font(Tokens::ui(11.0))
+                                .hint_text("在这里编辑文字内容"),
+                        );
+                        if edit.changed() {
+                            ctx.data_mut(|d| d.insert_temp(text_id, text.clone()));
+                            if let Err(error) = app.session.execute("layer.setText", json!({
+                                "layer": layer_id, "text": text.clone(), "merge": "am-text-voice"
+                            })) {
+                                app.ui.status = format!("文字修改失败：{error}");
+                            } else {
+                                ctx.request_repaint();
+                            }
+                        }
+                        if page.add_sized([page_w - 12.0, 32.0], egui::Button::new("画布编辑文字")).clicked() {
+                            invoke(app, &ctx, "text.edit", json!({"layer": layer_id}));
+                            ctx.data_mut(|d| {
+                                d.remove::<String>(Id::new("am-mobile-tool-drawer"));
+                                d.remove::<u64>(Id::new(AM_ACTIVE_LAYER_ID));
+                            });
+                        }
+                    },
+                );
+                pages_ui.allocate_ui_with_layout(
+                    vec2(page_w, page_h),
+                    egui::Layout::top_down(egui::Align::Min),
+                    |page| {
+                        page.label("AI 配音 · 向右滑动返回文字");
+                        page.add(egui::Slider::new(&mut pitch, 0.5..=2.0).text("音调"));
+                        page.add(egui::Slider::new(&mut rate, 0.5..=2.0).text("语速"));
+                        ctx.data_mut(|d| {
+                            d.insert_temp(Id::new(("am-text-voice-pitch", layer_id)), pitch);
+                            d.insert_temp(Id::new(("am-text-voice-rate", layer_id)), rate);
+                        });
+                        page.label("使用手机当前语音引擎；可将 CloneTTS 等离线 AI 语音设为系统默认引擎。");
+                        page.horizontal(|page| {
+                            if page.add_sized([page_w * 0.47, 34.0], egui::Button::new("导入背景音乐")).clicked() {
+                                invoke(app, &ctx, "file.import", json!({}));
+                            }
+                            let voice = page.add_sized([page_w * 0.47, 34.0], egui::Button::new("生成 AI 配音"));
+                            app.auto.add_response("am.textvoice.generate", &voice, "使用当前系统语音引擎生成配音");
+                            if voice.clicked() && !text.trim().is_empty() {
+                                let request_id = format!("am-tts-{layer_id}-{}", app.session.revision);
+                                match crate::android_gallery::start_tts(&text, pitch, rate, &request_id) {
+                                    Ok(()) => {
+                                        ctx.data_mut(|d| d.insert_temp(pending_id, request_id));
+                                        app.ui.status = "正在生成配音…".into();
+                                    }
+                                    Err(error) => app.ui.status = format!("无法启动配音：{error}"),
+                                }
+                            } else if voice.clicked() {
+                                app.ui.status = "请先输入需要配音的文字。".into();
+                            }
+                        });
+                        if let Some(request_id) = ctx.data(|d| d.get_temp::<String>(pending_id)) {
+                            if page.add_sized([page_w - 12.0, 30.0], egui::Button::new("取消配音生成")).clicked() {
+                                let _ = crate::android_gallery::cancel_tts(&request_id);
+                                ctx.data_mut(|d| d.remove::<String>(pending_id));
+                                app.ui.status = "已取消配音生成。".into();
+                            }
+                        }
+                    },
+                );
+            });
+        });
 
     if let Some(request_id) = ctx.data(|d| d.get_temp::<String>(pending_id)) {
-        let cancel_rect = Rect::from_min_size(pos2(rect.min.x + 10.0, buttons_y + 38.0), vec2(rect.width() - 20.0, 30.0));
-        let cancel = ui.put(cancel_rect, egui::Button::new("取消配音生成"));
-        app.auto.add_response("am.textvoice.cancel", &cancel, "取消当前配音生成任务");
-        if cancel.clicked() {
-            let _ = crate::android_gallery::cancel_tts(&request_id);
-            ctx.data_mut(|d| d.remove::<String>(pending_id));
-            app.ui.status = "已取消配音生成。".into();
-        } else {
-            match crate::android_gallery::poll_tts(&request_id) {
-                Ok(Some(result)) => {
-                    ctx.data_mut(|d| d.remove::<String>(pending_id));
-                    if let Some(path) = result.strip_prefix("OK:") {
-                        match crate::menus::invoke(app, &ctx, "file.import", json!({"paths": [path]})) {
-                            Ok(_) => app.ui.status = "配音已生成并加入当前合成时间轴。".into(),
-                            Err(error) => app.ui.status = format!("配音已生成，但导入失败：{error}"),
-                        }
-                    } else {
-                        app.ui.status = result.strip_prefix("ERROR:").unwrap_or(&result).to_string();
+        match crate::android_gallery::poll_tts(&request_id) {
+            Ok(Some(result)) => {
+                ctx.data_mut(|d| d.remove::<String>(pending_id));
+                if let Some(path) = result.strip_prefix("OK:") {
+                    match crate::menus::invoke(app, &ctx, "file.import", json!({"paths": [path]})) {
+                        Ok(_) => app.ui.status = "配音已生成并加入当前合成时间轴。".into(),
+                        Err(error) => app.ui.status = format!("配音已生成，但导入失败：{error}"),
                     }
+                } else {
+                    app.ui.status = result.strip_prefix("ERROR:").unwrap_or(&result).to_string();
                 }
-                Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(160)),
-                Err(error) => {
-                    ctx.data_mut(|d| d.remove::<String>(pending_id));
-                    app.ui.status = format!("配音状态读取失败：{error}");
-                }
+            }
+            Ok(None) => ctx.request_repaint_after(std::time::Duration::from_millis(160)),
+            Err(error) => {
+                ctx.data_mut(|d| d.remove::<String>(pending_id));
+                app.ui.status = format!("配音状态读取失败：{error}");
             }
         }
     }
