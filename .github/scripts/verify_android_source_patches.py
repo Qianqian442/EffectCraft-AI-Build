@@ -935,7 +935,7 @@ def verify_android_aep_playback_guard(root: Path) -> None:
     tests = (root / "crates/ui-egui/src/frames/tests.rs").read_text(encoding="utf-8")
     for token in (
         "EFFECTCRAFT_ANDROID_AEP_PLAYBACK_RESOURCE_GUARD_V1",
-        "const ANDROID_GPU_BUDGET: usize = 128 << 20;",
+        "const ANDROID_GPU_BUDGET: usize = 256 << 20;",
         "fn effectcraft_preview_worker_threads(reported: Option<usize>, android: bool) -> usize",
         "effectcraft_preview_worker_threads(reported_threads, cfg!(target_os = \"android\"))",
         "effectcraft_preview_gpu_budget(cfg!(target_os = \"android\"))",
@@ -946,7 +946,7 @@ def verify_android_aep_playback_guard(root: Path) -> None:
         raise SystemExit("Android imported-AEP playback prefetch is not limited to one worker.")
     if "fn android_aep_playback_resource_guard_is_tested()" not in tests:
         raise SystemExit("Android imported-AEP playback scheduling regression tests are missing.")
-    print("Verified Android imported-AEP playback: one frame worker, 128 MiB GPU preview budget, and regression tests.")
+    print("Verified Android imported-AEP playback: one frame worker, 256 MiB GPU preview budget, and regression tests.")
 
 
 
