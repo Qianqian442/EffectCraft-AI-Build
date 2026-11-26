@@ -78,7 +78,7 @@ fn effectcraft_preview_worker_threads(reported: Option<usize>, android: bool) ->
     }
 }"""
         new = """        // EFFECTCRAFT_ANDROID_AEP_PLAYBACK_PREFETCH_GUARD_V1
-        // Avoid queuing more than four future frames on Android while keeping the viewer responsive.
+        // Limit Android future-frame prefetch to one worker to reduce peak memory.
         let workers = self.frames.parallelism();
         if cfg!(target_os = "android") { workers.min(1).max(1) } else { workers }
     }
@@ -111,14 +111,14 @@ fn android_aep_playback_resource_guard_is_tested() {
     final_prefetch = prefetch_path.read_text(encoding="utf-8")
     required = (
         "effectcraft_preview_worker_threads(reported_threads, cfg!(target_os = \"android\"))",
-        "const ANDROID_GPU_BUDGET: usize = 256 << 20;",
+        "const ANDROID_GPU_BUDGET: usize = 128 << 20;",
         "effectcraft_preview_gpu_budget(cfg!(target_os = \"android\"))",
     )
     for token in required:
         if token not in final_frames:
             raise SystemExit(f"Android preview guard is incomplete: {token}")
-    if "workers.min(2).max(1)" not in final_prefetch or prefetch_marker not in final_prefetch:
-        raise SystemExit("Android preview prefetch is not constrained to two workers.")
+    if "workers.min(1).max(1)" not in final_prefetch or prefetch_marker not in final_prefetch:
+        raise SystemExit("Android preview prefetch is not constrained to one worker.")
     if tests_marker not in final_tests:
         raise SystemExit("Android preview scheduling regression test is missing.")
 
