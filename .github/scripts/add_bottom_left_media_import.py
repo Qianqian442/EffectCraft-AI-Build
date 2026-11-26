@@ -61,12 +61,37 @@ def patch_project_panel_import_button(root: Path) -> None:
     {
         app.ui.status = error;
     }
+
+    // EFFECTCRAFT_ANDROID_NEW_COMP_FROM_SELECTED_MEDIA_V1
+    // This action consumes the already-selected Project-panel footage. It must never
+    // launch a document/file picker or re-import the media.
+    let new_comp_rect = Rect::from_min_size(
+        pos2(rect.min.x + 8.0, media_rect.max.y + 3.0),
+        vec2((rect.width() - 16.0).max(40.0), 24.0),
+    );
+    let new_comp_response = ui
+        .put(
+            new_comp_rect,
+            egui::Button::new("从素材新建合成").min_size(new_comp_rect.size()),
+        )
+        .on_hover_text("使用素材面板中已选中的图片或视频直接创建合成，不再打开文件选择器");
+    app.auto.add_response("project.newCompFromSelectedMedia", &new_comp_response, "从素材新建合成");
+    if new_comp_response.clicked()
+        && let Err(error) = crate::menus::invoke(
+            app,
+            &ctx,
+            "file.newCompFromSelection",
+            json!({"single": true, "fitToComp": true}),
+        )
+    {
+        app.ui.status = error;
+    }
 '''
     if old not in source:
         raise SystemExit("Could not find original Project search row")
     source = source.replace(old, new, 1)
     old_header = '    let hdr = Rect::from_min_size(pos2(rect.min.x, sr.max.y + 6.0), vec2(rect.width(), 20.0));'
-    new_header = '    let hdr = Rect::from_min_size(pos2(rect.min.x, media_rect.max.y + 6.0), vec2(rect.width(), 20.0));'
+    new_header = '    let hdr = Rect::from_min_size(pos2(rect.min.x, new_comp_rect.max.y + 6.0), vec2(rect.width(), 20.0));'
     if old_header not in source:
         raise SystemExit("Could not find Project content header anchor")
     source = source.replace(old_header, new_header, 1)
