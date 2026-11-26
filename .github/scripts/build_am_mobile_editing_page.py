@@ -34,12 +34,13 @@ const AM_TIMELINE_DEFAULT_SPAN_SECS: f64 = 10.0;
 #[derive(Clone, Copy)]
 struct TimelineView {
     start: f64,
-    zoom: f64,
+    // Absolute visible time span in seconds; remains stable when a longer clip is added.
+    visible_secs: f64,
     scroll_y: f32,
 }
 impl Default for TimelineView {
     fn default() -> Self {
-        Self { start: 0.0, zoom: 1.0, scroll_y: 0.0 }
+        Self { start: 0.0, visible_secs: AM_TIMELINE_DEFAULT_SPAN_SECS, scroll_y: 0.0 }
     }
 }
 
@@ -739,9 +740,8 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         p.text(rect.center(), Align2::CENTER_CENTER, "打开或新建工程后，图层轨道会显示在这里", Tokens::ui(12.0), t.text_dim);
         return;
     };
-    // EFFECTCRAFT_AM_TIMELINE_HORIZ_SCROLL_V2
-    // The scrollable AM range must cover the furthest clip edge, not stop at 10s
-    // (or at the composition duration when a clip extends farther).
+    // EFFECTCRAFT_AM_TIMELINE_HORIZ_SCROLL_V3
+    // Include the longest layer edge as the scrollable range, including clips past 10s.
     let comp_duration = comp.duration.seconds().max(0.001);
     let duration = comp.layers.iter()
         .map(|layer| layer.out_point.seconds())
@@ -749,15 +749,9 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         .max(comp_duration)
         .max(0.001);
     let view_id = Id::new("am-independent-timeline-view");
-    let stored_view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id));
-    // Start with an AM-like short visible time window so the user can swipe into
-    // later seconds instead of always fitting the whole composition on screen.
-    let mut view = stored_view.unwrap_or_else(|| TimelineView {
-        start: 0.0,
-        zoom: (duration / AM_TIMELINE_DEFAULT_SPAN_SECS).clamp(1.0, 16.0),
-        scroll_y: 0.0,
-    });
-    view.zoom = view.zoom.clamp(1.0, 16.0);
+    let mut view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id)).unwrap_or_default();
+    // Keep a 10-second view window after new footage extends the range.
+    view.visible_secs = view.visible_secs.clamp(0.1, duration.max(0.1));
 
     let label_w = NAME_W.min((rect.width() * 0.22).max(56.0));
     let ruler_h = 28.0;
@@ -765,7 +759,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let content = Rect::from_min_max(pos2(rect.min.x, ruler.max.y), rect.max);
     let labels = Rect::from_min_max(content.min, pos2(content.min.x + label_w, content.max.y));
     let tracks = Rect::from_min_max(pos2(labels.max.x, content.min.y), content.max);
-    let visible_secs = (duration / view.zoom).clamp(0.1, duration.max(0.1));
+    let visible_secs = view.visible_secs.clamp(0.1, duration.max(0.1));
     let pps = (tracks.width() as f64 / visible_secs).max(0.01);
     let max_start = (duration - visible_secs).max(0.0);
     view.start = view.start.clamp(0.0, max_start);
@@ -777,8 +771,8 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let zoom_delta = ui.input(|i| i.zoom_delta());
     if hovered && (zoom_delta - 1.0).abs() > 0.002 {
         let old_visible = visible_secs;
-        view.zoom = (view.zoom * zoom_delta as f64).clamp(1.0, 16.0);
-        let new_visible = (duration / view.zoom).max(0.1);
+        view.visible_secs = (view.visible_secs / zoom_delta as f64).clamp(0.1, duration.max(0.1));
+        let new_visible = view.visible_secs;
         if let Some(pt) = pointer {
             let frac = ((pt.x - tracks.min.x) / tracks.width().max(1.0)).clamp(0.0, 1.0) as f64;
             let anchored_time = view.start + old_visible * frac;
