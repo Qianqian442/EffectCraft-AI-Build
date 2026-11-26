@@ -308,8 +308,8 @@ fn am_text_voice_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect,
 '''
 
 
-def patch_activity(root: Path) -> None:
-    path = root / "templates/android/SafActivity.java"
+def patch_activity(builder: Path) -> None:
+    path = builder / "templates/android/SafActivity.java"
     source = path.read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_AM_TEXT_TO_SPEECH_V1" not in source:
         anchor = "import android.content.Context;\n"
@@ -383,9 +383,10 @@ def patch_am_editor(root: Path) -> None:
 
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "")).resolve()
-    if not root.is_dir():
-        raise SystemExit("EFFECTCRAFT_DIR must point to checked-out EffectCraft source.")
-    patch_activity(root)
+    builder = Path(os.environ.get("ARTCRAFT_DIR", "")).resolve()
+    if not root.is_dir() or not builder.is_dir():
+        raise SystemExit("EFFECTCRAFT_DIR and ARTCRAFT_DIR must point to the checked-out source and Android builder.")
+    patch_activity(builder)
     patch_gallery_rust(root)
     patch_am_editor(root)
     print("Installed AM text editing, pitch/rate controls, cancellable TTS synthesis and background-music import.")
