@@ -242,7 +242,7 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                 if ui.button("取消").clicked() {
                     cancel = true;
                 }
-                if ui.add_enabled(comp_name.is_some(), egui::Button::new("导出")).clicked() {
+                if ui.add_enabled(comp_name.is_some() && !app.session.is_rendering(), egui::Button::new(if app.session.is_rendering() { "正在导出…" } else { "导出" })).clicked() {
                     submit = true;
                 }
             });
@@ -929,6 +929,9 @@ if ai_assistant_path.is_file():
 # The standalone DeepSeek plugin bridge was installed before this export patch.
 # Do not replace it with a bundled llama.cpp assistant or bundle a local GGUF model.
 
+
+if 'comp_name.is_some() && !app.session.is_rendering()' not in dialog_fn:
+    raise SystemExit("Export submit must be disabled while a render is already active.")
 
 required_project_buttons = [
     "导出 AE 电脑版工程",
