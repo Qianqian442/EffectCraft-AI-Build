@@ -303,13 +303,15 @@ fn register_imported_fonts(base: &str) -> HashMap<String, String> {
     ];
     let mut checked = 0usize;
     while let Some(dir) = pending.pop() {
-        if checked >= 256 { break; }
+        if checked >= 100_000 { break; }
         let Ok(entries) = std::fs::read_dir(&dir) else { continue };
         for entry in entries.flatten() {
             checked += 1;
-            if checked >= 256 { break; }
+            if checked >= 100_000 { break; }
             let path = entry.path();
-            if path.is_dir() {
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_symlink() { continue; }
+            if kind.is_dir() {
                 pending.push(path);
                 continue;
             }
@@ -505,19 +507,21 @@ fn import_nv_node(
     let out_point = timeline(node, "End", timeline(node, "Duration", comp.duration.seconds()));
     let stretch = timeline(node, "Stretch", 1.0);
 
-    if kind.contains("NodeMediaImage") || kind.contains("NodeMediaVideo") {
-        let asset = node.get("AssetImage").or_else(|| node.get("AssetVideo"));
+    if kind.contains("NodeMediaImage") || kind.contains("NodeMediaVideo") || kind.contains("NodeMediaAudio") {
+        let asset = node.get("AssetImage").or_else(|| node.get("AssetVideo")).or_else(|| node.get("AssetAudio"));
         let stored = asset.and_then(|a| a.get("AbsolutePath")).and_then(J::as_str).unwrap_or("");
         let found = media_file(base, stored);
         let path = found.clone().unwrap_or_else(|| stored.to_string());
         let mut footage = Footage::default();
         footage.path = path.clone();
-        footage.kind = if kind.contains("Video") { FootageKind::Video } else { FootageKind::Still };
+        footage.kind = if kind.contains("Audio") { FootageKind::Audio }
+            else if kind.contains("Video") { FootageKind::Video } else { FootageKind::Still };
         footage.width = asset.and_then(|a| a.get("Width")).and_then(J::as_u64).unwrap_or(0).min(8192) as u32;
         footage.height = asset.and_then(|a| a.get("Height")).and_then(J::as_u64).unwrap_or(0).min(8192) as u32;
         footage.frame_rate = comp.frame_rate;
         footage.duration = Tick::from_seconds_f64((out_point - in_point).max(0.1));
-        footage.has_video = true;
+        footage.has_video = !kind.contains("Audio");
+        footage.has_audio = kind.contains("Audio");
         footage.missing = found.is_none();
         if found.is_none() {
             missing.push(format!("{name}: {}", Path::new(stored).file_name().unwrap_or_default().to_string_lossy()));
