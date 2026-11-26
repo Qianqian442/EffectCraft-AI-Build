@@ -29,6 +29,7 @@ const TRANSPORT_H: f32 = 42.0;
 const BOTTOM_H: f32 = 54.0;
 const ROW_H: f32 = 36.0;
 const NAME_W: f32 = 88.0;
+const AM_TIMELINE_DEFAULT_SPAN_SECS: f64 = 10.0;
 
 #[derive(Clone, Copy)]
 struct TimelineView {
@@ -738,9 +739,24 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         p.text(rect.center(), Align2::CENTER_CENTER, "打开或新建工程后，图层轨道会显示在这里", Tokens::ui(12.0), t.text_dim);
         return;
     };
-    let duration = comp.duration.seconds().max(0.001);
+    // EFFECTCRAFT_AM_TIMELINE_HORIZ_SCROLL_V2
+    // The scrollable AM range must cover the furthest clip edge, not stop at 10s
+    // (or at the composition duration when a clip extends farther).
+    let comp_duration = comp.duration.seconds().max(0.001);
+    let duration = comp.layers.iter()
+        .map(|layer| layer.out_point.seconds())
+        .fold(comp_duration, f64::max)
+        .max(comp_duration)
+        .max(0.001);
     let view_id = Id::new("am-independent-timeline-view");
-    let mut view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id)).unwrap_or_default();
+    let stored_view = ui.ctx().data(|d| d.get_temp::<TimelineView>(view_id));
+    // Start with an AM-like short visible time window so the user can swipe into
+    // later seconds instead of always fitting the whole composition on screen.
+    let mut view = stored_view.unwrap_or_else(|| TimelineView {
+        start: 0.0,
+        zoom: (duration / AM_TIMELINE_DEFAULT_SPAN_SECS).clamp(1.0, 16.0),
+        scroll_y: 0.0,
+    });
     view.zoom = view.zoom.clamp(1.0, 16.0);
 
     let label_w = NAME_W.min((rect.width() * 0.22).max(56.0));
