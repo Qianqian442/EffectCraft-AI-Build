@@ -222,7 +222,8 @@ fn am_text_voice_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect,
     egui::ScrollArea::horizontal()
         .id_salt("am-text-voice-horizontal-pages")
         .auto_shrink([false, false])
-        .drag_to_scroll(true)
+        // Keep finger-drag paging on Android using the current egui ScrollSource API.
+        .scroll_source(egui::scroll_area::ScrollSource::DRAG)
         .show(&mut pages, |pages_ui| {
             let page_w = rect.width() - 16.0;
             let page_h = rect.height() - 12.0;
