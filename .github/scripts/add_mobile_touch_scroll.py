@@ -116,16 +116,18 @@ def patch_project_panel(root: Path) -> None:
 def patch_timeline(root: Path) -> None:
     path = root / "crates/ui-egui/src/panels/timeline.rs"
     source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_ANDROID_TIMELINE_TOUCH_SCROLL_V1"
+    marker = "EFFECTCRAFT_ANDROID_TIMELINE_TOUCH_SCROLL_V2"
     if marker in source:
         return
 
     helper_anchor = "/// Mouse wheel and pinch over the rows: zoom time or scroll.\n"
-    helper = r'''// EFFECTCRAFT_ANDROID_TIMELINE_TOUCH_SCROLL_V1
+    helper = r'''// EFFECTCRAFT_ANDROID_TIMELINE_TOUCH_SCROLL_V2
 /// Finger drags on unused timeline space scroll the layer list vertically and the time range
 /// horizontally. Keyframe, layer, marker and handle widgets above this background keep priority.
 fn android_timeline_touch_scroll(app: &mut EffectcraftApp, ui: &egui::Ui, g: &Rw, response: &egui::Response) {
-    if !ui.input(|i| i.has_touch_screen()) || !response.dragged() {
+    // This patch is Android-only: some Android input backends report touch as a primary
+    // pointer without setting has_touch_screen(), so the capability flag must not gate panning.
+    if !response.dragged() {
         return;
     }
     let delta = ui.input(|i| i.pointer.delta());
@@ -156,17 +158,45 @@ fn android_timeline_touch_scroll(app: &mut EffectcraftApp, ui: &egui::Ui, g: &Rw
     after_draw = '''    let mut rw = begin_rows(app, ui, tl);
     // Register the background first so the actual row/keyframe controls drawn below keep
     // their gestures; a finger drag on free timeline space pans the list/time range.
-    let touch_pan = ui.input(|i| i.has_touch_screen()).then(|| {
-        ui.interact(rw.tl.rows_rect, egui::Id::new("effectcraft-timeline-touch-pan"), Sense::drag())
-    });
+    // Android-only pan target: register regardless of the backend touch-capability flag.
+    // The actual layer/key widgets are drawn afterward and retain their own hit targets.
+    let touch_pan = ui.interact(
+        rw.tl.rows_rect,
+        egui::Id::new("effectcraft-timeline-touch-pan"),
+        Sense::drag(),
+    );
     let g = &mut rw;
     draw_rows(app, ui, g, &ectx);
-    if let Some(response) = touch_pan.as_ref() {
-        android_timeline_touch_scroll(app, ui, g, response);
-    }
+    android_timeline_touch_scroll(app, ui, g, &touch_pan);
     ui.set_clip_rect(g.full_clip);
 '''
     source = replace_once(source, before_draw, after_draw, "Timeline touch scroll response")
+    path.write_text(source, encoding="utf-8")
+
+
+
+def patch_timeline_navigator_touch_target(root: Path) -> None:
+    """Keep the thin navigator art but provide Android with a practical finger-sized hit area."""
+    path = root / "crates/ui-egui/src/panels/timeline.rs"
+    source = path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_TIMELINE_NAV_TOUCH_TARGET_V1"
+    if marker in source:
+        return
+    source = replace_once(
+        source,
+        '    let nresp = ui.interact(nav, egui::Id::unique("tl-nav"), Sense::drag());',
+        '''    // EFFECTCRAFT_ANDROID_TIMELINE_NAV_TOUCH_TARGET_V1
+    // Keep the visual navigator thin, but give finger drags a 30-point-tall hit target.
+    let nav_hit = nav.expand2(vec2(0.0, 11.0));
+    let nresp = ui.interact(nav_hit, egui::Id::unique("tl-nav"), Sense::drag());''',
+        "Timeline navigator finger hit area",
+    )
+    source = replace_once(
+        source,
+        '        let hr = Rect::from_center_size(pos2(x, nav.center().y), vec2(10.0, nav.height() + 6.0));',
+        '        let hr = Rect::from_center_size(pos2(x, nav.center().y), vec2(18.0, 28.0));',
+        "Timeline navigator end-handle finger hit area",
+    )
     path.write_text(source, encoding="utf-8")
 
 
@@ -197,6 +227,7 @@ def main() -> None:
     patch_shared_panel_scroll(root)
     patch_project_panel(root)
     patch_timeline(root)
+    patch_timeline_navigator_touch_target(root)
     patch_preview_clock(root)
 
 
