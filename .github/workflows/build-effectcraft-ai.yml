@@ -1,6 +1,7 @@
 # [reuse-runtime-artifacts] Reuse the verified runtime bundle for the Ae native-timeline touch fix.
 # AM portrait workspace is part of the Android validation/build path.
 # Rebuild request: publish a fresh signed APK against the current account-service backend.
+# [reuse-runtime-artifacts] Reuse verified runtime artifacts from run 45815970413; rebuild only the Ae APK.
 # Manual reuse trigger: 2026-11-23 PR #59 validated; reuse runtime artifacts from run 45815970413.
 name: Build Ae Android APK with shared compatibility validation
 # Runtime integration: build Box64/BOX32 and isolated x86/x64 AEX workers before assembling the ARM64 APK.
