@@ -67,6 +67,7 @@ on:
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/add_ae_dual_project_import.py'
+      - '.github/scripts/resolve_native_project_package_media.py'
       - '.github/scripts/add_five_project_import_buttons.py'
       - '.github/scripts/am_nv.rs'
       - '.github/scripts/add_chinese_group_puppet_keyframe_ui.py'
@@ -1326,6 +1327,13 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/add_ae_dual_project_import.py
           python3 build-assets/.github/scripts/add_ae_dual_project_import.py
+
+      - name: Resolve all media packaged with native Ae projects
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/resolve_native_project_package_media.py
+          python3 build-assets/.github/scripts/resolve_native_project_package_media.py
 
       - name: Offer media relinking after desktop AE project import
         env:
