@@ -998,7 +998,17 @@ fn localized_effect_parameter_label(source: &str) -> String {
         ("Iterations", "迭代次数"), ("Amplitude", "振幅"),
         ("X", "横向"), ("Y", "纵向"), ("Z", "深度"),
     ] { value = value.replace(english, chinese); }
-    if value.chars().any(|ch| ch.is_ascii_alphabetic()) { "参数".to_string() } else { value }
+    if value.chars().any(|ch| ch.is_ascii_alphabetic()) {
+        // Never collapse every unknown property into the same generic “参数” label.
+        // Keep the UI Chinese-only while giving each unmapped property a stable distinct
+        // identifier until its semantic translation is added to this catalogue.
+        let fingerprint = source.bytes().fold(0x811cu32, |hash, byte| {
+            hash.wrapping_mul(0x01000193) ^ byte as u32
+        });
+        format!("自定义选项·{:04X}", fingerprint & 0xffff)
+    } else {
+        value
+    }
 }
 """
         source = replace_once(source, "fn triangle(p: &egui::Painter, c: egui::Pos2, left: bool, col: Color32) {", helper + "\nfn triangle(p: &egui::Painter, c: egui::Pos2, left: bool, col: Color32) {", "Chinese dynamic effect parameter labels")
