@@ -313,7 +313,6 @@ if "fn effectcraft_export_dimensions(" not in header:
 header_path.write_text(header)
 # Keep the interactive preflight free of synchronous child-process waits.
 helper_start = header.find("fn effectcraft_export_device_preflight(")
-helper_end = header.find("\\n}\\n", helper_start)
 helper_source = header[helper_start:] if helper_start >= 0 else ""
 if "Command::new" in helper_source or ".output()" in helper_source:
     raise SystemExit("Export preflight must not wait synchronously for subprocesses on the UI thread.")
