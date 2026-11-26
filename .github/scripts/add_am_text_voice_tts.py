@@ -290,7 +290,7 @@ fn am_text_voice_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect,
                                     }
                                     Err(error) => app.ui.status = format!("无法启动配音：{error}"),
                                 }
-                            } else if voice.clicked() {
+                            } else if voice.clicked() && text.trim().is_empty() {
                                 app.ui.status = "请先输入需要配音的文字。".into();
                             }
                         });
