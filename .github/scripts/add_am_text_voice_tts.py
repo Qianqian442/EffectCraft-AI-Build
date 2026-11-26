@@ -254,7 +254,10 @@ fn am_text_voice_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect,
     app.auto.add_response("am.textvoice.generate", &voice_button, "使用当前系统语音引擎生成配音");
     if edit_button.clicked() {
         invoke(app, &ctx, "text.edit", json!({"layer": layer_id}));
-        ctx.data_mut(|d| d.remove::<String>(Id::new("am-mobile-tool-drawer")));
+        ctx.data_mut(|d| {
+            d.remove::<String>(Id::new("am-mobile-tool-drawer"));
+            d.remove::<u64>(Id::new(AM_ACTIVE_LAYER_ID));
+        });
         return;
     }
     if music_button.clicked() {
