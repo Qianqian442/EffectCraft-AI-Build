@@ -99,6 +99,42 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
             "(!cfg!(target_os = \"android\") && self.job.accel.is_some() && self.project.settings.gpu_acceleration).then(|| gpu_inflight(std::env::var(GPU_INFLIGHT_ENV).ok().as_deref()))",
             "Disable Android GPU frame cap in export scheduler",
         )
+
+    # On Android, do not encode one batch while rendering the next. The Render Queue
+    # already caps CPU frames in flight at one; serializing the encoder avoids retaining
+    # two full-resolution frame batches at once on memory-constrained phones.
+    beside_helper = """/// Whether movie encoding may overlap the next render batch.
+/// Android keeps this false so render and encode release their large frame buffers in turn.
+pub(crate) fn encode_beside_for_platform(android: bool) -> bool {
+    !android
+}
+
+"""
+    if "pub(crate) fn encode_beside_for_platform(android: bool) -> bool" not in source:
+        anchor = """impl Beside {
+    fn new() -> Beside {
+        Beside(rayon::ThreadPoolBuilder::new().thread_name(|i| format!("export-encode-{i}")).build().ok())
+    }"""
+        replacement = beside_helper + """impl Beside {
+    fn new() -> Beside {
+        if !encode_beside_for_platform(cfg!(target_os = "android")) {
+            return Beside(None);
+        }
+        Beside(rayon::ThreadPoolBuilder::new().thread_name(|i| format!("export-encode-{i}")).build().ok())
+    }"""
+        source = replace_once(source, anchor, replacement, "Serialize Android movie encoding after rendering")
+    test_anchor = """    /// Dither may round a colour up while alpha rounds down; premultiplied colour stays at or
+    /// below the written alpha at every pixel."""
+    if "android_export_does_not_overlap_encoding_with_next_render_batch" not in source:
+        tests = """    #[test]
+    fn android_export_does_not_overlap_encoding_with_next_render_batch() {
+        assert!(!encode_beside_for_platform(true));
+        assert!(encode_beside_for_platform(false));
+    }
+
+"""
+        source = replace_once(source, test_anchor, tests + test_anchor, "Android export render/encode serialization regression test")
+
     required = (
         marker,
         cpu_marker,
@@ -111,6 +147,8 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
         'let gpu_live = || !cfg!(target_os = "android") && self.job.accel.is_none_or(|a| a.available());',
         'cpu_inflight_for_platform(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref(), cfg!(target_os = "android"))',
         "android_export_defaults_to_one_in_flight_frame_without_overriding_explicit_settings",
+        "pub(crate) fn encode_beside_for_platform(android: bool) -> bool",
+        "android_export_does_not_overlap_encoding_with_next_render_batch",
     )
     for token in required:
         if token not in source:
@@ -118,6 +156,7 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
 
     path.write_text(source, encoding="utf-8")
     print("Android export defaults to one output frame in flight; explicit valid CPU_INFLIGHT values remain effective.")
+    print("Android movie rendering and encoding run sequentially to reduce peak frame-buffer memory.")
     print("Desktop export is unchanged. Output resolution, frame rate, codec and total app memory policy are unchanged.")
 
 
