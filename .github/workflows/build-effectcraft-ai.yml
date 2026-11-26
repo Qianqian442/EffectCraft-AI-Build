@@ -1,10 +1,10 @@
 # [reuse-runtime-artifacts] Reuse the verified runtime bundle for the Ae native-timeline touch fix.
 # AM portrait workspace is part of the Android validation/build path.
 # Rebuild request: publish a fresh signed APK against the current account-service backend.
-# Manual reuse trigger: 2026-11-23 PR #59 validated; reuse runtime artifacts from run 45193406383.
+# Manual reuse trigger: 2026-11-23 PR #59 validated; reuse runtime artifacts from run 45815970413.
 name: Build Ae Android APK with shared compatibility validation
 # Runtime integration: build Box64/BOX32 and isolated x86/x64 AEX workers before assembling the ARM64 APK.
-# Reuse mode: a push commit containing [reuse-runtime-artifacts] skips runtime rebuild jobs and downloads the verified bundle from run 45193406383.
+# Reuse mode: a push commit containing [reuse-runtime-artifacts] skips runtime rebuild jobs and downloads the verified bundle from run 45815970413.
 
 on:
   push:
@@ -118,7 +118,7 @@ on:
       reuse_runtime_run_id:
         description: 'Reuse the five verified runtime artifacts from this run ID'
         required: true
-        default: '45193406383'
+        default: '45815970413'
         type: string
 
 permissions:
@@ -826,7 +826,7 @@ jobs:
           name: EffectCraft-Box64-BOX32-Android-ARM64
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45815970413' || github.run_id) }}
           path: runtime-artifacts/box32
 
       - name: Download optional Box86 ARMv7 Bionic runtime
@@ -836,7 +836,7 @@ jobs:
           name: EffectCraft-Box86-Android-ARMv7-Optional
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45815970413' || github.run_id) }}
           path: runtime-artifacts/box86
           if-no-artifact-found: ignore
 
@@ -846,7 +846,7 @@ jobs:
           name: EffectCraft-FEXCore-Arm64EC-WoW64-CurrentMain
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45815970413' || github.run_id) }}
           path: runtime-artifacts/fexcore
 
       - name: Download optional QEMU x86-64 Linux-user packages
@@ -856,7 +856,7 @@ jobs:
           name: EffectCraft-QEMU-x86-64-Android-Fallback
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45815970413' || github.run_id) }}
           path: runtime-artifacts/qemu
           if-no-artifact-found: ignore
 
@@ -866,7 +866,7 @@ jobs:
           name: EffectCraft-AE-Host-Binaries
           github-token: ${{ github.token }}
           repository: ${{ github.repository }}
-          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45193406383' || github.run_id) }}
+          run-id: ${{ (github.event_name == 'workflow_dispatch' && inputs.reuse_runtime_run_id != '') && inputs.reuse_runtime_run_id || (contains(github.event.head_commit.message || '', '[reuse-runtime-artifacts]') && '45815970413' || github.run_id) }}
           path: runtime-artifacts/aex-hosts
 
       - name: Check out pinned native AbsentMotion source
