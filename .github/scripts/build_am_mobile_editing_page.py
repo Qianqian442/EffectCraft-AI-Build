@@ -459,7 +459,7 @@ fn am_effect_description(spec: &effectcraft_engine::effects::EffectSpec) -> &'st
     } else if category.contains("perspective") || category.contains("3d") {
         "调整图层的空间、透视或立体表现，制作视角与深度变化。"
     } else {
-        "用于该类别的图像处理。添加后可在效果参数面板中查看各项控制，并通过关键帧制作动态变化。"
+        "该效果用于当前类别的画面处理。可结合效果预览了解其视觉变化，再根据实际需要选择是否添加。"
     }
 }
 
