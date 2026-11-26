@@ -2420,6 +2420,7 @@ jobs:
   publish:
     name: Publish APK download (build-time validation passed)
     needs: build
+    if: ${{ always() && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
