@@ -829,25 +829,33 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
     }
 
+    // EFFECTCRAFT_AM_TIMELINE_AXIS_GESTURE_V1
+    // Capture the whole timeline content before drawing row controls. Later clip/trim/name
+    // widgets take priority; blank space remains a reliable finger-pan surface.
     let pan_id = Id::new("am-independent-timeline-pan");
-    let pan = ui.interact(tracks, pan_id, Sense::drag());
+    let pan = ui.interact(content, pan_id, Sense::drag());
     let pan_state = Id::new("am-independent-timeline-pan-state");
     if pan.drag_started() {
-        if let Some(pt) = pan.interact_pointer_pos() {
-            ui.ctx().data_mut(|d| d.insert_temp(pan_state, pt.x));
-        }
+        ui.ctx().data_mut(|d| {
+            d.insert_temp(pan_state, (view.start, view.scroll_y));
+        });
     }
     if pan.dragged() {
-        if let (Some(pt), Some(last_x)) = (
-            pan.interact_pointer_pos(),
-            ui.ctx().data(|d| d.get_temp::<f32>(pan_state)),
-        ) {
-            view.start = (view.start - (pt.x - last_x) as f64 / pps).clamp(0.0, max_start);
-            ui.ctx().data_mut(|d| d.insert_temp(pan_state, pt.x));
+        if let Some((start_time, start_scroll_y)) =
+            ui.ctx().data(|d| d.get_temp::<(f64, f32)>(pan_state))
+        {
+            let delta = pan.drag_delta();
+            if delta.x.abs() >= delta.y.abs() {
+                view.start = (start_time - delta.x as f64 / pps).clamp(0.0, max_start);
+            } else {
+                let max_scroll = (comp.layers.len() as f32 * ROW_H - content.height()).max(0.0);
+                view.scroll_y = (start_scroll_y - delta.y).clamp(0.0, max_scroll);
+            }
+            ui.ctx().request_repaint();
         }
     }
     if pan.drag_stopped() {
-        ui.ctx().data_mut(|d| d.remove::<f32>(pan_state));
+        ui.ctx().data_mut(|d| d.remove::<(f64, f32)>(pan_state));
     }
 
     // EFFECTCRAFT_AM_TIMELINE_PLAYBACK_FOLLOW_V1
@@ -1644,6 +1652,7 @@ def verify(root: Path) -> None:
         "pub fn show(app:",
         "crate::panels::viewers::show",
         "fn draw_timeline",
+        "EFFECTCRAFT_AM_TIMELINE_AXIS_GESTURE_V1",
         "layer.timing",
         "am-mobile-trim",
         "time.set",
