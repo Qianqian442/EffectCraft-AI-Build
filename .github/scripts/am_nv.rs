@@ -329,19 +329,58 @@ fn register_imported_fonts(base: &str) -> HashMap<String, String> {
     families
 }
 
+// EFFECTCRAFT_AM_IMPORT_RECURSIVE_MEDIA_RESOLVE_V1
 fn media_file(base: &str, stored: &str) -> Option<String> {
-    let stored_path = Path::new(stored);
-    let basename = stored_path.file_name()?;
+    // Project files often contain Windows absolute paths while their ZIP packages
+    // store media in nested folders. Normalize both slash styles before searching.
+    let basename = stored.rsplit(['/', '\\\\']).find(|part| !part.is_empty())?;
     let base_path = Path::new(base);
     let candidates = [
-        stored_path.to_path_buf(),
+        PathBuf::from(stored),
         base_path.join("Medias").join(basename),
         base_path.join("medias").join(basename),
         base_path.join("assets").join(basename),
         base_path.join("media").join(basename),
         base_path.join(basename),
     ];
-    candidates.into_iter().find(|p| p.is_file()).map(|p| p.to_string_lossy().to_string())
+    if let Some(found) = candidates.into_iter().find(|p| p.is_file()) {
+        return Some(found.to_string_lossy().to_string());
+    }
+
+    // Search the complete extracted package tree, including nested footage/audio/font
+    // folders. Only unique case-insensitive basename matches are auto-linked; duplicates
+    // stay unresolved rather than silently binding the wrong source file.
+    let mut pending = vec![base_path.to_path_buf()];
+    let mut matched: Option<PathBuf> = None;
+    let mut visited = 0usize;
+    while let Some(directory) = pending.pop() {
+        let Ok(entries) = std::fs::read_dir(directory) else { continue };
+        for entry in entries.flatten() {
+            visited = visited.saturating_add(1);
+            if visited > 100_000 {
+                return None;
+            }
+            let path = entry.path();
+            let Ok(kind) = entry.file_type() else { continue };
+            if kind.is_symlink() {
+                continue;
+            }
+            if kind.is_dir() {
+                pending.push(path);
+                continue;
+            }
+            let same_name = path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case(basename));
+            if same_name {
+                if matched.is_some() {
+                    return None;
+                }
+                matched = Some(path);
+            }
+        }
+    }
+    matched.map(|path| path.to_string_lossy().to_string())
 }
 fn node_label(node: &J, fallback: &str) -> String {
     node.get("Name").and_then(J::as_str).filter(|s| !s.trim().is_empty()).unwrap_or(fallback).to_string()
