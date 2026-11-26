@@ -333,7 +333,7 @@ fn register_imported_fonts(base: &str) -> HashMap<String, String> {
 fn media_file(base: &str, stored: &str) -> Option<String> {
     // Project files often contain Windows absolute paths while their ZIP packages
     // store media in nested folders. Normalize both slash styles before searching.
-    let basename = stored.rsplit(['/', '\\\\']).find(|part| !part.is_empty())?;
+    let basename = stored.rsplit(['/', '\\']).find(|part| !part.is_empty())?;
     let base_path = Path::new(base);
     let candidates = [
         PathBuf::from(stored),
