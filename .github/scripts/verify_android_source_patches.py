@@ -638,6 +638,7 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
         "layer.timing",
         "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1",
         "EFFECTCRAFT_AM_TIMELINE_HORIZ_SCROLL_V3",
+        "EFFECTCRAFT_AM_TIMELINE_PLAYBACK_FOLLOW_V1",
         "AM_TIMELINE_DEFAULT_SPAN_SECS",
         "visible_secs: f64",
         "layer.out_point.seconds()",

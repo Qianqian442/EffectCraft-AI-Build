@@ -807,6 +807,18 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         ui.ctx().data_mut(|d| d.remove::<f32>(pan_state));
     }
 
+    // EFFECTCRAFT_AM_TIMELINE_PLAYBACK_FOLLOW_V1
+    // During playback, pan the time window forward as the playhead approaches its edge.
+    // Never change the placement or dimensions of AM's transport / bottom buttons.
+    if app.playback.playing && !pan.dragged() {
+        let now = app.session.time().seconds();
+        if now > view.start + visible_secs * 0.82 {
+            view.start = (now - visible_secs * 0.72).clamp(0.0, max_start);
+        } else if now < view.start {
+            view.start = now.clamp(0.0, max_start);
+        }
+    }
+
     // Ruler click/drag scrubs the playhead just as it does in a mobile video editor.
     p.rect_filled(ruler, 0.0, t.panel_bg);
     p.rect_filled(Rect::from_min_size(ruler.min, vec2(label_w, ruler_h)), 0.0, t.panel_bg);
