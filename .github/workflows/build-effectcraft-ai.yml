@@ -1708,12 +1708,6 @@ jobs:
         with:
           targets: aarch64-linux-android, wasm32-unknown-unknown
 
-      - name: Smoke test the real H.264 MP4 export encoder
-        working-directory: artcraft/source/effectcraft
-        run: |
-          set -euo pipefail
-          cargo test -p effectcraft-export --test movie_bytes h264_movie_bytes_are_pinned
-
       - name: Prepare vendored Android RFD for workspace test resolution
         run: |
           set -euo pipefail
@@ -1722,6 +1716,12 @@ jobs:
           rm -rf artcraft/source/effectcraft/vendor/rfd
           cp -a artcraft/vendor/rfd artcraft/source/effectcraft/vendor/rfd
           test -f artcraft/source/effectcraft/vendor/rfd/Cargo.toml
+
+      - name: Smoke test the real H.264 MP4 export encoder
+        working-directory: artcraft/source/effectcraft
+        run: |
+          set -euo pipefail
+          cargo test -p effectcraft-export --test movie_bytes h264_movie_bytes_are_pinned
 
       - name: Run WASM effect stability regression tests
         working-directory: artcraft/source/effectcraft
