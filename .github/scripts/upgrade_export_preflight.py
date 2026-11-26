@@ -168,20 +168,8 @@ fn effectcraft_export_memory_capacity_ok(width: u32, height: u32, fps: f64, ai_i
     }
 }
 
-fn effectcraft_android_ai_vulkan_available() -> Option<bool> {
-    #[cfg(target_os = "android")]
-    {
-        let worker = std::env::var("EFFECTCRAFT_AI_VIDEO_WORKER_PATH").ok()?;
-        let output = std::process::Command::new(worker).arg("--probe").output().ok()?;
-        if !output.status.success() { return None; }
-        let text = String::from_utf8_lossy(&output.stdout);
-        return text.lines()
-            .find_map(|line| line.strip_prefix("gpu_count=")?.parse::<u32>().ok())
-            .map(|count| count > 0);
-    }
-    #[cfg(not(target_os = "android"))]
-    { None }
-}
+// GPU capability is validated by the AI worker at execution time. Never spawn
+// a probe subprocess from the interactive export button path.
 
 fn effectcraft_android_cpu_temperature_c() -> Option<f64> {
     #[cfg(target_os = "android")]
@@ -270,10 +258,6 @@ fn effectcraft_export_device_preflight(
                     .map(|path| std::path::Path::new(&path).is_file()).unwrap_or(false);
                 if !model { return fail("未找到本地 Real-ESRGAN 模型文件"); }
             }
-            if effectcraft_android_ai_vulkan_available() != Some(true)
-                && cores < 4 && (pixels > 921_600 || fps >= 120.0 || ai_upscale) {
-                return fail("未检测到可用 Vulkan GPU，且 CPU 核心数不足以承担本次 AI 处理");
-            }
         }
 
         if let Some(temp) = effectcraft_android_cpu_temperature_c() {
@@ -282,37 +266,9 @@ fn effectcraft_export_device_preflight(
             }
         }
 
-        if let Some(storage_dir) = std::env::var("EFFECTCRAFT_AI_MODEL_PATH").ok()
-            .and_then(|path| std::path::PathBuf::from(path).parent().map(|p| p.to_path_buf())) {
-            if let Ok(output) = std::process::Command::new("df").arg("-Pk").arg(&storage_dir).output() {
-                if output.status.success() {
-                    let report = String::from_utf8_lossy(&output.stdout);
-                    if let Some((_, available)) = effectcraft_engine::sysinfo::parse_df(&report) {
-                        // The manual slider is expressed in Mbps and the render queue
-                        // receives it as kbit/s. Use that exact chosen target in the free-space
-                        // estimate too; ProRes has no manual bitrate slider and uses a conservative
-                        // format/profile estimate.
-                        let bitrate = if format == "prores" {
-                            100_000_000_u64
-                        } else if bitrate_mbps.is_finite() {
-                            (bitrate_mbps.clamp(1.0, 100.0) * 1_000_000.0).round() as u64
-                        } else {
-                            16_000_000_u64
-                        };
-                        let duration = if duration_seconds.is_finite() { duration_seconds.clamp(1.0, 86_400.0) } else { 1.0 };
-                        let scale = if ai_upscale { 1.8 } else { 1.3 };
-                        let estimate = (duration * bitrate as f64 / 8.0 * scale).ceil() as u64;
-                        let required = estimate.saturating_add(256 * MIB);
-                        if available < required {
-                            return fail(&format!(
-                                "应用存储空间不足：当前约 {} MB，预计至少需要 {} MB",
-                                available / MIB, required / MIB
-                            ));
-                        }
-                    }
-                }
-            }
-        }
+        // Do not launch "df" synchronously from the UI thread. The renderer and
+        // output writer report insufficient space as a normal export error.
+
         None
     }
     #[cfg(not(target_os = "android"))]
@@ -355,6 +311,13 @@ if "fn effectcraft_export_dimensions(" not in header:
     raise SystemExit("Export dimensions helper is still missing after the repair.")
 
 header_path.write_text(header)
-print("Added comprehensive Android export device checks.")
+# Keep the interactive preflight free of synchronous child-process waits.
+helper_start = header.find("fn effectcraft_export_device_preflight(")
+helper_end = header.find("\\n}\\n", helper_start)
+helper_source = header[helper_start:] if helper_start >= 0 else ""
+if "Command::new" in helper_source or ".output()" in helper_source:
+    raise SystemExit("Export preflight must not wait synchronously for subprocesses on the UI thread.")
+
+print("Added non-blocking Android export device checks (no synchronous probe subprocesses).")
 
 # The final generated header must contain both export helper functions.
