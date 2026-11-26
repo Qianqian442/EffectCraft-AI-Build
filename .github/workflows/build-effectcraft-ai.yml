@@ -1537,7 +1537,7 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_am_text_voice_tts.py
           python3 build-assets/.github/scripts/add_am_text_voice_tts.py
           grep -Fq "EFFECTCRAFT_ANDROID_AM_TEXT_TO_SPEECH_V1" "$ARTCRAFT_DIR/templates/android/SafActivity.java"
-          grep -Fq "EFFECTCRAFT_AM_TEXT_VOICE_EDITOR_V1" "$AM_RS"
+          grep -Fq "EFFECTCRAFT_AM_TEXT_VOICE_EDITOR_V1" "$EFFECTCRAFT_DIR/crates/ui-egui/src/am_editor.rs"
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
           FRAME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/app/frame.rs"
           HEADER_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/header.rs"
