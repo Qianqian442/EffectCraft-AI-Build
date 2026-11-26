@@ -37,6 +37,8 @@ JAVA_TTS = r'''
             aeTtsResults.put(requestId, "ERROR: 请先输入文字内容。");
             return;
         }
+        aeTtsResults.remove(requestId);
+        aeTtsPaths.remove(requestId);
         activity.runOnUiThread(() -> {
             if (aeTextToSpeech == null) {
                 aeTextToSpeech = new TextToSpeech(activity, status -> {
@@ -276,7 +278,8 @@ fn am_text_voice_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect,
                             let voice = page.add_sized([page_w * 0.47, 34.0], egui::Button::new("生成 AI 配音"));
                             app.auto.add_response("am.textvoice.generate", &voice, "使用当前系统语音引擎生成配音");
                             if voice.clicked() && !text.trim().is_empty() {
-                                let request_id = format!("am-tts-{layer_id}-{}", app.session.revision);
+                                let request_id = format!("am-tts-{layer_id}-{}-{}", app.session.revision,
+                                    (ctx.input(|i| i.time) * 1000.0) as u64);
                                 match crate::android_gallery::start_tts(&text, pitch, rate, &request_id) {
                                     Ok(()) => {
                                         ctx.data_mut(|d| d.insert_temp(pending_id, request_id));
