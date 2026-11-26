@@ -277,7 +277,10 @@ fn am_text_voice_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect,
                             }
                             let voice = page.add_sized([page_w * 0.47, 34.0], egui::Button::new("生成 AI 配音"));
                             app.auto.add_response("am.textvoice.generate", &voice, "使用当前系统语音引擎生成配音");
-                            if voice.clicked() && !text.trim().is_empty() {
+                            if voice.clicked()
+                                && ctx.data(|d| d.get_temp::<String>(pending_id).is_none())
+                                && !text.trim().is_empty()
+                            {
                                 let request_id = format!("am-tts-{layer_id}-{}-{}", app.session.revision,
                                     (ctx.input(|i| i.time) * 1000.0) as u64);
                                 match crate::android_gallery::start_tts(&text, pitch, rate, &request_id) {
