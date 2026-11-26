@@ -218,6 +218,7 @@ def patch_module(root: Path) -> None:
         ("移动与效果", "motion"),
         ("编辑形状", "shape"),
         ("预设", "presets"),
+        ("文字与配音", "text_voice"),
     ];'''
     source = replace_once(source, old_cards, new_cards, "combine AM transform and effects entries")
 
@@ -299,6 +300,7 @@ def patch_module(root: Path) -> None:
     required = (
         MARKER,
         '("移动与效果", "motion")',
+        '("文字与配音", "text_voice")',
         '("关键帧 / 曲线", "keyframes")',
         'PanelKind::Properties',
         'PanelKind::EffectControls',
