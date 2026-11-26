@@ -36,7 +36,7 @@ def main() -> None:
         budget_new = """// EFFECTCRAFT_ANDROID_AEP_PLAYBACK_RESOURCE_GUARD_V1
 // Mobile GPUs share system RAM with the app; keep preview textures bounded on Android.
 const DESKTOP_GPU_BUDGET: usize = 1 << 30;
-const ANDROID_GPU_BUDGET: usize = 256 << 20;
+const ANDROID_GPU_BUDGET: usize = 128 << 20;
 
 fn effectcraft_preview_gpu_budget(android: bool) -> usize {
     if android { ANDROID_GPU_BUDGET } else { DESKTOP_GPU_BUDGET }
@@ -46,7 +46,10 @@ fn effectcraft_preview_gpu_budget(android: bool) -> usize {
 // Keep desktop's existing 2..16 pool unchanged; Android gets at most two frame workers.
 fn effectcraft_preview_worker_threads(reported: Option<usize>, android: bool) -> usize {
     if android {
-        reported.unwrap_or(2).clamp(1, 2)
+        // Prefer one decode/composite worker over smoothness: this device profile
+        // explicitly prioritizes preventing playback OOM over frame throughput.
+        let _ = reported;
+        1
     } else {
         reported.unwrap_or(4).clamp(2, 16)
     }
@@ -77,7 +80,7 @@ fn effectcraft_preview_worker_threads(reported: Option<usize>, android: bool) ->
         new = """        // EFFECTCRAFT_ANDROID_AEP_PLAYBACK_PREFETCH_GUARD_V1
         // Avoid queuing more than four future frames on Android while keeping the viewer responsive.
         let workers = self.frames.parallelism();
-        if cfg!(target_os = "android") { workers.min(2).max(1) } else { workers }
+        if cfg!(target_os = "android") { workers.min(1).max(1) } else { workers }
     }
 }"""
         prefetch = replace_once(prefetch, old, new, "Android playback prefetch concurrency")
@@ -90,14 +93,14 @@ fn effectcraft_preview_worker_threads(reported: Option<usize>, android: bool) ->
 /// The Android preview limits protect playback only; desktop pool sizing is unchanged.
 #[test]
 fn android_aep_playback_resource_guard_is_tested() {
-    assert_eq!(super::effectcraft_preview_worker_threads(Some(16), true), 2);
-    assert_eq!(super::effectcraft_preview_worker_threads(Some(8), true), 2);
-    assert_eq!(super::effectcraft_preview_worker_threads(None, true), 2);
+    assert_eq!(super::effectcraft_preview_worker_threads(Some(16), true), 1);
+    assert_eq!(super::effectcraft_preview_worker_threads(Some(8), true), 1);
+    assert_eq!(super::effectcraft_preview_worker_threads(None, true), 1);
     assert_eq!(super::effectcraft_preview_worker_threads(Some(1), false), 2);
     assert_eq!(super::effectcraft_preview_worker_threads(Some(8), false), 8);
     assert_eq!(super::effectcraft_preview_worker_threads(Some(32), false), 16);
 
-    assert_eq!(super::effectcraft_preview_gpu_budget(true), 256 << 20);
+    assert_eq!(super::effectcraft_preview_gpu_budget(true), 128 << 20);
     assert_eq!(super::effectcraft_preview_gpu_budget(false), 1 << 30);
 }
 """
@@ -119,9 +122,9 @@ fn android_aep_playback_resource_guard_is_tested() {
     if tests_marker not in final_tests:
         raise SystemExit("Android preview scheduling regression test is missing.")
 
-    print("Android preview worker pool: maximum 2 frame workers; desktop remains 2..16.")
-    print("Android GPU preview frame cache: 256 MiB; desktop remains 1 GiB.")
-    print("Android playback prefetch: maximum 2 workers (up to four requested future frames).")
+    print("Android preview worker pool: maximum 1 frame worker; desktop remains 2..16.")
+    print("Android GPU preview frame cache: 128 MiB; desktop remains 1 GiB.")
+    print("Android playback prefetch: maximum 1 worker (at most one requested future frame).")
     print("Added regression tests; no application-wide RAM cap, export FPS cap, or desktop scheduling change.")
 
 
