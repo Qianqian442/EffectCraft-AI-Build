@@ -423,6 +423,46 @@ fn am_apply_effect_from_browser(app: &mut EffectcraftApp, ctx: &egui::Context, e
     }
 }
 
+fn am_effect_description(spec: &effectcraft_engine::effects::EffectSpec) -> &'static str {
+    let name = spec.name.to_ascii_lowercase();
+    let category = spec.category.to_ascii_lowercase();
+    if name.contains("squeeze") {
+        "沿一个轴挤压图层，同时沿另一个轴展开图层，以使图层变形。"
+    } else if name.contains("curl") {
+        "将图层边缘卷起，模拟纸张或图像卷曲的视觉效果。"
+    } else if name.contains("bend") {
+        "沿指定方向弯曲图层，可调整弯曲方向、中心与幅度。"
+    } else if name.contains("fractal warp") {
+        "使用分形噪声扭曲图像，制作自然、有机的流动变形。"
+    } else if name.contains("circular ripple") {
+        "从中心向外扩散环形波纹，模拟水面受到扰动的效果。"
+    } else if name.contains("turbulent") || name.contains("displace") {
+        "根据噪声或位移图改变像素位置，产生起伏、扭曲和流动效果。"
+    } else if category.contains("blur") {
+        "柔化画面细节或控制清晰度，可用于景深、柔焦和运动模糊效果。"
+    } else if category.contains("distort") || category.contains("warp") {
+        "改变图层中像素的位置与形状，用于弯曲、扭曲和透视变形。"
+    } else if category.contains("color") || category.contains("colour") {
+        "调整画面的颜色、明暗、饱和度或色调，改善或改变整体色彩表现。"
+    } else if category.contains("keying") || category.contains("matte") {
+        "根据颜色、亮度或遮罩信息分离前景与背景，控制图层透明区域。"
+    } else if category.contains("generate") {
+        "在图层上生成图案、纹理或图形内容，可作为画面素材使用。"
+    } else if category.contains("audio") {
+        "处理音频信号，可用于调整声音特征或制作声音效果。"
+    } else if category.contains("time") {
+        "改变素材的时间表现，用于速度、时间采样或时间相关效果。"
+    } else if category.contains("transition") {
+        "控制画面从当前状态过渡到另一状态，可配合关键帧调整变化过程。"
+    } else if category.contains("noise") {
+        "添加或控制颗粒与噪声纹理，用于质感、干扰或画面风格处理。"
+    } else if category.contains("perspective") || category.contains("3d") {
+        "调整图层的空间、透视或立体表现，制作视角与深度变化。"
+    } else {
+        "用于该类别的图像处理。添加后可在效果参数面板中查看各项控制，并通过关键帧制作动态变化。"
+    }
+}
+
 fn am_effect_detail_sheet(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect, effect_id: &str) {
     let Some(spec) = effectcraft_engine::effects::find(effect_id) else {
         ui.ctx().data_mut(|d| d.remove::<String>(Id::new(AM_EFFECT_DETAIL_ID)));
@@ -465,7 +505,7 @@ fn am_effect_detail_sheet(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rec
     p.text(
         pos2(sheet.min.x + 18.0, preview.max.y + 13.0),
         Align2::LEFT_TOP,
-        "添加后可在效果参数面板中调节数值、设置关键帧并编辑曲线。",
+        am_effect_description(spec),
         Tokens::ui(10.5),
         t.text,
     );
