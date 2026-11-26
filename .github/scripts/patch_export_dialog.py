@@ -1,4 +1,5 @@
 from pathlib import Path
+# [reuse-runtime-artifacts] Keep verified Box64/Box86/FEXCore/QEMU runtime artifacts for APK rebuilds.
 import os
 import re
 
