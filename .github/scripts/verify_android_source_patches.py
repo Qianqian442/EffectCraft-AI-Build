@@ -632,9 +632,19 @@ def verify_am_workspace_and_android_integrity(root: Path) -> None:
     for token in ("EFFECTCRAFT_ANDROID_CHINESE_EFFECT_PARAMETER_LABELS_V1", "localized_effect_parameter_label", "let shown_name = localized_effect_parameter_label(&prop.name);"):
         if token not in effect_rows:
             raise SystemExit(f"AM effect parameter labels are not fully localized: {token}")
-    for token in ("fn draw_timeline", "am-mobile-trim", "layer.timing", "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1"):
+    for token in (
+        "fn draw_timeline",
+        "am-mobile-trim",
+        "layer.timing",
+        "EFFECTCRAFT_AM_INDEPENDENT_EDITOR_SURFACE_V1",
+        "EFFECTCRAFT_AM_TIMELINE_HORIZ_SCROLL_V3",
+        "AM_TIMELINE_DEFAULT_SPAN_SECS",
+        "visible_secs: f64",
+        "layer.out_point.seconds()",
+        'Id::new("am-independent-timeline-pan")',
+    ):
         if token not in am_editor_source:
-            raise SystemExit(f"AM's independent timeline is missing its own clip-edge editing support: {token}")
+            raise SystemExit(f"AM's independent timeline scroll/clip support is missing: {token}")
     if "EFFECTCRAFT_ANDROID_AM_TOUCH_TRIM_HANDLES_V1" in timeline:
         raise SystemExit("AM patch must not alter the shared Ae Timeline hit targets.")
     frame = (root / "crates/ui-egui/src/app/frame.rs").read_text(encoding="utf-8")
