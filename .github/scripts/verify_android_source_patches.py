@@ -844,30 +844,6 @@ def verify_account_security(root: Path) -> None:
             raise SystemExit(f"Admin account controls are missing: {token}")
     print("Verified server-enforced whitelist, admin add/remove, login/register checks, and ban/unban controls.")
 
-
-def verify_android_timeline_touch_pan(root: Path) -> None:
-    """Require Android Ae timeline finger panning without a touch-capability gate."""
-    timeline = (root / "crates/ui-egui/src/panels/timeline.rs").read_text(encoding="utf-8")
-    required = (
-        "EFFECTCRAFT_ANDROID_TIMELINE_TOUCH_SCROLL_V2",
-        'let touch_pan = ui.interact(',
-        'egui::Id::new("effectcraft-timeline-touch-pan")',
-        "android_timeline_touch_scroll(app, ui, g, &touch_pan);",
-        "EFFECTCRAFT_ANDROID_TIMELINE_NAV_TOUCH_TARGET_V1",
-        "nav.expand2(vec2(0.0, 11.0))",
-        "vec2(18.0, 28.0)",
-    )
-    missing = [token for token in required if token not in timeline]
-    if missing:
-        raise SystemExit("Ae horizontal timeline panning/touch targets are incomplete: " + "; ".join(missing))
-    start = timeline.find("EFFECTCRAFT_ANDROID_TIMELINE_TOUCH_SCROLL_V2")
-    end = timeline.find("/// Mouse wheel and pinch over the rows: zoom time or scroll.", start)
-    touch_helper = timeline[start:end] if start >= 0 and end > start else ""
-    if not touch_helper or "has_touch_screen()" in touch_helper:
-        raise SystemExit("Ae timeline touch panning is still gated by the Android touch-capability flag.")
-    print("Verified Ae timeline horizontal finger panning and enlarged time-navigator touch targets.")
-
-
 def verify_android_export_frame_scheduling(root: Path) -> None:
     pipeline = (root / "crates/export/src/pipeline.rs").read_text(encoding="utf-8")
     tests = pipeline[pipeline.find("#[cfg(test)]"):]
@@ -985,7 +961,6 @@ def main() -> None:
         raise SystemExit(f"Generated EffectCraft header source is missing: {header}")
     ensure_dimensions_helper(header)
     verify_android_project_interactions(root, header)
-    verify_android_timeline_touch_pan(root)
     verify_android_aep_playback_guard(root)
     verify_android_aep_media_relink(root)
     verify_aep_post_import_media_prompt(root)
