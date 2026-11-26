@@ -332,7 +332,7 @@ fn register_imported_fonts(base: &str) -> HashMap<String, String> {
 }
 
 // EFFECTCRAFT_AM_IMPORT_RECURSIVE_MEDIA_RESOLVE_V1
-fn media_file(base: &str, stored: &str) -> Option<String> {
+pub(crate) fn media_file(base: &str, stored: &str) -> Option<String> {
     // Project files often contain Windows absolute paths while their ZIP packages
     // store media in nested folders. Normalize both slash styles before searching.
     let basename = stored.rsplit(['/', '\\']).find(|part| !part.is_empty())?;
