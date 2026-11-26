@@ -232,12 +232,24 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("Duplicate five-format project buttons remain in the Project panel.")
     if "EFFECTCRAFT_ANDROID_PROJECT_HEADER_IMPORT_V7" not in project or '"project.importMedia"' not in project:
         raise SystemExit("The Project panel must retain its media import shortcut.")
+    selected_media_comp = (
+        "EFFECTCRAFT_ANDROID_NEW_COMP_FROM_SELECTED_MEDIA_V1",
+        '"project.newCompFromSelectedMedia"',
+        '"file.newCompFromSelection"',
+        'json!({"single": true, "fitToComp": true})',
+    )
+    missing_selected_media_comp = [token for token in selected_media_comp if token not in project]
+    if missing_selected_media_comp:
+        raise SystemExit(
+            "Direct New Composition from selected Project media is missing or may open a picker: "
+            + "; ".join(missing_selected_media_comp)
+        )
     if '"project.importProject"' in project or "导入工程" in project:
         raise SystemExit("Project import must stay in File > Import, not the Project panel.")
     for label in ("导入电脑版Ae工程", "导入手机版Ae工程", "导入am工程", "导入NV工程", "导入capcut工程"):
         if label in project:
             raise SystemExit(f"Project import label {label} must stay in File > Import.")
-    print("Verified the Project panel keeps media import only; project formats stay in File > Import.")
+    print("Verified Project panel media import and direct New Composition from selected media without a file picker; project formats stay in File > Import.")
 
     frontend = (root / "crates/ui-egui/src/menus/frontend.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_PICTURE_VIDEO_PICKER_V2" not in frontend:
