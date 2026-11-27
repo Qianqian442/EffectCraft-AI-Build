@@ -1343,7 +1343,7 @@ jobs:
           import sys
           import zlib
 
-          encoded = pathlib.Path(".github/scripts/add_effect_compatibility.py.gz.b64").read_bytes()
+          encoded = pathlib.Path("build-assets/.github/scripts/add_effect_compatibility.py.gz.b64").read_bytes()
           try:
               compressed = base64.b64decode(encoded, validate=True)
           except Exception as exc:
