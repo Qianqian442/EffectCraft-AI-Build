@@ -605,6 +605,10 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("Android-shared project files do not have an automatic format router.")
     if "EFFECTCRAFT_ANDROID_AUTO_IMPORT_EXTERNAL_PROJECT_V1" not in incoming_frontend:
         raise SystemExit("Incoming projects are not passed through the normal File > Import preflight path.")
+    if "EFFECTCRAFT_ANDROID_IMPORT_MISSING_MEDIA_RELINK_PROMPT_V1" not in incoming_frontend:
+        raise SystemExit("Imported AM/NV/CapCut/Ae-native projects do not display an actionable missing-media relink prompt.")
+    if "文件 > 依赖项 > 重新链接缺失素材" not in incoming_frontend or 'result.get("missingMedia")' not in incoming_frontend:
+        raise SystemExit("The missing-media prompt must show unresolved item counts/examples and the existing relink command.")
     # ZIP/RAR files are extracted before inspecting the contained project extension.
     # Do not require the obsolete behavior that routed every ZIP directly to NodeVideo.
     for token in (
