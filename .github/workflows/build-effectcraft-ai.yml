@@ -69,6 +69,7 @@ on:
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/add_ae_dual_project_import.py'
       - '.github/scripts/add_effect_compatibility.py.gz.b64'
+      - '.github/scripts/fix_effect_compatibility_dialog.py'
       - '.github/scripts/resolve_native_project_package_media.py'
       - '.github/scripts/add_five_project_import_buttons.py'
       - '.github/scripts/am_nv.rs'
@@ -1337,6 +1338,13 @@ jobs:
           base64 -d .github/scripts/add_effect_compatibility.py.gz.b64 | gzip -dc > /tmp/add_effect_compatibility.py
           python3 -m py_compile /tmp/add_effect_compatibility.py
           python3 /tmp/add_effect_compatibility.py
+
+      - name: Verify automatic-effect replacement dialog cancellation
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/fix_effect_compatibility_dialog.py
+          python3 build-assets/.github/scripts/fix_effect_compatibility_dialog.py
 
       - name: Resolve all media packaged with native Ae projects
         env:
