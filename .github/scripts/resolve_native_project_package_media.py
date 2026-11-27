@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Resolve packaged native-project footage recursively before reporting missing media."""
+"""Resolve project footage against the complete extracted package root before reporting missing media."""
 from __future__ import annotations
 
 import os
@@ -26,20 +26,24 @@ OLD = """fn resolve_footage(s: &Session, project: &mut Project, path: &str) -> V
     missing
 }"""
 
-NEW = """// EFFECTCRAFT_ANDROID_NATIVE_PROJECT_PACKAGE_MEDIA_V1
-fn resolve_footage(s: &Session, project: &mut Project, path: &str) -> Vec<String> {
+NEW = """// EFFECTCRAFT_ANDROID_NATIVE_PROJECT_PACKAGE_MEDIA_V2
+fn package_media_root(path: &str, requested: Option<&str>) -> String {
+    requested.filter(|value| !value.trim().is_empty()).map(str::to_string)
+        .unwrap_or_else(|| std::path::Path::new(path).parent()
+            .map(|parent| parent.to_string_lossy().to_string()).unwrap_or_default())
+}
+
+fn resolve_footage(s: &Session, project: &mut Project, path: &str, requested_root: Option<&str>) -> Vec<String> {
     let stored: std::collections::HashMap<ItemId, String> =
         project.items.values().filter_map(|i| if let ItemKind::Footage(f) = &i.kind { Some((i.id, f.path.clone())) } else { None }).collect();
     let _refused = crate::doc_path::resolve_footage(project, Some(path));
     let services = s.services.clone();
     let exists = |p: &String| p.is_empty() || services.exists(p);
-    let package_root = std::path::Path::new(path).parent()
-        .map(|parent| parent.to_string_lossy().to_string()).unwrap_or_default();
+    // A project file can be nested under /project or /draft while its media lives
+    // in /Media at the archive root. Never assume these two directories are identical.
+    let package_root = package_media_root(path, requested_root);
     let mut missing = Vec::new();
 
-    // Project ZIP extraction preserves the complete directory tree. Search that tree
-    // recursively for missing media, including nested footage, audio and image-sequence
-    // folders. The shared resolver accepts only unique case-insensitive filename matches.
     for (id, item) in project.items.iter_mut() {
         if let ItemKind::Footage(f) = &mut item.kind {
             if f.sequence.is_empty() {
@@ -74,14 +78,44 @@ def main() -> None:
     root = Path(os.environ["EFFECTCRAFT_DIR"]).resolve()
     target = root / "crates/engine/src/cmd/import_project.rs"
     source = target.read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_NATIVE_PROJECT_PACKAGE_MEDIA_V1" in source:
-        print("Native project package media resolution already installed.")
-        return
-    if source.count(OLD) != 1:
-        raise SystemExit("Could not locate the exact native project footage resolver.")
-    source = source.replace(OLD, NEW, 1)
+    if "EFFECTCRAFT_ANDROID_NATIVE_PROJECT_PACKAGE_MEDIA_V2" not in source:
+        if source.count(OLD) != 1:
+            raise SystemExit("Could not locate the exact native project footage resolver.")
+        source = source.replace(OLD, NEW, 1)
+
+    call_old = "    let missing = resolve_footage(s, &mut sub, &path);"
+    call_new = """    let package_root = str_p(p, "packageRoot");
+    let missing = resolve_footage(s, &mut sub, &path, package_root);"""
+    if call_new not in source:
+        if source.count(call_old) != 1:
+            raise SystemExit("Could not locate the unified native-project media resolver call.")
+        source = source.replace(call_old, call_new, 1)
+
+    tests = """
+#[cfg(test)]
+mod package_media_root_tests {
+    use super::package_media_root;
+
+    #[test]
+    fn nested_project_uses_the_archive_root_for_media_recovery() {
+        let root = package_media_root(
+            "/app/Imported-Projects/demo/project/Main.ecproj",
+            Some("/app/Imported-Projects/demo"),
+        );
+        assert_eq!(root, "/app/Imported-Projects/demo");
+    }
+
+    #[test]
+    fn standalone_project_defaults_to_its_parent_folder() {
+        let root = package_media_root("/storage/ae/Main.ecproj", None);
+        assert_eq!(root, "/storage/ae");
+    }
+}
+"""
+    if "mod package_media_root_tests" not in source:
+        source = source.rstrip() + "\n\n" + tests
     target.write_text(source, encoding="utf-8")
-    print("Native project import now searches extracted package folders for unique media matches.")
+    print("Native project imports now search the explicit archive root, including assets outside nested project folders.")
 
 if __name__ == "__main__":
     main()
