@@ -432,31 +432,33 @@ fn needs_prompt(report: &Value) -> bool {
         function_source = frontend_text[fn_start:fn_end]
         import re
         execute_pattern = re.compile(
-            r'(?m)^(?P<indent>\\s*)let\\s+r\\s*=\\s*'
-            r'app\\.session\\.execute\\(\\s*id\\s*,\\s*Value::Object\\(p\\)\\s*\\)\\.map_err\\([^;]+;\\s*$'
+            r'(?m)^(?P<indent>\s*)let\s+r\s*=\s*'
+            r'app\.session\.execute\(\s*id\s*,\s*Value::Object\(p\)\s*\)\.map_err\([^;]+;\s*$'
         )
         match = execute_pattern.search(function_source)
         if not match:
             excerpt = function_source[-1800:]
-            raise SystemExit("Could not locate the import execution statement inside run_with_picked().\\n" + excerpt)
+            raise SystemExit("Could not locate the import execution statement inside run_with_picked().\n" + excerpt)
         indent = match.group("indent")
-        prompt = f\'''\n{indent}// EFFECTCRAFT_ANDROID_IMPORT_MISSING_MEDIA_RELINK_PROMPT_V1
-{indent}if let Ok(result) = &r {{
-{indent}    if let Some(items) = result.get("missingMedia")
-{indent}        .or_else(|| result.get("missingFootage"))
-{indent}        .and_then(Value::as_array)
-{indent}        .filter(|items| !items.is_empty())
-{indent}    {{
-{indent}        let examples = items.iter().take(5).map(|item| {{
-{indent}            item.as_str().map(str::to_string).unwrap_or_else(|| item.to_string())
-{indent}        }}).collect::<Vec<_>>().join("、");
-{indent}        app.ui.status = format!(
-{indent}            "工程已导入，但有 {{}} 项素材未自动找到。请打开“文件 > 依赖项 > 重新链接缺失素材”，选择包含原素材的文件夹。未找到示例：{{}}",
-{indent}            items.len(), examples
-{indent}        );
-{indent}    }}
-{indent}}}
-\'''
+        prompt_lines = [
+            f"{indent}// EFFECTCRAFT_ANDROID_IMPORT_MISSING_MEDIA_RELINK_PROMPT_V1",
+            f"{indent}if let Ok(result) = &r {{",
+            f"{indent}    if let Some(items) = result.get(\"missingMedia\")",
+            f"{indent}        .or_else(|| result.get(\"missingFootage\"))",
+            f"{indent}        .and_then(Value::as_array)",
+            f"{indent}        .filter(|items| !items.is_empty())",
+            f"{indent}    {{",
+            f"{indent}        let examples = items.iter().take(5).map(|item| {{",
+            f"{indent}            item.as_str().map(str::to_string).unwrap_or_else(|| item.to_string())",
+            f"{indent}        }}).collect::<Vec<_>>().join(\"、\");",
+            f"{indent}        app.ui.status = format!(",
+            f"{indent}            \"工程已导入，但有 {{}} 项素材未自动找到。请打开“文件 > 依赖项 > 重新链接缺失素材”，选择包含原素材的文件夹。未找到示例：{{}}\",",
+            f"{indent}            items.len(), examples",
+            f"{indent}        );",
+            f"{indent}    }}",
+            f"{indent}}}",
+        ]
+        prompt = "\n" + "\n".join(prompt_lines) + "\n"
         insert_at = fn_start + match.end()
         frontend_text = frontend_text[:insert_at] + prompt + frontend_text[insert_at:]
         frontend.write_text(frontend_text, encoding="utf-8")
