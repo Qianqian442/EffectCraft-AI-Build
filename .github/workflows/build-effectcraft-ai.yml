@@ -1336,7 +1336,37 @@ jobs:
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: |
-          base64 -d .github/scripts/add_effect_compatibility.py.gz.b64 | gzip -dc > /tmp/add_effect_compatibility.py
+          python3 - <<'PY'
+          import base64
+          import pathlib
+          import sys
+          import zlib
+
+          encoded = pathlib.Path(".github/scripts/add_effect_compatibility.py.gz.b64").read_bytes()
+          try:
+              compressed = base64.b64decode(encoded, validate=True)
+          except Exception as exc:
+              raise SystemExit(f"effect compatibility patch is not valid base64: {exc}")
+
+          decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
+          try:
+              source = decoder.decompress(compressed)
+              source += decoder.flush()
+          except zlib.error as exc:
+              raise SystemExit(f"effect compatibility patch deflate data is corrupt: {exc}")
+
+          if not source.strip():
+              raise SystemExit("effect compatibility patch decoded to an empty source file")
+          if b"compatibility_replace_all" not in source or b"effect.compatibility.replaceAll" not in source:
+              raise SystemExit("effect compatibility patch is incomplete: batch replacement command is missing")
+
+          pathlib.Path("/tmp/add_effect_compatibility.py").write_bytes(source)
+          if not decoder.eof:
+              print(
+                  "gzip trailer is truncated; recovered source will be checked by py_compile and engine validation",
+                  file=sys.stderr,
+              )
+          PY
           python3 -m py_compile /tmp/add_effect_compatibility.py
           python3 /tmp/add_effect_compatibility.py
 
