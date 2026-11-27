@@ -409,14 +409,16 @@ if yuv_new not in s:
 pipeline_file.write_text(s)
 
 # Fail the export and remove its partial file if the local inference process/model fails.
+# The current upstream export_async implementation cleans all failed exports with
+# if r.is_err(); do not couple this AI hook to the older Cancelled-only branch.
 export_lib = root / "crates/export/src/lib.rs"
 s = export_lib.read_text()
-old = """    let mut r = export_with(&cx, progress, t0).await;
-    drop(render);
-    if matches!(r, Err(ExportError::Cancelled)) {"""
-new = """    // EFFECTCRAFT_AI_EXPORT_FAIL_FAST_V1
-    // Check the AI worker error at every real progress checkpoint. Android AI batches
-    // are one frame, so a failed model does not continue rendering a whole movie.
+marker = "EFFECTCRAFT_AI_EXPORT_FAIL_FAST_V2"
+anchor = """    let mut r = export_with(&cx, progress, t0).await;
+    drop(render);"""
+replacement = """    // EFFECTCRAFT_AI_EXPORT_FAIL_FAST_V2
+    // Transfer worker/model errors through the export's real progress callback.
+    // Android AI export batches are one frame, so stop at the next checkpoint.
     let mut ai_error: Option<String> = None;
     let mut ai_aware_progress = |state: &Progress| {
         if let Some(error) = cx.take_ai_error() {
@@ -431,29 +433,18 @@ new = """    // EFFECTCRAFT_AI_EXPORT_FAIL_FAST_V1
     drop(render);
     if let Some(error) = ai_error {
         let cleanup = cx.remove_cancelled_outputs();
-        let detail = cleanup.err().map(|e| format!("{error}; additionally, {e}")).unwrap_or(error);
+        let detail = cleanup.err()
+            .map(|e| format!("{error}; additionally, {e}"))
+            .unwrap_or(error);
         return Err(ExportError::Encode(format!("本地视频 AI 处理失败：{detail}")));
-    }
-    if matches!(r, Err(ExportError::Cancelled)) {"""
-if new not in s:
-    if old in s:
-        s = s.replace(old, new, 1)
-    else:
-        # Match the export_async progress callback structurally. This tolerates
-        # whitespace and wrapper changes introduced by Android export scripts.
-        import re
-        pattern = re.compile(
-            r"(?m)^(?P<indent>[ \t]*)let\s+mut\s+r\s*=\s*"
-            r"export_with\(\s*&cx\s*,\s*progress\s*,\s*t0\s*\)\.await;\s*\n"
-            r"(?P=indent)drop\(render\);\s*\n"
-            r"(?P=indent)if\s+matches!\(r,\s*Err\(ExportError::Cancelled\)\)\s*\{"
-        )
-        match = pattern.search(s)
-        if not match:
-            start = s.find("pub async fn export_async")
-            excerpt = s[start:start + 1800] if start >= 0 else s[:1800]
-            raise SystemExit("Could not locate export_async progress callback. Actual source excerpt:\\n" + excerpt)
-        s = s[:match.start()] + new + s[match.end():]
+    }"""
+if marker not in s:
+    count=s.count(anchor)
+    if count != 1:
+        start=s.find("pub async fn export_async")
+        excerpt=s[start:start+1800] if start>=0 else s[:1800]
+        raise SystemExit(f"Expected one export_async call/drop anchor, found {count}. Actual source:\n{excerpt}")
+    s=s.replace(anchor,replacement,1)
 export_lib.write_text(s)
 
 # Patch the centered export dialog created by patch_export_dialog.py.
