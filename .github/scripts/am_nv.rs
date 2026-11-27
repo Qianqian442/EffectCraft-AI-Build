@@ -337,7 +337,7 @@ pub(crate) fn media_file(base: &str, stored: &str) -> Option<String> {
     // store media in nested folders. Normalize both slash styles before searching.
     let basename = stored.rsplit(['/', '\\']).find(|part| !part.is_empty())?;
     let base_path = Path::new(base);
-    let normalized_stored = stored.replace('\\\\', "/");
+    let normalized_stored = stored.replace('\\', "/");
     // Prefer the exact archive-relative path before falling back to basename matching.
     // This preserves the correct file even when another folder contains a duplicate name.
     let relative = Path::new(&normalized_stored);
