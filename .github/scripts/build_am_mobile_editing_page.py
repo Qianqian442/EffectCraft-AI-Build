@@ -829,6 +829,8 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
     }
 
+    // EFFECTCRAFT_AM_TIMELINE_SWIPE_PRIORITY_V2
+    // Track swipes take priority over clip-body movement; clip taps still select.
     // EFFECTCRAFT_AM_TIMELINE_AXIS_GESTURE_V1
     // Capture the whole timeline content before drawing row controls. Later clip/trim/name
     // widgets take priority; blank space remains a reliable finger-pan surface.
@@ -1071,9 +1073,12 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             ));
         }
 
-        // Body movement: a horizontal drag moves the whole selected layer group together.
-        let body_resp = ui.interact(bar, Id::new(("am-mobile-clip", layer.id.0)), Sense::click_and_drag());
-        app.auto.add_response(&format!("am.timeline.clip.{}", layer.id.0), &body_resp, "拖动片段移动图层");
+        // A normal horizontal finger swipe on a clip must pan the AM timeline,
+        // not silently move the clip. Clip selection is a tap; precise clip timing
+        // remains available from the layer actions and edge trim handles.
+        // The track-background drag recognizer above owns swipe gestures.
+        let body_resp = ui.interact(bar, Id::new(("am-mobile-clip", layer.id.0)), Sense::click());
+        app.auto.add_response(&format!("am.timeline.clip.{}", layer.id.0), &body_resp, "点按选择片段；滑动平移时间轴");
         if body_resp.clicked() {
             if am_multi_select_enabled(ui.ctx()) {
                 am_toggle_multi_selected(app, ui.ctx(), layer.id.0);
@@ -1081,32 +1086,6 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
                 select_layer(app, layer.id.0);
                 am_open_layer_actions(ui.ctx(), layer.id.0);
             }
-        }
-        let move_id = Id::new(("am-mobile-move-state", layer.id.0));
-        if body_resp.drag_started() {
-            if !app.session.state.selected_layers.contains(&layer.id) {
-                select_layer(app, layer.id.0);
-            }
-            if let Some(pt) = body_resp.interact_pointer_pos() {
-                let ids = layer_ids_for_drag(app, layer.id.0);
-                ui.ctx().data_mut(|d| d.insert_temp(move_id, (pt.x, ids)));
-            }
-        }
-        if body_resp.dragged()
-            && let (Some(pt), Some((last_x, ids))) = (
-                body_resp.interact_pointer_pos(),
-                ui.ctx().data(|d| d.get_temp::<(f32, Vec<u64>)>(move_id)),
-            )
-        {
-            let delta = (pt.x - last_x) as f64 / pps;
-            if delta.abs() > 0.00001 {
-                apply_timing(app, &ids, "delta", delta);
-                ui.ctx().data_mut(|d| d.insert_temp(move_id, (pt.x, ids)));
-            }
-        }
-        if body_resp.drag_stopped() {
-            ui.ctx().data_mut(|d| d.remove::<(f32, Vec<u64>)>(move_id));
-            app.session.history.merge_key = None;
         }
 
         // Separate, finger-sized In / Out handles; these edit the clip edges, not a
