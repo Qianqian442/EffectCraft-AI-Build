@@ -414,6 +414,43 @@ fn needs_prompt(report: &Value) -> bool {
             raise SystemExit("Cannot add the AE import prompt predicate: category helper anchor is missing.")
         losses.write_text(losses_source.replace(anchor, helper + anchor, 1), encoding="utf-8")
 
+    # Make unresolved media from every non-AEP project importer visible in the same
+    # File > Import pathway. The command returns missingMedia for native Ae, AM, NV and
+    # CapCut packages; tell the user exactly where to invoke the existing folder relinker.
+    frontend_text = frontend.read_text(encoding="utf-8")
+    media_prompt_marker = "EFFECTCRAFT_ANDROID_IMPORT_MISSING_MEDIA_RELINK_PROMPT_V1"
+    media_prompt_anchor = """    let r = app.session.execute(id, Value::Object(p)).map_err(|e| e.to_string());
+    if let Err(e) = &r {
+        app.ui.status = e.clone();
+    }
+    r"""
+    media_prompt_replacement = """    // EFFECTCRAFT_ANDROID_IMPORT_MISSING_MEDIA_RELINK_PROMPT_V1
+    let r = app.session.execute(id, Value::Object(p)).map_err(|e| e.to_string());
+    match &r {
+        Err(error) => app.ui.status = error.clone(),
+        Ok(result) => {
+            if let Some(items) = result.get("missingMedia")
+                .or_else(|| result.get("missingFootage"))
+                .and_then(Value::as_array)
+                .filter(|items| !items.is_empty())
+            {
+                let examples = items.iter().take(5).map(|item| {
+                    item.as_str().map(str::to_string).unwrap_or_else(|| item.to_string())
+                }).collect::<Vec<_>>().join("、");
+                app.ui.status = format!(
+                    "工程已导入，但有 {} 项素材未自动找到。请打开“文件 > 依赖项 > 重新链接缺失素材”，选择包含原素材的文件夹。未找到示例：{}",
+                    items.len(), examples
+                );
+            }
+        }
+    }
+    r"""
+    if media_prompt_marker not in frontend_text:
+        if frontend_text.count(media_prompt_anchor) != 1:
+            raise SystemExit("Could not uniquely locate File > Import result handling for the missing-media prompt.")
+        frontend_text = frontend_text.replace(media_prompt_anchor, media_prompt_replacement, 1)
+        frontend.write_text(frontend_text, encoding="utf-8")
+
     aep_now = aep.read_text(encoding="utf-8")
     am_nv_now = am_nv.read_text(encoding="utf-8")
     frontend_now = frontend.read_text(encoding="utf-8")
