@@ -199,6 +199,27 @@ pub(crate) fn encode_beside_for_platform(android: bool) -> bool {
             raise SystemExit(f"Android export frame scheduling is incomplete: {token}")
 
     path.write_text(source, encoding="utf-8")
+
+    # A failed encoder/render must not leave a truncated MP4 that looks like a successful export.
+    # The export context tracks only files created by this job, so remove those on every error.
+    export_lib_path = root / "crates/export/src/lib.rs"
+    export_lib = export_lib_path.read_text(encoding="utf-8")
+    old_failure_cleanup = """    if matches!(r, Err(ExportError::Cancelled)) {
+        cx.remove_cancelled_outputs()?;
+        return r;
+    }"""
+    new_failure_cleanup = """    if r.is_err() {
+        // Cancellation and render/encode failures all remove only this job's partial outputs.
+        cx.remove_cancelled_outputs()?;
+        return r;
+    }"""
+    if new_failure_cleanup not in export_lib:
+        export_lib = replace_once(export_lib, old_failure_cleanup, new_failure_cleanup,
+                                  "Clean partial video files after any render/encoder failure")
+        export_lib_path.write_text(export_lib, encoding="utf-8")
+    if "if r.is_err() {" not in export_lib or "cx.remove_cancelled_outputs()?;" not in export_lib:
+        raise SystemExit("Failed export output cleanup is incomplete.")
+    print("Failed or cancelled exports remove their incomplete output files.");
     print("Android export defaults to one output frame in flight; explicit valid CPU_INFLIGHT values remain effective.")
     print("Android movie rendering and encoding run sequentially to reduce peak frame-buffer memory.")
     print("Desktop export is unchanged. Output resolution, frame rate, codec and total app memory policy are unchanged.")
