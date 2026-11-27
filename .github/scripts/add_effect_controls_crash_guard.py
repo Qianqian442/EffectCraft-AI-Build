@@ -52,6 +52,62 @@ def main() -> None:
     else:
         print("Effect Controls panel crash guard is already installed.")
 
+    # Parameter scrubbing bug: egui Response::drag_delta is cumulative from drag start.
+    # Adding that cumulative value to the already-updated project value every frame causes
+    # repeated overshoot and a burst of expensive preview refreshes on long touch drags.
+    widgets_path = root / "crates/ui-egui/src/widgets.rs"
+    widgets = widgets_path.read_text(encoding="utf-8")
+    scrub_marker = "EFFECTCRAFT_POINTER_DELTA_SCRUB_V1"
+    old_scrub = """    if resp.dragged() {
+        let dx = resp.drag_delta().x as f64;
+        let mult = ui.input(|i| {
+            if i.modifiers.shift {
+                10.0
+            } else if i.modifiers.command && !proportional_scrub(i.modifiers) {
+                0.1
+            } else {
+                1.0
+            }
+        });
+        let nv = (value + dx * speed * mult).clamp(range.0, range.1);
+        if (nv - value).abs() > f64::EPSILON {
+            out = Some(nv);
+        }
+    }"""
+    new_scrub = """    if resp.dragged() {
+        // EFFECTCRAFT_POINTER_DELTA_SCRUB_V1: use only this frame's motion, not the
+        // cumulative distance since drag start. This keeps repeated touch updates linear.
+        let dx = ui.input(|i| i.pointer.delta().x as f64);
+        let mult = ui.input(|i| {
+            if i.modifiers.shift {
+                10.0
+            } else if i.modifiers.command && !proportional_scrub(i.modifiers) {
+                0.1
+            } else {
+                1.0
+            }
+        });
+        let valid_range = range.0.is_finite() && range.1.is_finite() && range.0 <= range.1;
+        let delta = dx * speed * mult;
+        let candidate = value + delta;
+        if valid_range && dx.is_finite() && speed.is_finite() && value.is_finite()
+            && delta.is_finite() && candidate.is_finite()
+        {
+            let nv = candidate.clamp(range.0, range.1);
+            if (nv - value).abs() > f64::EPSILON {
+                out = Some(nv);
+            }
+        }
+    }"""
+    if scrub_marker not in widgets:
+        widgets = replace_once(widgets, old_scrub, new_scrub, "parameter drag delta and finite-value guard")
+        widgets_path.write_text(widgets, encoding="utf-8")
+        print("Fixed cumulative parameter scrub deltas and rejected non-finite parameter updates.")
+    elif "let dx = ui.input(|i| i.pointer.delta().x as f64);" not in widgets:
+        raise SystemExit("Parameter scrub marker exists but its incremental pointer-delta implementation is missing.")
+    else:
+        print("Incremental parameter scrub handling is already installed.")
+
     # The viewer also has an independent frame-level panic guard that retries on CPU.
     # Verify it remains present so effect renderer failures do not unwind through the UI.
     frames_path = root / "crates/ui-egui/src/frames.rs"
