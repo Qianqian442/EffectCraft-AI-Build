@@ -229,7 +229,7 @@ mod android_ai_export_checkpoint_tests {
     new_gate = """    if "effectcraft_android_video_staging_path" in quick_export:
         raise SystemExit("Quick video export must not use the obsolete staging-path override.")
     required_output_route = (
-        'app.hooks.save_dialog(&default_output)',
+        'crate::android_gallery::staging_path(&default_output)',
         '"renderQueue.setOutput"',
         'json!({"item": item_id, "path": output_path})',
         '"renderQueue.render"',
