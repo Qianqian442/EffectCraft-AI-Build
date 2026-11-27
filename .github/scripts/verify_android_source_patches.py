@@ -377,8 +377,10 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("The mobile-Ae ZIP importer does not inspect archive entries for .ecproj/.ecprojx.")
     if '"file.importAepMobilePackage" => ("path", Ask::Open(&["ecproj", "ecprojx", "zip"]))' not in aep_picker:
         raise SystemExit("The mobile-Ae picker must accept native .ecproj/.ecprojx files and ZIP packages.")
-    if 'super::import_project::import_project(s, &json!({"path": actual}))' not in mobile_importer:
-        raise SystemExit("The self-owned project is not routed to the native project reader.")
+    if '"packageRoot": package_root' not in mobile_importer:
+        raise SystemExit("The mobile project import does not preserve the extracted archive root for footage recovery.")
+    if 'super::import_project::import_project(s, &json!({"path": actual, "packageRoot": package_root}))' not in mobile_importer:
+        raise SystemExit("The self-owned ZIP project is not routed to the native project reader with its package root.")
     for command in ("file.importAepMobilePackage", "file.importAlightMotionProject", "file.importNodeVideoProject", "file.importCapCutProject"):
         if f'"{command}"' not in mobile_importer:
             raise SystemExit(f"Missing format-specific importer command: {command}")
@@ -641,8 +643,25 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
             raise SystemExit("AM/NV/CapCut/mobile project package media recovery is incomplete: " + token)
 
     native_import = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
-    if "EFFECTCRAFT_ANDROID_NATIVE_PROJECT_PACKAGE_MEDIA_V1" not in native_import:
-        raise SystemExit("Ae-native mobile project ZIP import does not resolve packaged footage.")
+    if "EFFECTCRAFT_ANDROID_NATIVE_PROJECT_PACKAGE_MEDIA_V2" not in native_import:
+        raise SystemExit("Ae-native mobile project ZIP import does not resolve packaged footage from the archive root.")
+    for token in (
+        "fn package_media_root(path: &str, requested: Option<&str>) -> String",
+        'let package_root = str_p(p, "packageRoot");',
+        "fn nested_project_uses_the_archive_root_for_media_recovery()",
+        "fn standalone_project_defaults_to_its_parent_folder()",
+    ):
+        if token not in native_import:
+            raise SystemExit("Native project archive-root media recovery is incomplete: " + token)
+    for token in (
+        '"packageRoot": package_root',
+        'import_capcut(s, &actual, &package_root, &bytes)',
+        "Imported-Projects",
+    ):
+        if token not in am_nv_source:
+            raise SystemExit("Mobile/CapCut archive media recovery is incomplete: " + token)
+    if "fresh extraction directory" not in am_nv_source:
+        raise SystemExit("Project archives must extract into unique folders to avoid overwriting media used by open projects.")
 
     if "run_with_picked(app, command, \"path\"" not in incoming_frontend:
         raise SystemExit("Incoming project imports bypass the original importer preflight/dialog path.")
