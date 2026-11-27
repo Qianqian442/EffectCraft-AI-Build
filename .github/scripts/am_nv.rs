@@ -337,8 +337,18 @@ pub(crate) fn media_file(base: &str, stored: &str) -> Option<String> {
     // store media in nested folders. Normalize both slash styles before searching.
     let basename = stored.rsplit(['/', '\\']).find(|part| !part.is_empty())?;
     let base_path = Path::new(base);
+    let normalized_stored = stored.replace('\\\\', "/");
+    // Prefer the exact archive-relative path before falling back to basename matching.
+    // This preserves the correct file even when another folder contains a duplicate name.
+    let relative = Path::new(&normalized_stored);
+    if relative.components().all(|part| matches!(part, Component::Normal(_))) {
+        let exact = base_path.join(relative);
+        if exact.is_file() {
+            return Some(exact.to_string_lossy().to_string());
+        }
+    }
     let candidates = [
-        PathBuf::from(stored),
+        PathBuf::from(&normalized_stored),
         base_path.join("Medias").join(basename),
         base_path.join("medias").join(basename),
         base_path.join("assets").join(basename),
@@ -1480,6 +1490,33 @@ mod tests {
     fn alight_motion_argb_and_rgb_colors_are_supported() {
         assert_eq!(parse_xml_color("#FFFF0000"), [1.0, 0.0, 0.0, 1.0]);
         assert_eq!(parse_xml_color("#00FF00"), [0.0, 1.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn package_media_exact_relative_path_wins_over_duplicate_basenames() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("ae-package-media-{}-{nonce}", std::process::id()));
+        std::fs::create_dir_all(root.join("footage")).unwrap();
+        std::fs::create_dir_all(root.join("other")).unwrap();
+        std::fs::write(root.join("footage/clip.mp4"), b"first").unwrap();
+        std::fs::write(root.join("other/clip.mp4"), b"second").unwrap();
+        let found = media_file(root.to_str().unwrap(), "footage/clip.mp4");
+        assert_eq!(found.as_deref(), root.join("footage/clip.mp4").to_str());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn package_media_ambiguous_basename_is_never_guessed() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("ae-package-ambiguous-{}-{nonce}", std::process::id()));
+        std::fs::create_dir_all(root.join("first")).unwrap();
+        std::fs::create_dir_all(root.join("second")).unwrap();
+        std::fs::write(root.join("first/clip.mp4"), b"first").unwrap();
+        std::fs::write(root.join("second/clip.mp4"), b"second").unwrap();
+        assert!(media_file(root.to_str().unwrap(), "missing/clip.mp4").is_none());
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
