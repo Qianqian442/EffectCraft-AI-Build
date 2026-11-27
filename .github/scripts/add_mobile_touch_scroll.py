@@ -67,16 +67,17 @@ def patch_effect_browser_inertia(root: Path) -> None:
                 && i.pointer.press_origin().is_some_and(|origin| area.contains(origin))
         }) && ui.ctx().dragged_id().is_none();
         let dt = ui.input(|i| i.stable_dt.max(1.0 / 120.0));
+        let (_, max): (f32, f32) = ui.data(|d| d.get_temp(scroll.id)).unwrap_or_default();
         if touch_pan {
             let delta = ui.input(|i| i.pointer.delta());
             if delta.y.abs() >= delta.x.abs() && delta.y.abs() > 0.1 {
-                // PanelScroll::begin has already applied this frame's finger displacement.
+                // Move with the finger immediately, then continue from its release velocity.
+                scroll.offset = (scroll.offset - delta.y).clamp(0.0, max.max(0.0));
                 velocity = (-delta.y / dt).clamp(-4200.0, 4200.0);
             } else {
                 velocity = 0.0;
             }
         } else if !was_active && velocity.abs() > 24.0 {
-            let (_, max): (f32, f32) = ui.data(|d| d.get_temp(scroll.id)).unwrap_or_default();
             let previous = scroll.offset;
             let next = (previous + velocity * dt).clamp(0.0, max.max(0.0));
             scroll.offset = next;
