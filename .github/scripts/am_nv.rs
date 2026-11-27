@@ -1507,6 +1507,18 @@ mod tests {
     }
 
     #[test]
+    fn package_media_normalizes_windows_relative_separators() {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("ae-package-winpath-{}-{nonce}", std::process::id()));
+        std::fs::create_dir_all(root.join("footage")).unwrap();
+        std::fs::write(root.join("footage/clip.mp4"), b"video").unwrap();
+        let found = media_file(root.to_str().unwrap(), r"footage\\clip.mp4");
+        assert_eq!(found.as_deref(), root.join("footage/clip.mp4").to_str());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn package_media_ambiguous_basename_is_never_guessed() {
         use std::time::{SystemTime, UNIX_EPOCH};
         let nonce = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
