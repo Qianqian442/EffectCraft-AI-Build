@@ -443,10 +443,10 @@ if new not in s:
         # whitespace and wrapper changes introduced by Android export scripts.
         import re
         pattern = re.compile(
-            r"(?m)^(?P<indent>[ \\t]*)let\\s+mut\\s+r\\s*=\\s*"
-            r"export_with\\(\\s*&cx\\s*,\\s*progress\\s*,\\s*t0\\s*\\)\\.await;\\s*\\n"
-            r"(?P=indent)drop\\(render\\);\\s*\\n"
-            r"(?P=indent)if\\s+matches!\\(r,\\s*Err\\(ExportError::Cancelled\\)\\)\\s*\\{"
+            r"(?m)^(?P<indent>[ \t]*)let\s+mut\s+r\s*=\s*"
+            r"export_with\(\s*&cx\s*,\s*progress\s*,\s*t0\s*\)\.await;\s*\n"
+            r"(?P=indent)drop\(render\);\s*\n"
+            r"(?P=indent)if\s+matches!\(r,\s*Err\(ExportError::Cancelled\)\)\s*\{"
         )
         match = pattern.search(s)
         if not match:
