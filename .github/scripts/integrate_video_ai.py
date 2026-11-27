@@ -436,9 +436,24 @@ new = """    // EFFECTCRAFT_AI_EXPORT_FAIL_FAST_V1
     }
     if matches!(r, Err(ExportError::Cancelled)) {"""
 if new not in s:
-    if old not in s:
-        raise SystemExit("Could not insert AI export failure handling")
-    s = s.replace(old, new, 1)
+    if old in s:
+        s = s.replace(old, new, 1)
+    else:
+        # Match the export_async progress callback structurally. This tolerates
+        # whitespace and wrapper changes introduced by Android export scripts.
+        import re
+        pattern = re.compile(
+            r"(?m)^(?P<indent>[ \\t]*)let\\s+mut\\s+r\\s*=\\s*"
+            r"export_with\\(\\s*&cx\\s*,\\s*progress\\s*,\\s*t0\\s*\\)\\.await;\\s*\\n"
+            r"(?P=indent)drop\\(render\\);\\s*\\n"
+            r"(?P=indent)if\\s+matches!\\(r,\\s*Err\\(ExportError::Cancelled\\)\\)\\s*\\{"
+        )
+        match = pattern.search(s)
+        if not match:
+            start = s.find("pub async fn export_async")
+            excerpt = s[start:start + 1800] if start >= 0 else s[:1800]
+            raise SystemExit("Could not locate export_async progress callback. Actual source excerpt:\\n" + excerpt)
+        s = s[:match.start()] + new + s[match.end():]
 export_lib.write_text(s)
 
 # Patch the centered export dialog created by patch_export_dialog.py.
