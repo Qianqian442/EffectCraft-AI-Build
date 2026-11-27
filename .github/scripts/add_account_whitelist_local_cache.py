@@ -120,6 +120,20 @@ fn identifier_digest(kind: &str, value: &str) -> String {
         }
         // Activity recreation and quick re-entry must not repeatedly fetch the whitelist
         // or verify the same account. One whitelist refresh is allowed per process.
+        // A valid cloud-authenticated session is cached with its verification time.
+        // Returning to Ae or recreating its Activity within 24 hours must not fetch the
+        // whitelist and then immediately trigger /v1/me again. Local ban state above wins.
+        let verified_recently = self.token.is_some()
+            && self.user.is_some()
+            && self.verified_at > 0
+            && account_now_secs().saturating_sub(self.verified_at) < 24 * 60 * 60;
+        if verified_recently && self.mode != Mode::Banned {
+            self.mode = Mode::Editor;
+            self.status.clear();
+            ACCOUNT_VERIFY_ATTEMPTED.store(true, Ordering::Release);
+            ACCOUNT_WHITELIST_REFRESH_ATTEMPTED.store(true, Ordering::Release);
+            return;
+        }
         if !ACCOUNT_WHITELIST_REFRESH_ATTEMPTED.swap(true, Ordering::AcqRel) {
             if self.token.is_some() && self.mode != Mode::Banned {
                 self.mode = Mode::Checking;
