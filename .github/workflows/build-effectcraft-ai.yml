@@ -69,9 +69,6 @@ on:
       - '.github/scripts/add_project_import_formats.py'
       - '.github/scripts/add_am_nv_project_import.py'
       - '.github/scripts/add_ae_dual_project_import.py'
-      - '.github/scripts/add_effect_compatibility.py.gz.b64'
-      - '.github/scripts/fix_effect_compatibility_dialog.py'
-      - '.github/scripts/validate_effect_compatibility_engine.py'
       - '.github/scripts/resolve_native_project_package_media.py'
       - '.github/scripts/add_five_project_import_buttons.py'
       - '.github/scripts/am_nv.rs'
@@ -1333,58 +1330,16 @@ jobs:
           python3 -m py_compile build-assets/.github/scripts/add_ae_dual_project_import.py
           python3 build-assets/.github/scripts/add_ae_dual_project_import.py
 
-      - name: Preserve unsupported AEP effects and add one-tap compatible replacement
+      - name: Validate existing AEP effect importer and report unsupported effects
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
         run: |
-          python3 - <<'PY'
-          import base64
-          import pathlib
-          import sys
-          import zlib
-
-          encoded = pathlib.Path("build-assets/.github/scripts/add_effect_compatibility.py.gz.b64").read_bytes()
-          try:
-              compressed = base64.b64decode(encoded, validate=True)
-          except Exception as exc:
-              raise SystemExit(f"effect compatibility patch is not valid base64: {exc}")
-
-          decoder = zlib.decompressobj(16 + zlib.MAX_WBITS)
-          try:
-              source = decoder.decompress(compressed)
-              source += decoder.flush()
-          except zlib.error as exc:
-              raise SystemExit(f"effect compatibility patch deflate data is corrupt: {exc}")
-
-          if not source.strip():
-              raise SystemExit("effect compatibility patch decoded to an empty source file")
-          if b"compatibility_replace_all" not in source or b"effect.compatibility.replaceAll" not in source:
-              raise SystemExit("effect compatibility patch is incomplete: batch replacement command is missing")
-
-          pathlib.Path("/tmp/add_effect_compatibility.py").write_bytes(source)
-          if not decoder.eof:
-              print(
-                  "gzip trailer is truncated; recovered source will be checked by py_compile and engine validation",
-                  file=sys.stderr,
-              )
-          PY
-          python3 -m py_compile /tmp/add_effect_compatibility.py
-          python3 /tmp/add_effect_compatibility.py
-
-      - name: Verify automatic-effect replacement dialog cancellation
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/fix_effect_compatibility_dialog.py
-          python3 build-assets/.github/scripts/fix_effect_compatibility_dialog.py
-
-      - name: Validate one-tap effect compatibility command
-        env:
-          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
-        run: |
-          python3 -m py_compile build-assets/.github/scripts/validate_effect_compatibility_engine.py
-          python3 build-assets/.github/scripts/validate_effect_compatibility_engine.py
-
+          set -euo pipefail
+          grep -Fq 'pub(crate) fn import_effects' "$EFFECTCRAFT_DIR/crates/aep/src/import/effects.rs"
+          grep -Fq 'col.lose(LossCategory::Effects' "$EFFECTCRAFT_DIR/crates/aep/src/import/effects.rs"
+          grep -Fq 'dialog.aepLosses.continue' "$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/aep_losses.rs"
+          echo "Verified the existing AEP effect importer and loss-consent dialog; no corrupt generated replacement patch is applied."
+          
       - name: Resolve all media packaged with native Ae projects
         env:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
