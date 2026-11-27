@@ -45,6 +45,76 @@ def patch_shared_panel_scroll(root: Path) -> None:
         raise SystemExit("Full-panel touch drag still intercepts child controls")
     print("Removed full-panel touch interception; kept dedicated blank-area Project/Timeline scrolling.")
 
+def patch_effect_browser_inertia(root: Path) -> None:
+    widgets_path = root / "crates/ui-egui/src/widgets.rs"
+    widgets = widgets_path.read_text(encoding="utf-8")
+    marker = "EFFECTCRAFT_ANDROID_EFFECT_BROWSER_INERTIA_V1"
+    if marker not in widgets:
+        anchor = "    pub fn begin(ui: &mut Ui, id: egui::Id, area: Rect) -> Self {"
+        method = r'''    /// Touch scrolling with a short velocity tail, used by Effects & Presets only.
+    pub fn begin_with_inertia(ui: &mut Ui, id: egui::Id, area: Rect) -> Self {
+        // Preserve the existing clipping, wheel and finger-follow behaviour.
+        let mut scroll = Self::begin(ui, id, area);
+        // EFFECTCRAFT_ANDROID_EFFECT_BROWSER_INERTIA_V1
+        // Retain a small finger-release velocity so a long effects list does not stop
+        // abruptly when the user lifts a finger. Active child drags keep their ownership.
+        let state_id = id.with("touch-inertia-v1");
+        let (mut velocity, was_active): (f32, bool) =
+            ui.data(|d| d.get_temp(state_id)).unwrap_or((0.0, false));
+        let touch_pan = ui.input(|i| {
+            i.has_touch_screen()
+                && i.pointer.primary_down()
+                && i.pointer.press_origin().is_some_and(|origin| area.contains(origin))
+        }) && ui.ctx().dragged_id().is_none();
+        let dt = ui.input(|i| i.stable_dt.max(1.0 / 120.0));
+        if touch_pan {
+            let delta = ui.input(|i| i.pointer.delta());
+            if delta.y.abs() >= delta.x.abs() && delta.y.abs() > 0.1 {
+                // PanelScroll::begin has already applied this frame's finger displacement.
+                velocity = (-delta.y / dt).clamp(-4200.0, 4200.0);
+            } else {
+                velocity = 0.0;
+            }
+        } else if !was_active && velocity.abs() > 24.0 {
+            let (_, max): (f32, f32) = ui.data(|d| d.get_temp(scroll.id)).unwrap_or_default();
+            let previous = scroll.offset;
+            let next = (previous + velocity * dt).clamp(0.0, max.max(0.0));
+            scroll.offset = next;
+            if (next - previous).abs() > 0.01 {
+                velocity *= (-8.5 * dt).exp();
+                if velocity.abs() > 22.0 {
+                    ui.ctx().request_repaint_after(std::time::Duration::from_millis(16));
+                } else {
+                    velocity = 0.0;
+                }
+            } else {
+                // Stop at the top/bottom instead of fighting the scroll boundary.
+                velocity = 0.0;
+            }
+        } else if !was_active {
+            velocity = 0.0;
+        }
+        ui.data_mut(|d| d.insert_temp(state_id, (velocity, touch_pan)));
+        scroll
+    }
+
+'''
+        widgets = replace_once(widgets, anchor, method + anchor, "Effects browser inertial PanelScroll method")
+        widgets_path.write_text(widgets, encoding="utf-8")
+        print("Added optional inertial touch scrolling to PanelScroll.")
+    elif "pub fn begin_with_inertia" not in widgets:
+        raise SystemExit("Effects browser inertia marker exists but its method is missing.")
+
+    effects_path = root / "crates/ui-egui/src/panels/effects_presets.rs"
+    effects = effects_path.read_text(encoding="utf-8")
+    call_old = 'widgets::PanelScroll::begin(ui, egui::Id::unique("fx-scroll"), list)'
+    call_new = 'widgets::PanelScroll::begin_with_inertia(ui, egui::Id::unique("fx-scroll"), list)'
+    if call_new not in effects:
+        effects = replace_once(effects, call_old, call_new, "Use inertial touch scroll for Effects & Presets")
+        effects_path.write_text(effects, encoding="utf-8")
+    print("Effects & Presets now uses finger-release inertia; row heights and button geometry are unchanged.")
+
+
 def patch_project_panel(root: Path) -> None:
     path = root / "crates/ui-egui/src/panels/project.rs"
     source = path.read_text(encoding="utf-8")
@@ -195,6 +265,7 @@ def patch_preview_clock(root: Path) -> None:
 def main() -> None:
     root = Path(os.environ.get("EFFECTCRAFT_DIR", "vendor/effectcraft"))
     patch_shared_panel_scroll(root)
+    patch_effect_browser_inertia(root)
     patch_project_panel(root)
     patch_timeline(root)
     patch_preview_clock(root)
