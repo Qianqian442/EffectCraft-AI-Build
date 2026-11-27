@@ -62,7 +62,12 @@ def main() -> None:
         path_patch = """    let path = selected_project_path(p)?;
     // EFFECTCRAFT_ANDROID_MOBILE_IMPORT_ACCEPTS_SELF_EXPORT_V1
     if matches!(ext(&path).as_str(), "ecproj" | "ecprojx") {
-        return super::import_project::import_project(s, &json!({"path": path}));
+        let package_root = std::path::Path::new(&path).parent()
+            .map(|parent| parent.to_string_lossy().to_string()).unwrap_or_default();
+        return super::import_project::import_project(s, &json!({
+            "path": path,
+            "packageRoot": package_root,
+        }));
     }
     if ext(&path) != "zip" {"""
         replace_once(
@@ -423,6 +428,8 @@ fn needs_prompt(report: &Value) -> bool {
         raise SystemExit("The original AE import command was not preserved")
     if "file.importEffectCraftMobile" not in am_nv_now or "import_effectcraft_mobile_project" not in am_nv_now:
         raise SystemExit("The EffectCraft mobile project import command is incomplete")
+    if '"packageRoot": package_root' not in am_nv_now:
+        raise SystemExit("Direct mobile-Ae .ecproj import does not pass its footage root")
     if '"packageRoot": package_root' not in am_nv_now:
         raise SystemExit("Mobile project imports are not passing the extracted package root to media recovery")
     if '\"file.importEffectCraftMobile\" => (\"path\", Ask::Open(&[\"ecproj\", \"ecprojx\", \"zip\"]))' not in frontend_now:
