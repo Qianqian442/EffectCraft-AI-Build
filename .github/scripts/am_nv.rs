@@ -69,7 +69,12 @@ fn extract_project_zip(s: &Session, path: &str) -> Result<(String, String)> {
     let config = s.config.as_ref().and_then(|c| c.dir())
         .ok_or_else(|| err("No writable app project directory is available for package extraction"))?;
     let stem = Path::new(path).file_stem().map(|x| x.to_string_lossy().to_string()).unwrap_or_else(|| "Imported_Project".into());
-    let root = config.join("Imported-Projects").join(safe_name(&stem));
+    // Use a fresh extraction directory for each import. Re-importing a package with
+    // the same filename must never overwrite assets already referenced by an open project.
+    let nonce = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH)
+        .map(|value| value.as_nanos()).unwrap_or(0);
+    let root = config.join("Imported-Projects")
+        .join(format!("{}-{}-{nonce}", safe_name(&stem), std::process::id()));
     std::fs::create_dir_all(&root).map_err(|e| err(format!("Cannot create import directory: {e}")))?;
     let file = std::fs::File::open(path).map_err(|e| err(format!("Cannot read ZIP package: {e}")))?;
     let mut archive = zip::ZipArchive::new(file).map_err(|e| err(format!("Invalid project ZIP: {e}")))?;
@@ -1338,10 +1343,10 @@ fn import_capcut_project(s: &mut Session, p: &J) -> Result<J> {
     if !matches!(ext(&path).as_str(), "json" | "zip") {
         return Err(err("CapCut 工程支持 draft_content.json 或包含草稿与素材的 ZIP 包。"));
     }
-    let (actual, _package_root) = if ext(&path) == "zip" {
+    let (actual, package_root) = if ext(&path) == "zip" {
         extract_project_zip(s, &path)?
     } else {
-        (path.clone(), String::new())
+        (path.clone(), Path::new(&path).parent().unwrap_or(Path::new("")).to_string_lossy().to_string())
     };
     if ext(&actual) != "json" {
         return Err(err("ZIP 中没有找到 CapCut draft_content.json。"));
@@ -1355,24 +1360,27 @@ fn import_capcut_project(s: &mut Session, p: &J) -> Result<J> {
     {
         return Err(err("这不是 CapCut draft_content.json；缺少 tracks[] 或 materials{}。"));
     }
-    import_path(s, &path)
+    import_capcut(s, &actual, &package_root, &bytes)
 }
 
 fn import_effectcraft_mobile_project(s: &mut Session, p: &J) -> Result<J> {
     let path = p.get("path").and_then(J::as_str)
         .ok_or_else(|| err("缺少自有工程路径"))?.to_string();
-    let actual = match ext(&path).as_str() {
-        "ecproj" | "ecprojx" => path,
+    let (actual, package_root) = match ext(&path).as_str() {
+        "ecproj" | "ecprojx" => {
+            let parent = Path::new(&path).parent().unwrap_or(Path::new("")).to_string_lossy().to_string();
+            (path, parent)
+        }
         "zip" => {
-            let (actual, _package_root) = extract_project_zip(s, &path)?;
+            let (actual, package_root) = extract_project_zip(s, &path)?;
             if !matches!(ext(&actual).as_str(), "ecproj" | "ecprojx") {
                 return Err(err("ZIP 中没有找到自有工程 .ecproj/.ecprojx 文件"));
             }
-            actual
+            (actual, package_root)
         }
         _ => return Err(err("自有工程仅支持 .ecproj、.ecprojx，或包含工程文件及素材的 ZIP 包")),
     };
-    super::import_project::import_project(s, &json!({"path": actual}))
+    super::import_project::import_project(s, &json!({"path": actual, "packageRoot": package_root}))
 }
 
 pub fn specs() -> Vec<CommandSpec> {
@@ -1418,7 +1426,10 @@ pub fn import_path(s: &mut Session, path: &str) -> Result<J> {
         (file, Some(root))
     } else { (path.to_string(), None) };
     if matches!(ext(&actual).as_str(), "ecproj" | "ecprojx") {
-        return super::import_project::import_project(s, &json!({"path": actual}));
+        return super::import_project::import_project(s, &json!({
+            "path": actual,
+            "packageRoot": package_root,
+        }));
     }
     let bytes = match std::fs::read(&actual) {
         Ok(bytes) => bytes,
