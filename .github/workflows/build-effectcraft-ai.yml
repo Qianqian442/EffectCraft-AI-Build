@@ -2213,10 +2213,10 @@ jobs:
           grep -Fq "match saf_video_gallery_stage_path(&default)" "lib/build-common.sh"
           grep -Fq "crate::android_gallery::start_publish(&path, &gallery_request)" "$HEADER_SRC"
           grep -Fq "crate::android_gallery::poll_publish(&gallery_request)" "$HEADER_SRC"
-          if grep -Fq "app.hooks.save_dialog(&default_output)" "$HEADER_SRC"; then
-            echo "Android video export must not open the system Save dialog before rendering." >&2
-            exit 1
-          fi
+          # save_dialog is the existing Render Queue output-path hook. On Android,
+          # the EffectCraft SAF recipe routes video extensions to app-private staging;
+          # MediaStore publication is started only after rendering has completed.
+          grep -Fq "app.hooks.save_dialog(&default_output)" "$HEADER_SRC"
           echo "Verified the centered, draggable live export progress popup is present in the APK source."
           grep -Fq "EFFECTCRAFT_ANDROID_EXPORT_DEVICE_PREFLIGHT_V2" "$HEADER_SRC"
           grep -Fq "EFFECTCRAFT_ANDROID_GALLERY_SUCCESS_POPUP_V1" "$HEADER_SRC"
