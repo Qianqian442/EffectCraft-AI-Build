@@ -21,6 +21,25 @@ def main() -> None:
     source = path.read_text(encoding="utf-8")
     marker = "EFFECTCRAFT_ANDROID_EXPORT_FRAME_SCHEDULING_V1"
 
+    # Android's one-frame export must execute on the dedicated render-queue thread,
+    # not bounce a full-resolution frame through the global Rayon worker pool.
+    serial_marker = "EFFECTCRAFT_ANDROID_EXPORT_SERIAL_FRAME_LOOP_V1"
+    if serial_marker not in source:
+        serial_anchor = """    use rayon::prelude::*;
+    if caps.renders(gpu_live()).is_none() {"""
+        serial_patch = """    use rayon::prelude::*;
+    // EFFECTCRAFT_ANDROID_EXPORT_SERIAL_FRAME_LOOP_V1
+    if cfg!(target_os = "android") && caps.cpu == Some(1) {
+        let mut output = Vec::with_capacity(ks.len());
+        for k in ks {
+            output.push(encode(k, render(k)));
+        }
+        return output;
+    }
+    if caps.renders(gpu_live()).is_none() {"""
+        source = replace_once(source, serial_anchor, serial_patch, "Run Android single-frame export on the dedicated render thread")
+
+
     if marker not in source:
         helper_anchor = """pub(crate) fn cpu_inflight(var: Option<&str>) -> Option<usize> {
     let v = var?;
@@ -66,6 +85,29 @@ pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Opt
 
 """
         source = replace_once(source, test_anchor, tests + test_anchor, "Android export scheduling regression tests")
+
+    # Android software rendering can use deeper native/effect call stacks than the
+    # platform's default pthread stack. Give the one render worker an explicit 8 MiB stack.
+    queue_path = root / "crates/engine/src/render_queue.rs"
+    if not queue_path.is_file():
+        raise SystemExit(f"Render Queue runtime source is missing: {queue_path}")
+    queue_source = queue_path.read_text(encoding="utf-8")
+    queue_marker = "EFFECTCRAFT_ANDROID_RENDER_WORKER_STACK_V1"
+    if queue_marker not in queue_source:
+        queue_anchor = """            let thread = std::thread::Builder::new()
+                .name("render-queue".into())
+                .spawn(move || {"""
+        queue_patch = """            // EFFECTCRAFT_ANDROID_RENDER_WORKER_STACK_V1
+            // Keep deep software-renderer/effect call stacks off Android's small default thread stack.
+            let thread_builder = std::thread::Builder::new()
+                .name("render-queue".into());
+            #[cfg(target_os = "android")]
+            let thread_builder = thread_builder.stack_size(8 * 1024 * 1024);
+            let thread = thread_builder.spawn(move || {"""
+        queue_source = replace_once(queue_source, queue_anchor, queue_patch, "Set an explicit Android render-worker stack size")
+        queue_path.write_text(queue_source, encoding="utf-8")
+    if queue_marker not in queue_path.read_text(encoding="utf-8") or "stack_size(8 * 1024 * 1024)" not in queue_path.read_text(encoding="utf-8"):
+        raise SystemExit("Android render-worker stack configuration is incomplete.")
 
     cpu_marker = "EFFECTCRAFT_ANDROID_EXPORT_CPU_RENDER_FALLBACK_V1"
     if cpu_marker not in source:
@@ -137,6 +179,8 @@ pub(crate) fn encode_beside_for_platform(android: bool) -> bool {
 
     required = (
         marker,
+        serial_marker,
+        "if cfg!(target_os = \"android\") && caps.cpu == Some(1)",
         cpu_marker,
         "pub(crate) fn cpu_inflight_for_platform(var: Option<&str>, android: bool) -> Option<usize>",
         'let backend = if cfg!(target_os = "android") { Backend::Cpu } else if self.project.settings.gpu_acceleration { Backend::Gpu } else { Backend::Cpu }',
