@@ -600,6 +600,33 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     ):
         if token not in incoming_router:
             raise SystemExit(f"Automatic project import routing is missing: {token}")
+    # Project import must extract package media and relink only verified matches.
+    # AEP uses the native recursive metadata-checking relinker; AM/NV/CapCut and
+    # Ae-native mobile projects resolve media from the extracted package tree.
+    aep_source = (root / "crates/engine/src/cmd/aep.rs").read_text(encoding="utf-8")
+    for token in (
+        "EFFECTCRAFT_AEP_AUTO_PROMPT_MISSING_MEDIA_RELINK_V2",
+        's.execute("file.relinkFootage", json!({"folder": folder, "wait": true}))',
+        "res.report.missing_footage = res.items.iter().filter_map",
+    ):
+        if token not in aep_source:
+            raise SystemExit("Desktop AEP media recovery is incomplete: " + token)
+
+    am_nv_source = (root / "crates/engine/src/cmd/am_nv.rs").read_text(encoding="utf-8")
+    for token in (
+        "EFFECTCRAFT_AM_IMPORT_RECURSIVE_MEDIA_RESOLVE_V1",
+        "let exact = base_path.join(relative);",
+        "fn capcut_media_path(base: &str, stored: &str) -> Option<String>",
+        "media_file(base, stored)",
+        "EFFECTCRAFT_ANDROID_MOBILE_IMPORT_ACCEPTS_SELF_EXPORT_V1",
+    ):
+        if token not in am_nv_source:
+            raise SystemExit("AM/NV/CapCut/mobile project package media recovery is incomplete: " + token)
+
+    native_import = (root / "crates/engine/src/cmd/import_project.rs").read_text(encoding="utf-8")
+    if "EFFECTCRAFT_ANDROID_NATIVE_PROJECT_PACKAGE_MEDIA_V1" not in native_import:
+        raise SystemExit("Ae-native mobile project ZIP import does not resolve packaged footage.")
+
     if "run_with_picked(app, command, \"path\"" not in incoming_frontend:
         raise SystemExit("Incoming project imports bypass the original importer preflight/dialog path.")
     if "selected_rar" not in incoming_frontend or "file.extractProjectArchive" not in incoming_frontend:
