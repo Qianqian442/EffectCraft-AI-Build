@@ -95,11 +95,14 @@ def main() -> None:
         Err(_) => false,
     };
     if contains_self_project {
-        let (actual, _package_root) = extract_project_zip(s, &path)?;
+        let (actual, package_root) = extract_project_zip(s, &path)?;
         if !matches!(ext(&actual).as_str(), "ecproj" | "ecprojx") {
             return Err(err("ZIP 中检测到了自有工程，但未能安全提取 .ecproj/.ecprojx 文件"));
         }
-        return super::import_project::import_project(s, &json!({"path": actual}));
+        return super::import_project::import_project(s, &json!({
+            "path": actual,
+            "packageRoot": package_root,
+        }));
     }
     const MAX_MOBILE_AE_ZIP_BYTES: u64 = 128 * 1024 * 1024;"""
         replace_once(
@@ -420,6 +423,8 @@ fn needs_prompt(report: &Value) -> bool {
         raise SystemExit("The original AE import command was not preserved")
     if "file.importEffectCraftMobile" not in am_nv_now or "import_effectcraft_mobile_project" not in am_nv_now:
         raise SystemExit("The EffectCraft mobile project import command is incomplete")
+    if '"packageRoot": package_root' not in am_nv_now:
+        raise SystemExit("Mobile project imports are not passing the extracted package root to media recovery")
     if '\"file.importEffectCraftMobile\" => (\"path\", Ask::Open(&[\"ecproj\", \"ecprojx\", \"zip\"]))' not in frontend_now:
         raise SystemExit("The mobile picker must accept .ecproj/.ecprojx and ZIP packages")
     if "AE 电脑版工程... | file.importAepDesktop" not in menu_now:
