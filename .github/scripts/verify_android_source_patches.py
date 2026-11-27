@@ -242,6 +242,12 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     export_runtime = (root / "crates/export/src/lib.rs").read_text(encoding="utf-8")
     if "if r.is_err() {" not in export_runtime or "cx.remove_cancelled_outputs()?;" not in export_runtime:
         raise SystemExit("Failed/cancelled exports do not clean up this job's partial output.")
+    if "EFFECTCRAFT_AI_EXPORT_FAIL_FAST_V2" not in export_runtime or "take_ai_error()" not in export_runtime:
+        raise SystemExit("AI inference failures are not propagated through the active export progress callback.")
+    if "ai_source_frames: Mutex<std::collections::BTreeMap<i64, Image>>" not in pipeline:
+        raise SystemExit("The RIFE source-frame cache is missing from the actual export pipeline.")
+    if "crate::ai_video::interpolate" not in pipeline or "crate::ai_video::upscale" not in pipeline:
+        raise SystemExit("RIFE/Real-ESRGAN are not connected to rendered export frames.")
     print("Verified Android serial render frames, render-worker stack, and partial-output cleanup.")
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
@@ -634,10 +640,18 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
     am_nv_source = (root / "crates/engine/src/cmd/am_nv.rs").read_text(encoding="utf-8")
     for token in (
         "EFFECTCRAFT_AM_IMPORT_RECURSIVE_MEDIA_RESOLVE_V1",
-        "let exact = base_path.join(relative);",
+        "fn normalize_media_reference(stored: &str) -> String",
+        'strip_prefix("amproj:")',
+        'strip_prefix("am-internal:///")',
+        "pub(crate) fn alight_media_file(base: &str, stored: &str) -> Option<String>",
+        'Path::new(base).join("manifest.txt")',
         "fn capcut_media_path(base: &str, stored: &str) -> Option<String>",
         "media_file(base, stored)",
+        'matches!(n.tag_name().name(), "shape" | "text" | "group" | "color" | "drawing" | "audio")',
+        "layer.switches.audio = true",
         "EFFECTCRAFT_ANDROID_MOBILE_IMPORT_ACCEPTS_SELF_EXPORT_V1",
+        '"packageRoot": package_root',
+        'import_capcut(s, &actual, &package_root, &bytes)',
     ):
         if token not in am_nv_source:
             raise SystemExit("AM/NV/CapCut/mobile project package media recovery is incomplete: " + token)
