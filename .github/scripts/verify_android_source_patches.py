@@ -226,6 +226,23 @@ def verify_android_project_interactions(root: Path, header: Path) -> None:
         raise SystemExit("Synchronous Render Queue startup must remain panic guarded.")
     print("Verified video export writes directly through the Render Queue; Gallery publication is only post-render.")
 
+    # These Android-only safeguards must be installed together: a single frame stays on
+    # the render worker thread, the worker has adequate stack, and failures remove partial MP4s.
+    pipeline = (root / "crates/export/src/pipeline.rs").read_text(encoding="utf-8")
+    for token in (
+        "EFFECTCRAFT_ANDROID_EXPORT_SERIAL_FRAME_LOOP_V1",
+        'if cfg!(target_os = "android") && caps.cpu == Some(1)',
+    ):
+        if token not in pipeline:
+            raise SystemExit("Android serial export scheduling is incomplete: " + token)
+    render_runtime = (root / "crates/engine/src/render_queue.rs").read_text(encoding="utf-8")
+    for token in ("EFFECTCRAFT_ANDROID_RENDER_WORKER_STACK_V1", "stack_size(8 * 1024 * 1024)"):
+        if token not in render_runtime:
+            raise SystemExit("Android render-worker crash hardening is incomplete: " + token)
+    export_runtime = (root / "crates/export/src/lib.rs").read_text(encoding="utf-8")
+    if "if r.is_err() {" not in export_runtime or "cx.remove_cancelled_outputs()?;" not in export_runtime:
+        raise SystemExit("Failed/cancelled exports do not clean up this job's partial output.")
+    print("Verified Android serial render frames, render-worker stack, and partial-output cleanup.")
 
     project = (root / "crates/ui-egui/src/panels/project.rs").read_text(encoding="utf-8")
     if "EFFECTCRAFT_ANDROID_FIVE_PROJECT_IMPORT_BUTTONS_V1" in project:
