@@ -811,25 +811,10 @@ fn capcut_material<'a>(draft: &'a J, category: &str, id: &str) -> Option<&'a J> 
 fn capcut_secs(v: Option<&J>, fallback: f64) -> f64 {
     v.and_then(J::as_f64).filter(|n| n.is_finite()).map(|n| n / 1_000_000.0).unwrap_or(fallback)
 }
+// Reuse the same safe, recursive resolver as AM/NV projects. In particular, do not
+// fall back to the first duplicate basename: ambiguous assets must stay unresolved.
 fn capcut_media_path(base: &str, stored: &str) -> Option<String> {
-    if let Some(path) = media_file(base, stored) { return Some(path); }
-    let name = Path::new(stored.replace('\\', "/").as_str()).file_name()?.to_string_lossy().to_ascii_lowercase();
-    if name.is_empty() { return None; }
-    let mut pending = vec![PathBuf::from(base)];
-    let mut checked = 0usize;
-    while let Some(dir) = pending.pop() {
-        let Ok(entries) = std::fs::read_dir(&dir) else { continue };
-        for entry in entries.flatten() {
-            checked += 1;
-            if checked > 20_000 { return None; }
-            let path = entry.path();
-            if path.is_dir() { pending.push(path); }
-            else if path.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(&name)) {
-                return Some(path.to_string_lossy().to_string());
-            }
-        }
-    }
-    None
+    media_file(base, stored)
 }
 fn import_capcut(s: &mut Session, path: &str, base: &str, bytes: &[u8]) -> Result<J> {
     if bytes.len() > MAX_PROJECT_BYTES { return Err(err("CapCut draft_content.json exceeds the 128 MB JSON safety limit")); }
