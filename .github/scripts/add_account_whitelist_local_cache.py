@@ -375,11 +375,12 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                         self.clear_cached_ban(config);
                         self.persist(config);''',
         '''                        self.user = Some(user);
+                        self.verified_at = account_now_secs();
                         self.mode = Mode::Editor;
                         self.status.clear();
                         self.clear_cached_ban(config);
                         self.persist(config);''',
-        "clear cached ban after verified account",
+        "persist verification time and clear cached ban after verified account",
     )
     source = replace_once(
         source,
@@ -395,11 +396,12 @@ fn identifier_digest(kind: &str, value: &str) -> String {
                         self.persist(config);''',
         '''                        self.token = Some(token);
                         self.user = user;
+                        self.verified_at = account_now_secs();
                         self.mode = Mode::Success;
                         self.password.clear();
                         self.clear_cached_ban(config);
                         self.persist(config);''',
-        "clear cached ban after successful login",
+        "persist verification time and clear cached ban after successful login",
     )
 
     source = replace_once(
