@@ -19,7 +19,7 @@ def main() -> None:
     if not path.is_file():
         raise SystemExit(f"After Effects desktop importer is missing: {path}")
     source = path.read_text(encoding="utf-8")
-    marker = "EFFECTCRAFT_AEP_AUTO_PROMPT_MISSING_MEDIA_RELINK_V1"
+    marker = "EFFECTCRAFT_AEP_AUTO_PROMPT_MISSING_MEDIA_RELINK_V2"
 
     if marker not in source:
         source = replace_once(
@@ -33,13 +33,15 @@ def main() -> None:
             "    let losses = res.report.total_losses();",
             """    // EFFECTCRAFT_AEP_AUTO_PROMPT_MISSING_MEDIA_RELINK_V2
     let prompt_media_relink = !res.report.missing_footage.is_empty();
+    let mut auto_relink_ok = false;
     if prompt_media_relink {
         // Reuse the same recursive, filename-and-metadata checked relinker used by
         // File > Dependencies. Scan beside the imported AEP automatically; never guess
         // between duplicate filenames or incompatible media.
         if let Some(folder) = std::path::Path::new(&path).parent().and_then(|value| value.to_str()) {
-            if let Err(error) = s.execute("file.relinkFootage", json!({"folder": folder, "wait": true})) {
-                log::warn!("Automatic AEP package media recovery was not completed: {error}");
+            match s.execute("file.relinkFootage", json!({"folder": folder, "wait": true})) {
+                Ok(_) => auto_relink_ok = true,
+                Err(error) => log::warn!("Automatic AEP package media recovery was not completed: {error}"),
             }
         }
         let imported_ids: std::collections::HashSet<_> = res.items.iter().copied().collect();
@@ -63,11 +65,13 @@ def main() -> None:
     } else {
         format!("Imported {name} ({losses} unsupported item{} not imported)", if losses == 1 { "" } else { "s" })
     });
-    if prompt_media_relink {
+    if prompt_media_relink && auto_relink_ok {
         s.toast(format!(
-            "工程已自动扫描并恢复素材；仍有 {} 项未能安全匹配，请手动检查。",
+            "工程已自动扫描素材并完成安全匹配；仍有 {} 项未能安全匹配，请手动检查。",
             res.report.missing_footage.len()
         ));
+    } else if prompt_media_relink {
+        s.toast("工程已导入，但自动素材扫描未能完成，请使用“文件 → 重新链接缺失素材”。");
     }
     Ok(json!({"""
         source = replace_once(source, old_import_tail, new_import_tail, "AEP post-import missing-media guidance")
