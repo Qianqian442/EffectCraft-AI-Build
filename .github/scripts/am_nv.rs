@@ -337,20 +337,26 @@ fn register_imported_fonts(base: &str) -> HashMap<String, String> {
 }
 
 // EFFECTCRAFT_AM_IMPORT_RECURSIVE_MEDIA_RESOLVE_V1
+fn normalize_media_reference(stored: &str) -> String {
+    let stored = stored.trim();
+    let stored = stored.strip_prefix("amproj:")
+        .or_else(|| stored.strip_prefix("am-internal:///"))
+        .or_else(|| stored.strip_prefix("am-internal://"))
+        .or_else(|| stored.strip_prefix("file://"))
+        .unwrap_or(stored);
+    stored.replace('\\', "/")
+}
+
 pub(crate) fn media_file(base: &str, stored: &str) -> Option<String> {
-    // Project files often contain Windows absolute paths while their ZIP packages
-    // store media in nested folders. Normalize both slash styles before searching.
-    let basename = stored.rsplit(['/', '\\']).find(|part| !part.is_empty())?;
+    // Normalize project URI schemes before checking archive-relative paths. AM commonly
+    // stores amproj:<original-name> and am-internal:///SHA1.ext references.
+    let normalized_stored = normalize_media_reference(stored);
+    let basename = normalized_stored.rsplit('/').find(|part| !part.is_empty())?;
     let base_path = Path::new(base);
-    let normalized_stored = stored.replace('\\', "/");
-    // Prefer the exact archive-relative path before falling back to basename matching.
-    // This preserves the correct file even when another folder contains a duplicate name.
     let relative = Path::new(&normalized_stored);
     if relative.components().all(|part| matches!(part, Component::Normal(_))) {
         let exact = base_path.join(relative);
-        if exact.is_file() {
-            return Some(exact.to_string_lossy().to_string());
-        }
+        if exact.is_file() { return Some(exact.to_string_lossy().to_string()); }
     }
     let candidates = [
         PathBuf::from(&normalized_stored),
@@ -364,9 +370,8 @@ pub(crate) fn media_file(base: &str, stored: &str) -> Option<String> {
         return Some(found.to_string_lossy().to_string());
     }
 
-    // Search the complete extracted package tree, including nested footage/audio/font
-    // folders. Only unique case-insensitive basename matches are auto-linked; duplicates
-    // stay unresolved rather than silently binding the wrong source file.
+    // Search the complete extracted package tree. Only unique case-insensitive basename
+    // matches are safe; duplicates remain unresolved instead of attaching the wrong clip.
     let mut pending = vec![base_path.to_path_buf()];
     let mut matched: Option<PathBuf> = None;
     let mut visited = 0usize;
@@ -374,31 +379,48 @@ pub(crate) fn media_file(base: &str, stored: &str) -> Option<String> {
         let Ok(entries) = std::fs::read_dir(directory) else { continue };
         for entry in entries.flatten() {
             visited = visited.saturating_add(1);
-            if visited > 100_000 {
-                return None;
-            }
+            if visited > 100_000 { return None; }
             let path = entry.path();
             let Ok(kind) = entry.file_type() else { continue };
-            if kind.is_symlink() {
-                continue;
-            }
+            if kind.is_symlink() { continue; }
             if kind.is_dir() {
                 pending.push(path);
                 continue;
             }
-            let same_name = path.file_name()
-                .and_then(|name| name.to_str())
-                .is_some_and(|name| name.eq_ignore_ascii_case(basename));
-            if same_name {
-                if matched.is_some() {
-                    return None;
-                }
+            if path.file_name().and_then(|name| name.to_str())
+                .is_some_and(|name| name.eq_ignore_ascii_case(basename))
+            {
+                if matched.is_some() { return None; }
                 matched = Some(path);
             }
         }
     }
     matched.map(|path| path.to_string_lossy().to_string())
 }
+
+/// Alight Motion .amproj resources can be stored under their SHA-1 cache name rather
+/// than the original filename. manifest.txt maps the original filename to that name.
+pub(crate) fn alight_media_file(base: &str, stored: &str) -> Option<String> {
+    if let Some(found) = media_file(base, stored) { return Some(found); }
+    let normalized = normalize_media_reference(stored);
+    let basename = normalized.rsplit('/').find(|part| !part.is_empty())?;
+    let manifest = std::fs::read_to_string(Path::new(base).join("manifest.txt")).ok()?;
+    for line in manifest.lines().map(str::trim).filter(|line| !line.is_empty()) {
+        let parts: Vec<&str> = line.splitn(3, ':').collect();
+        let (digest, filename) = match parts.as_slice() {
+            [sha1, filename] => (*sha1, *filename),
+            [_, proxy_hash, filename] => (*proxy_hash, *filename),
+            _ => continue,
+        };
+        if !filename.eq_ignore_ascii_case(basename) { continue; }
+        let extension = Path::new(filename).extension().and_then(|ext| ext.to_str()).unwrap_or("");
+        let cached_name = if extension.is_empty() { digest.to_string() } else { format!("{digest}.{extension}") };
+        if let Some(found) = media_file(base, &cached_name) { return Some(found); }
+        if let Some(found) = media_file(base, &format!("am/{cached_name}")) { return Some(found); }
+    }
+    None
+}
+
 fn node_label(node: &J, fallback: &str) -> String {
     node.get("Name").and_then(J::as_str).filter(|s| !s.trim().is_empty()).unwrap_or(fallback).to_string()
 }
@@ -699,7 +721,7 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8], font
 
     // Alight Motion uses concrete layer tags such as shape/text/group/color, not <layer>.
     let layer_nodes: Vec<_> = scene.descendants().filter(|n| {
-        n.is_element() && matches!(n.tag_name().name(), "shape" | "text" | "group" | "color" | "drawing")
+        n.is_element() && matches!(n.tag_name().name(), "shape" | "text" | "group" | "color" | "drawing" | "audio")
     }).collect();
     if layer_nodes.is_empty() {
         return Err(err("Alight Motion scene does not contain any supported layer elements"));
@@ -752,6 +774,28 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8], font
                 }
                 push_layer(project, cid, layer)?;
                 warnings.push(format!("{layer_name}: unsupported Alight Motion text styling/effects were simplified"));
+            } else if kind.eq_ignore_ascii_case("audio") {
+                // Audio is a first-class AM layer; its path may be amproj:<filename>
+                // or am-internal:///SHA1.ext inside an embedded project package.
+                let stored = node.attribute("src").or_else(|| node.attribute("uri")).unwrap_or("");
+                let found = alight_media_file(base, stored);
+                let media_path = found.clone().unwrap_or_else(|| stored.to_string());
+                let mut footage = Footage::default();
+                footage.path = media_path;
+                footage.kind = FootageKind::Audio;
+                footage.frame_rate = rate;
+                footage.duration = Tick::from_seconds_f64(end - start);
+                footage.has_video = false;
+                footage.has_audio = true;
+                footage.missing = found.is_none();
+                if found.is_none() { missing.push(format!("{layer_name}: {stored}")); }
+                let item = project.add_item(&layer_name, Label::None, Some(folder), ItemKind::Footage(footage));
+                items.push(item.0);
+                let mut layer = attach_layer(project, cid, &comp_copy, &layer_name, LayerSource::Footage { item },
+                    (width, height), start, 0.0, end - start, 1.0, transform)?;
+                layer.switches.video = false;
+                layer.switches.audio = true;
+                push_layer(project, cid, layer)?;
             } else if kind.eq_ignore_ascii_case("media") || kind.eq_ignore_ascii_case("image")
                 || (kind.eq_ignore_ascii_case("shape") && node.attribute("fillType").is_some_and(|v| v.eq_ignore_ascii_case("media"))) {
                 let media = node.descendants().find(|n| n.is_element() && n.tag_name().name() == "media");
@@ -760,7 +804,7 @@ fn import_alight_xml(s: &mut Session, path: &str, base: &str, bytes: &[u8], font
                     .or_else(|| node.attribute("fillImage"))
                     .unwrap_or("");
                 let stored = stored.strip_prefix("file://").unwrap_or(stored);
-                let found = media_file(base, stored);
+                let found = alight_media_file(base, stored);
                 let media_path = found.clone().unwrap_or_else(|| stored.to_string());
                 let mut footage = Footage::default();
                 footage.path = media_path.clone();
@@ -1460,6 +1504,13 @@ pub fn import_path(s: &mut Session, path: &str) -> Result<J> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn alight_motion_resource_uris_are_normalized() {
+        assert_eq!(normalize_media_reference("amproj:片段.mp4"), "片段.mp4");
+        assert_eq!(normalize_media_reference("am-internal:///AABBCCDDEE.jpg"), "AABBCCDDEE.jpg");
+        assert_eq!(normalize_media_reference("file:///storage/emulated/0/video.mp4"), "/storage/emulated/0/video.mp4");
+    }
 
     #[test]
     fn nodevideo_project_settings_are_read_from_the_root_properties() {
