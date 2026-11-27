@@ -322,18 +322,33 @@ fn export_dialog(app: &mut EffectcraftApp, ui: &mut egui::Ui) {
                             .find(|item| item.id == item_id)
                             .and_then(|item| app.session.resolve_output(item))
                             .unwrap_or_else(|| "Ae.mp4".to_string());
-                        let save_result = std::panic::catch_unwind(
-                            std::panic::AssertUnwindSafe(|| app.hooks.save_dialog(&default_output)),
-                        );
-                        let output_path = match save_result {
-                            Ok(Some(Some(path))) if !path.trim().is_empty() => Some(path),
-                            Ok(Some(_)) | Ok(None) => {
-                                app.ui.status = "已取消视频保存位置选择，未开始导出。".into();
+                        // Android video exports bypass ACTION_CREATE_DOCUMENT.
+                        // RenderQueue writes to an app-private staging file; the Gallery bridge
+                        // publishes it to MediaStore only after the native renderer succeeds.
+                        #[cfg(target_os = "android")]
+                        let output_path = match crate::android_gallery::staging_path(&default_output) {
+                            Ok(path) => Some(path),
+                            Err(error) => {
+                                app.ui.status = format!("创建视频暂存文件失败：{error}");
                                 None
                             }
-                            Err(_) => {
-                                app.ui.status = "打开视频保存位置时发生异常，未开始导出。".into();
-                                None
+                        };
+                        // Desktop keeps the original Save dialog and output behavior.
+                        #[cfg(not(target_os = "android"))]
+                        let output_path = {
+                            let save_result = std::panic::catch_unwind(
+                                std::panic::AssertUnwindSafe(|| app.hooks.save_dialog(&default_output)),
+                            );
+                            match save_result {
+                                Ok(Some(Some(path))) if !path.trim().is_empty() => Some(path),
+                                Ok(Some(_)) | Ok(None) => {
+                                    app.ui.status = "已取消视频保存位置选择，未开始导出。".into();
+                                    None
+                                }
+                                Err(_) => {
+                                    app.ui.status = "打开视频保存位置时发生异常，未开始导出。".into();
+                                    None
+                                }
                             }
                         };
                         if let Some(output_path) = output_path {
