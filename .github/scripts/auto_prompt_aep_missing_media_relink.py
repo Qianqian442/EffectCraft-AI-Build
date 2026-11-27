@@ -82,14 +82,14 @@ def main() -> None:
         "let prompt_media_relink = !res.report.missing_footage.is_empty();",
         's.execute("file.relinkFootage", json!({"folder": folder, "wait": true}))',
         "res.report.missing_footage = res.items.iter().filter_map",
-        "自动扫描并恢复素材",
+        "工程已自动扫描素材并完成安全匹配",
     )
     for token in required:
         if token not in source:
             raise SystemExit(f"AEP automatic missing-media relink prompt is incomplete: {token}")
 
     path.write_text(source, encoding="utf-8")
-    print("AEP imports with missing footage now offer the existing folder relinker immediately.")
+    print("AEP imports with missing footage now automatically scan the project folder and run metadata-verified relinking.")
     print("Ambiguous or incompatible package assets remain as missing-footage placeholders; unique metadata-compatible files are relinked automatically.")
 
 
