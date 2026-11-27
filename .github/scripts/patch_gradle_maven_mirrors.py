@@ -14,14 +14,14 @@ PLUGIN_OLD = """pluginManagement {{
 }}"""
 PLUGIN_NEW = """pluginManagement {{
     repositories {{
-        // Fallback mirrors for transient upstream repository routing failures.
+        // Prefer canonical repositories; mirrors are fallback-only.
+        google()
+        mavenCentral()
+        gradlePluginPortal()
         maven {{ url = uri("https://maven.aliyun.com/repository/google") }}
         maven {{ url = uri("https://maven.aliyun.com/repository/public") }}
         maven {{ url = uri("https://maven.aliyun.com/repository/gradle-plugin") }}
         maven {{ url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/") }}
-        google()
-        mavenCentral()
-        gradlePluginPortal()
     }}
 }}"""
 
@@ -35,11 +35,12 @@ DEPENDENCY_OLD = """dependencyResolutionManagement {{
 DEPENDENCY_NEW = """dependencyResolutionManagement {{
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {{
+        // Prefer canonical repositories; mirrors are fallback-only.
+        google()
+        mavenCentral()
         maven {{ url = uri("https://maven.aliyun.com/repository/google") }}
         maven {{ url = uri("https://maven.aliyun.com/repository/public") }}
         maven {{ url = uri("https://mirrors.cloud.tencent.com/nexus/repository/maven-public/") }}
-        google()
-        mavenCentral()
     }}
 }}"""
 
@@ -73,7 +74,7 @@ def patch(path: Path) -> None:
     if "maven.aliyun.com/repository/public" not in source:
         raise SystemExit("Dependency repository fallback verification failed")
     path.write_text(source, encoding="utf-8")
-    print(f"Added Aliyun and Tencent Maven fallback repositories to {path}")
+    print(f"Added canonical-first Maven repositories with Aliyun and Tencent fallbacks to {path}")
 
 
 def main() -> None:
