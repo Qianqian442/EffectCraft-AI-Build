@@ -419,36 +419,46 @@ fn needs_prompt(report: &Value) -> bool {
     # CapCut packages; tell the user exactly where to invoke the existing folder relinker.
     frontend_text = frontend.read_text(encoding="utf-8")
     media_prompt_marker = "EFFECTCRAFT_ANDROID_IMPORT_MISSING_MEDIA_RELINK_PROMPT_V1"
-    media_prompt_anchor = """    let r = app.session.execute(id, Value::Object(p)).map_err(|e| e.to_string());
-    if let Err(e) = &r {
-        app.ui.status = e.clone();
-    }
-    r"""
-    media_prompt_replacement = """    // EFFECTCRAFT_ANDROID_IMPORT_MISSING_MEDIA_RELINK_PROMPT_V1
-    let r = app.session.execute(id, Value::Object(p)).map_err(|e| e.to_string());
-    match &r {
-        Err(error) => app.ui.status = error.clone(),
-        Ok(result) => {
-            if let Some(items) = result.get("missingMedia")
-                .or_else(|| result.get("missingFootage"))
-                .and_then(Value::as_array)
-                .filter(|items| !items.is_empty())
-            {
-                let examples = items.iter().take(5).map(|item| {
-                    item.as_str().map(str::to_string).unwrap_or_else(|| item.to_string())
-                }).collect::<Vec<_>>().join("、");
-                app.ui.status = format!(
-                    "工程已导入，但有 {} 项素材未自动找到。请打开“文件 > 依赖项 > 重新链接缺失素材”，选择包含原素材的文件夹。未找到示例：{}",
-                    items.len(), examples
-                );
-            }
-        }
-    }
-    r"""
     if media_prompt_marker not in frontend_text:
-        if frontend_text.count(media_prompt_anchor) != 1:
-            raise SystemExit("Could not uniquely locate File > Import result handling for the missing-media prompt.")
-        frontend_text = frontend_text.replace(media_prompt_anchor, media_prompt_replacement, 1)
+        # Only instrument the selected-file import execution in run_with_picked().
+        # Upstream may add/alter its error-status handling, so do not replace the
+        # entire function tail with one brittle multi-line literal.
+        fn_start = frontend_text.find("fn run_with_picked(")
+        if fn_start < 0:
+            raise SystemExit("Could not locate run_with_picked() for the missing-media prompt.")
+        fn_end = frontend_text.find("\n}\n", fn_start)
+        if fn_end < 0:
+            raise SystemExit("Could not locate the end of run_with_picked().")
+        function_source = frontend_text[fn_start:fn_end]
+        import re
+        execute_pattern = re.compile(
+            r'(?m)^(?P<indent>\\s*)let\\s+r\\s*=\\s*'
+            r'app\\.session\\.execute\\(\\s*id\\s*,\\s*Value::Object\\(p\\)\\s*\\)\\.map_err\\([^;]+;\\s*$'
+        )
+        match = execute_pattern.search(function_source)
+        if not match:
+            excerpt = function_source[-1800:]
+            raise SystemExit("Could not locate the import execution statement inside run_with_picked().\\n" + excerpt)
+        indent = match.group("indent")
+        prompt = f\'''\n{indent}// EFFECTCRAFT_ANDROID_IMPORT_MISSING_MEDIA_RELINK_PROMPT_V1
+{indent}if let Ok(result) = &r {{
+{indent}    if let Some(items) = result.get("missingMedia")
+{indent}        .or_else(|| result.get("missingFootage"))
+{indent}        .and_then(Value::as_array)
+{indent}        .filter(|items| !items.is_empty())
+{indent}    {{
+{indent}        let examples = items.iter().take(5).map(|item| {{
+{indent}            item.as_str().map(str::to_string).unwrap_or_else(|| item.to_string())
+{indent}        }}).collect::<Vec<_>>().join("、");
+{indent}        app.ui.status = format!(
+{indent}            "工程已导入，但有 {{}} 项素材未自动找到。请打开“文件 > 依赖项 > 重新链接缺失素材”，选择包含原素材的文件夹。未找到示例：{{}}",
+{indent}            items.len(), examples
+{indent}        );
+{indent}    }}
+{indent}}}
+\'''
+        insert_at = fn_start + match.end()
+        frontend_text = frontend_text[:insert_at] + prompt + frontend_text[insert_at:]
         frontend.write_text(frontend_text, encoding="utf-8")
 
     aep_now = aep.read_text(encoding="utf-8")
