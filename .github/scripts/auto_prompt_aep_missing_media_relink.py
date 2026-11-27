@@ -24,11 +24,33 @@ def main() -> None:
     if marker not in source:
         source = replace_once(
             source,
+            '    let res = s.edit("Import After Effects Project", None, |proj, st| {',
+            '    let mut res = s.edit("Import After Effects Project", None, |proj, st| {',
+            "make the After Effects import report updateable after media recovery",
+        )
+        source = replace_once(
+            source,
             "    let losses = res.report.total_losses();",
-            """    let losses = res.report.total_losses();
-    // EFFECTCRAFT_AEP_AUTO_PROMPT_MISSING_MEDIA_RELINK_V1
-    let prompt_media_relink = !res.report.missing_footage.is_empty();""",
-            "AEP missing-media relink trigger",
+            """    // EFFECTCRAFT_AEP_AUTO_PROMPT_MISSING_MEDIA_RELINK_V2
+    let prompt_media_relink = !res.report.missing_footage.is_empty();
+    if prompt_media_relink {
+        // Reuse the same recursive, filename-and-metadata checked relinker used by
+        // File > Dependencies. Scan beside the imported AEP automatically; never guess
+        // between duplicate filenames or incompatible media.
+        if let Some(folder) = std::path::Path::new(&path).parent().and_then(|value| value.to_str()) {
+            if let Err(error) = s.execute("file.relinkFootage", json!({"folder": folder, "wait": true})) {
+                log::warn!("Automatic AEP package media recovery was not completed: {error}");
+            }
+        }
+        let imported_ids: std::collections::HashSet<_> = res.items.iter().copied().collect();
+        res.report.missing_footage = res.items.iter().filter_map(|id| {
+            let item = s.project.item(*id)?;
+            let ItemKind::Footage(footage) = &item.kind else { return None; };
+            (footage.missing && imported_ids.contains(id)).then(|| footage.path.clone())
+        }).collect();
+    }
+    let losses = res.report.total_losses();""",
+            "automatically relink extracted AEP footage and refresh missing-media diagnostics",
         )
         old_import_tail = """    s.toast(if losses == 0 {
         format!("Imported {name}")
@@ -41,18 +63,22 @@ def main() -> None:
     } else {
         format!("Imported {name} ({losses} unsupported item{} not imported)", if losses == 1 { "" } else { "s" })
     });
-    // Never enqueue a frontend-only picker command from the engine import command.
-    // Keep the imported project intact and direct users to the native relink menu.
     if prompt_media_relink {
-        s.toast("工程已导入，但部分素材缺失。请使用“文件 → 重新链接缺失素材”选择素材文件夹。");
+        s.toast(format!(
+            "工程已自动扫描并恢复素材；仍有 {} 项未能安全匹配，请手动检查。",
+            res.report.missing_footage.len()
+        ));
     }
     Ok(json!({"""
         source = replace_once(source, old_import_tail, new_import_tail, "AEP post-import missing-media guidance")
 
     required = (
         marker,
+        "let mut res = s.edit(\"Import After Effects Project\"",
         "let prompt_media_relink = !res.report.missing_footage.is_empty();",
-        's.toast("工程已导入，但部分素材缺失。请使用“文件 → 重新链接缺失素材”选择素材文件夹。");',
+        's.execute("file.relinkFootage", json!({"folder": folder, "wait": true}))',
+        "res.report.missing_footage = res.items.iter().filter_map",
+        "自动扫描并恢复素材",
     )
     for token in required:
         if token not in source:
@@ -60,7 +86,7 @@ def main() -> None:
 
     path.write_text(source, encoding="utf-8")
     print("AEP imports with missing footage now offer the existing folder relinker immediately.")
-    print("Cancelling the folder picker keeps the imported project and all missing-footage placeholders intact.")
+    print("Ambiguous or incompatible package assets remain as missing-footage placeholders; unique metadata-compatible files are relinked automatically.")
 
 
 if __name__ == "__main__":
