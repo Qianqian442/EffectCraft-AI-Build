@@ -414,9 +414,22 @@ s = export_lib.read_text()
 old = """    let mut r = export_with(&cx, progress, t0).await;
     drop(render);
     if matches!(r, Err(ExportError::Cancelled)) {"""
-new = """    let mut r = export_with(&cx, progress, t0).await;
+new = """    // EFFECTCRAFT_AI_EXPORT_FAIL_FAST_V1
+    // Check the AI worker error at every real progress checkpoint. Android AI batches
+    // are one frame, so a failed model does not continue rendering a whole movie.
+    let mut ai_error: Option<String> = None;
+    let mut ai_aware_progress = |state: &Progress| {
+        if let Some(error) = cx.take_ai_error() {
+            ai_error = Some(error);
+            false
+        } else {
+            progress(state)
+        }
+    };
+    let mut r = export_with(&cx, &mut ai_aware_progress, t0).await;
+    drop(ai_aware_progress);
     drop(render);
-    if let Some(error) = cx.take_ai_error() {
+    if let Some(error) = ai_error {
         let cleanup = cx.remove_cancelled_outputs();
         let detail = cleanup.err().map(|e| format!("{error}; additionally, {e}")).unwrap_or(error);
         return Err(ExportError::Encode(format!("本地视频 AI 处理失败：{detail}")));
