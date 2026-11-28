@@ -266,7 +266,7 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     app.auto.add_response("am.motion.puppet", &puppet_response, "木偶控点工具");
     if puppet_response.clicked() {
         if app.ui.tool == Tool::Puppet {
-            app.ui.tool = Tool::Select;
+            app.ui.tool = Tool::Selection;
             app.ui.status = "已退出木偶控点工具。".into();
         } else {
             app.ui.tool = Tool::Puppet;
@@ -320,7 +320,7 @@ def main() -> None:
         '"keys.setSegmentCurve"', '"keys.velocity"',
         '"loop_cycle"', '"loop_pingpong"', '"bounce"',
         'Tool::Puppet', 'am.motion.puppet', '木偶控点：单击添加控点',
-        'if app.ui.tool == Tool::Puppet {', 'app.ui.tool = Tool::Select;',
+        'if app.ui.tool == Tool::Puppet {', 'app.ui.tool = Tool::Selection;',
     )
     # keys.velocity is wired through the native curve influence sliders.
     missing = [x for x in required if x not in source]
