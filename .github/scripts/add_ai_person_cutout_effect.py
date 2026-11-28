@@ -167,7 +167,7 @@ fn ai_person_render(ctx: &EffectCtx, buf: Buf) -> Buf {
         s = once(s, "fn compose(buf: &Buf, alpha: Option<&[f32]>, w: usize, h: usize, invert: bool, view_matte: bool) -> Buf {",
                  render_code + "fn compose(buf: &Buf, alpha: Option<&[f32]>, w: usize, h: usize, invert: bool, view_matte: bool) -> Buf {",
                  "AI person rendering pipeline")
-        test_anchor = "#[cfg(test)]\nmod tests {\n    use super::*;\n"
+        test_anchor = "    use super::*;\n"
         test_code = r'''    #[test]
     fn ai_person_cutout_is_registered_with_eight_controls() {
         let effect = super::specs().into_iter().find(|s| s.id == "ec.matte.aipersoncutout").expect("AI person cutout");
