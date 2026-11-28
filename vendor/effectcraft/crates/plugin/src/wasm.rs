@@ -40,6 +40,29 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+/// Validate dimensions and compute the host/WASM transfer buffer without integer overflow.
+fn transfer_size(width: u32, height: u32, pixels: usize, params: usize) -> Result<(usize, usize), String> {
+    if width == 0 || height == 0 || width > i32::MAX as u32 || height > i32::MAX as u32 {
+        return Err("invalid frame dimensions for a 32-bit plug-in".into());
+    }
+    let expected_pixels = (width as usize)
+        .checked_mul(height as usize)
+        .ok_or_else(|| "frame pixel count overflow".to_string())?;
+    if expected_pixels != pixels {
+        return Err("frame dimensions do not match the pixel buffer".into());
+    }
+    let params_bytes = params.checked_mul(8)
+        .ok_or_else(|| "plug-in parameter buffer size overflow".to_string())?;
+    let pixel_bytes = pixels.checked_mul(16)
+        .ok_or_else(|| "plug-in pixel buffer size overflow".to_string())?;
+    let total = params_bytes.checked_add(pixel_bytes)
+        .ok_or_else(|| "plug-in transfer buffer size overflow".to_string())?;
+    if total > MAX_MEMORY || total > i32::MAX as usize {
+        return Err(format!("plug-in frame transfer exceeds the {} MiB safety limit", MAX_MEMORY / (1024 * 1024)));
+    }
+    Ok((params_bytes, total))
+}
+
 fn instantiate(engine: &Engine, module: &Module) -> Result<Inst, String> {
     let mut store = Store::new(engine, StoreLimitsBuilder::new().memory_size(MAX_MEMORY).instances(1).build());
     store.limiter(|l| l);
@@ -114,11 +137,7 @@ impl EffectPlugin for WasmPlugin {
 
     fn render(&self, frame: &mut PluginFrame, params: &PluginParams, time: f64) -> Result<(), String> {
         let n = frame.pixels.len();
-        let params_bytes = params.flat.len() * 8;
-        let total = params_bytes + n * 16;
-        if total > i32::MAX as usize {
-            return Err("frame too large for a 32-bit plug-in".into());
-        }
+        let (params_bytes, total) = transfer_size(frame.width, frame.height, n, params.flat.len())?;
         let mut inst = self.take()?;
         inst.store.set_fuel(FUEL_BASE + FUEL_PER_PIXEL * n as u64).map_err(err)?;
         let base = inst.alloc.call(&mut inst.store, total as i32).map_err(err)? as u32 as usize;
@@ -155,5 +174,32 @@ impl EffectPlugin for WasmPlugin {
             self.give_back(inst);
         }
         r
+    }
+}
+
+
+#[cfg(test)]
+mod transfer_size_tests {
+    use super::transfer_size;
+
+    #[test]
+    fn accepts_consistent_small_frame() {
+        assert_eq!(transfer_size(2, 2, 4, 3).expect("valid frame"), (24, 88));
+    }
+
+    #[test]
+    fn rejects_mismatched_dimensions() {
+        assert!(transfer_size(2, 2, 3, 0).is_err());
+    }
+
+    #[test]
+    fn rejects_zero_or_unrepresentable_dimensions() {
+        assert!(transfer_size(0, 2, 0, 0).is_err());
+        assert!(transfer_size(u32::MAX, 2, 0, 0).is_err());
+    }
+
+    #[test]
+    fn rejects_transfer_larger_than_runtime_memory_limit() {
+        assert!(transfer_size(16_384, 16_384, 16_384usize * 16_384usize, 0).is_err());
     }
 }
