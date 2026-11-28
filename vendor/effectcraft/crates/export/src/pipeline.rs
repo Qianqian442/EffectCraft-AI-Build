@@ -222,7 +222,13 @@ impl<'a> Cx<'a> {
         // layer and effect quantises at it), not just the finished frame (#2022).
         project.settings.bit_depth = job.settings.color_depth.resolve(project.settings.bit_depth);
         let frame_times = (job.options.log == RenderLog::PlusPerFrameInfo).then(|| Mutex::new(Vec::new()));
-        let cache = LayerCache::default();
+        // Mobile exports share RAM with the editor, decoder and Android runtime. Keep the
+        // per-export processed-layer cache bounded instead of inheriting the 1 GiB desktop cap.
+        let cache = if cfg!(target_os = "android") {
+            LayerCache::new(256 * 1024 * 1024)
+        } else {
+            LayerCache::default()
+        };
         // With deferred readbacks, buffers computed from a missed pass's placeholders are not kept.
         cache.set_gate(job.accel.and_then(|a| a.miss_gate()));
         Cx { job, project, cache, frame_times, overflowed: Mutex::new(vec![]), written: Mutex::new(vec![]) }
@@ -343,7 +349,11 @@ impl<'a> Cx<'a> {
 
     /// The GPU and CPU frames-in-flight caps every frame loop shares (#1615).
     fn inflight(&self) -> Inflight {
-        Inflight { gpu: self.gpu_cap(), cpu: cpu_inflight(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref()) }
+        let configured_cpu = cpu_inflight(std::env::var(CPU_INFLIGHT_ENV).ok().as_deref());
+        // On Android, even software rendering is memory-bound: rendering many full-resolution
+        // frames concurrently can exhaust the app heap before the encoder catches up.
+        let cpu = configured_cpu.or_else(|| cfg!(target_os = "android").then_some(1));
+        Inflight { gpu: self.gpu_cap(), cpu }
     }
 
     /// Output frame `i`: sampled (fields, pulldown), at the colour depth, cropped and resized.
