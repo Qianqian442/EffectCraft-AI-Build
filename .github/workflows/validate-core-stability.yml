@@ -1,0 +1,47 @@
+name: Validate Ae core stability, export and plug-in changes
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'vendor/effectcraft/crates/plugin/**'
+      - 'vendor/effectcraft/crates/export/**'
+      - 'vendor/effectcraft/crates/render/**'
+      - 'vendor/effectcraft/crates/engine/**'
+      - 'windows-compat/android-runtime/src/main/java/com/effectcraft/windowscompat/SafeRuntimeArchiveExtractor.java'
+      - 'windows-compat/android-runtime/src/test/java/com/effectcraft/windowscompat/SafeRuntimeArchiveExtractorSelfTest.java'
+      - '.github/workflows/validate-core-stability.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ae-core-stability-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  rust-core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: vendor/effectcraft
+      - name: Check formatting
+        working-directory: vendor/effectcraft
+        run: cargo fmt --all -- --check
+      - name: Test sandboxed plug-in import and rendering
+        working-directory: vendor/effectcraft
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo test -p effectcraft-plugin --features wasm
+      - name: Test export pipeline
+        working-directory: vendor/effectcraft
+        env:
+          CARGO_BUILD_JOBS: '2'
+        run: cargo test -p effectcraft-export
