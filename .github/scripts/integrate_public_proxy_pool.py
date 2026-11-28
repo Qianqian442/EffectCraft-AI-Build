@@ -30,7 +30,7 @@ def main() -> None:
     # Optional additional Cloudflare account hosts: newline/comma/semicolon separated.
     # Runtime health/TLS checks still decide whether each endpoint is actually usable.
     extra_fallbacks: list[str] = []
-    for raw in re.split(r"[\\r\\n,;]+", os.environ.get("AE_ACCOUNT_API_FALLBACK_URLS", "")):
+    for raw in re.split(r"[\r\n,;]+", os.environ.get("AE_ACCOUNT_API_FALLBACK_URLS", "")):
         candidate = raw.strip().rstrip("/")
         if not candidate:
             continue
@@ -105,11 +105,11 @@ def main() -> None:
     destination = root / "crates/ui-egui/src/public_proxy_pool.rs"
     bootstrap_destination = root / "crates/ui-egui/src/public_proxy_bootstrap.txt"
     module_text = module_source.read_text(encoding="utf-8")
-    begin = "    // AE_EXTRA_FALLBACK_BASE_URLS_BEGIN\\n"
+    begin = "    // AE_EXTRA_FALLBACK_BASE_URLS_BEGIN\n"
     end = "    // AE_EXTRA_FALLBACK_BASE_URLS_END"
     if module_text.count(begin) != 1 or module_text.count(end) != 1:
         raise SystemExit("Public proxy module is missing the configured HTTPS fallback insertion markers.")
-    insertion = "".join(f'    "{url}",\\n' for url in extra_fallbacks)
+    insertion = "".join(f'    "{url}",\n' for url in extra_fallbacks)
     module_text = module_text.replace(begin, begin + insertion, 1)
     if any(f'    "{url}",' not in module_text for url in extra_fallbacks):
         raise SystemExit("One or more configured HTTPS fallbacks were not embedded.")
