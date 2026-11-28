@@ -787,7 +787,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         p.text(rect.center(), Align2::CENTER_CENTER, "打开或新建工程后，图层轨道会显示在这里", Tokens::ui(12.0), t.text_dim);
         return;
     };
-    // EFFECTCRAFT_AM_TIMELINE_HORIZ_SCROLL_V3
+    // EFFECTCRAFT_AM_TIMELINE_HORIZ_SCROLL_V4
     // Include the longest layer edge as the scrollable range, including clips past 10s.
     let comp_duration = comp.duration.seconds().max(0.001);
     let duration = comp.layers.iter()
@@ -833,11 +833,15 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
     }
 
-    // EFFECTCRAFT_AM_TIMELINE_SWIPE_PRIORITY_V2
-    // Track swipes take priority over clip-body movement; clip taps still select.
-    // EFFECTCRAFT_AM_TIMELINE_AXIS_GESTURE_V1
-    // Capture the whole timeline content before drawing row controls. Later clip/trim/name
-    // widgets take priority; blank space remains a reliable finger-pan surface.
+    // EFFECTCRAFT_AM_TIMELINE_AM_GESTURE_V4
+    // AM-style gesture arbitration:
+    // - a horizontal one-finger swipe pans the time viewport, even when it starts on a clip body;
+    // - a vertical swipe scrolls the layer list;
+    // - clip-body taps select the layer (the body never moves the clip);
+    // - the later, wider In/Out grip widgets exclusively own edge drags and change clip duration.
+    // Register the pan recognizer over the full timeline content before drawing clip widgets.
+    // Sense::click on the clip body preserves taps without claiming a drag; trim grips are
+    // registered later with Sense::drag and therefore win at the two clip edges.
     let pan_id = Id::new("am-independent-timeline-pan");
     let pan = ui.interact(content, pan_id, Sense::drag());
     let pan_state = Id::new("am-independent-timeline-pan-state");
@@ -850,6 +854,8 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         if let Some((start_time, start_scroll_y)) =
             ui.ctx().data(|d| d.get_temp::<(f64, f32)>(pan_state))
         {
+            // Use total drag displacement from the initial touch point so small per-frame
+            // pointer jitter cannot accumulate into accidental clip timing changes.
             let delta = pan.drag_delta();
             if delta.x.abs() >= delta.y.abs() {
                 view.start = (start_time - delta.x as f64 / pps).clamp(0.0, max_start);
@@ -1101,7 +1107,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             if edge_x < tracks.min.x - 1.0 || edge_x > tracks.max.x + 1.0 {
                 continue;
             }
-            let grip = Rect::from_center_size(pos2(edge_x, bar.center().y), vec2(16.0, ROW_H - 2.0));
+            let grip = Rect::from_center_size(pos2(edge_x, bar.center().y), vec2(22.0, ROW_H - 2.0));
             p.rect_filled(Rect::from_min_max(pos2(edge_x - 2.0, bar.min.y + 2.0), pos2(edge_x + 2.0, bar.max.y - 2.0)), 2.0, Color32::WHITE);
             let response = ui.interact(grip, Id::new(("am-mobile-trim", edge, layer.id.0)), Sense::drag());
             app.auto.add_response(&format!("am.timeline.trim.{}.{}", layer.id.0, edge), &response, if edge == "in" { "拖动片段左边缘调整起点" } else { "拖动片段右边缘延长或缩短时长" });
