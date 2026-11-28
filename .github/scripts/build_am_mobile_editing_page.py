@@ -806,18 +806,13 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     let content = Rect::from_min_max(pos2(rect.min.x, ruler.max.y), rect.max);
     let labels = Rect::from_min_max(content.min, pos2(content.min.x + label_w, content.max.y));
     let tracks = Rect::from_min_max(pos2(labels.max.x, content.min.y), content.max);
-    let visible_secs = view.visible_secs.clamp(0.1, duration.max(0.1));
-    let pps = (tracks.width() as f64 / visible_secs).max(0.01);
-    let max_start = (duration - visible_secs).max(0.0);
-    view.start = view.start.clamp(0.0, max_start);
-
     // Pinch zoom and background finger swipe are handled here; clip/edge controls are
     // registered later and therefore retain priority over the track background.
     let pointer = ui.ctx().pointer_hover_pos();
     let hovered = pointer.is_some_and(|pt| rect.contains(pt));
     let zoom_delta = ui.input(|i| i.zoom_delta());
     if hovered && (zoom_delta - 1.0).abs() > 0.002 {
-        let old_visible = visible_secs;
+        let old_visible = view.visible_secs;
         view.visible_secs = (view.visible_secs / zoom_delta as f64).clamp(0.1, duration.max(0.1));
         let new_visible = view.visible_secs;
         if let Some(pt) = pointer {
@@ -826,6 +821,12 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             view.start = (anchored_time - new_visible * frac).clamp(0.0, (duration - new_visible).max(0.0));
         }
     }
+    // Recompute scale and scroll bounds after zoom. Keeping the pre-zoom values here
+    // makes horizontal swipes clamp against a stale 10-second viewport.
+    let visible_secs = view.visible_secs.clamp(0.1, duration.max(0.1));
+    let pps = (tracks.width() as f64 / visible_secs).max(0.01);
+    let max_start = (duration - visible_secs).max(0.0);
+    view.start = view.start.clamp(0.0, max_start);
     if hovered {
         let wheel = ui.input(|i| i.smooth_scroll_delta);
         if wheel.y.abs() > 0.0 {
@@ -1671,6 +1672,7 @@ def verify(root: Path) -> None:
         "crate::panels::viewers::show",
         "fn draw_timeline",
         "EFFECTCRAFT_AM_TIMELINE_AXIS_GESTURE_V1",
+        "Recompute scale and scroll bounds after zoom.",
         "layer.timing",
         "am-mobile-trim",
         "time.set",
