@@ -320,6 +320,7 @@ def main() -> None:
         '"keys.setSegmentCurve"', '"keys.velocity"',
         '"loop_cycle"', '"loop_pingpong"', '"bounce"',
         'Tool::Puppet', 'am.motion.puppet', '木偶控点：单击添加控点',
+        'if app.ui.tool == Tool::Puppet {', 'app.ui.tool = Tool::Select;',
     )
     # keys.velocity is wired through the native curve influence sliders.
     missing = [x for x in required if x not in source]
