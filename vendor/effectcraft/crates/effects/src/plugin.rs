@@ -270,18 +270,72 @@ fn param_spec(p: &PluginParam) -> ParamSpec {
     ParamSpec { id: leak(&p.id), name: leak(&p.name), default, ui }
 }
 
-/// Register a plug-in effect: it appears in Effects & Presets under its category and is
-/// applied by id like a built-in. Fails for a bad manifest, a taken id or when
-/// [`MAX_PLUGINS`] are registered.
-pub fn register_plugin(plugin: Arc<dyn EffectPlugin>) -> Result<&'static EffectSpec, String> {
-    let m = plugin.manifest().clone();
-    m.validate()?;
-    let mut specs = plugin_specs().write().map_err(|_| "plug-in registry poisoned".to_string())?;
-    if crate::registry().iter().any(|s| s.id == m.id) || specs.iter().any(|s| s.id == m.id) {
-        return Err(format!("an effect with id `{}` is already registered", m.id));
+/// A wrapper gives a second, independently imported plug-in its own effect identity
+/// without changing the module's rendering implementation or parameter contract.
+struct ImportedAliasPlugin {
+    inner: Arc<dyn EffectPlugin>,
+    manifest: PluginManifest,
+}
+
+impl EffectPlugin for ImportedAliasPlugin {
+    fn manifest(&self) -> &PluginManifest {
+        &self.manifest
     }
+
+    fn render(&self, frame: &mut PluginFrame, params: &PluginParams, time: f64) -> Result<(), String> {
+        self.inner.render(frame, params, time)
+    }
+
+    fn source(&self) -> String {
+        self.inner.source()
+    }
+}
+
+/// Register a plug-in effect: it appears in Effects & Presets under its category and is
+/// applied by id like a built-in. A different plug-in that declares an already-used effect id
+/// receives a deterministic-in-this-registry `.importN` id instead of being rejected.
+/// Re-importing the exact same installed source is rejected as an already-installed file.
+pub fn register_plugin(plugin: Arc<dyn EffectPlugin>) -> Result<&'static EffectSpec, String> {
+    let mut m = plugin.manifest().clone();
+    m.validate()?;
+    let source = plugin.source();
+    let mut specs = plugin_specs().write().map_err(|_| "plug-in registry poisoned".to_string())?;
+
+    if source != "built-in"
+        && SLOTS.iter().filter_map(|slot| slot.get()).any(|loaded| loaded.source() == source)
+    {
+        return Err(format!("plug-in source `{source}` is already installed"));
+    }
+
+    let original_id = m.id.clone();
+    let id_taken = |id: &str| {
+        crate::registry().iter().any(|spec| spec.id == id)
+            || specs.iter().any(|spec| spec.id == id)
+    };
+    let mut registered_plugin = plugin;
+    if id_taken(&m.id) {
+        let mut suffix = 2usize;
+        loop {
+            let candidate = format!("{original_id}.import{suffix}");
+            if !id_taken(&candidate) {
+                m.id = candidate;
+                m.name = format!("{}（导入副本 {suffix}）", m.name);
+                break;
+            }
+            suffix = suffix.saturating_add(1);
+            if suffix == usize::MAX {
+                return Err(format!("could not allocate a unique effect id for `{original_id}`"));
+            }
+        }
+        m.validate()?;
+        registered_plugin = Arc::new(ImportedAliasPlugin {
+            inner: registered_plugin,
+            manifest: m.clone(),
+        });
+    }
+
     let slot = SLOTS.iter().position(|s| s.get().is_none()).ok_or_else(|| format!("too many plug-ins (at most {MAX_PLUGINS})"))?;
-    SLOTS[slot].set(plugin).map_err(|_| "plug-in slot taken".to_string())?;
+    SLOTS[slot].set(registered_plugin).map_err(|_| "plug-in slot taken".to_string())?;
     let spec: &'static EffectSpec = Box::leak(Box::new(EffectSpec {
         id: leak(&m.id),
         name: leak(&m.name),
