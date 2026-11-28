@@ -105,6 +105,8 @@ on:
       - '.github/scripts/add_am_effect_stack_navigation.py'
       - '.github/scripts/fix_am_effect_stack_reverse_transition.py'
       - '.github/scripts/add_am_text_voice_tts.py'
+      - '.github/scripts/add_purple_theme.py'
+      - '.github/scripts/install_sherpa_offline_tts.py'
       - '.github/scripts/add_am_brand_label.py'
       - '.github/scripts/add_home_layout_switch.py'
       - '.github/scripts/patch_absentmotion_external_navigation.py'
@@ -1505,6 +1507,7 @@ jobs:
           EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
           BUILD_ASSETS_DIR: ${{ github.workspace }}/build-assets
           AE_ACCOUNT_API_URL: https://ae-account-api-gateway.pages.dev
+          AE_ACCOUNT_API_FALLBACK_URLS: ${{ secrets.AE_ACCOUNT_API_FALLBACK_URLS }}
           PUBLIC_PROXY_BOOTSTRAP_FILE: ${{ github.workspace }}/build-assets/.github/native/public_proxy_bootstrap.txt
         run: |
           set -euo pipefail
@@ -1556,6 +1559,15 @@ jobs:
           python3 build-assets/.github/scripts/fix_am_effect_stack_reverse_transition.py
           python3 -m py_compile build-assets/.github/scripts/add_am_text_voice_tts.py
           python3 build-assets/.github/scripts/add_am_text_voice_tts.py
+          # Bundle the pinned Sherpa-ONNX Chinese VITS model, Android AAR and ARM64
+          # SoundTouch pitch DSP before Gradle/Cargo build. All synthesis is on-device.
+          python3 -m py_compile build-assets/.github/scripts/install_sherpa_offline_tts.py
+          python3 build-assets/.github/scripts/install_sherpa_offline_tts.py
+          test -s "$ARTCRAFT_DIR/templates/gradle/libs/sherpa-onnx-2.0.3.aar"
+          test -s "$ARTCRAFT_DIR/source/effectcraft/assets/ae-tts/sherpa-onnx-vits-zh-ll/model.onnx"
+          test -s "$ARTCRAFT_DIR/templates/android-extra-jniLibs/arm64-v8a/libAePitchShifter.so"
+          grep -Fq "AE_SHERPA_OFFLINE_TTS_AAR_V1" "$ARTCRAFT_DIR/lib/android_project.py"
+          grep -Fq "AE_SOUNDTOUCH_PITCH_DSP_V1" "$ARTCRAFT_DIR/lib/build-common.sh"
           grep -Fq "EFFECTCRAFT_ANDROID_AM_TEXT_TO_SPEECH_V1" "$ARTCRAFT_DIR/templates/android/SafActivity.java"
           grep -Fq "EFFECTCRAFT_AM_TEXT_VOICE_EDITOR_V1" "$EFFECTCRAFT_DIR/crates/ui-egui/src/am_editor.rs"
           HOME_RS="$EFFECTCRAFT_DIR/crates/ui-egui/src/panels/home.rs"
@@ -1644,6 +1656,16 @@ jobs:
         run: |
           python3 -m py_compile build-assets/.github/scripts/fix_android_aep_playback_crash.py
           python3 build-assets/.github/scripts/fix_android_aep_playback_crash.py
+
+      - name: Add optional purple appearance theme without changing controls
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_purple_theme.py
+          python3 build-assets/.github/scripts/add_purple_theme.py
+          grep -Fq "EFFECTCRAFT_PURPLE_THEME_V1" "$EFFECTCRAFT_DIR/crates/ui-egui/src/theme.rs"
+          grep -Fq "EFFECTCRAFT_PURPLE_THEME_CHOICE_V1" "$EFFECTCRAFT_DIR/crates/engine/src/settings/prefs/choices.rs"
+          echo "Verified optional purple palette changes colour tokens only; control geometry and actions are unchanged."
 
       - name: Verify final Android source patches and repair missing export helper
         env:
