@@ -882,7 +882,7 @@ def main() -> None:
     header_path.write_text(source, encoding="utf-8")
 
     source = frontend_path.read_text(encoding="utf-8")
-    anchor = "    let picked = Value::Object(p.clone());\\n"
+    anchor = "    let picked = Value::Object(p.clone());\n"
     replacement = """    let picked = Value::Object(p.clone());
     // EFFECTCRAFT_ANDROID_AE_PLUGIN_MIGRATION_PROGRESS_V3
     // Intercept after the asynchronous picker result has been converted to the command payload.
