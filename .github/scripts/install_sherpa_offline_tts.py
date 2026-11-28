@@ -24,7 +24,7 @@ add_library(AePitchShifter SHARED AePitchShifter.cpp)
 target_include_directories(AePitchShifter PRIVATE soundtouch/include)
 target_link_libraries(AePitchShifter PRIVATE SoundTouch log)
 target_compile_options(AePitchShifter PRIVATE -fno-rtti -fno-exceptions -fvisibility=hidden -O3)
-set_target_properties(AePitchShifter PROPERTIES CXX_STANDARD 98)
+set_target_properties(AePitchShifter PROPERTIES CXX_STANDARD 11)
 """
 PITCH_CPP = r"""
 #include <jni.h>
@@ -236,11 +236,23 @@ def main() -> None:
             raise RuntimeError("The Android ARM64 pitch DSP did not produce a valid shared library.")
         install_extra_jni(builder, library)
 
+    # Keep the exact LGPL source and the adapter code beside the shipped native library,
+    # so the dynamically linked pitch processor remains rebuildable/replacable by the user.
     license_path = cpp_source.parent.parent.parent / "LICENSE.LGPL_2_1.txt"
+    notice_dir = app_assets.parent / "licenses"
+    notice_dir.mkdir(parents=True, exist_ok=True)
     if license_path.is_file():
-        notice_dir = app_assets.parent / "licenses"
-        notice_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(license_path, notice_dir / "SoundTouch-LGPL-2.1.txt")
+    source_archive = notice_dir / "SoundTouch-Android-source.tar.gz"
+    shutil.copy2(soundtouch_archive, source_archive)
+    adapter_source = notice_dir / "AePitchShifter.cpp"
+    adapter_source.write_text(PITCH_CPP, encoding="utf-8")
+    cmake_source = notice_dir / "AePitchShifter-CMakeLists.txt"
+    cmake_source.write_text(PITCH_CMAKE, encoding="utf-8")
+    model_license_files = [p for p in app_assets.iterdir() if p.is_file() and p.name.lower() in ("license", "license.txt", "license.md", "model_license.txt")]
+    if model_license_files:
+        for model_license in model_license_files:
+            shutil.copy2(model_license, notice_dir / f"Chinese-TTS-{model_license.name}")
     print("Bundled offline Chinese VITS TTS (5 speakers), the pinned Sherpa-ONNX Android AAR, and the ARM64 independent pitch DSP.")
 
 if __name__ == "__main__":
