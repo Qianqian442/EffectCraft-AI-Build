@@ -150,8 +150,13 @@ fn wasm_plugin_registers_and_renders() {
         }
     });
     assert!(a.iter().all(|i| *i == a[0]));
-    // The same id can't be registered twice.
-    assert!(load_err(load_wasm(gain_module("org.test.gain", "").as_bytes(), "again.wat")).contains("already registered"));
+    // Duplicate imports are retained as separate effects under a deterministic unique id.
+    let duplicate = load_wasm(gain_module("org.test.gain", "").as_bytes(), "again.wat").unwrap();
+    assert_eq!(duplicate.id, "org.test.gain.imported2");
+    assert!(effectcraft_effects::find("org.test.gain").is_some());
+    assert!(effectcraft_effects::find("org.test.gain.imported2").is_some());
+    assert_eq!(duplicate.params.len(), 3);
+    assert_eq!(render(duplicate, 0.5, false).get(1, 1), [0.4, 0.3, 0.1, 1.0]);
 }
 
 #[test]
