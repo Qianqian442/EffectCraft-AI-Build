@@ -882,10 +882,11 @@ def main() -> None:
     header_path.write_text(source, encoding="utf-8")
 
     source = frontend_path.read_text(encoding="utf-8")
-    anchor = "    // Photoshop files ask how to import them first; numbered stills whether to import them as an\n"
-    replacement = """    // EFFECTCRAFT_ANDROID_AE_PLUGIN_MIGRATION_PROGRESS_V2
-    // Intercept the result only after the asynchronous Android picker has returned its path.
-    // The old frontend() hook never ran here: file_dialog() calls run_with_picked() directly.
+    anchor = "    let picked = Value::Object(p.clone());\n"
+    replacement = """    let picked = Value::Object(p.clone());
+    // EFFECTCRAFT_ANDROID_AE_PLUGIN_MIGRATION_PROGRESS_V3
+    // This hook belongs in run_with_picked(): the asynchronous Android picker reaches this
+    // function through dialog_answered(), and the picked value is constructed after the path arrives.
     #[cfg(not(target_arch = \"wasm32\"))]
     if id == \"effect.plugins.load\" {
         if let Some(path) = picked.get(\"path\").and_then(Value::as_str) {
@@ -894,7 +895,6 @@ def main() -> None:
             }
         }
     }
-    // Photoshop files ask how to import them first; numbered stills whether to import them as an
 """
     source = replace_once(source, anchor, replacement, "desktop plug-in picker-result interception")
     frontend_path.write_text(source, encoding="utf-8")
