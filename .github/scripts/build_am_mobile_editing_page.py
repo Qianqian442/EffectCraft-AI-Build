@@ -837,6 +837,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         }
     }
 
+    // EFFECTCRAFT_AM_TIMELINE_AXIS_GESTURE_V1
     // EFFECTCRAFT_AM_TIMELINE_AM_GESTURE_V5
     // Gesture ownership is explicit:
     // - horizontal swipes on empty track space pan the timeline viewport;
