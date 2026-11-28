@@ -882,21 +882,21 @@ def main() -> None:
     header_path.write_text(source, encoding="utf-8")
 
     source = frontend_path.read_text(encoding="utf-8")
-    anchor = "    // Save (untitled) becomes Save As.\n    let id = if id == \"file.save\" { \"file.saveAs\" } else { id };\n"
-    replacement = """    // EFFECTCRAFT_ANDROID_AE_PLUGIN_MIGRATION_PROGRESS_V1
-    // Desktop ZIPs containing native AE binaries get a draggable migration confirmation
-    // before the existing safe importer is invoked.
+    anchor = "    // Photoshop files ask how to import them first; numbered stills whether to import them as an\n"
+    replacement = """    // EFFECTCRAFT_ANDROID_AE_PLUGIN_MIGRATION_PROGRESS_V2
+    // Intercept the result only after the asynchronous Android picker has returned its path.
+    // The old frontend() hook never ran here: file_dialog() calls run_with_picked() directly.
     #[cfg(not(target_arch = \"wasm32\"))]
     if id == \"effect.plugins.load\" {
-        if let Some(path) = p.get(\"path\").and_then(Value::as_str) {
+        if let Some(path) = picked.get(\"path\").and_then(Value::as_str) {
             if crate::plugin_migration::intercept_if_native(app, path) {
                 return Ok(json!({\"dialog\": \"desktop-plugin-migration\"}));
             }
         }
     }
-    // Save (untitled) becomes Save As.
-    let id = if id == \"file.save\" { \"file.saveAs\" } else { id };\n"""
-    source = replace_once(source, anchor, replacement, "desktop ZIP migration interception")
+    // Photoshop files ask how to import them first; numbered stills whether to import them as an
+"""
+    source = replace_once(source, anchor, replacement, "desktop plug-in picker-result interception")
     frontend_path.write_text(source, encoding="utf-8")
 
     source = cargo_path.read_text(encoding="utf-8")
