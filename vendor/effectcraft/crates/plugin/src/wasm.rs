@@ -184,7 +184,7 @@ mod transfer_size_tests {
 
     #[test]
     fn accepts_consistent_small_frame() {
-        assert_eq!(transfer_size(2, 2, 4, 3).expect("valid frame"), (24, 88));
+        assert_eq!(transfer_size(2, 2, 4, 3), Ok((24, 88)));
     }
 
     #[test]
