@@ -34,6 +34,7 @@ on:
       - 'vendor/effectcraft/**'
       - '.github/native/**'
       - '.github/scripts/integrate_video_ai.py'
+      - '.github/scripts/add_ai_person_segmentation_model.py'
       - '.github/scripts/restore_android_plugins.py'
       - '.github/scripts/add_open_source_craft_plugins.py'
       - '.github/scripts/add_plugin_import_button.py'
@@ -1213,6 +1214,15 @@ jobs:
           RIFE_SOURCE_DIR: ${{ github.workspace }}/native-deps/rife
           ESRGAN_SOURCE_DIR: ${{ github.workspace }}/native-deps/realesrgan
         run: python3 build-assets/.github/scripts/integrate_video_ai.py
+
+      - name: Register on-device MediaPipe AI person segmentation
+        env:
+          EFFECTCRAFT_DIR: ${{ github.workspace }}/artcraft/source/effectcraft
+        run: |
+          python3 -m py_compile build-assets/.github/scripts/add_ai_person_segmentation_model.py
+          python3 build-assets/.github/scripts/add_ai_person_segmentation_model.py
+          grep -Fq 'EFFECTCRAFT_MEDIAPIPE_SELFIE_SEGMENTER_V1' "$EFFECTCRAFT_DIR/crates/segment/src/lib.rs"
+          grep -Fq 'mediapipe-selfie-segmenter' "$EFFECTCRAFT_DIR/crates/segment/src/lib.rs"
 
       - name: Add comprehensive Android export preflight
         env:
