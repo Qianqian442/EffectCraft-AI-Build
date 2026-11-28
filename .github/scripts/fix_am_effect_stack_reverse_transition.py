@@ -137,9 +137,11 @@ def replace_effect_view(source: str) -> str:
 def patch_vertical_scrub(source: str) -> str:
     if WIDGET_MARKER in source:
         return source
-    anchor = '    let resp = ui.interact(rect, id, Sense::click_and_drag());\n    crate::pointer_wrap::track(&resp);'
+    # Upstream may place pointer tracking on the next line or omit it in some builds.
+    # Anchor on the unique interaction statement, preserving any following tracking call.
+    anchor = '    let resp = ui.interact(rect, id, Sense::click_and_drag());'
     if source.count(anchor) != 1:
-        raise SystemExit("hot_number_at interaction anchor was not found exactly once")
+        raise SystemExit(f"hot_number_at interaction anchor: expected once, found {source.count(anchor)}")
     source = source.replace(anchor, anchor + r'''
     // EFFECTCRAFT_AM_EFFECT_VALUE_VERTICAL_SCRUB_V1
     // In AM effect parameters, require a deliberate press-hold before vertical scrubbing.
