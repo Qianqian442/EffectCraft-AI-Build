@@ -102,9 +102,40 @@ def main() -> None:
     if '("紫色", "purple")' not in choices:
         raise SystemExit("Purple theme is not selectable in Settings ▸ Appearance.")
 
+    # Put the purple-theme selector on the Home account-management row, not only in Settings.
+    # The Home control calls EffectCraft's existing persistent set_theme path.
+    account_path = root / "crates/ui-egui/src/account.rs"
+    if not account_path.is_file():
+        raise SystemExit("Home account-management source is missing; cannot install the theme shortcut.")
+    account = account_path.read_text(encoding="utf-8")
+    home_theme_marker = "EFFECTCRAFT_HOME_PURPLE_THEME_BUTTON_V1"
+    if home_theme_marker not in account:
+        plugin_button = '''                        if ui.button("插件管理").clicked() {
+                            plugin_manager_open = true;
+                            app.ui.status = "正在打开主页插件管理…".into();
+                        }'''
+        theme_button = plugin_button + '''
+                        // EFFECTCRAFT_HOME_PURPLE_THEME_BUTTON_V1
+                        let mut choose_purple_theme = false;
+                        ui.menu_button("主题颜色", |ui| {
+                            if ui.button("紫色主题").clicked() {
+                                choose_purple_theme = true;
+                                ui.close();
+                            }
+                        });
+                        if choose_purple_theme {
+                            app.set_theme(ctx, crate::theme::ThemeKind::Purple);
+                        }'''
+        if account.count(plugin_button) != 1:
+            raise SystemExit("Home account/plugin row anchor was not found exactly once.")
+        account = account.replace(plugin_button, theme_button, 1)
+        account_path.write_text(account, encoding="utf-8")
+    if home_theme_marker not in account:
+        raise SystemExit("Home purple-theme button was not installed.")
     theme_path.write_text(theme, encoding="utf-8")
     choices_path.write_text(choices, encoding="utf-8")
-    print("Added the optional purple theme; existing widget positions, sizes, hit targets and commands are unchanged.")
+    print("Added the optional purple theme and a Home ▸ 主题颜色 ▸ 紫色主题 selector.")
+    print("Existing widget positions, sizes, hit targets and commands are unchanged.")
 
 
 if __name__ == "__main__":
