@@ -787,7 +787,7 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         p.text(rect.center(), Align2::CENTER_CENTER, "打开或新建工程后，图层轨道会显示在这里", Tokens::ui(12.0), t.text_dim);
         return;
     };
-    // EFFECTCRAFT_AM_TIMELINE_HORIZ_SCROLL_V4
+    // EFFECTCRAFT_AM_TIMELINE_HORIZ_SCROLL_V5
     // Include the longest layer edge as the scrollable range, including clips past 10s.
     let comp_duration = comp.duration.seconds().max(0.001);
     let duration = comp.layers.iter()
@@ -831,17 +831,20 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
         if wheel.y.abs() > 0.0 {
             view.scroll_y = (view.scroll_y - wheel.y).max(0.0);
         }
+        // Trackpads and mouse wheels can still pan horizontally while a clip is selected.
+        if wheel.x.abs() > 0.0 {
+            view.start = (view.start - wheel.x as f64 / pps).clamp(0.0, max_start);
+        }
     }
 
-    // EFFECTCRAFT_AM_TIMELINE_AM_GESTURE_V4
-    // AM-style gesture arbitration:
-    // - a horizontal one-finger swipe pans the time viewport, even when it starts on a clip body;
-    // - a vertical swipe scrolls the layer list;
-    // - clip-body taps select the layer (the body never moves the clip);
-    // - the later, wider In/Out grip widgets exclusively own edge drags and change clip duration.
-    // Register the pan recognizer over the full timeline content before drawing clip widgets.
-    // Sense::click on the clip body preserves taps without claiming a drag; trim grips are
-    // registered later with Sense::drag and therefore win at the two clip edges.
+    // EFFECTCRAFT_AM_TIMELINE_AM_GESTURE_V5
+    // Gesture ownership is explicit:
+    // - horizontal swipes on empty track space pan the timeline viewport;
+    // - vertical swipes on empty track space scroll the layer stack;
+    // - dragging a clip body moves that clip in time;
+    // - dragging either clip edge trims its in/out point;
+    // - the ruler remains dedicated to playhead scrubbing.
+    // Parent pan is registered first; clip body and trim handles registered later take priority.
     let pan_id = Id::new("am-independent-timeline-pan");
     let pan = ui.interact(content, pan_id, Sense::drag());
     let pan_state = Id::new("am-independent-timeline-pan-state");
@@ -1083,12 +1086,37 @@ fn draw_timeline(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
             ));
         }
 
-        // A normal horizontal finger swipe on a clip must pan the AM timeline,
-        // not silently move the clip. Clip selection is a tap; precise clip timing
-        // remains available from the layer actions and edge trim handles.
-        // The track-background drag recognizer above owns swipe gestures.
-        let body_resp = ui.interact(bar, Id::new(("am-mobile-clip", layer.id.0)), Sense::click());
-        app.auto.add_response(&format!("am.timeline.clip.{}", layer.id.0), &body_resp, "点按选择片段；滑动平移时间轴");
+        // Clip body: tap selects; horizontal drag moves the selected clip as in AM.
+        // Empty track space is reserved for viewport panning, while edge grips below
+        // retain exclusive trim behavior and are registered after this body response.
+        let body_resp = ui.interact(bar, Id::new(("am-mobile-clip", layer.id.0)), Sense::click_and_drag());
+        app.auto.add_response(&format!("am.timeline.clip.{}", layer.id.0), &body_resp, "点按选择；拖动片段主体移动时间位置");
+        let body_drag_id = Id::new(("am-mobile-clip-move-state", layer.id.0));
+        if body_resp.drag_started() {
+            if !app.session.state.selected_layers.contains(&layer.id) {
+                select_layer(app, layer.id.0);
+            }
+            if let Some(pt) = body_resp.interact_pointer_pos() {
+                let ids = layer_ids_for_drag(app, layer.id.0);
+                ui.ctx().data_mut(|d| d.insert_temp(body_drag_id, (pt.x, ids)));
+            }
+        }
+        if body_resp.dragged()
+            && let (Some(pt), Some((last_x, ids))) = (
+                body_resp.interact_pointer_pos(),
+                ui.ctx().data(|d| d.get_temp::<(f32, Vec<u64>)>(body_drag_id)),
+            )
+        {
+            let delta = (pt.x - last_x) as f64 / pps;
+            if delta.abs() > 0.00001 {
+                apply_timing(app, &ids, "delta", delta);
+                ui.ctx().data_mut(|d| d.insert_temp(body_drag_id, (pt.x, ids)));
+            }
+        }
+        if body_resp.drag_stopped() {
+            ui.ctx().data_mut(|d| d.remove::<(f32, Vec<u64>)>(body_drag_id));
+            app.session.history.merge_key = None;
+        }
         if body_resp.clicked() {
             if am_multi_select_enabled(ui.ctx()) {
                 am_toggle_multi_selected(app, ui.ctx(), layer.id.0);
