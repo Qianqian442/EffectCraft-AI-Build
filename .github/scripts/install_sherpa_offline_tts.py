@@ -15,7 +15,7 @@ SHERPA_VERSION = "2.0.3"
 AAR_URL = f"https://github.com/k2-fsa/sherpa-onnx/releases/download/v{SHERPA_VERSION}/sherpa-onnx-{SHERPA_VERSION}.aar"
 AAR_SHA256 = "4c766e2e74c9d33d595338c21fe3b305c73ba45d47e96a235675c33142a2ec50"
 MODEL_URL = "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/sherpa-onnx-vits-zh-ll.tar.bz2"
-SOUNDTOUCH_URL = "https://github.com/hipxel/soundtouch-android/archive/refs/heads/main.tar.gz"
+SOUNDTOUCH_URL = "https://github.com/hipxel/soundtouch-android/archive/1e0fad0e849d24d313a3e2d891620eae582ae992.tar.gz"
 PITCH_CMAKE = r"""
 cmake_minimum_required(VERSION 3.18)
 project(AePitchShifter LANGUAGES C CXX)
@@ -23,7 +23,7 @@ add_subdirectory(soundtouch)
 add_library(AePitchShifter SHARED AePitchShifter.cpp)
 target_include_directories(AePitchShifter PRIVATE soundtouch/include)
 target_link_libraries(AePitchShifter PRIVATE SoundTouch log)
-target_compile_options(AePitchShifter PRIVATE -fno-rtti -fno-exceptions -fvisibility=hidden -O3)
+target_compile_options(AePitchShifter PRIVATE -fno-rtti -fvisibility=hidden -O3)
 set_target_properties(AePitchShifter PROPERTIES CXX_STANDARD 11)
 """
 PITCH_CPP = r"""
@@ -47,6 +47,7 @@ Java_com_artcraft_effectcraft_EffectCraftActivity_pitchShiftSamples(
     const jsize count = env->GetArrayLength(input);
     if (count <= 0 || count > 8000000) return nullptr;
 
+    try {
     jboolean copied = JNI_FALSE;
     jfloat* source = env->GetFloatArrayElements(input, &copied);
     if (source == nullptr) return nullptr;
@@ -80,6 +81,11 @@ Java_com_artcraft_effectcraft_EffectCraftActivity_pitchShiftSamples(
     }
     env->SetFloatArrayRegion(output, 0, static_cast<jsize>(received), values.data());
     return output;
+    } catch (...) {
+        // An oversized pitch-shift allocation must fail the current voice render,
+        // never unwind through JNI and terminate the Android process.
+        return nullptr;
+    }
 }
 """
 
@@ -243,6 +249,9 @@ def main() -> None:
     notice_dir.mkdir(parents=True, exist_ok=True)
     if license_path.is_file():
         shutil.copy2(license_path, notice_dir / "SoundTouch-LGPL-2.1.txt")
+    apache_license = cpp_source.parent.parent.parent / "LICENSE.APACHE_2_0.txt"
+    if apache_license.is_file():
+        shutil.copy2(apache_license, notice_dir / "SoundTouch-Android-Apache-2.0.txt")
     source_archive = notice_dir / "SoundTouch-Android-source.tar.gz"
     shutil.copy2(soundtouch_archive, source_archive)
     adapter_source = notice_dir / "AePitchShifter.cpp"
