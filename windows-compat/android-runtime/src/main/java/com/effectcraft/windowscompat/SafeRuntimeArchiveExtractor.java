@@ -104,7 +104,7 @@ public final class SafeRuntimeArchiveExtractor implements RuntimeAssetInstaller.
                     totalBytes = checkedTotalBytes(entry.getSize(), totalBytes);
                     long usable = Files.getFileStore(root).getUsableSpace();
                     // Leave room for the running app, project metadata and cleanup.
-                    if (usable > 0 && entry.getSize() > Math.max(0L, usable - (64L * 1024L * 1024L))) {
+                    if (usable > 0 && totalBytes > Math.max(0L, usable - (64L * 1024L * 1024L))) {
                         throw new IOException("not enough free storage to safely extract " + entry.getName());
                     }
                     extractRegularFile(root, output, entry, tar, buffer);
@@ -222,16 +222,33 @@ public final class SafeRuntimeArchiveExtractor implements RuntimeAssetInstaller.
         if (parent == null) throw new IOException("file entry has no parent: " + output);
         createDirectoriesNoSymlink(root, parent);
         rejectSymlinkAncestors(root, parent);
-        if (Files.exists(output, LinkOption.NOFOLLOW_LINKS)) {
-            if (Files.isSymbolicLink(output) || Files.isDirectory(output, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IOException("TAR file conflicts with existing non-file: " + output);
+        if (Files.exists(output, LinkOption.NOFOLLOW_LINKS)
+                && (Files.isSymbolicLink(output) || Files.isDirectory(output, LinkOption.NOFOLLOW_LINKS))) {
+            throw new IOException("TAR file conflicts with existing non-file: " + output);
+        }
+        // Write beside the destination and publish only after the complete entry is verified.
+        // A truncated/corrupt archive must not leave a half-written executable in the runtime.
+        Path temporary = output.resolveSibling(output.getFileName().toString() + ".extracting");
+        if (Files.exists(temporary, LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.isSymbolicLink(temporary) || Files.isDirectory(temporary, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("unsafe extraction temporary path: " + temporary);
             }
-            Files.delete(output);
+            Files.delete(temporary);
         }
-        try (OutputStream out = Files.newOutputStream(output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-            copyExactly(tar, out, buffer, entry.getSize());
+        try {
+            try (OutputStream out = Files.newOutputStream(temporary, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+                copyExactly(tar, out, buffer, entry.getSize());
+            }
+            applyFileMode(temporary, entry.getMode());
+            try {
+                Files.move(temporary, output, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                Files.move(temporary, output, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException failure) {
+            Files.deleteIfExists(temporary);
+            throw failure;
         }
-        applyFileMode(output, entry.getMode());
     }
 
     private static void copyExactly(InputStream input, OutputStream output, byte[] buffer, long expected)
