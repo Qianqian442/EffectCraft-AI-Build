@@ -186,8 +186,8 @@ fn ai_person_render(ctx: &EffectCtx, buf: Buf) -> Buf {
     row = "| AI 人像抠像 | " + tick + "ec.matte.aipersoncutout" + tick + " | 8 |  | 32 | Implemented |"
     if row not in d:
         d = d.replace(
-            "| Object Matte | " + tick + "ec.matte.objectmatte" + tick + " | 13 |  | 32 | Implemented |\n",
-            "| Object Matte | " + tick + "ec.matte.objectmatte" + tick + " | 13 |  | 32 | Implemented |\n" + row + "\n",
+            "| Matte Choker | " + tick + "ec.matte.mattechoker" + tick + " | 7 | GPU | 32 | Implemented |\n",
+            row + "\n| Matte Choker | " + tick + "ec.matte.mattechoker" + tick + " | 7 | GPU | 32 | Implemented |\n",
             1,
         )
         d = d.replace("EffectCraft ships 308 effects with 2987 parameters", "EffectCraft ships 309 effects with 2995 parameters", 1)
