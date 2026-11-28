@@ -411,6 +411,10 @@ fn am_apply_effect_from_browser(app: &mut EffectcraftApp, ctx: &egui::Context, e
             crate::panels::effect_controls::choose_files_after_apply(app, &applied);
             app.ui.focused = PanelKind::EffectControls;
             app.ui.status = format!("已添加效果：{name}");
+            // The layer/effect stack is committed above; force the native preview and
+            // Effect Controls to paint the new state on the very next UI frame.
+            ctx.request_repaint();
+            ctx.request_repaint_after(std::time::Duration::from_millis(16));
             ctx.data_mut(|d| {
                 d.remove::<bool>(Id::new(AM_EFFECT_BROWSER_OPEN_ID));
                 d.remove::<String>(Id::new(AM_EFFECT_DETAIL_ID));
