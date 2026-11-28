@@ -150,7 +150,7 @@ fn android_aep_playback_resource_guard_is_tested() {
     final_cache_prefs = cache_prefs_path.read_text(encoding="utf-8")
     required = (
         "effectcraft_preview_worker_threads(reported_threads, cfg!(target_os = \"android\"))",
-        "const ANDROID_GPU_BUDGET: usize = 256_000_000;",
+        "const ANDROID_GPU_BUDGET: usize = 512 << 20;",
         "effectcraft_preview_gpu_budget(cfg!(target_os = \"android\"))",
         "const ANDROID_GPU_BUDGET: usize = 512 << 20;",
         "const ANDROID_PREVIEW_CACHE_BUDGET: usize = 768 << 20;",
