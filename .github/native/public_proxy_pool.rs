@@ -16,7 +16,11 @@ use tungstenite::stream::MaybeTlsStream;
 use tungstenite::{Error as WebSocketError, WebSocket};
 use ureq::{Agent, Proxy};
 
-const FALLBACK_BASE_URL: &str = "https://ae-account-api-gateway-alt.pages.dev";
+const FALLBACK_BASE_URLS: &[&str] = &[
+    "https://ae-account-api-gateway-alt.pages.dev",
+    // AE_EXTRA_FALLBACK_BASE_URLS_BEGIN
+    // AE_EXTRA_FALLBACK_BASE_URLS_END
+];
 const FEED_REFRESH: Duration = Duration::from_secs(30 * 60);
 const BAD_COOLDOWN: Duration = Duration::from_secs(15 * 60);
 const GOOD_TTL: Duration = Duration::from_secs(2 * 60);
@@ -411,7 +415,9 @@ pub(crate) fn account_http_request(
         Ok(())
     };
     validate_base(base_url)?;
-    validate_base(FALLBACK_BASE_URL)?;
+    for &fallback in FALLBACK_BASE_URLS {
+        validate_base(fallback)?;
+    }
     if !path.starts_with("/v1/") || path.contains("..") || path.contains('#') {
         return Err("账号 API 路径无效".to_string());
     }
@@ -423,7 +429,12 @@ pub(crate) fn account_http_request(
     // exactly once, only after a healthy TLS route has been selected.
     let mut selected: Option<(String, Agent, Option<Candidate>)> = None;
     let mut last_route_error = String::new();
-    let endpoints = [base_url, FALLBACK_BASE_URL];
+    let mut endpoints: Vec<&str> = vec![base_url];
+    for &fallback in FALLBACK_BASE_URLS {
+        if fallback != base_url {
+            endpoints.push(fallback);
+        }
+    }
     for candidate_url in endpoints {
         match select_http_route(candidate_url) {
             Ok((agent, route)) => {
@@ -607,11 +618,13 @@ where
             "公开代理隧道仅允许连接已配置的 Cloudflare workers.dev 或 pages.dev 账号主机",
         )));
     }
-    let fallback_host = FALLBACK_BASE_URL.strip_prefix("https://").unwrap_or_default();
     let path = request.uri().path_and_query().map(|value| value.as_str()).unwrap_or("/");
     let mut hosts = vec![primary_host.to_string()];
-    if !fallback_host.is_empty() && fallback_host != primary_host {
-        hosts.push(fallback_host.to_string());
+    for &fallback in FALLBACK_BASE_URLS {
+        let fallback_host = fallback.strip_prefix("https://").unwrap_or_default();
+        if !fallback_host.is_empty() && fallback_host != primary_host && !hosts.iter().any(|host| host == fallback_host) {
+            hosts.push(fallback_host.to_string());
+        }
     }
     let mut last_error = WebSocketError::Io(io::Error::new(
         io::ErrorKind::NotConnected,
