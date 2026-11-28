@@ -24,8 +24,9 @@ import java.util.Set;
 /**
  * Streaming TAR.XZ/TAR.Zstandard extractor for a private runtime root.
  *
- * There is no total archive-size, entry-count, uncompressed-size or RAM budget.
- * Bytes are streamed using a fixed-size transfer buffer. Safety checks prevent
+ * Extraction is bounded by entry-count and uncompressed-byte budgets. Bytes are
+ * streamed using a fixed-size transfer buffer, and declared TAR sizes are checked
+ * before any file is created. Safety checks prevent
  * archive path traversal and symlinks/hardlinks that resolve outside the
  * selected private root. Guest-root absolute symlinks such as /usr/bin/python
  * are rewritten as relative links rooted inside the private filesystem.
@@ -35,6 +36,25 @@ import java.util.Set;
  */
 public final class SafeRuntimeArchiveExtractor implements RuntimeAssetInstaller.ArchiveExtractor {
     private static final int BUFFER_SIZE = 64 * 1024;
+    static final int MAX_ENTRIES = 200_000;
+    static final long MAX_SINGLE_FILE_BYTES = 8L * 1024L * 1024L * 1024L;
+    static final long MAX_TOTAL_BYTES = 16L * 1024L * 1024L * 1024L;
+
+    static long checkedTotalBytes(long entryBytes, long totalBytes) throws IOException {
+        if (entryBytes < 0 || entryBytes > MAX_SINGLE_FILE_BYTES) {
+            throw new IOException("TAR file size is outside the supported limit: " + entryBytes);
+        }
+        final long next;
+        try {
+            next = Math.addExact(totalBytes, entryBytes);
+        } catch (ArithmeticException overflow) {
+            throw new IOException("TAR uncompressed size overflow", overflow);
+        }
+        if (next > MAX_TOTAL_BYTES) {
+            throw new IOException("TAR exceeds the total uncompressed size limit");
+        }
+        return next;
+    }
 
     @Override
     public void extractTarXz(Path archive, Path privateTarget) throws IOException {
@@ -63,7 +83,12 @@ public final class SafeRuntimeArchiveExtractor implements RuntimeAssetInstaller.
                 new BufferedInputStream(compressedTar), "UTF-8")) {
             TarArchiveEntry entry;
             byte[] buffer = new byte[BUFFER_SIZE];
+            int entryCount = 0;
+            long totalBytes = 0;
             while ((entry = tar.getNextTarEntry()) != null) {
+                if (++entryCount > MAX_ENTRIES) {
+                    throw new IOException("TAR exceeds the entry-count limit");
+                }
                 if (!tar.canReadEntryData(entry)) {
                     throw new IOException("unsupported TAR entry encoding: " + entry.getName());
                 }
@@ -76,6 +101,12 @@ public final class SafeRuntimeArchiveExtractor implements RuntimeAssetInstaller.
                 } else if (entry.isLink()) {
                     createHardLink(root, output, entry.getLinkName());
                 } else if (entry.isFile()) {
+                    totalBytes = checkedTotalBytes(entry.getSize(), totalBytes);
+                    long usable = Files.getFileStore(root).getUsableSpace();
+                    // Leave room for the running app, project metadata and cleanup.
+                    if (usable > 0 && totalBytes > Math.max(0L, usable - (64L * 1024L * 1024L))) {
+                        throw new IOException("not enough free storage to safely extract " + entry.getName());
+                    }
                     extractRegularFile(root, output, entry, tar, buffer);
                 } else {
                     // Character/block devices, sockets and FIFOs are not materialized.
@@ -191,16 +222,48 @@ public final class SafeRuntimeArchiveExtractor implements RuntimeAssetInstaller.
         if (parent == null) throw new IOException("file entry has no parent: " + output);
         createDirectoriesNoSymlink(root, parent);
         rejectSymlinkAncestors(root, parent);
-        if (Files.exists(output, LinkOption.NOFOLLOW_LINKS)) {
-            if (Files.isSymbolicLink(output) || Files.isDirectory(output, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IOException("TAR file conflicts with existing non-file: " + output);
+        if (Files.exists(output, LinkOption.NOFOLLOW_LINKS)
+                && (Files.isSymbolicLink(output) || Files.isDirectory(output, LinkOption.NOFOLLOW_LINKS))) {
+            throw new IOException("TAR file conflicts with existing non-file: " + output);
+        }
+        // Write beside the destination and publish only after the complete entry is verified.
+        // A truncated/corrupt archive must not leave a half-written executable in the runtime.
+        Path temporary = output.resolveSibling(output.getFileName().toString() + ".extracting");
+        if (Files.exists(temporary, LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.isSymbolicLink(temporary) || Files.isDirectory(temporary, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("unsafe extraction temporary path: " + temporary);
             }
-            Files.delete(output);
+            Files.delete(temporary);
         }
-        try (OutputStream out = Files.newOutputStream(output, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
-            copy(tar, out, buffer);
+        try {
+            try (OutputStream out = Files.newOutputStream(temporary, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
+                copyExactly(tar, out, buffer, entry.getSize());
+            }
+            applyFileMode(temporary, entry.getMode());
+            try {
+                Files.move(temporary, output, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+            } catch (java.nio.file.AtomicMoveNotSupportedException unsupported) {
+                Files.move(temporary, output, StandardCopyOption.REPLACE_EXISTING);
+            }
+        } catch (IOException failure) {
+            Files.deleteIfExists(temporary);
+            throw failure;
         }
-        applyFileMode(output, entry.getMode());
+    }
+
+    private static void copyExactly(InputStream input, OutputStream output, byte[] buffer, long expected)
+            throws IOException {
+        long remaining = expected;
+        while (remaining > 0) {
+            int read = input.read(buffer, 0, (int) Math.min(buffer.length, remaining));
+            if (read < 0) {
+                throw new IOException("truncated TAR file entry; missing " + remaining + " bytes");
+            }
+            if (read == 0) continue;
+            output.write(buffer, 0, read);
+            remaining -= read;
+        }
+        output.flush();
     }
 
     private static void copy(InputStream input, OutputStream output, byte[] buffer) throws IOException {

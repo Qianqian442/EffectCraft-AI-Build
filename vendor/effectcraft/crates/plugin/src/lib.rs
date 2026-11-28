@@ -35,13 +35,59 @@ pub fn wasm_available() -> bool {
     cfg!(feature = "wasm")
 }
 
+#[cfg(feature = "wasm")]
+struct ReidentifiedPlugin {
+    inner: std::sync::Arc<dyn EffectPlugin>,
+    manifest: PluginManifest,
+}
+
+#[cfg(feature = "wasm")]
+impl EffectPlugin for ReidentifiedPlugin {
+    fn manifest(&self) -> &PluginManifest {
+        &self.manifest
+    }
+
+    fn source(&self) -> String {
+        self.inner.source()
+    }
+
+    fn render(&self, frame: &mut PluginFrame, params: &PluginParams, time: f64) -> Result<(), String> {
+        self.inner.render(frame, params, time)
+    }
+}
+
 /// Load and register a WebAssembly plug-in (`bytes` = a `.wasm` binary or `.wat` text;
 /// `source` = where it came from, for listings). Returns the registered effect.
 pub fn load_wasm(bytes: &[u8], source: &str) -> Result<&'static EffectSpec, String> {
     #[cfg(feature = "wasm")]
     {
-        let p = wasm::WasmPlugin::new(bytes, source)?;
-        register_plugin(std::sync::Arc::new(p))
+        let plugin: std::sync::Arc<dyn EffectPlugin> =
+            std::sync::Arc::new(wasm::WasmPlugin::new(bytes, source)?);
+        match register_plugin(plugin.clone()) {
+            Ok(spec) => Ok(spec),
+            Err(first_error) if first_error.contains("already registered") => {
+                // Keep both imported effects: never replace an existing effect or block the
+                // import solely because another plug-in used the same manifest id.
+                let original_id = plugin.manifest().id.clone();
+                for copy_index in 2..=(effectcraft_effects::plugin::MAX_PLUGINS + 1) {
+                    let mut manifest = plugin.manifest().clone();
+                    manifest.id = format!("{original_id}.imported{copy_index}");
+                    manifest.name = format!("{}（导入副本 {copy_index}）", manifest.name);
+                    let copy: std::sync::Arc<dyn EffectPlugin> =
+                        std::sync::Arc::new(ReidentifiedPlugin {
+                            inner: plugin.clone(),
+                            manifest,
+                        });
+                    match register_plugin(copy) {
+                        Ok(spec) => return Ok(spec),
+                        Err(error) if error.contains("already registered") => continue,
+                        Err(error) => return Err(error),
+                    }
+                }
+                Err(format!("could not assign a unique id to duplicate plug-in {original_id}: {first_error}"))
+            }
+            Err(error) => Err(error),
+        }
     }
     #[cfg(not(feature = "wasm"))]
     {

@@ -69,6 +69,31 @@ public final class SafeRuntimeArchiveExtractorSelfTest {
         Path base = Files.createTempDirectory("effectcraft-runtime-extractor-test");
         try {
             SafeRuntimeArchiveExtractor extractor = new SafeRuntimeArchiveExtractor();
+            check(SafeRuntimeArchiveExtractor.checkedTotalBytes(1024, 0) == 1024,
+                    "valid TAR entry sizes must be accumulated");
+            boolean oversizedRejected = false;
+            try {
+                SafeRuntimeArchiveExtractor.checkedTotalBytes(
+                        SafeRuntimeArchiveExtractor.MAX_SINGLE_FILE_BYTES + 1, 0);
+            } catch (IOException expected) {
+                oversizedRejected = true;
+            }
+            check(oversizedRejected, "oversized single-file TAR entries must be rejected");
+            boolean negativeRejected = false;
+            try {
+                SafeRuntimeArchiveExtractor.checkedTotalBytes(-1, 0);
+            } catch (IOException expected) {
+                negativeRejected = true;
+            }
+            check(negativeRejected, "unknown or negative TAR entry sizes must be rejected");
+            boolean totalRejected = false;
+            try {
+                SafeRuntimeArchiveExtractor.checkedTotalBytes(
+                        SafeRuntimeArchiveExtractor.MAX_TOTAL_BYTES, 1);
+            } catch (IOException expected) {
+                totalRejected = true;
+            }
+            check(totalRejected, "TAR total uncompressed size must be bounded");
             Path xz = base.resolve("rootfs.txz");
             Path xzRoot = base.resolve("imagefs");
             makeXzTar(xz, false);

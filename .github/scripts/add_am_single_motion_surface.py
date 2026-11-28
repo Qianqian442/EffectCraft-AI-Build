@@ -265,8 +265,13 @@ fn am_motion_editor(app: &mut EffectcraftApp, ui: &mut egui::Ui, rect: Rect) {
     ).on_hover_text("木偶控点：单击添加控点，拖动控点调整图层变形");
     app.auto.add_response("am.motion.puppet", &puppet_response, "木偶控点工具");
     if puppet_response.clicked() {
-        app.ui.tool = Tool::Puppet;
-        app.ui.status = "已启用木偶控点：请在预览画面中点击添加控点，拖动控点调整变形。".into();
+        if app.ui.tool == Tool::Puppet {
+            app.ui.tool = Tool::Selection;
+            app.ui.status = "已退出木偶控点工具。".into();
+        } else {
+            app.ui.tool = Tool::Puppet;
+            app.ui.status = "已启用木偶控点：请在预览画面中点击添加控点，拖动控点调整变形。".into();
+        }
     }
     let effect_w = 100.0;
     let effect=ui.put(Rect::from_min_size(pos2(footer.max.x-effect_w-5.0,footer.min.y+5.0),vec2(effect_w,32.0)),egui::Button::new("＋ 效果"));
@@ -315,6 +320,7 @@ def main() -> None:
         '"keys.setSegmentCurve"', '"keys.velocity"',
         '"loop_cycle"', '"loop_pingpong"', '"bounce"',
         'Tool::Puppet', 'am.motion.puppet', '木偶控点：单击添加控点',
+        'if app.ui.tool == Tool::Puppet {', 'app.ui.tool = Tool::Selection;',
     )
     # keys.velocity is wired through the native curve influence sliders.
     missing = [x for x in required if x not in source]
