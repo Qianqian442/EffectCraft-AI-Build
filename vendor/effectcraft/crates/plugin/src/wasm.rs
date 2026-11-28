@@ -141,6 +141,12 @@ impl EffectPlugin for WasmPlugin {
         let mut inst = self.take()?;
         inst.store.set_fuel(FUEL_BASE + FUEL_PER_PIXEL * n as u64).map_err(err)?;
         let base = inst.alloc.call(&mut inst.store, total as i32).map_err(err)? as u32 as usize;
+        // The plug-in returns a signed i32 pointer. Reject wrapped/negative pointers and
+        // ranges that cannot be represented by the host ABI before writing into WASM memory.
+        let end = base.checked_add(total).ok_or_else(|| "plug-in buffer address overflow".to_string())?;
+        if base > i32::MAX as usize || end > i32::MAX as usize {
+            return Err("ec_alloc returned a buffer outside the 32-bit plug-in address range".into());
+        }
         // Parameters, then pixels (little-endian, as WebAssembly memory is).
         let mut buf: Vec<u8> = Vec::with_capacity(total);
         for v in params.flat {
