@@ -106,8 +106,8 @@ JAVA_TTS = r'''
             aeTtsResults.put(requestId, "ERROR: 请先输入文字内容。");
             return;
         }
-        if (text.length() > 4000) {
-            aeTtsResults.put(requestId, "ERROR: 单次本地配音最多支持 4000 个字符，请分段生成。");
+        if (text.length() > 2000) {
+            aeTtsResults.put(requestId, "ERROR: 单次本地配音最多支持 2000 个字符，请分段生成，避免手机内存不足。");
             return;
         }
         aeTtsResults.put(requestId, "PENDING");
@@ -132,9 +132,10 @@ JAVA_TTS = r'''
                     }
                 }
                 GeneratedAudio outputAudio = new GeneratedAudio(samples, generated.getSampleRate());
-                File directory = new File(activity.getCacheDir(), "AeTTS");
+                // Generated voice clips must survive cache cleanup and be importable later.
+                File directory = new File(activity.getFilesDir(), "AeMedia/Voice");
                 if (!directory.exists() && !directory.mkdirs()) {
-                    throw new IOException("无法创建配音暂存目录。");
+                    throw new IOException("无法创建配音保存目录。");
                 }
                 String safeId = requestId.replaceAll("[^A-Za-z0-9_-]", "_");
                 File output = new File(directory, safeId + ".wav");
@@ -142,6 +143,8 @@ JAVA_TTS = r'''
                 if (!outputAudio.save(output.getAbsolutePath()) || !output.isFile() || output.length() < 44) {
                     throw new IOException("本地配音 WAV 保存失败。");
                 }
+                output.setReadable(true, true);
+                output.setWritable(true, true);
                 aeTtsResults.put(requestId, "OK:" + output.getAbsolutePath());
             } catch (Throwable error) {
                 String detail = error.getMessage();
